@@ -1,8 +1,12 @@
 buildscript {
-    def herRuntime = System.getenv('HER_RUNTIME') ?: '/her'
+    ext.kotlin_version = '1.7.10'
+    repositories {
+        google()
+        mavenCentral()
+    }
     dependencies {
-        classpath files(herRuntime + "/toolchains/android-build/d8-gradle.jar")
-        classpath fileTree(dir: herRuntime + "/toolchains/agp-7.4.2-classpath", include: ['*.jar'])
+        classpath 'com.android.tools.build:gradle:7.4.2'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
 
