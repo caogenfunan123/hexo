@@ -1,2 +1,11 @@
-# hexo
-Hexo博客系统，从网上找了一个主题：A4 代码放在GitHub上，再通过Cloudflare Pages部署，管理此类纯静态网站
+# hexo博客管理系统
+
+This project keeps Flutter code in `lib/` and Android packaging files in `android/`.
+
+Her can download and configure a Flutter SDK for this project from the Flutter project run menu. If you already have an environment where `flutter --version` works, you can also build manually:
+
+```sh
+./build_flutter.sh
+```
+
+The APK is written to `android/app/build/outputs/apk/debug/`.

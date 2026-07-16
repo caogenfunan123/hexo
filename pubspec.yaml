@@ -1,0 +1,16 @@
+name: hexo
+description: Hexo 博客写作与发布管理系统
+publish_to: 'none'
+version: 1.0.2+3
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.0.0
+  flutter_markdown: ^0.6.12
+
+flutter:
+  uses-material-design: true
