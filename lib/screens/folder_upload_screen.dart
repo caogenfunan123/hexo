@@ -444,7 +444,7 @@ class _FolderUploadScreenState extends State<FolderUploadScreen> {
                     decoration: const InputDecoration(
                       labelText: '目标仓库',
                       border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.repository),
+                      prefixIcon: Icon(Icons.folder_outlined),
                     ),
                     items: widget.repos.map((r) {
                       return DropdownMenuItem(
@@ -474,7 +474,7 @@ class _FolderUploadScreenState extends State<FolderUploadScreen> {
                       labelText: '目标分支',
                       hintText: '例如 main 或 hexo',
                       border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.branch),
+                      prefixIcon: Icon(Icons.call_split),
                     ),
                     enabled: !_uploading,
                     onChanged: (v) => _branch = v.trim(),
