@@ -19,6 +19,7 @@ import 'services/rss_service.dart';
 import 'services/storage_service.dart';
 import 'services/webdav_service.dart';
 import 'theme/app_theme.dart';
+import 'screens/folder_upload_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -358,6 +359,7 @@ class _RootShellState extends State<RootShell> {
       _buildRemote(),
       _buildRss(),
       _buildHistory(),
+      _buildUpload(),
       _buildSettings(),
     ];
 
@@ -496,6 +498,11 @@ class _RootShellState extends State<RootShell> {
             label: '历史',
           ),
           NavigationDestination(
+            icon: Icon(Icons.upload_file_outlined),
+            selectedIcon: Icon(Icons.upload_file),
+            label: '上传',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.settings_outlined),
             selectedIcon: Icon(Icons.settings),
             label: '设置',
@@ -515,6 +522,8 @@ class _RootShellState extends State<RootShell> {
         return 'RSS 订阅';
       case 3:
         return 'Git 提交历史';
+      case 4:
+        return '文件夹上传';
       default:
         return '设置';
     }
@@ -803,6 +812,24 @@ class _RootShellState extends State<RootShell> {
           );
         },
       ),
+    );
+  }
+
+  /// 文件夹上传页面
+  Widget _buildUpload() {
+    if (repos.isEmpty) {
+      return _EmptyState(
+        icon: Icons.upload_file_outlined,
+        title: '没有可用仓库',
+        subtitle: '请先在设置中添加 GitHub 仓库配置',
+        actionLabel: '去设置',
+        onAction: () => setState(() => tab = 5),
+      );
+    }
+    return FolderUploadScreen(
+      repos: repos,
+      activeRepoId: settings.activeRepoId,
+      githubService: github,
     );
   }
 

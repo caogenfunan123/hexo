@@ -408,6 +408,84 @@ class GitHubService {
     );
   }
 
+  /// 批量上传文件到指定分支（通过 Git Tree API）
+  /// [owner] GitHub用户名
+  /// [repo] 仓库名
+  /// [branch] 目标分支
+  /// [token] GitHub Token
+  /// [files] 文件列表 Map<远程路径, base64内容>
+  /// [message] 提交信息
+  /// [basePath] 远程基本路径前缀
+  /// [onProgress] 进度回调 (已处理数, 总数)
+  /// 返回最终 commit SHA
+  Future<String> uploadFilesToBranch({
+    required String token,
+    required String owner,
+    required String repo,
+    required String branch,
+    required Map<String, String> files, // path -> base64 content
+    required String message,
+    String basePath = '',
+    void Function(int processed, int total)? onProgress,
+  }) async {
+    if (files.isEmpty) throw Exception('没有文件需要上传');
+
+    final total = files.length;
+    const batchSize = 100; // 每批最多100个文件，避免 GitHub API 限制
+
+    // 1. 获取当前分支的最新 commit SHA
+    onProgress?.call(0, total);
+    final refData = await _request('GET',
+        'https://api.github.com/repos/$owner/$repo/git/ref/heads/$branch', token);
+    final currentSha = refData['object']['sha'] as String;
+
+    // 分批处理文件
+    String treeSha = currentSha;
+    final entries = files.entries.toList();
+    int processed = 0;
+
+    for (int i = 0; i < entries.length; i += batchSize) {
+      final batch = entries.skip(i).take(batchSize).toList();
+
+      // 2. 创建 tree items
+      final treeItems = batch.map((e) {
+        return {
+          'path': basePath.isEmpty ? e.key : '$basePath/${e.key}',
+          'mode': '100644',
+          'type': 'blob',
+          'content': e.value, // base64 content
+        };
+      }).toList();
+
+      // 3. 创建 tree
+      final treeData = await _request('POST',
+          'https://api.github.com/repos/$owner/$repo/git/trees', token,
+          body: {'base_tree': treeSha, 'tree': treeItems});
+      treeSha = treeData['sha'] as String;
+
+      processed += batch.length;
+      onProgress?.call(processed, total);
+    }
+
+    // 4. 创建 commit
+    final commitData = await _request('POST',
+        'https://api.github.com/repos/$owner/$repo/git/commits', token,
+        body: {
+      'message': message,
+      'tree': treeSha,
+      'parents': [currentSha],
+    });
+
+    // 5. 更新分支引用
+    await _request('PATCH',
+        'https://api.github.com/repos/$owner/$repo/git/refs/heads/$branch',
+        token,
+        body: {'sha': commitData['sha']});
+
+    onProgress?.call(total, total);
+    return commitData['sha']?.toString() ?? '';
+  }
+
   String _encPath(String path) =>
       path.split('/').where((e) => e.isNotEmpty).map(Uri.encodeComponent).join('/');
 }
