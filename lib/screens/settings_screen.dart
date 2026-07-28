@@ -367,7 +367,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const SectionTitle(title: title),
+        SectionTitle(title: title),
         const SizedBox(height: 8),
         ...List.generate(fields.length, (i) => Padding(
           padding: const EdgeInsets.only(bottom: 8),

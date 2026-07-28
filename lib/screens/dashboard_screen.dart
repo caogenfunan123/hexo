@@ -1,5 +1,5 @@
 import 'dart:math';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Badge;
 import '../models/app_settings.dart';
 import '../models/article.dart';
 import '../models/repo_config.dart';

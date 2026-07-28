@@ -27,7 +27,7 @@ class AppTheme {
           borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
         ),
       ),
-      cardTheme: CardThemeData(
+      cardTheme: CardTheme(
         color: card,
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -70,7 +70,7 @@ class AppTheme {
         selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
         unselectedLabelStyle: const TextStyle(fontSize: 12),
       ),
-      dialogTheme: DialogThemeData(
+      dialogTheme: DialogTheme(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       ),
       snackBarTheme: SnackBarThemeData(
