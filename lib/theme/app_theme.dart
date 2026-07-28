@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  static Color seed = const Color(0xFF0EA5E9);
   static const bg = Color(0xFFF1F5F9);
   static const card = Colors.white;
   static const text = Color(0xFF0F172A);
   static const muted = Color(0xFF64748B);
 
   static ThemeData light({int? seedColor}) {
-    seed = Color(seedColor ?? 0xFF0EA5E9);
+    final seed = Color(seedColor ?? 0xFF0EA5E9);
     final scheme = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: Brightness.light,

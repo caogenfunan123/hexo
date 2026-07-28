@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../models/app_settings.dart';
 import '../models/article.dart';
+import '../models/article_template.dart';
 import '../models/repo_config.dart';
 
 /// 本地 JSON 持久化：优先 MethodChannel 应用目录，失败则用临时目录。
@@ -13,6 +14,7 @@ class StorageService {
   static const _settingsFile = 'settings.json';
   static const _reposFile = 'repos.json';
   static const _draftsFile = 'drafts.json';
+  static const _templatesFile = 'templates.json';
 
   Directory? _root;
 
@@ -103,4 +105,12 @@ class StorageService {
     final f = File('${dir.path}/${a.id}_${a.fileName()}');
     await f.writeAsString(a.toMarkdownWithFrontMatter());
   }
+
+  Future<List<ArticleTemplate>> loadTemplates() async {
+    final list = await _readList(_templatesFile);
+    return list.whereType<Map>().map((e) => ArticleTemplate.fromJson(Map<String, dynamic>.from(e))).toList();
+  }
+
+  Future<void> saveTemplates(List<ArticleTemplate> templates) =>
+      _write(_templatesFile, templates.map((e) => e.toJson()).toList());
 }

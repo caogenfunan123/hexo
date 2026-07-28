@@ -29,6 +29,7 @@ import zipfile
 src, jar_out, jni_dir = sys.argv[1:4]
 os.makedirs(os.path.dirname(jar_out), exist_ok=True)
 os.makedirs(jni_dir, exist_ok=True)
+skipped = 0
 with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(jar_out, "w", zipfile.ZIP_DEFLATED) as jout:
     for info in zin.infolist():
         name = info.filename
@@ -39,9 +40,16 @@ with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(jar_out, "w", zipfile.ZIP
             with open(os.path.join(jni_dir, os.path.basename(name)), "wb") as output:
                 output.write(data)
         elif name.endswith(".class") or name.startswith("META-INF/"):
+            if name.endswith("package-info.class"):
+                skipped += 1
+                continue
             jout.writestr(name, data)
+        elif not name.endswith(".class"):
+            jout.writestr(name, data)
+print(f"Skipped {skipped} package-info.class files")
 PY
 cp -f /her/toolchains/flutter-android-libs/* android/app/libs/
+
 cd android
 ./gradlew --no-daemon --no-watch-fs --console=plain :app:assembleDebug
 ls -lh app/build/outputs/apk/debug/*.apk

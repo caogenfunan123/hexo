@@ -7,10 +7,15 @@ android {
 
     defaultConfig {
         applicationId "com.example.hexo"
-        minSdk 23
+        minSdk 24
         targetSdk 34
-        versionCode 3
-        versionName "1.0.2"
+        versionCode 4
+        versionName "1.0.3"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
 
     buildTypes {
@@ -35,3 +40,77 @@ android {
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
 }
+
+// === D8 desugar crash workaround ===
+// AGP 7.4.2 内置的 D8 在 desugarDebugFileDependencies 中处理
+// flutter_embedding.jar 时因 Kotlin Metadata NPE 崩溃。
+// 方案：禁用该任务，改用 build-tools 34.0.0 的 d8 --no-desugaring
+// 预编译所有文件依赖（JAR + AAR 中的 classes.jar）为 DEX。
+
+tasks.configureEach { task ->
+    if (task.name.startsWith('desugar') && task.name.contains('FileDependencies')) {
+        task.enabled = false
+    }
+}
+
+afterEvaluate {
+    def d8Bin = '/her/toolchains/android-sdk/build-tools/34.0.0/d8'
+    def minApiStr = android.defaultConfig.minSdkVersion.apiLevel as String
+    def libsDir = file('libs')
+
+    task('precompileFileDepDex') {
+        description = 'Pre-compile file dependency JARs to DEX (d8 34.0.0, no desugaring)'
+
+        doLast {
+            def dexDir = file('build/intermediates/external_file_lib_dex_archives/debug')
+            dexDir.mkdirs()
+            def idx = 0
+
+            // 1) 直接 dex 所有 .jar 文件
+            libsDir.listFiles()
+                    .findAll { it.name.endsWith('.jar') }
+                    .sort()
+                    .each { jarFile ->
+                        def outFile = new File(dexDir, "${idx}_${jarFile.name}")
+                        println "  [precompileFileDepDex] JAR: ${jarFile.name}"
+                        exec {
+                            commandLine d8Bin, '--no-desugaring', '--min-api', minApiStr,
+                                    '--output', outFile.absolutePath, jarFile.absolutePath
+                        }
+                        idx++
+                    }
+
+            // 2) 从每个 .aar 中提取 classes.jar 再 dex
+            libsDir.listFiles()
+                    .findAll { it.name.endsWith('.aar') }
+                    .sort()
+                    .each { aarFile ->
+                        def tmpDir = new File(buildDir, "tmp/aar-extract/${aarFile.name.replace('.aar', '')}")
+                        tmpDir.mkdirs()
+                        copy {
+                            from zipTree(aarFile)
+                            into tmpDir
+                            include 'classes.jar'
+                        }
+                        def classesJar = new File(tmpDir, 'classes.jar')
+                        if (classesJar.exists()) {
+                            def outFile = new File(dexDir, "${idx}_classes.jar")
+                            println "  [precompileFileDepDex] AAR: ${aarFile.name}"
+                            exec {
+                                commandLine d8Bin, '--no-desugaring', '--min-api', minApiStr,
+                                        '--output', outFile.absolutePath, classesJar.absolutePath
+                            }
+                            idx++
+                        }
+                    }
+
+            println "  [precompileFileDepDex] Done: ${idx} DEX files in ${dexDir}"
+        }
+    }
+
+    // 让 mergeExtDexDebug 依赖预编译任务
+    tasks.named('mergeExtDexDebug').configure {
+        dependsOn 'precompileFileDepDex'
+    }
+}
+
