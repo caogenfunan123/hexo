@@ -28,11 +28,11 @@ jobs:
           echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
           echo "flutter.sdk=${FLUTTER_ROOT}" >> local.properties
 
-      - name: Generate Gradle Wrapper
+      - name: Download Gradle Wrapper Jar
         working-directory: android
         run: |
           if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-            gradle wrapper --gradle-version 7.5 --distribution-type bin
+            wget -q -O gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v7.5.0/gradle/wrapper/gradle-wrapper.jar
           fi
 
       - name: Flutter pub get
