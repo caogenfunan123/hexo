@@ -32,7 +32,7 @@ jobs:
         working-directory: android
         run: |
           if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-            wget -q -O gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v7.5.0/gradle/wrapper/gradle-wrapper.jar
+            wget -q -O gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v7.6.3/gradle/wrapper/gradle-wrapper.jar
           fi
 
       - name: Flutter pub get
