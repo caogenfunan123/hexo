@@ -5,6 +5,9 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -42,27 +45,31 @@ jobs:
         run: flutter build apk --release || true
 
       - name: Find APK
+        id: find_apk
         run: |
-          echo "=== Searching for APK files ==="
-          find . -name "*.apk" -type f 2>/dev/null
-          echo "=== Build directories ==="
-          ls -la build/ 2>/dev/null || echo "No build/ dir"
-          ls -la android/app/build/outputs/ 2>/dev/null || echo "No android/app/build/outputs/ dir"
-
-      - name: Copy APK to expected location
-        run: |
-          mkdir -p build/app/outputs/flutter-apk/
           APK=$(find . -name "*.apk" -type f 2>/dev/null | head -1)
-          if [ -n "$APK" ]; then
-            cp "$APK" build/app/outputs/flutter-apk/app-release.apk
-            echo "Found and copied: $APK"
-          else
+          if [ -z "$APK" ]; then
             echo "No APK found!"
             exit 1
           fi
+          echo "apk_path=$APK" >> $GITHUB_OUTPUT
+          echo "APK: $APK"
+          ls -la "$APK"
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: hexo-release-apk
-          path: build/app/outputs/flutter-apk/*.apk
+      - name: Prepare release directory
+        run: |
+          mkdir -p release
+          cp "${{ steps.find_apk.outputs.apk_path }}" "release/hexo-release.apk"
+          ls -la release/
+          echo "VERSION_NAME=$(grep versionName android/app/build.gradle | head -1 | sed 's/.*"\(.*\)".*/\1/')" >> $GITHUB_ENV
+          echo "VERSION_CODE=$(grep versionCode android/app/build.gradle | head -1 | awk '{print $3}')" >> $GITHUB_ENV
+          echo "BUILD_TIME=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
+
+      - name: Commit APK to release branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B release/latest
+          git add release/
+          git commit -m "build: APK v${VERSION_NAME}+${VERSION_CODE} (${BUILD_TIME})" || echo "No changes to commit"
+          git push -f origin release/latest
