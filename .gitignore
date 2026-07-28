@@ -1,0 +1,21 @@
+# Flutter/Dart
+.dart_tool/
+build/
+*.iml
+.idea/
+*.lock
+.packages
+
+# Android 编译产物
+android/app/libs/
+android/app/src/main/assets/flutter_assets/
+android/app/src/main/jniLibs/
+android/app/build/
+android/.gradle/
+android/local.properties
+*.aar
+*.so
+*.bin
+kernel_blob.bin
+vm_snapshot_data
+isolate_snapshot_data

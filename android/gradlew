@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+export GRADLE_HOME="/her/toolchains/gradle"
+export GRADLE_USER_HOME="${GRADLE_USER_HOME:-/root/.gradle}"
+exec "$GRADLE_HOME/bin/gradle" "$@"
