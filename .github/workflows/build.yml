@@ -39,7 +39,27 @@ jobs:
         run: flutter pub get
 
       - name: Build APK
-        run: flutter build apk --release
+        run: flutter build apk --release || true
+
+      - name: Find APK
+        run: |
+          echo "=== Searching for APK files ==="
+          find . -name "*.apk" -type f 2>/dev/null
+          echo "=== Build directories ==="
+          ls -la build/ 2>/dev/null || echo "No build/ dir"
+          ls -la android/app/build/outputs/ 2>/dev/null || echo "No android/app/build/outputs/ dir"
+
+      - name: Copy APK to expected location
+        run: |
+          mkdir -p build/app/outputs/flutter-apk/
+          APK=$(find . -name "*.apk" -type f 2>/dev/null | head -1)
+          if [ -n "$APK" ]; then
+            cp "$APK" build/app/outputs/flutter-apk/app-release.apk
+            echo "Found and copied: $APK"
+          else
+            echo "No APK found!"
+            exit 1
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
