@@ -22,6 +22,12 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Generate local.properties
+        working-directory: android
+        run: |
+          echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+          echo "flutter.sdk=${FLUTTER_ROOT}" >> local.properties
+
       - name: Generate Gradle Wrapper
         working-directory: android
         run: |
