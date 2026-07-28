@@ -275,8 +275,8 @@ class _EditorPageInlineState extends State<EditorPageInline> {
   void _applyTemplate(ArticleTemplate tpl) {
     final tags = tpl.defaultTags.join(', ');
     final cats = tpl.defaultCategories.join(', ');
-    _tags.text = (_tags.text.isEmpty ? '' : '${_tags.text}, ')$tags';
-    _categories.text = (_categories.text.isEmpty ? '' : '${_categories.text}, ')$cats;
+    _tags.text = (_tags.text.isEmpty ? '' : '${_tags.text}, ') + tags;
+    _categories.text = (_categories.text.isEmpty ? '' : '${_categories.text}, ') + cats;
     _content.text = tpl.content;
     _status = '已应用模板: ${tpl.name}';
   }
