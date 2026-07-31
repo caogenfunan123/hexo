@@ -86,6 +86,7 @@ class _AppShellState extends State<AppShell> {
   int _selectedNav = 0;
   bool loading = true;
   bool busy = false;
+  bool _sidebarExpanded = true;
 
   RepoConfig? get activeRepo {
     if (repos.isEmpty) return null;
@@ -262,7 +263,7 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     if (loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    final collapsed = MediaQuery.of(context).size.width < 600;
+    final collapsed = !_sidebarExpanded;
     final w = collapsed ? 64.0 : 200.0;
 
     return Scaffold(
@@ -301,13 +302,30 @@ class _AppShellState extends State<AppShell> {
   Widget _sidebarHeader(bool collapsed) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
     decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
-    child: collapsed ? const Icon(Icons.edit_note, color: Color(0xFF0EA5E9), size: 28)
+    child: collapsed
+        ? Column(mainAxisSize: MainAxisSize.min, children: [
+            IconButton(
+              icon: const Icon(Icons.menu, size: 22),
+              onPressed: () => setState(() => _sidebarExpanded = true),
+              tooltip: '展开侧边栏',
+              style: IconButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(36, 36)),
+            ),
+            const SizedBox(height: 4),
+            const Icon(Icons.edit_note, color: Color(0xFF0EA5E9), size: 24),
+          ])
         : Row(children: [
-            const Icon(Icons.edit_note, color: Color(0xFF0EA5E9), size: 24), const SizedBox(width: 10),
+            const Icon(Icons.edit_note, color: Color(0xFF0EA5E9), size: 24),
+            const SizedBox(width: 10),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(settings.siteName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
               Text(settings.siteBio, style: TextStyle(fontSize: 11, color: Colors.grey.shade500), maxLines: 1, overflow: TextOverflow.ellipsis),
             ])),
+            IconButton(
+              icon: const Icon(Icons.chevron_left, size: 20),
+              onPressed: () => setState(() => _sidebarExpanded = false),
+              tooltip: '收起侧边栏',
+              style: IconButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(32, 32), visualDensity: VisualDensity.compact),
+            ),
           ]),
   );
 
