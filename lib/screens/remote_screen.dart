@@ -10,7 +10,7 @@ class RemoteScreen extends StatefulWidget {
   final VoidCallback onRefresh;
   final void Function(GitHubFileItem) onOpen;
   final void Function(GitHubFileItem) onDelete;
-  final void Function(List<GitHubFileItem>) onBatchDelete;
+  final Future<void> Function(List<GitHubFileItem>) onBatchDelete;
   final void Function(String) onRollback;
 
   const RemoteScreen({

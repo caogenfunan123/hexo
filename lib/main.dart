@@ -633,7 +633,7 @@ class _RootShellState extends State<RootShell> {
   Future<void> _persistRepos() => storage.saveRepos(repos);
   Future<void> _persistDrafts() => storage.saveDrafts(drafts);
 
-  Future<void> _showToast(String msg) {
+  void _showToast(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(msg),
