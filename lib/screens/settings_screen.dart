@@ -241,6 +241,106 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ]),
 
         const SizedBox(height: 20),
+        // ── 草稿自动保存 ──
+        _sectionTitle('草稿备份设置'),
+        const SizedBox(height: 8),
+        _settingsCard([
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('本地自动保存'),
+            subtitle: Text(
+                '间隔 ${s.autoSaveIntervalSeconds} 秒自动保存草稿快照'),
+            value: s.autoSaveEnabled,
+            onChanged: (v) async {
+              await widget.onSettingsChanged(s.copyWith(autoSaveEnabled: v));
+            },
+          ),
+          if (s.autoSaveEnabled)
+            DropdownButtonFormField<int>(
+              value: s.autoSaveIntervalSeconds,
+              decoration: const InputDecoration(
+                labelText: '自动保存间隔',
+                prefixIcon: Icon(Icons.timer_outlined),
+              ),
+              items: const [
+                DropdownMenuItem(value: 10, child: Text('10 秒')),
+                DropdownMenuItem(value: 30, child: Text('30 秒')),
+                DropdownMenuItem(value: 60, child: Text('1 分钟')),
+                DropdownMenuItem(value: 180, child: Text('3 分钟')),
+                DropdownMenuItem(value: 300, child: Text('5 分钟')),
+              ],
+              onChanged: (v) async {
+                if (v != null) {
+                  await widget.onSettingsChanged(
+                      s.copyWith(autoSaveIntervalSeconds: v));
+                }
+              },
+            ),
+          const SizedBox(height: 4),
+          const Text(
+            '打字时防抖延时保存，到达定时周期强制快照，切后台/退出时立刻保存。',
+            style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+          ),
+          const Divider(height: 24),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('网盘自动同步'),
+            subtitle: Text(
+              s.webdavAutoSyncEnabled
+                  ? '每 ${s.webdavAutoSyncIntervalSeconds ~/ 60} 分钟同步到云端'
+                  : '关闭后仅手动同步',
+            ),
+            value: s.webdavAutoSyncEnabled,
+            onChanged: (v) async {
+              await widget.onSettingsChanged(
+                  s.copyWith(webdavAutoSyncEnabled: v));
+            },
+          ),
+          if (s.webdavAutoSyncEnabled) ...[
+            DropdownButtonFormField<int>(
+              value: s.webdavAutoSyncIntervalSeconds,
+              decoration: const InputDecoration(
+                labelText: '网盘同步间隔',
+                prefixIcon: Icon(Icons.cloud_sync_outlined),
+              ),
+              items: const [
+                DropdownMenuItem(value: 60, child: Text('1 分钟')),
+                DropdownMenuItem(value: 300, child: Text('5 分钟')),
+                DropdownMenuItem(value: 600, child: Text('10 分钟')),
+                DropdownMenuItem(value: 1800, child: Text('30 分钟')),
+              ],
+              onChanged: (v) async {
+                if (v != null) {
+                  await widget.onSettingsChanged(
+                      s.copyWith(webdavAutoSyncIntervalSeconds: v));
+                }
+              },
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('仅 WiFi 同步'),
+              subtitle: const Text('开启后仅在 WiFi 网络下自动同步'),
+              value: s.webdavSyncWifiOnly,
+              onChanged: (v) async {
+                await widget.onSettingsChanged(
+                    s.copyWith(webdavSyncWifiOnly: v));
+              },
+            ),
+          ],
+          const Divider(height: 24),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('启动时恢复上次会话'),
+            subtitle: const Text(
+                'APP 被杀后台后重新打开，自动恢复到上次停留的页面'),
+            value: s.restoreSession,
+            onChanged: (v) async {
+              await widget.onSettingsChanged(s.copyWith(restoreSession: v));
+            },
+          ),
+        ]),
+
+        const SizedBox(height: 20),
         // ── 图床（GitHub + CDN）──
         _sectionTitle('图床（GitHub + CDN）'),
         const SizedBox(height: 8),

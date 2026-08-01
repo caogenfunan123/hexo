@@ -37,6 +37,19 @@ class AppSettings {
   final String cloudflareDeployHook;
   final int themeColor;
 
+  // ── 草稿自动保存 ──
+  final bool autoSaveEnabled;
+  final int autoSaveIntervalSeconds;
+  final String autoSaveDir;
+
+  // ── 网盘自动同步 ──
+  final bool webdavAutoSyncEnabled;
+  final int webdavAutoSyncIntervalSeconds;
+  final bool webdavSyncWifiOnly;
+
+  // ── 会话恢复 ──
+  final bool restoreSession;
+
   const AppSettings({
     this.defaultToken = '',
     this.githubTokens = const [],
@@ -72,6 +85,13 @@ class AppSettings {
     this.siteWorks = '',
     this.cloudflareDeployHook = '',
     this.themeColor = 0xFF0EA5E9,
+    this.autoSaveEnabled = true,
+    this.autoSaveIntervalSeconds = 30,
+    this.autoSaveDir = '',
+    this.webdavAutoSyncEnabled = false,
+    this.webdavAutoSyncIntervalSeconds = 300,
+    this.webdavSyncWifiOnly = true,
+    this.restoreSession = true,
   });
 
   GithubTokenProfile? get activeGithubToken {
@@ -152,6 +172,13 @@ class AppSettings {
     String? siteWorks,
     String? cloudflareDeployHook,
     int? themeColor,
+    bool? autoSaveEnabled,
+    int? autoSaveIntervalSeconds,
+    String? autoSaveDir,
+    bool? webdavAutoSyncEnabled,
+    int? webdavAutoSyncIntervalSeconds,
+    bool? webdavSyncWifiOnly,
+    bool? restoreSession,
   }) {
     return AppSettings(
       defaultToken: defaultToken ?? this.defaultToken,
@@ -188,6 +215,13 @@ class AppSettings {
       siteWorks: siteWorks ?? this.siteWorks,
       cloudflareDeployHook: cloudflareDeployHook ?? this.cloudflareDeployHook,
       themeColor: themeColor ?? this.themeColor,
+      autoSaveEnabled: autoSaveEnabled ?? this.autoSaveEnabled,
+      autoSaveIntervalSeconds: autoSaveIntervalSeconds ?? this.autoSaveIntervalSeconds,
+      autoSaveDir: autoSaveDir ?? this.autoSaveDir,
+      webdavAutoSyncEnabled: webdavAutoSyncEnabled ?? this.webdavAutoSyncEnabled,
+      webdavAutoSyncIntervalSeconds: webdavAutoSyncIntervalSeconds ?? this.webdavAutoSyncIntervalSeconds,
+      webdavSyncWifiOnly: webdavSyncWifiOnly ?? this.webdavSyncWifiOnly,
+      restoreSession: restoreSession ?? this.restoreSession,
     );
   }
 
@@ -226,6 +260,13 @@ class AppSettings {
         'siteWorks': siteWorks,
         'cloudflareDeployHook': cloudflareDeployHook,
         'themeColor': themeColor,
+        'autoSaveEnabled': autoSaveEnabled,
+        'autoSaveIntervalSeconds': autoSaveIntervalSeconds,
+        'autoSaveDir': autoSaveDir,
+        'webdavAutoSyncEnabled': webdavAutoSyncEnabled,
+        'webdavAutoSyncIntervalSeconds': webdavAutoSyncIntervalSeconds,
+        'webdavSyncWifiOnly': webdavSyncWifiOnly,
+        'restoreSession': restoreSession,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) {
@@ -342,6 +383,13 @@ class AppSettings {
       siteWorks: j['siteWorks']?.toString() ?? '',
       cloudflareDeployHook: j['cloudflareDeployHook']?.toString() ?? '',
       themeColor: (j['themeColor'] as num?)?.toInt() ?? 0xFF0EA5E9,
+      autoSaveEnabled: j['autoSaveEnabled'] != false,
+      autoSaveIntervalSeconds: (j['autoSaveIntervalSeconds'] as num?)?.toInt() ?? 30,
+      autoSaveDir: j['autoSaveDir']?.toString() ?? '',
+      webdavAutoSyncEnabled: j['webdavAutoSyncEnabled'] == true,
+      webdavAutoSyncIntervalSeconds: (j['webdavAutoSyncIntervalSeconds'] as num?)?.toInt() ?? 300,
+      webdavSyncWifiOnly: j['webdavSyncWifiOnly'] != false,
+      restoreSession: j['restoreSession'] != false,
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -10,6 +11,8 @@ import 'models/app_settings.dart';
 import 'models/article.dart';
 import 'models/github_token_profile.dart';
 import 'models/repo_config.dart';
+import 'models/session_state.dart';
+import 'screens/article_reader_screen.dart';
 import 'screens/drafts_screen.dart';
 import 'screens/remote_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -23,6 +26,7 @@ import 'services/ai_service.dart';
 import 'services/github_service.dart';
 import 'services/image_service.dart';
 import 'services/rss_service.dart';
+import 'services/session_service.dart';
 import 'services/storage_service.dart';
 import 'services/webdav_service.dart';
 import 'theme/app_theme.dart';
@@ -93,6 +97,7 @@ class _RootShellState extends State<RootShell> {
   final aiService = AiService();
   final rssService = RssService();
   final webdavService = WebDavService();
+  final sessionService = SessionService();
 
   AppSettings settings = const AppSettings();
   List<RepoConfig> repos = [];
@@ -109,6 +114,16 @@ class _RootShellState extends State<RootShell> {
   bool githubSearchLoading = false;
   String? error;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  // ── 会话记忆 ──
+  SessionState _lastSession = SessionState.empty;
+  bool _sessionRestored = false;
+
+  // ── 自动保存 ──
+  Timer? _autoSaveTimer;
+  Timer? _debounceTimer;
+  String _lastSavedContent = '';
+  bool _hasUnsavedChanges = false;
 
   // Editor state
   late TextEditingController _titleCtrl;
@@ -162,6 +177,8 @@ class _RootShellState extends State<RootShell> {
         return '网站预览';
       case 8:
         return '设置';
+      case 9:
+        return '阅读';
       default:
         return '';
     }
@@ -189,6 +206,7 @@ class _RootShellState extends State<RootShell> {
 
   @override
   void dispose() {
+    _stopAutoSave();
     _titleCtrl.dispose();
     _contentCtrl.dispose();
     _tagsCtrl.dispose();
@@ -247,6 +265,10 @@ class _RootShellState extends State<RootShell> {
         drafts = d..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
         loading = false;
       });
+      // 会话恢复
+      if (s.restoreSession) {
+        await _restoreSession();
+      }
     } catch (_) {
       if (mounted) setState(() => loading = false);
     }
@@ -279,14 +301,286 @@ class _RootShellState extends State<RootShell> {
   }
 
   void _navigateTo(int page) {
+    // 离开编辑器时停止自动保存
+    if (_currentPage == 0 && page != 0) {
+      _stopAutoSave();
+    }
     setState(() => _currentPage = page);
     Navigator.pop(context); // close drawer
+    // 进入编辑器时启动自动保存
+    if (page == 0) {
+      _startAutoSave();
+    }
     if (page == 2 && remotePosts.isEmpty) _refreshRemote();
     if (page == 4 && rssItems.isEmpty) _refreshRss();
     if (page == 5 && commits.isEmpty) _refreshCommits();
   }
 
   void _openDrawer() => _scaffoldKey.currentState?.openDrawer();
+
+  // ============ 会话管理 ============
+
+  Future<void> _restoreSession() async {
+    if (_sessionRestored) return;
+    _sessionRestored = true;
+    try {
+      final session = await sessionService.loadSession();
+      if (!session.hasArticle || session.isHome) return;
+      _lastSession = session;
+
+      // 恢复文章数据
+      final article = Article(
+        id: session.articleId,
+        title: session.articleTitle,
+        content: session.articleContent,
+        tags: session.articleTags
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList(),
+        categories: session.articleCategories
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList(),
+        cover: session.articleCover.isEmpty ? null : session.articleCover,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        isDraft: true,
+        repoId: session.articleRepoId,
+        remotePath: session.articleRemotePath,
+        remoteSha: session.articleRemoteSha,
+      );
+
+      if (session.pageType == SessionPageType.editor) {
+        _enterEditorFromReader(article);
+      } else if (session.pageType == SessionPageType.reader) {
+        _openReader(article);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveSession(SessionPageType pageType) async {
+    if (!settings.restoreSession) return;
+    final state = SessionState(
+      pageType: pageType,
+      articleId: _currentArticle.id,
+      articleSource: ArticleSource.local,
+      articleTitle: _titleCtrl.text,
+      articleContent: _contentCtrl.text,
+      articleTags: _tagsCtrl.text,
+      articleCategories: _categoriesCtrl.text,
+      articleCover: _coverCtrl.text,
+      articleRepoId: _currentArticle.repoId,
+      articleRemotePath: _currentArticle.remotePath ?? '',
+      articleRemoteSha: _currentArticle.remoteSha ?? '',
+    );
+    _lastSession = state;
+    await sessionService.saveSession(state);
+  }
+
+  Future<void> _clearSession() async {
+    _lastSession = SessionState.empty;
+    await sessionService.clearSession();
+  }
+
+  // ============ 退出弹窗 ============
+
+  Future<bool> _showExitDialog() async {
+    final hasChanges = _hasUnsavedChanges;
+    if (!hasChanges) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('确认退出'),
+          content: const Text('确认退出当前文章？'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('确认退出')),
+          ],
+        ),
+      );
+      return ok == true;
+    }
+
+    // 有未保存改动
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('是否退出当前文章？'),
+        content: const Text('检测到未保存的改动，请选择处理方式：'),
+        actions: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              FilledButton.icon(
+                onPressed: () => Navigator.pop(ctx, 'publish'),
+                icon: const Icon(Icons.cloud_upload, size: 18),
+                label: const Text('保存并发布'),
+              ),
+              const SizedBox(height: 6),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.pop(ctx, 'save'),
+                icon: const Icon(Icons.save_outlined, size: 18),
+                label: const Text('仅本地保存，暂不发布'),
+              ),
+              const SizedBox(height: 6),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'discard'),
+                child: const Text('放弃修改，直接退出',
+                    style: TextStyle(color: Colors.red)),
+              ),
+              const SizedBox(height: 6),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'cancel'),
+                child: const Text('取消'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    if (result == null || result == 'cancel') return false;
+
+    switch (result) {
+      case 'publish':
+        await _publish();
+        break;
+      case 'save':
+        await _saveLocal();
+        break;
+      case 'discard':
+        break;
+    }
+    return true;
+  }
+
+  /// 点击 × 关闭按钮 → 退出弹窗 → 回到写文章首页
+  Future<void> _onCloseEditor() async {
+    final ok = await _showExitDialog();
+    if (!ok) return;
+    _stopAutoSave();
+    await _clearSession();
+    _resetEditor();
+    setState(() => _currentPage = 0);
+  }
+
+  Future<void> _onCloseReader() async {
+    await _clearSession();
+    setState(() => _currentPage = 0);
+  }
+
+  void _resetEditor() {
+    _currentArticle = Article(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: '',
+      content: '',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      isDraft: true,
+      repoId: activeRepo?.id,
+    );
+    _titleCtrl.text = '';
+    _contentCtrl.text = '';
+    _tagsCtrl.text = '';
+    _categoriesCtrl.text = '';
+    _coverCtrl.text = '';
+    _lastSavedContent = '';
+    _hasUnsavedChanges = false;
+  }
+
+  // ============ 自动保存 ============
+
+  void _startAutoSave() {
+    _stopAutoSave();
+    if (!settings.autoSaveEnabled) return;
+    _autoSaveTimer = Timer.periodic(
+      Duration(seconds: settings.autoSaveIntervalSeconds),
+      (_) => _autoSaveSnapshot(),
+    );
+  }
+
+  void _stopAutoSave() {
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = null;
+    _debounceTimer?.cancel();
+    _debounceTimer = null;
+  }
+
+  void _onContentChanged() {
+    final current = _contentCtrl.text;
+    if (current == _lastSavedContent) {
+      _hasUnsavedChanges = false;
+      return;
+    }
+    _hasUnsavedChanges = true;
+    // 防抖：停止输入后延时保存
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(seconds: 2), () {
+      _autoSaveSnapshot();
+    });
+  }
+
+  Future<void> _autoSaveSnapshot() async {
+    final content = _contentCtrl.text;
+    if (content.isEmpty || content == _lastSavedContent) return;
+    final title = _titleCtrl.text;
+    try {
+      await sessionService.saveAutoSnapshot(
+        articleId: _currentArticle.id,
+        content: content,
+        title: title.isEmpty ? '未命名' : title,
+        tags: _tagsCtrl.text,
+        categories: _categoriesCtrl.text,
+        cover: _coverCtrl.text,
+      );
+      _lastSavedContent = content;
+      _hasUnsavedChanges = false;
+      await sessionService.cleanupSnapshots(_currentArticle.id);
+      // 同时保存草稿到 storage
+      await _saveDraft(_collect(draft: true));
+      if (mounted) {
+        _showToast('草稿已自动保存');
+      }
+    } catch (_) {}
+  }
+
+  // ============ 阅读页 / 编辑器切换 ============
+
+  void _openReader(Article article) {
+    _currentArticle = article;
+    _titleCtrl.text = article.title;
+    _contentCtrl.text = article.content;
+    _tagsCtrl.text = article.tags.join(', ');
+    _categoriesCtrl.text = article.categories.join(', ');
+    _coverCtrl.text = article.cover ?? '';
+    _lastSavedContent = article.content;
+    _hasUnsavedChanges = false;
+    _saveSession(SessionPageType.reader);
+    setState(() => _currentPage = 9); // 阅读页
+  }
+
+  void _enterEditorFromReader(Article article) {
+    _currentArticle = article;
+    _titleCtrl.text = article.title;
+    _contentCtrl.text = article.content;
+    _tagsCtrl.text = article.tags.join(', ');
+    _categoriesCtrl.text = article.categories.join(', ');
+    _coverCtrl.text = article.cover ?? '';
+    _editorRepo = repos
+            .where((r) => r.id == article.repoId)
+            .firstOrNull ??
+        activeRepo;
+    _lastSavedContent = article.content;
+    _hasUnsavedChanges = false;
+    _startAutoSave();
+    _saveSession(SessionPageType.editor);
+    setState(() => _currentPage = 0); // 回到编辑器
+  }
 
   // --- Editor methods ---
   Article _collect({bool draft = true}) {
@@ -329,6 +623,8 @@ class _RootShellState extends State<RootShell> {
       _editorStatus = '本地已保存';
     });
     await _saveDraft(a);
+    _lastSavedContent = a.content;
+    _hasUnsavedChanges = false;
     if (mounted) _showToast('草稿已保存到本地');
   }
 
@@ -349,6 +645,8 @@ class _RootShellState extends State<RootShell> {
         _currentArticle = pub;
         _editorStatus = '已发布';
       });
+      _lastSavedContent = pub.content;
+      _hasUnsavedChanges = false;
       await _saveDraft(pub.copyWith(isDraft: false, published: true));
       await _refreshRemote();
       if (mounted) _showToast('已发布到 ${repo.fullName}');
@@ -2571,12 +2869,25 @@ class _RootShellState extends State<RootShell> {
       return const Scaffold(
           body: Center(child: CircularProgressIndicator()));
 
-    return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: AppTheme.bg,
-      appBar: _buildAppBar(),
-      drawer: _buildDrawer(),
-      body: _buildPage(),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_currentPage == 0) {
+          await _onCloseEditor();
+        } else if (_currentPage == 9) {
+          _onCloseReader();
+        } else {
+          if (mounted) Navigator.of(context).maybePop();
+        }
+      },
+      child: Scaffold(
+        key: _scaffoldKey,
+        backgroundColor: AppTheme.bg,
+        appBar: _buildAppBar(),
+        drawer: _buildDrawer(),
+        body: _buildPage(),
+      ),
     );
   }
 
@@ -2606,6 +2917,10 @@ class _RootShellState extends State<RootShell> {
               fontSize: 18)),
       actions: _currentPage == 0
           ? [
+              _appBarAction(
+                  icon: Icons.close,
+                  tooltip: '关闭',
+                  onTap: _onCloseEditor),
               _appBarAction(
                   icon: Icons.visibility_outlined,
                   tooltip: '预览文章',
@@ -2936,6 +3251,12 @@ class _RootShellState extends State<RootShell> {
             onShowPwaGuide: _showPwaGuide,
             onPersistSettings: _persistSettings,
             onShowToast: _showToast);
+      case 9:
+        return ArticleReaderScreen(
+          article: _currentArticle,
+          onEnterEdit: () => _enterEditorFromReader(_currentArticle),
+          onClose: _onCloseReader,
+        );
       default:
         return const SizedBox();
     }
@@ -2946,19 +3267,8 @@ class _RootShellState extends State<RootShell> {
     if (_scaffoldKey.currentState?.isDrawerOpen == true) {
       Navigator.pop(context);
     }
-    setState(() {
-      _currentArticle = a;
-      _titleCtrl.text = a.title;
-      _contentCtrl.text = a.content;
-      _tagsCtrl.text = a.tags.join(', ');
-      _categoriesCtrl.text = a.categories.join(', ');
-      _coverCtrl.text = a.cover ?? '';
-      _editorRepo = repos
-              .where((r) => r.id == a.repoId)
-              .firstOrNull ??
-          activeRepo;
-      _currentPage = 0;
-    });
+    // 打开阅读页，而不是直接进入编辑器
+    _openReader(a);
   }
 
   // ============ EDITOR PAGE ============
@@ -3122,6 +3432,7 @@ class _RootShellState extends State<RootShell> {
                   minLines: 20,
                   maxLines: null,
                   keyboardType: TextInputType.multiline,
+                  onChanged: (_) => _onContentChanged(),
                   decoration: const InputDecoration(
                     labelText: 'Markdown 正文',
                     alignLabelWithHint: true,
