@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -15,6 +18,7 @@ import 'screens/history_screen.dart';
 import 'screens/folder_upload_screen.dart';
 import 'screens/preview_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/site_editor_screen.dart';
 import 'services/ai_service.dart';
 import 'services/github_service.dart';
 import 'services/image_service.dart';
@@ -100,6 +104,10 @@ class _RootShellState extends State<RootShell> {
   int _currentPage = 0;
   bool loading = true;
   bool busy = false;
+  String searchQuery = '';
+  List<GitHubSearchHit> githubSearchHits = [];
+  bool githubSearchLoading = false;
+  String? error;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   // Editor state
@@ -610,14 +618,6 @@ class _RootShellState extends State<RootShell> {
     } catch (_) {}
   }
 
-  void _showToast(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(msg),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2)));
-  }
-
   Future<void> _updateSettings(AppSettings s) async {
     setState(() => settings = s);
     await storage.saveSettings(s);
@@ -627,6 +627,1940 @@ class _RootShellState extends State<RootShell> {
   Future<void> _updateRepos(List<RepoConfig> r) async {
     setState(() => repos = r);
     await storage.saveRepos(r);
+  }
+
+  Future<void> _persistSettings() => storage.saveSettings(settings);
+  Future<void> _persistRepos() => storage.saveRepos(repos);
+  Future<void> _persistDrafts() => storage.saveDrafts(drafts);
+
+  Future<void> _showToast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2)));
+  }
+
+  Future<bool> _confirm(String msg) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认'),
+        content: Text(msg),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('确定')),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  String _fmt(DateTime d) {
+    String p(int n) => n.toString().padLeft(2, '0');
+    return '${d.year}-${p(d.month)}-${p(d.day)} ${p(d.hour)}:${p(d.minute)}';
+  }
+
+  // ============ WebDAV ============
+
+  Future<void> _showWebDavDialog() async {
+    final c = TextEditingController(text: settings.webdavUrl);
+    final u = TextEditingController(text: settings.webdavUsername);
+    final pw = TextEditingController(text: settings.webdavPassword);
+    final f = TextEditingController(text: settings.webdavFolder);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('WebDAV 备份'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                    controller: c,
+                    decoration: const InputDecoration(
+                        labelText: 'WebDAV 网址',
+                        hintText: 'https://dav.jianguoyun.com/dav')),
+                const SizedBox(height: 12),
+                TextField(
+                    controller: u,
+                    decoration: const InputDecoration(labelText: '账号')),
+                const SizedBox(height: 12),
+                TextField(
+                    controller: pw,
+                    obscureText: true,
+                    decoration:
+                        const InputDecoration(labelText: '密码')),
+                const SizedBox(height: 12),
+                TextField(
+                    controller: f,
+                    decoration:
+                        const InputDecoration(labelText: '文件夹')),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消')),
+            TextButton(
+              onPressed: () {
+                settings = settings.copyWith(
+                  webdavUrl: c.text.trim(),
+                  webdavUsername: u.text.trim(),
+                  webdavPassword: pw.text,
+                  webdavFolder: f.text.trim().isEmpty
+                      ? 'hexo-backup'
+                      : f.text.trim(),
+                );
+                _persistSettings();
+                Navigator.pop(ctx);
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        );
+      },
+    );
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _syncWebDavToLocal() async {
+    if (settings.webdavUrl.isEmpty) {
+      await _showWebDavDialog();
+      if (mounted && settings.webdavUrl.isEmpty) return;
+    }
+    try {
+      loading = true;
+      if (mounted) setState(() {});
+      final svc = WebDavService();
+      final drafts = await storage.loadDrafts();
+      final folder = settings.webdavFolder.endsWith('/')
+          ? settings.webdavFolder
+          : '${settings.webdavFolder}/';
+      final remote = await svc.list(settings.webdavUrl,
+          settings.webdavUsername, settings.webdavPassword, folder);
+      final localIds = drafts.map((a) => '${a.id}.md').toSet();
+      int count = 0;
+      for (final item in remote) {
+        if (!item.isDir && item.name.endsWith('.md')) {
+          final id = item.name.replaceAll(RegExp(r'\.md$'), '');
+          if (!localIds.contains(item.name)) {
+            final bytes = await svc.downloadFile(settings.webdavUrl,
+                settings.webdavUsername, settings.webdavPassword,
+                folder, item.name);
+            final md = utf8.decode(bytes);
+            final article = Article.fromMarkdown(md, id: id);
+            drafts.add(article);
+            count++;
+          }
+        }
+      }
+      await storage.saveDrafts(drafts);
+      if (mounted) {
+        setState(() {
+          loading = false;
+          this.drafts = drafts
+            ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        });
+        _showToast('已从云端同步 $count 篇草稿到本地');
+      }
+    } on Exception catch (e) {
+      if (mounted) {
+        setState(() => loading = false);
+        _showToast('WebDAV 同步失败: $e');
+      }
+    }
+  }
+
+  Future<void> _syncDraftsToWebDav() async {
+    if (settings.webdavUrl.isEmpty) {
+      await _showWebDavDialog();
+      if (mounted && settings.webdavUrl.isEmpty) return;
+    }
+    try {
+      loading = true;
+      if (mounted) setState(() {});
+      final svc = WebDavService();
+      final drafts = await storage.loadDrafts();
+      final folder = settings.webdavFolder.endsWith('/')
+          ? settings.webdavFolder
+          : '${settings.webdavFolder}/';
+      await svc.createFolder(settings.webdavUrl, settings.webdavUsername,
+          settings.webdavPassword, folder);
+      final remote = await svc.list(settings.webdavUrl,
+          settings.webdavUsername, settings.webdavPassword, folder);
+      final names = remote
+          .where((e) => e.name.endsWith('.md'))
+          .map((e) => e.name)
+          .toSet();
+      int count = 0;
+      for (final a in drafts) {
+        if (!names.contains('${a.id}.md')) {
+          await svc.putFile(
+              settings.webdavUrl,
+              settings.webdavUsername,
+              settings.webdavPassword,
+              '$folder${a.id}.md',
+              a.toMarkdownWithFrontMatter());
+          count++;
+        }
+      }
+      if (mounted) {
+        setState(() => loading = false);
+        _showToast('已上传 $count 篇草稿');
+      }
+    } on Exception catch (e) {
+      if (mounted) {
+        setState(() => loading = false);
+        _showToast('WebDAV 失败: $e');
+      }
+    }
+  }
+
+  // ============ Theme ============
+
+  Future<void> _showThemeColorPicker() async {
+    const colors = [
+      Color(0xFF0EA5E9),
+      Color(0xFF6366F1),
+      Color(0xFF8B5CF6),
+      Color(0xFFEC4899),
+      Color(0xFFF43F5E),
+      Color(0xFF10B981),
+      Color(0xFF14B8A6),
+      Color(0xFFF59E0B),
+      Color(0xFF64748B),
+      Color(0xFF1E293B),
+    ];
+    const names = [
+      '天蓝', '靛蓝', '紫色', '粉色', '玫瑰红', '翡翠绿', '青绿', '琥珀', '石板灰', '深灰'
+    ];
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('选择主题颜色'),
+        content: SizedBox(
+          width: 300,
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: List.generate(colors.length, (i) {
+              return GestureDetector(
+                onTap: () async {
+                  settings =
+                      settings.copyWith(themeColor: colors[i].value);
+                  await _persistSettings();
+                  widget.onThemeChanged(colors[i]);
+                  _showToast('主题色已切换为${names[i]}');
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: colors[i],
+                        borderRadius: BorderRadius.circular(14),
+                        border: settings.themeColor == colors[i].value
+                            ? Border.all(
+                                color: Colors.black, width: 2.5)
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(names[i],
+                        style: const TextStyle(fontSize: 11)),
+                  ],
+                ),
+              );
+            }),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('关闭')),
+        ],
+      ),
+    );
+  }
+
+  // ============ Site Editor ============
+
+  Future<void> _showSiteEditor() async {
+    final repo = effectiveRepo;
+    if (repo == null) {
+      _showToast('请先配置仓库');
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => SiteEditorScreen(
+          repo: repo,
+          github: github,
+          onSaved: () => _showToast('站点内容已同步到 GitHub，稍后自动部署'),
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  // ============ AI Profile Management ============
+
+  Future<void> _showAiManager() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModal) {
+            final profiles =
+                List<AiProfile>.from(settings.aiProfiles);
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 8,
+                bottom:
+                    MediaQuery.of(ctx).viewInsets.bottom + 16,
+              ),
+              child: SizedBox(
+                height: MediaQuery.of(ctx).size.height * 0.75,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'AI 中转站配置',
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () async {
+                            final created =
+                                await _editAiProfile(null);
+                            if (created != null) {
+                              final list = List<AiProfile>.from(
+                                  settings.aiProfiles)
+                                ..add(created);
+                              settings = settings.copyWith(
+                                aiProfiles: list,
+                                activeAiProfileId: created.id,
+                                aiBaseUrl: created.baseUrl,
+                                aiApiKey: created.apiKey,
+                                aiModel: created.model,
+                                aiProvider: created.name,
+                              );
+                              await _persistSettings();
+                              setModal(() {});
+                              if (mounted) setState(() {});
+                              _showToast('已保存配置');
+                            }
+                          },
+                          icon: const Icon(Icons.add),
+                          label: const Text('新增'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '填写 Base URL + API Key，点「获取模型」选择模型后保存。可保存多套并任意切换。',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF64748B)),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: profiles.isEmpty
+                          ? const Center(
+                              child: Text('暂无配置，点右上角新增'))
+                          : ListView.separated(
+                              itemCount: profiles.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 8),
+                              itemBuilder: (_, i) {
+                                final p = profiles[i];
+                                final active = settings
+                                        .activeAiProfileId ==
+                                    p.id;
+                                return Card(
+                                  child: ListTile(
+                                    leading: Icon(
+                                      active
+                                          ? Icons.check_circle
+                                          : Icons
+                                              .smart_toy_outlined,
+                                      color: active
+                                          ? Theme.of(ctx)
+                                              .colorScheme
+                                              .primary
+                                          : null,
+                                    ),
+                                    title: Text(p.displayLabel),
+                                    subtitle: Text(
+                                      '${p.baseUrl}\n模型: ${p.model.isEmpty ? "未选" : p.model}',
+                                      maxLines: 3,
+                                      overflow:
+                                          TextOverflow.ellipsis,
+                                    ),
+                                    isThreeLine: true,
+                                    trailing: PopupMenuButton<
+                                        String>(
+                                      onSelected: (v) async {
+                                        if (v == 'use') {
+                                          settings = settings
+                                              .copyWith(
+                                            activeAiProfileId:
+                                                p.id,
+                                            aiBaseUrl: p.baseUrl,
+                                            aiApiKey: p.apiKey,
+                                            aiModel: p.model,
+                                            aiProvider: p.name,
+                                          );
+                                          await _persistSettings();
+                                          setModal(() {});
+                                          if (mounted)
+                                            setState(() {});
+                                          _showToast(
+                                              '已切换到 ${p.displayLabel}');
+                                        } else if (v ==
+                                            'edit') {
+                                          final edited =
+                                              await _editAiProfile(
+                                                  p);
+                                          if (edited != null) {
+                                            final list = List<
+                                                    AiProfile>.from(
+                                                settings
+                                                    .aiProfiles);
+                                            final ix = list
+                                                .indexWhere((e) =>
+                                                    e.id ==
+                                                    p.id);
+                                            if (ix >= 0)
+                                              list[ix] = edited;
+                                            final activeId = settings
+                                                            .activeAiProfileId ==
+                                                        p.id
+                                                    ? edited.id
+                                                    : settings
+                                                        .activeAiProfileId;
+                                            settings = settings
+                                                .copyWith(
+                                              aiProfiles: list,
+                                              activeAiProfileId:
+                                                  activeId,
+                                              aiBaseUrl: activeId ==
+                                                      edited.id
+                                                  ? edited.baseUrl
+                                                  : settings
+                                                      .aiBaseUrl,
+                                              aiApiKey: activeId ==
+                                                      edited.id
+                                                  ? edited.apiKey
+                                                  : settings
+                                                      .aiApiKey,
+                                              aiModel: activeId ==
+                                                      edited.id
+                                                  ? edited.model
+                                                  : settings
+                                                      .aiModel,
+                                              aiProvider: activeId ==
+                                                      edited.id
+                                                  ? edited.name
+                                                  : settings
+                                                      .aiProvider,
+                                            );
+                                            await _persistSettings();
+                                            setModal(() {});
+                                            if (mounted)
+                                              setState(() {});
+                                          }
+                                        } else if (v ==
+                                            'delete') {
+                                          final ok = await _confirm(
+                                              '删除配置「${p.name}」？');
+                                          if (!ok) return;
+                                          final list = List<
+                                                      AiProfile>
+                                                  .from(settings
+                                                      .aiProfiles)
+                                                ..removeWhere(
+                                                    (e) =>
+                                                        e.id ==
+                                                        p.id);
+                                          var activeId = settings
+                                              .activeAiProfileId;
+                                          if (activeId == p.id) {
+                                            activeId = list
+                                                    .isNotEmpty
+                                                ? list.first.id
+                                                : '';
+                                          }
+                                          AiProfile? activeP;
+                                          for (final e in list) {
+                                            if (e.id == activeId) {
+                                              activeP = e;
+                                              break;
+                                            }
+                                          }
+                                          if (activeP == null &&
+                                              list.isNotEmpty) {
+                                            activeP = list.first;
+                                            activeId =
+                                                activeP.id;
+                                          }
+                                          settings = settings
+                                              .copyWith(
+                                            aiProfiles: list,
+                                            activeAiProfileId:
+                                                activeId,
+                                            aiBaseUrl: activeP
+                                                    ?.baseUrl ??
+                                                settings
+                                                    .aiBaseUrl,
+                                            aiApiKey: activeP
+                                                    ?.apiKey ??
+                                                '',
+                                            aiModel: activeP
+                                                    ?.model ??
+                                                settings
+                                                    .aiModel,
+                                            aiProvider: activeP
+                                                    ?.name ??
+                                                settings
+                                                    .aiProvider,
+                                          );
+                                          await _persistSettings();
+                                          setModal(() {});
+                                          if (mounted)
+                                            setState(() {});
+                                        }
+                                      },
+                                      itemBuilder: (_) =>
+                                          const [
+                                        PopupMenuItem(
+                                            value: 'use',
+                                            child: Text(
+                                                '设为当前')),
+                                        PopupMenuItem(
+                                            value: 'edit',
+                                            child: Text(
+                                                '编辑')),
+                                        PopupMenuItem(
+                                            value: 'delete',
+                                            child: Text(
+                                                '删除')),
+                                      ],
+                                    ),
+                                    onTap: () async {
+                                      settings = settings.copyWith(
+                                        activeAiProfileId: p.id,
+                                        aiBaseUrl: p.baseUrl,
+                                        aiApiKey: p.apiKey,
+                                        aiModel: p.model,
+                                        aiProvider: p.name,
+                                      );
+                                      await _persistSettings();
+                                      setModal(() {});
+                                      if (mounted)
+                                        setState(() {});
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<AiProfile?> _editAiProfile(AiProfile? existing) async {
+    final nameCtrl = TextEditingController(
+        text: existing?.name ?? '中转站');
+    final baseCtrl = TextEditingController(
+        text: existing?.baseUrl.isNotEmpty == true
+            ? existing!.baseUrl
+            : (settings.aiBaseUrl.isNotEmpty
+                ? settings.aiBaseUrl
+                : 'https://api.openai.com/v1'));
+    final keyCtrl = TextEditingController(
+        text: existing?.apiKey.isNotEmpty == true
+            ? existing!.apiKey
+            : settings.aiApiKey);
+    final modelCtrl = TextEditingController(
+        text: existing?.model ?? settings.aiModel);
+    var models = List<String>.from(
+        existing?.cachedModels ?? const <String>[]);
+    var selectedModel = existing?.model ?? '';
+    var fetching = false;
+    var useBearer = existing?.useBearer ?? true;
+    String? err;
+
+    return showDialog<AiProfile>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDlg) {
+            Future<void> fetchModels() async {
+              setDlg(() {
+                fetching = true;
+                err = null;
+              });
+              try {
+                final temp = AiProfile(
+                  id: existing?.id ?? 'tmp',
+                  name: nameCtrl.text.trim().isEmpty
+                      ? '中转站'
+                      : nameCtrl.text.trim(),
+                  baseUrl: baseCtrl.text.trim(),
+                  apiKey: keyCtrl.text.trim(),
+                  model: modelCtrl.text.trim(),
+                  useBearer: useBearer,
+                  cachedModels: models,
+                );
+                final list = await AiService()
+                    .listModels(settings, profile: temp);
+                setDlg(() {
+                  models = list;
+                  if (selectedModel.isEmpty &&
+                      list.isNotEmpty) {
+                    selectedModel = list.first;
+                    modelCtrl.text = selectedModel;
+                  } else if (selectedModel.isNotEmpty &&
+                      list.contains(selectedModel)) {
+                    modelCtrl.text = selectedModel;
+                  }
+                  fetching = false;
+                });
+                if (list.isEmpty) {
+                  _showToast('未拉到模型，可手动填写模型名');
+                } else {
+                  _showToast('已获取 ${list.length} 个模型');
+                }
+              } catch (e) {
+                setDlg(() {
+                  fetching = false;
+                  err = e.toString();
+                });
+              }
+            }
+
+            return AlertDialog(
+              title: Text(existing == null
+                  ? '新增 AI 配置'
+                  : '编辑 AI 配置'),
+              content: SizedBox(
+                width: 420,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: nameCtrl,
+                        decoration: const InputDecoration(
+                          labelText: '名称',
+                          hintText:
+                              '如 DeepSeek / 硅基流动 / 自建中转',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: baseCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Base URL',
+                          hintText: 'https://api.xxx.com/v1',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: keyCtrl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'API Key',
+                          hintText: 'sk-...',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Bearer 鉴权'),
+                        subtitle: const Text(
+                            '关闭则同时发送 api-key / x-api-key'),
+                        value: useBearer,
+                        onChanged: (v) =>
+                            setDlg(() => useBearer = v),
+                      ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: modelCtrl,
+                              decoration: const InputDecoration(
+                                labelText: '模型',
+                                hintText:
+                                    '可手动填写或从列表选择',
+                              ),
+                              onChanged: (v) =>
+                                  selectedModel = v.trim(),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton.tonal(
+                            onPressed: fetching
+                                ? null
+                                : fetchModels,
+                            child: fetching
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child:
+                                        CircularProgressIndicator(
+                                            strokeWidth: 2),
+                                  )
+                                : const Text('获取模型'),
+                          ),
+                        ],
+                      ),
+                      if (err != null) ...[
+                        const SizedBox(height: 8),
+                        Text(err!,
+                            style: const TextStyle(
+                                color: Colors.red,
+                                fontSize: 12)),
+                      ],
+                      if (models.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          value: models
+                                  .contains(selectedModel)
+                              ? selectedModel
+                              : null,
+                          decoration: const InputDecoration(
+                              labelText: '从列表选择模型'),
+                          items: models
+                              .map((m) => DropdownMenuItem(
+                                  value: m,
+                                  child: Text(m,
+                                      overflow: TextOverflow
+                                          .ellipsis)))
+                              .toList(),
+                          onChanged: (v) {
+                            if (v == null) return;
+                            setDlg(() {
+                              selectedModel = v;
+                              modelCtrl.text = v;
+                            });
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('取消')),
+                FilledButton(
+                  onPressed: () {
+                    final name = nameCtrl.text.trim().isEmpty
+                        ? '中转站'
+                        : nameCtrl.text.trim();
+                    final base = baseCtrl.text.trim();
+                    final key = keyCtrl.text.trim();
+                    final model = modelCtrl.text.trim();
+                    if (base.isEmpty) {
+                      _showToast('请填写 Base URL');
+                      return;
+                    }
+                    if (key.isEmpty) {
+                      _showToast('请填写 API Key');
+                      return;
+                    }
+                    if (model.isEmpty) {
+                      _showToast('请选择或填写模型');
+                      return;
+                    }
+                    final id = existing?.id ??
+                        'ai_${DateTime.now().millisecondsSinceEpoch}';
+                    Navigator.pop(
+                      ctx,
+                      AiProfile(
+                        id: id,
+                        name: name,
+                        baseUrl: base,
+                        apiKey: key,
+                        model: model,
+                        useBearer: useBearer,
+                        cachedModels: models,
+                      ),
+                    );
+                  },
+                  child: const Text('保存'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ============ GitHub Token Management ============
+
+  Future<void> _activateGithubToken(String id) async {
+    GithubTokenProfile? profile;
+    for (final t in settings.githubTokens) {
+      if (t.id == id) {
+        profile = t;
+        break;
+      }
+    }
+    if (profile == null) return;
+    settings = settings.copyWith(
+      activeGithubTokenId: profile.id,
+      defaultToken: profile.token,
+    );
+    await _persistSettings();
+    final repo = activeRepo;
+    if (repo != null && repo.token.isEmpty) {
+      final i = repos.indexWhere((e) => e.id == repo.id);
+      if (i >= 0) {
+        repos[i] = repo.copyWith(token: profile.token);
+        await _persistRepos();
+      }
+    }
+    if (mounted) setState(() {});
+    _showToast('已切换到 ${profile.displayLabel}');
+  }
+
+  Future<void> _upsertGithubToken(
+    GithubTokenProfile profile, {
+    bool makeActive = false,
+  }) async {
+    final list =
+        List<GithubTokenProfile>.from(settings.githubTokens);
+    final byToken =
+        list.indexWhere((e) => e.token == profile.token);
+    final byId = list.indexWhere((e) => e.id == profile.id);
+    if (byId >= 0) {
+      list[byId] = profile;
+    } else if (byToken >= 0) {
+      list[byToken] =
+          profile.copyWith(id: list[byToken].id);
+    } else {
+      list.add(profile);
+    }
+    final activeId = makeActive ||
+            settings.activeGithubTokenId.isEmpty
+        ? (byId >= 0
+            ? profile.id
+            : byToken >= 0
+                ? list[byToken].id
+                : profile.id)
+        : settings.activeGithubTokenId;
+    GithubTokenProfile? active;
+    for (final t in list) {
+      if (t.id == activeId) {
+        active = t;
+        break;
+      }
+    }
+    active ??= list.isNotEmpty ? list.first : null;
+    settings = settings.copyWith(
+      githubTokens: list,
+      activeGithubTokenId: active?.id ?? '',
+      defaultToken: active?.token ?? settings.defaultToken,
+    );
+    await _persistSettings();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _showGithubTokenManager() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModal) {
+            final tokens = List<GithubTokenProfile>.from(
+                settings.githubTokens);
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 8,
+                bottom:
+                    MediaQuery.of(ctx).viewInsets.bottom + 16,
+              ),
+              child: SizedBox(
+                height: MediaQuery.of(ctx).size.height * 0.75,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'GitHub 登录令牌',
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () async {
+                            final created =
+                                await _editGithubToken(null);
+                            if (created != null) {
+                              await _upsertGithubToken(created,
+                                  makeActive: true);
+                              setModal(() {});
+                              if (mounted) setState(() {});
+                              _showToast(
+                                  '已保存 ${created.displayLabel}');
+                            }
+                          },
+                          icon: const Icon(Icons.add),
+                          label: const Text('登录'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Token 仅保存在本机。登录后可在多仓库间复用，也可随时切换当前令牌。',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF64748B)),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: tokens.isEmpty
+                          ? const Center(
+                              child: Text(
+                                  '暂无已登录令牌，点右上角登录'))
+                          : ListView.separated(
+                              itemCount: tokens.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 8),
+                              itemBuilder: (_, i) {
+                                final t = tokens[i];
+                                final active = settings
+                                        .activeGithubTokenId ==
+                                    t.id;
+                                return Card(
+                                  child: ListTile(
+                                    leading: Icon(
+                                      active
+                                          ? Icons.check_circle
+                                          : Icons
+                                              .key_outlined,
+                                      color: active
+                                          ? Theme.of(ctx)
+                                              .colorScheme
+                                              .primary
+                                          : null,
+                                    ),
+                                    title: Text(t.displayLabel),
+                                    subtitle: Text(
+                                      [
+                                        if (t.login.isNotEmpty)
+                                          '@${t.login}',
+                                        t.maskedToken,
+                                        if (t.lastVerifiedAt !=
+                                            null)
+                                          '验证于 ${t.lastVerifiedAt!.toLocal().toString().substring(0, 16)}',
+                                      ].join(' · '),
+                                    ),
+                                    isThreeLine: t.lastVerifiedAt !=
+                                        null,
+                                    trailing: PopupMenuButton<
+                                        String>(
+                                      onSelected: (v) async {
+                                        if (v == 'use') {
+                                          await _activateGithubToken(
+                                              t.id);
+                                          setModal(() {});
+                                        } else if (v ==
+                                            'edit') {
+                                          final edited =
+                                              await _editGithubToken(
+                                                  t);
+                                          if (edited != null) {
+                                            await _upsertGithubToken(
+                                                edited,
+                                                makeActive: settings
+                                                        .activeGithubTokenId ==
+                                                    t.id);
+                                            setModal(() {});
+                                          }
+                                        } else if (v ==
+                                            'verify') {
+                                          try {
+                                            final user = await github
+                                                .getUser(
+                                                    t.token);
+                                            final login = user[
+                                                        'login']
+                                                    ?.toString() ??
+                                                '';
+                                            await _upsertGithubToken(
+                                                t.copyWith(
+                                              login: login,
+                                              avatarUrl: user[
+                                                          'avatar_url']
+                                                      ?.toString() ??
+                                                  '',
+                                              htmlUrl: user[
+                                                          'html_url']
+                                                      ?.toString() ??
+                                                  '',
+                                              lastVerifiedAt:
+                                                  DateTime.now(),
+                                              name: t.name
+                                                              .isEmpty ||
+                                                          t.name ==
+                                                              '默认 Token' ||
+                                                          t.name ==
+                                                              'GitHub Token'
+                                                  ? (login.isNotEmpty
+                                                      ? login
+                                                      : t.name)
+                                                  : t.name,
+                                            ),
+                                                makeActive:
+                                                    active);
+                                            setModal(() {});
+                                            _showToast(login
+                                                    .isEmpty
+                                                ? 'Token 有效'
+                                                : '有效 · @$login');
+                                          } catch (e) {
+                                            _showToast(
+                                                '校验失败: $e');
+                                          }
+                                        } else if (v ==
+                                            'delete') {
+                                          final ok = await _confirm(
+                                              '删除已保存令牌「${t.displayLabel}」？');
+                                          if (!ok) return;
+                                          final list = List<
+                                                      GithubTokenProfile>
+                                                  .from(settings
+                                                      .githubTokens)
+                                                ..removeWhere(
+                                                    (e) =>
+                                                        e.id ==
+                                                        t.id);
+                                          var activeId = settings
+                                              .activeGithubTokenId;
+                                          if (activeId == t.id) {
+                                            activeId = list
+                                                    .isNotEmpty
+                                                ? list.first.id
+                                                : '';
+                                          }
+                                          final activeToken = list
+                                                  .isEmpty
+                                              ? ''
+                                              : list
+                                                  .firstWhere(
+                                                    (e) =>
+                                                        e.id ==
+                                                        activeId,
+                                                    orElse: () =>
+                                                        list.first,
+                                                  )
+                                                  .token;
+                                          settings = settings
+                                              .copyWith(
+                                            githubTokens: list,
+                                            activeGithubTokenId:
+                                                activeId,
+                                            defaultToken:
+                                                activeToken,
+                                          );
+                                          await _persistSettings();
+                                          setModal(() {});
+                                          if (mounted)
+                                            setState(() {});
+                                        }
+                                      },
+                                      itemBuilder: (_) =>
+                                          const [
+                                        PopupMenuItem(
+                                            value: 'use',
+                                            child: Text(
+                                                '设为当前')),
+                                        PopupMenuItem(
+                                            value: 'verify',
+                                            child: Text(
+                                                '验证')),
+                                        PopupMenuItem(
+                                            value: 'edit',
+                                            child: Text(
+                                                '编辑')),
+                                        PopupMenuItem(
+                                            value: 'delete',
+                                            child: Text(
+                                                '删除')),
+                                      ],
+                                    ),
+                                    onTap: () async {
+                                      await _activateGithubToken(
+                                          t.id);
+                                      setModal(() {});
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<GithubTokenProfile?> _editGithubToken(
+      GithubTokenProfile? existing) async {
+    final nameCtrl = TextEditingController(
+      text: existing?.name.isNotEmpty == true
+          ? existing!.name
+          : (existing?.login.isNotEmpty == true
+              ? existing!.login
+              : 'GitHub Token'),
+    );
+    final tokenCtrl = TextEditingController(
+        text: existing?.token ?? '');
+    var verifying = false;
+    String? err;
+    String login = existing?.login ?? '';
+    String avatarUrl = existing?.avatarUrl ?? '';
+    String htmlUrl = existing?.htmlUrl ?? '';
+
+    return showDialog<GithubTokenProfile>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDlg) {
+            Future<void> verifyAndFill() async {
+              final token = tokenCtrl.text.trim();
+              if (token.isEmpty) {
+                setDlg(() => err = '请先填写 Token');
+                return;
+              }
+              setDlg(() {
+                verifying = true;
+                err = null;
+              });
+              try {
+                final user = await github.getUser(token);
+                login = user['login']?.toString() ?? '';
+                avatarUrl =
+                    user['avatar_url']?.toString() ?? '';
+                htmlUrl =
+                    user['html_url']?.toString() ?? '';
+                if (nameCtrl.text.trim().isEmpty ||
+                    nameCtrl.text.trim() == 'GitHub Token' ||
+                    nameCtrl.text.trim() == '默认 Token') {
+                  if (login.isNotEmpty)
+                    nameCtrl.text = login;
+                }
+                setDlg(() => verifying = false);
+                _showToast(login.isEmpty
+                    ? 'Token 有效'
+                    : '验证成功 · @$login');
+              } catch (e) {
+                setDlg(() {
+                  verifying = false;
+                  err = e.toString();
+                });
+              }
+            }
+
+            return AlertDialog(
+              title: Text(existing == null
+                  ? '登录 GitHub Token'
+                  : '编辑 Token'),
+              content: SizedBox(
+                width: 420,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: nameCtrl,
+                        decoration: const InputDecoration(
+                          labelText: '备注名称',
+                          hintText: '如 主账号 / 图床专用',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: tokenCtrl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'GitHub Token',
+                          hintText:
+                              'ghp_... 或 fine-grained token',
+                          helperText:
+                              '需要 contents:read/write 权限',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      if (login.isNotEmpty)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(
+                              Icons.account_circle_outlined),
+                          title: Text('@$login'),
+                          subtitle: Text(htmlUrl.isEmpty
+                              ? '已验证'
+                              : htmlUrl),
+                        ),
+                      if (err != null)
+                        Text(err!,
+                            style: const TextStyle(
+                                color: Colors.red,
+                                fontSize: 12)),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: FilledButton.tonalIcon(
+                          onPressed: verifying
+                              ? null
+                              : verifyAndFill,
+                          icon: verifying
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child:
+                                      CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                )
+                              : const Icon(
+                                  Icons.verified_user_outlined),
+                          label: Text(verifying
+                              ? '验证中…'
+                              : '验证并识别账号'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('取消')),
+                FilledButton(
+                  onPressed: verifying
+                      ? null
+                      : () async {
+                          final token = tokenCtrl.text.trim();
+                          if (token.isEmpty) {
+                            _showToast('请填写 Token');
+                            return;
+                          }
+                          if (login.isEmpty) {
+                            try {
+                              final user =
+                                  await github.getUser(token);
+                              login = user['login']
+                                      ?.toString() ??
+                                  '';
+                              avatarUrl =
+                                  user['avatar_url']
+                                          ?.toString() ??
+                                      '';
+                              htmlUrl = user['html_url']
+                                      ?.toString() ??
+                                  '';
+                            } catch (e) {
+                              final force = await _confirm(
+                                  'Token 校验失败：\n$e\n\n仍要保存吗？');
+                              if (!force) return;
+                            }
+                          }
+                          final name = nameCtrl
+                                  .text.trim().isEmpty
+                              ? (login.isNotEmpty
+                                  ? login
+                                  : 'GitHub Token')
+                              : nameCtrl.text.trim();
+                          Navigator.pop(
+                            ctx,
+                            GithubTokenProfile(
+                              id: existing?.id ??
+                                  'gh_${DateTime.now().millisecondsSinceEpoch}',
+                              name: name,
+                              token: token,
+                              login: login,
+                              avatarUrl: avatarUrl,
+                              htmlUrl: htmlUrl,
+                              lastVerifiedAt: login.isNotEmpty
+                                  ? DateTime.now()
+                                  : existing
+                                      ?.lastVerifiedAt,
+                            ),
+                          );
+                        },
+                  child: const Text('保存'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ============ Repo Management ============
+
+  Future<void> _showRepoManager() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModal) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                bottom:
+                    MediaQuery.of(ctx).viewInsets.bottom + 16,
+                top: 8,
+              ),
+              child: SizedBox(
+                height: MediaQuery.of(ctx).size.height * 0.75,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            '多仓库管理',
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        FilledButton.icon(
+                          onPressed: () async {
+                            await _editRepo();
+                            setModal(() {});
+                            setState(() {});
+                          },
+                          icon: const Icon(Icons.add),
+                          label: const Text('添加'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: repos.length,
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(height: 8),
+                        itemBuilder: (_, i) {
+                          final r = repos[i];
+                          final active =
+                              activeRepo?.id == r.id;
+                          return Card(
+                            child: ListTile(
+                              leading: Icon(
+                                active
+                                    ? Icons
+                                        .radio_button_checked
+                                    : Icons.radio_button_off,
+                                color: active
+                                    ? Theme.of(context)
+                                        .colorScheme
+                                        .primary
+                                    : null,
+                              ),
+                              title: Text(r.name),
+                              subtitle: Text(
+                                '${r.fullName} @ ${r.branch}\n${r.postsPath}',
+                              ),
+                              isThreeLine: true,
+                              onTap: () async {
+                                settings = settings.copyWith(
+                                    activeRepoId: r.id);
+                                await _persistSettings();
+                                remotePosts = [];
+                                commits = [];
+                                setState(() {});
+                                setModal(() {});
+                                if (ctx.mounted)
+                                  Navigator.pop(ctx);
+                              },
+                              trailing: PopupMenuButton<
+                                  String>(
+                                onSelected: (v) async {
+                                  if (v == 'edit') {
+                                    await _editRepo(
+                                        existing: r);
+                                  } else if (v ==
+                                      'delete') {
+                                    final ok = await _confirm(
+                                        '删除仓库配置「${r.name}」？');
+                                    if (ok) {
+                                      repos.removeWhere(
+                                          (e) => e.id == r.id);
+                                      await _persistRepos();
+                                      if (settings
+                                              .activeRepoId ==
+                                          r.id) {
+                                        settings = settings
+                                            .copyWith(
+                                          activeRepoId: repos
+                                                  .isEmpty
+                                              ? ''
+                                              : repos
+                                                  .first.id,
+                                        );
+                                        await _persistSettings();
+                                      }
+                                    }
+                                  }
+                                  setModal(() {});
+                                  setState(() {});
+                                },
+                                itemBuilder: (_) =>
+                                    const [
+                                  PopupMenuItem(
+                                      value: 'edit',
+                                      child:
+                                          Text('编辑')),
+                                  PopupMenuItem(
+                                      value: 'delete',
+                                      child:
+                                          Text('删除')),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _editRepo({RepoConfig? existing}) async {
+    final name = TextEditingController(
+        text: existing?.name ?? '');
+    final owner = TextEditingController(
+        text: existing?.owner ?? 'caogenfunan123');
+    final repo = TextEditingController(
+        text: existing?.repo ?? 'xiamend');
+    final branch = TextEditingController(
+        text: existing?.branch ?? 'main');
+    final posts = TextEditingController(
+        text: existing?.postsPath ?? 'source/_posts');
+    final site = TextEditingController(
+        text: existing?.siteUrl ??
+            'https://caogenfunan.me/');
+    final token = TextEditingController(
+        text: existing?.token.isNotEmpty == true
+            ? existing!.token
+            : settings.effectiveGithubToken);
+    String? selectedTokenId = settings.activeGithubTokenId;
+    if (existing?.token.isNotEmpty == true) {
+      for (final t in settings.githubTokens) {
+        if (t.token == existing!.token) {
+          selectedTokenId = t.id;
+          break;
+        }
+      }
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDlg) {
+            return AlertDialog(
+              title: Text(
+                  existing == null ? '添加仓库' : '编辑仓库'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                        controller: name,
+                        decoration: const InputDecoration(
+                            labelText: '显示名称')),
+                    TextField(
+                        controller: owner,
+                        decoration: const InputDecoration(
+                            labelText: 'Owner')),
+                    TextField(
+                        controller: repo,
+                        decoration: const InputDecoration(
+                            labelText: 'Repo')),
+                    TextField(
+                        controller: branch,
+                        decoration: const InputDecoration(
+                            labelText: 'Branch')),
+                    TextField(
+                        controller: posts,
+                        decoration: const InputDecoration(
+                            labelText: '文章目录')),
+                    TextField(
+                        controller: site,
+                        decoration: const InputDecoration(
+                            labelText: '站点 URL')),
+                    if (settings
+                        .githubTokens.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        value: settings.githubTokens
+                                .any((e) =>
+                                    e.id == selectedTokenId)
+                            ? selectedTokenId
+                            : null,
+                        decoration: const InputDecoration(
+                          labelText: '选用已登录 Token',
+                          helperText:
+                              '可选择已保存令牌，或下方手动填写',
+                        ),
+                        items: [
+                          ...settings.githubTokens.map(
+                            (t) => DropdownMenuItem(
+                              value: t.id,
+                              child: Text(t.displayLabel,
+                                  overflow: TextOverflow
+                                      .ellipsis),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) {
+                          if (v == null) return;
+                          final t = settings.githubTokens
+                              .firstWhere(
+                                  (e) => e.id == v);
+                          setDlg(() {
+                            selectedTokenId = t.id;
+                            token.text = t.token;
+                          });
+                        },
+                      ),
+                    ],
+                    TextField(
+                      controller: token,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                          labelText: 'GitHub Token'),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () =>
+                        Navigator.pop(ctx, false),
+                    child: const Text('取消')),
+                FilledButton(
+                    onPressed: () =>
+                        Navigator.pop(ctx, true),
+                    child: const Text('保存')),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (ok != true) return;
+
+    final tokenValue = token.text.trim();
+    final cfg = RepoConfig(
+      id: existing?.id ??
+          DateTime.now().millisecondsSinceEpoch.toString(),
+      name: name.text.trim().isEmpty
+          ? repo.text.trim()
+          : name.text.trim(),
+      owner: owner.text.trim(),
+      repo: repo.text.trim(),
+      branch: branch.text.trim().isEmpty
+          ? 'main'
+          : branch.text.trim(),
+      postsPath: posts.text.trim().isEmpty
+          ? 'source/_posts'
+          : posts.text.trim(),
+      siteUrl: site.text.trim(),
+      token: tokenValue,
+      isDefault: existing?.isDefault ?? repos.isEmpty,
+    );
+    if (existing == null) {
+      repos.add(cfg);
+      if (settings.activeRepoId.isEmpty) {
+        settings = settings.copyWith(activeRepoId: cfg.id);
+        await _persistSettings();
+      }
+    } else {
+      final i = repos.indexWhere((e) => e.id == existing.id);
+      if (i >= 0) repos[i] = cfg;
+    }
+    await _persistRepos();
+
+    if (tokenValue.isNotEmpty) {
+      final exists = settings.githubTokens
+          .any((e) => e.token == tokenValue);
+      if (!exists) {
+        await _upsertGithubToken(
+          GithubTokenProfile(
+            id: 'gh_${DateTime.now().millisecondsSinceEpoch}',
+            name: '仓库 ${cfg.name}',
+            token: tokenValue,
+          ),
+          makeActive: settings.githubTokens.isEmpty,
+        );
+      } else {
+        final pickedTokenId = selectedTokenId;
+        if (pickedTokenId != null &&
+            pickedTokenId.isNotEmpty) {
+          await _activateGithubToken(pickedTokenId);
+        }
+      }
+    }
+
+    if (mounted) setState(() {});
+  }
+
+  // ============ Commit Rollback ============
+
+  Future<void> _showCommitActions(GitCommitItem c) async {
+    final pathController = TextEditingController(
+      text: activeRepo == null
+          ? 'source/_posts/'
+          : '${activeRepo!.postsPath}/',
+    );
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('提交详情 / 回滚'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(c.message),
+            const SizedBox(height: 8),
+            Text(
+              '${c.sha}\n${c.author} · ${_fmt(c.date)}',
+              style: const TextStyle(
+                  fontSize: 12, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: pathController,
+              decoration: const InputDecoration(
+                labelText: '要回滚的文件路径',
+                hintText: 'source/_posts/hello-world.md',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('关闭')),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _doRollback(
+                  pathController.text.trim(), c.sha);
+            },
+            child: const Text('回滚该文件'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _rollbackFile(String path) async {
+    if (commits.isEmpty) await _refreshCommits();
+    if (commits.isEmpty) {
+      _showToast('无提交历史');
+      return;
+    }
+    final sha = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => ListView.builder(
+        itemCount: commits.length,
+        itemBuilder: (_, i) {
+          final c = commits[i];
+          return ListTile(
+            title: Text(c.message.split('\n').first,
+                maxLines: 1),
+            subtitle: Text(
+                '${c.sha.substring(0, 7)} · ${_fmt(c.date)}'),
+            onTap: () => Navigator.pop(ctx, c.sha),
+          );
+        },
+      ),
+    );
+    if (sha != null) await _doRollback(path, sha);
+  }
+
+  Future<void> _doRollback(String path, String sha) async {
+    final repo = effectiveRepo;
+    if (repo == null) return;
+    if (path.isEmpty) {
+      _showToast('路径不能为空');
+      return;
+    }
+    final ok = await _confirm(
+        '将 $path 恢复为 $sha 的内容并新建提交？');
+    if (!ok) return;
+    setState(() => busy = true);
+    try {
+      final article =
+          await github.rollbackFile(repo, path, sha);
+      _showToast('回滚成功: ${article.remotePath}');
+      await _refreshRemote();
+      await _refreshCommits();
+    } catch (e) {
+      _showToast('回滚失败: $e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  // ============ Remote Delete ============
+
+  Future<void> _deleteRemotePost(GitHubFileItem item) async {
+    final repo = effectiveRepo;
+    if (repo == null) return;
+    final ok = await _confirm(
+        '确认删除远程文章 ${item.path}？此操作会提交到 GitHub，不可撤销。');
+    if (!ok) return;
+    setState(() => busy = true);
+    try {
+      final article = await github.getArticle(repo, item);
+      await github.deleteArticle(repo, article);
+      final idx = drafts.indexWhere(
+        (d) =>
+            d.remotePath == item.path ||
+            d.fileName == item.name,
+      );
+      if (idx >= 0) {
+        drafts[idx] = drafts[idx].copyWith(
+          isDraft: true,
+          published: false,
+          remotePath: null,
+          remoteSha: null,
+        );
+        await storage.saveDrafts(drafts);
+      }
+      _showToast('已删除远程文章');
+      await _refreshRemote();
+      await _refreshCommits();
+    } catch (e) {
+      _showToast('删除失败: $e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _batchDeleteRemote(List<GitHubFileItem> items) async {
+    final ok = await _confirm(
+        '确认批量删除 ${items.length} 篇远程文章？此操作不可撤销。');
+    if (!ok) return;
+    setState(() => busy = true);
+    int success = 0;
+    int fail = 0;
+    for (final item in items) {
+      try {
+        final repo = effectiveRepo;
+        if (repo == null) continue;
+        final article =
+            await github.getArticle(repo, item);
+        await github.deleteArticle(repo, article);
+        success++;
+      } catch (_) {
+        fail++;
+      }
+    }
+    await _refreshRemote();
+    await _refreshCommits();
+    if (mounted) {
+      setState(() => busy = false);
+      _showToast('删除完成: $success 成功, $fail 失败');
+    }
+  }
+
+  // ============ Search ============
+
+  Future<void> _showSearch() async {
+    final controller =
+        TextEditingController(text: searchQuery);
+    final q = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('全文搜索'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: '标题 / 正文 / 标签 / 文件名 / 仓库全文',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onSubmitted: (v) => Navigator.pop(ctx, v),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '本地草稿会按标题/正文/标签过滤；远程文章会再请求 GitHub Code Search 做仓库全文检索。',
+              style: TextStyle(
+                  fontSize: 12, color: Color(0xFF64748B)),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, ''),
+              child: const Text('清除')),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(ctx, controller.text),
+            child: const Text('搜索'),
+          ),
+        ],
+      ),
+    );
+    if (q == null) return;
+    final query = q.trim();
+    setState(() {
+      searchQuery = query;
+      if (query.isEmpty) githubSearchHits = [];
+    });
+    if (query.isNotEmpty) {
+      await _runGithubFullTextSearch(query);
+    }
+  }
+
+  Future<void> _runGithubFullTextSearch(String query) async {
+    final repo = effectiveRepo;
+    if (repo == null || repo.token.isEmpty) {
+      setState(() => githubSearchHits = []);
+      return;
+    }
+    setState(() => githubSearchLoading = true);
+    try {
+      final hits = await github.searchCode(repo, query);
+      if (!mounted) return;
+      setState(() => githubSearchHits = hits);
+      if (hits.isEmpty) {
+        _showToast('GitHub 全文无匹配');
+      } else {
+        _showToast('GitHub 全文命中 ${hits.length} 个文件');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => githubSearchHits = []);
+      _showToast('GitHub 全文搜索失败: $e');
+    } finally {
+      if (mounted) setState(() => githubSearchLoading = false);
+    }
+  }
+
+  // ============ Import & PWA ============
+
+  Future<void> _importLocalMd() async {
+    try {
+      final result =
+          await _channel.invokeMethod<Map>('pickFile');
+      if (result == null) return;
+      final b64 = result['base64']?.toString() ?? '';
+      final name =
+          result['name']?.toString() ?? 'untitled.md';
+      if (b64.isEmpty) return;
+      final content = utf8.decode(base64Decode(b64));
+      final article = Article.fromMarkdown(content,
+          id: DateTime.now().millisecondsSinceEpoch.toString());
+      _openExistingArticle(article);
+    } catch (e) {
+      _showToast('导入失败: $e');
+    }
+  }
+
+  Future<void> _showPwaGuide() async {
+    final site = activeRepo?.siteUrl.isNotEmpty == true
+        ? activeRepo!.siteUrl
+        : 'https://caogenfunan.me/';
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('PWA / 主屏幕快捷方式'),
+        content: Text(
+          '本 App 负责写作与 Git 发布。\n\n'
+          '站点 $site 由 Cloudflare Pages 部署，可在 Chrome/Edge/Safari：\n'
+          '1. 打开站点\n'
+          '2. 菜单 → 添加到主屏幕 / 安装应用\n'
+          '3. 获得 PWA 阅读入口\n\n'
+          '写作请继续用本安卓 App（支持离线草稿与 Token 发布）。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(
+                  ClipboardData(text: site));
+              Navigator.pop(ctx);
+              _showToast('站点地址已复制');
+            },
+            child: const Text('复制站点'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
   }
 
   // ============ UI BUILD ============
@@ -946,7 +2880,10 @@ class _RootShellState extends State<RootShell> {
               } catch (e) {
                 _showToast('打开失败: $e');
               }
-            });
+            },
+            onDelete: _deleteRemotePost,
+            onBatchDelete: _batchDeleteRemote,
+            onRollback: _rollbackFile);
       case 3:
         return DashboardScreen(
             drafts: drafts,
@@ -954,7 +2891,12 @@ class _RootShellState extends State<RootShell> {
             commits: commits,
             settings: settings,
             activeRepo: activeRepo,
-            onNewPost: () => _navigateTo(0));
+            onNewPost: () => _navigateTo(0),
+            onNavigateToRemote: () => _navigateTo(2),
+            onNavigateToHistory: () => _navigateTo(5),
+            onNavigateToSettings: () => _navigateTo(8),
+            onNavigateToPreview: () => _navigateTo(7),
+            onNavigateToDrafts: () => _navigateTo(1));
       case 4:
         return RssScreen(
             items: rssItems,
@@ -965,7 +2907,8 @@ class _RootShellState extends State<RootShell> {
             commits: commits,
             github: github,
             effectiveRepo: effectiveRepo,
-            onRefresh: _refreshCommits);
+            onRefresh: _refreshCommits,
+            onCommitTap: _showCommitActions);
       case 6:
         return FolderUploadScreen(
             repos: repos,
@@ -981,7 +2924,18 @@ class _RootShellState extends State<RootShell> {
             storage: storage,
             webdavService: webdavService,
             onSettingsChanged: _updateSettings,
-            onReposChanged: _updateRepos);
+            onReposChanged: _updateRepos,
+            onShowWebDavDialog: _showWebDavDialog,
+            onSyncWebDavToLocal: _syncWebDavToLocal,
+            onSyncDraftsToWebDav: _syncDraftsToWebDav,
+            onShowAiManager: _showAiManager,
+            onShowGithubTokenManager: _showGithubTokenManager,
+            onShowRepoManager: _showRepoManager,
+            onShowSiteEditor: _showSiteEditor,
+            onShowThemeColorPicker: _showThemeColorPicker,
+            onShowPwaGuide: _showPwaGuide,
+            onPersistSettings: _persistSettings,
+            onShowToast: _showToast);
       default:
         return const SizedBox();
     }

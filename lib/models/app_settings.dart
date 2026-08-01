@@ -186,6 +186,8 @@ class AppSettings {
       siteGuestbook: siteGuestbook ?? this.siteGuestbook,
       siteNow: siteNow ?? this.siteNow,
       siteWorks: siteWorks ?? this.siteWorks,
+      cloudflareDeployHook: cloudflareDeployHook ?? this.cloudflareDeployHook,
+      themeColor: themeColor ?? this.themeColor,
     );
   }
 
