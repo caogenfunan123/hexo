@@ -44,7 +44,7 @@ class HistoryScreen extends StatelessWidget {
                     color: const Color(0xFF8B5CF6).withOpacity(0.08),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(Icons.commit, size: 18, color: Color(0xFF8B5CF6)),
+                  child: const Icon(Icons.history, size: 18, color: Color(0xFF8B5CF6)),
                 ),
                 const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
