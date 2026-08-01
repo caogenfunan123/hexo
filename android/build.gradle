@@ -1,0 +1,18 @@
+buildscript {
+    def herRuntime = System.getenv('HER_RUNTIME') ?: '/her'
+    dependencies {
+        classpath files(herRuntime + "/toolchains/android-build/d8-gradle.jar")
+        classpath fileTree(dir: herRuntime + "/toolchains/agp-7.4.2-classpath", include: ['*.jar'])
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}
