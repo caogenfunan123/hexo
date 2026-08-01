@@ -80,7 +80,7 @@ class DashboardScreen extends StatelessWidget {
                 leading: Container(
                   width: 32, height: 32,
                   decoration: BoxDecoration(color: const Color(0xFF8B5CF6).withOpacity(0.08), borderRadius: BorderRadius.circular(8)),
-                  child: const Icon(Icons.git_commit, size: 16, color: Color(0xFF8B5CF6)),
+                  child: const Icon(Icons.commit, size: 16, color: Color(0xFF8B5CF6)),
                 ),
                 title: Text(c.message.split('\n').first, style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Text(_fmt(c.date), style: const TextStyle(fontSize: 11)),
