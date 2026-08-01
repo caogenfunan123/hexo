@@ -276,6 +276,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 }
               },
             ),
+          if (s.autoSaveEnabled) ...[
+            const SizedBox(height: 12),
+            _field(
+              label: '保存目录（默认 ~/.hexo_app/auto_save）',
+              value: s.autoSaveDir,
+              onChanged: (v) async {
+                await widget.onSettingsChanged(s.copyWith(autoSaveDir: v));
+              },
+            ),
+          ],
           const SizedBox(height: 4),
           const Text(
             '打字时防抖延时保存，到达定时周期强制快照，切后台/退出时立刻保存。',
