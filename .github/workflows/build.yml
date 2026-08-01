@@ -41,13 +41,19 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
+      - name: Clean old release
+        run: rm -rf release/
+
       - name: Build APK
         run: flutter build apk --release || true
 
       - name: Find APK
         id: find_apk
         run: |
-          APK=$(find . -name "*.apk" -type f 2>/dev/null | head -1)
+          APK=$(find build/app/outputs/flutter-apk/ -name "*.apk" -type f 2>/dev/null | head -1)
+          if [ -z "$APK" ]; then
+            APK=$(find . -name "*.apk" -type f 2>/dev/null | head -1)
+          fi
           if [ -z "$APK" ]; then
             echo "No APK found!"
             exit 1
