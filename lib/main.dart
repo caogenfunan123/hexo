@@ -2920,7 +2920,7 @@ class _RootShellState extends State<RootShell> {
               _appBarAction(
                   icon: Icons.close,
                   tooltip: '关闭',
-                  onTap: _onCloseEditor),
+                  onTap: () => _onCloseEditor()),
               _appBarAction(
                   icon: Icons.visibility_outlined,
                   tooltip: '预览文章',
@@ -3255,7 +3255,7 @@ class _RootShellState extends State<RootShell> {
         return ArticleReaderScreen(
           article: _currentArticle,
           onEnterEdit: () => _enterEditorFromReader(_currentArticle),
-          onClose: _onCloseReader,
+          onClose: () => _onCloseReader(),
         );
       default:
         return const SizedBox();
