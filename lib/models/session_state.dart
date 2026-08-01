@@ -29,7 +29,7 @@ class SessionState {
   final double scrollOffset;
   final DateTime savedAt;
 
-  const SessionState({
+  SessionState({
     this.pageType = SessionPageType.home,
     this.articleId = '',
     this.articleSource = ArticleSource.local,
@@ -86,7 +86,7 @@ class SessionState {
   }
 
   /// 空会话（首页状态）
-  static const empty = SessionState();
+  static final empty = SessionState();
 
   String toJsonString() => jsonEncode(toJson());
 

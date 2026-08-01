@@ -371,7 +371,7 @@ class _RootShellState extends State<RootShell> {
       articleTags: _tagsCtrl.text,
       articleCategories: _categoriesCtrl.text,
       articleCover: _coverCtrl.text,
-      articleRepoId: _currentArticle.repoId,
+      articleRepoId: _currentArticle.repoId ?? '',
       articleRemotePath: _currentArticle.remotePath ?? '',
       articleRemoteSha: _currentArticle.remoteSha ?? '',
     );
