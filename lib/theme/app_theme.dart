@@ -41,7 +41,7 @@ class AppTheme {
           borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
         ),
       ),
-      cardTheme: CardThemeData(
+      cardTheme: CardTheme(
         color: card,
         elevation: 0,
         shadowColor: Colors.transparent,
@@ -91,7 +91,7 @@ class AppTheme {
         side: BorderSide.none,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
       ),
-      dialogTheme: DialogThemeData(
+      dialogTheme: DialogTheme(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         backgroundColor: Colors.white,
         elevation: 8,

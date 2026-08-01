@@ -4,6 +4,19 @@ import 'package:file_picker/file_picker.dart';
 import '../models/repo_config.dart';
 import '../services/github_service.dart';
 
+class _UploadFile {
+  final String name;
+  final String path;
+  final int size;
+  final String relPath;
+  const _UploadFile({
+    required this.name,
+    required this.path,
+    required this.size,
+    required this.relPath,
+  });
+}
+
 class FolderUploadScreen extends StatefulWidget {
   final List<RepoConfig> repos;
   final GitHubService github;
@@ -23,7 +36,7 @@ class FolderUploadScreen extends StatefulWidget {
 class _FolderUploadScreenState extends State<FolderUploadScreen> {
   final _targetPathCtrl = TextEditingController(text: 'source/_posts');
   final _commitMsgCtrl = TextEditingController(text: 'upload: batch files');
-  List<PlatformFile> _selectedFiles = [];
+  List<_UploadFile> _selectedFiles = [];
   bool _busy = false;
   String _status = '';
   int _uploaded = 0;
@@ -54,7 +67,14 @@ class _FolderUploadScreenState extends State<FolderUploadScreen> {
       ],
     );
     if (result != null && result.files.isNotEmpty) {
-      setState(() => _selectedFiles = result.files);
+      setState(() => _selectedFiles = result.files
+          .map((f) => _UploadFile(
+                name: f.name,
+                path: f.path ?? '',
+                size: f.size,
+                relPath: f.name,
+              ))
+          .toList());
     }
   }
 
@@ -62,16 +82,17 @@ class _FolderUploadScreenState extends State<FolderUploadScreen> {
     final result = await FilePicker.platform.getDirectoryPath();
     if (result != null) {
       final dir = Directory(result);
-      final files = <PlatformFile>[];
+      final files = <_UploadFile>[];
       void scan(Directory d) {
         for (final entity in d.listSync(recursive: true)) {
           if (entity is File) {
             final relPath = entity.path.substring(result.length + 1);
-            files.add(PlatformFile(
+            files.add(_UploadFile(
               name: entity.path.split('/').last,
               path: entity.path,
               size: entity.lengthSync(),
-            )..customData = relPath);
+              relPath: relPath,
+            ));
           }
         }
       }
@@ -102,9 +123,9 @@ class _FolderUploadScreenState extends State<FolderUploadScreen> {
 
     for (final file in _selectedFiles) {
       try {
-        if (file.path == null) continue;
-        final bytes = await File(file.path!).readAsBytes();
-        final relPath = file.customData?.toString() ?? file.name;
+        if (file.path.isEmpty) continue;
+        final bytes = await File(file.path).readAsBytes();
+        final relPath = file.relPath;
         final targetPath = '$basePath/$relPath';
 
         await widget.github.uploadBinary(
@@ -316,7 +337,7 @@ class _FolderUploadScreenState extends State<FolderUploadScreen> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis),
                               subtitle: Text(
-                                f.customData?.toString() ?? f.path ?? '',
+                                f.relPath,
                                 style: const TextStyle(fontSize: 10),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
