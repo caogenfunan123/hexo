@@ -66,7 +66,6 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
 
   // 文件差异预览 & 选择性迁移
   Set<String> _selectedFilePaths = {};
-  bool _showDiffPreview = false;
   int? _previewFileIndex;
 
   @override

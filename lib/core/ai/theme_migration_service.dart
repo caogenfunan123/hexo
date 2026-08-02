@@ -230,7 +230,7 @@ $sourceCode
       if (entity is Directory) {
         buf.writeln('$prefix📁 $name/');
         await _listDir(entity, buf, '$prefix  ');
-      } else {
+      } else if (entity is File) {
         final size = await entity.length();
         buf.writeln('$prefix📄 $name (${_formatSize(size)})');
       }

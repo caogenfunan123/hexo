@@ -12,7 +12,7 @@ class AiModelEntity {
   final String group; // 'code' | 'general' | 'longtext'
   final DateTime createdAt;
 
-  const AiModelEntity({
+  AiModelEntity({
     required this.modelId,
     required this.modelName,
     required this.apiBase,
@@ -111,7 +111,7 @@ class ModelStats {
   final int slowestMs;
   final DateTime lastUsedAt;
 
-  const ModelStats({
+  ModelStats({
     required this.modelId,
     required this.apiBase,
     this.totalCalls = 0,

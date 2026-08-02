@@ -59,6 +59,7 @@ class AiRequestDispatcher {
     int attemptIndex = 0;
     String? lastError;
 
+    final stopwatch = Stopwatch();
     while (attemptIndex <= maxRetries) {
       try {
         // 确定当前使用的 profile
@@ -83,7 +84,8 @@ class AiRequestDispatcher {
           ..._chatHistory,
         ];
 
-        final stopwatch = Stopwatch()..start();
+        stopwatch.reset();
+        stopwatch.start();
         final result = await _aiService
             .complete(
               settings: settings,

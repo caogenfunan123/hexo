@@ -111,7 +111,7 @@ $generatedContent
 
   static void _checkCssPaths(String content, List<String> issues) {
     // 检查 CSS url() 中引用的路径
-    final urlRegex = RegExp(r"url\(['\"]?([^'\"()]+)['\"]?\)");
+    final urlRegex = RegExp(r'''url\(['"]?([^'"()]+)['"]?\)''');
     for (final match in urlRegex.allMatches(content)) {
       final path = match.group(1)!.trim();
       if (path.startsWith('http') || path.startsWith('data:')) continue;
