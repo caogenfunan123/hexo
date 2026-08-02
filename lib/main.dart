@@ -29,6 +29,7 @@ import 'screens/ai_audit_screen.dart';
 import 'screens/ai_model_manager_screen.dart';
 import 'screens/ai_theme_chat_screen.dart';
 import 'screens/article_reader_screen.dart';
+import 'screens/blog_site_editor_screen.dart';
 import 'screens/drafts_screen.dart';
 import 'screens/remote_screen.dart';
 import 'screens/remote_posts_screen.dart';
