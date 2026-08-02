@@ -276,17 +276,17 @@ enum ConflictStrategy {
 
 /// 同步结果
 class SyncResult {
-  final int pulled;
-  final int pushed;
-  final int conflicts;
-  final List<String> errors;
+  int pulled;
+  int pushed;
+  int conflicts;
+  List<String> errors;
 
-  const SyncResult({
+  SyncResult({
     this.pulled = 0,
     this.pushed = 0,
     this.conflicts = 0,
-    this.errors = const [],
-  });
+    List<String>? errors,
+  }) : errors = errors ?? [];
 
   bool get isSuccess => errors.isEmpty;
 }
