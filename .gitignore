@@ -5,4 +5,3 @@
 build/
 android/.gradle/
 android/local.properties
-android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
