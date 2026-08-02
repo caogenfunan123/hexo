@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/ai/ai_model_entity.dart';
 import '../core/ai/ai_model_manager.dart';
@@ -768,6 +769,36 @@ class AiChatPanelState extends State<AiChatPanel> {
               _buildThinkingAnimation(cs)
             else
               _buildMessageContent(msg, cs, isUser, isAssistant, isStreaming),
+            // 👇 复制按钮（仅 AI 回复，且有内容）
+            if (isAssistant && msg.content.isNotEmpty && !isThinkingBubble) ...[
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerRight,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(4),
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: msg.content));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('已复制到剪贴板'),
+                        duration: Duration(seconds: 1),
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.copy, size: 12, color: cs.outline),
+                        const SizedBox(width: 4),
+                        Text('复制', style: TextStyle(fontSize: 11, color: cs.outline)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
             // 👇 文件操作按钮
             if (hasFiles && isAssistant) ...[
               const SizedBox(height: 10),
