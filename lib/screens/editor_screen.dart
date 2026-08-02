@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 
 import '../models/app_settings.dart';
 import '../models/article.dart';
+import '../models/blog_framework.dart';
 import '../models/repo_config.dart';
+import '../models/template_item.dart';
 import '../services/ai_service.dart';
 import '../services/github_service.dart';
 import '../services/image_service.dart';
@@ -19,9 +21,11 @@ class EditorScreen extends StatefulWidget {
   final GitHubService github;
   final ImageService imageService;
   final AiService aiService;
+  final List<TemplateItem> templates;
   final Future<void> Function(Article) onSaveLocal;
   final Future<void> Function(Article) onPublished;
   final Future<void> Function(Article)? onDeletedRemote;
+  final VoidCallback? onManageTemplates;
 
   const EditorScreen({
     super.key,
@@ -33,9 +37,11 @@ class EditorScreen extends StatefulWidget {
     required this.github,
     required this.imageService,
     required this.aiService,
+    this.templates = const [],
     required this.onSaveLocal,
     required this.onPublished,
     this.onDeletedRemote,
+    this.onManageTemplates,
   });
 
   @override
@@ -55,19 +61,22 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _busy = false;
   String? _status;
   final FocusNode _contentFocus = FocusNode();
+  String _articleType = 'post'; // post 或 page
+  String? _selectedTemplateId;
+  bool _showPreview = false;
 
   @override
   void initState() {
     super.initState();
     _article = widget.article;
+    _articleType = _article.articleType;
+    _selectedTemplateId = _article.templateId;
     _repo = widget.activeRepo ??
         (widget.repos.isNotEmpty ? widget.repos.first : null);
     if (_article.repoId != null) {
       for (final r in widget.repos) {
         if (r.id == _article.repoId) _repo = r;
       }
-
-
     }
 
 
@@ -114,6 +123,8 @@ class _EditorScreenState extends State<EditorScreen> {
       isDraft: draft,
       published: draft ? false : true,
       repoId: _repo?.id ?? _article.repoId,
+      articleType: _articleType,
+      templateId: _selectedTemplateId,
     );
   }
 
@@ -800,6 +811,126 @@ class _EditorScreenState extends State<EditorScreen> {
                     },
                   ),
                 const SizedBox(height: 12),
+                // ── 文章类型切换 ──
+                Row(
+                  children: [
+                    Expanded(
+                      child: _typeToggle(
+                        icon: Icons.article_outlined,
+                        label: '博文',
+                        subtitle: _repo != null
+                            ? '目录: ${_repo!.postsPath}'
+                            : '文章目录',
+                        active: _articleType == 'post',
+                        onTap: () => setState(() => _articleType = 'post'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _typeToggle(
+                        icon: Icons.web_outlined,
+                        label: '页面',
+                        subtitle: _repo != null
+                            ? '目录: ${_repo!.pagesPath}'
+                            : '页面目录',
+                        active: _articleType == 'page',
+                        onTap: () => setState(() => _articleType = 'page'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // ── 模板选择器 ──
+                if (widget.templates.isNotEmpty) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedTemplateId,
+                          decoration: InputDecoration(
+                            labelText: '模板 (${_articleType == 'post' ? '博文' : '页面'})',
+                            prefixIcon: const Icon(Icons.view_quilt_outlined),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          ),
+                          items: [
+                            const DropdownMenuItem<String>(
+                              value: null,
+                              child: Text('无模板（手动编写）'),
+                            ),
+                            ...widget.templates
+                                .where((t) => t.isPost == (_articleType == 'post'))
+                                .map((t) => DropdownMenuItem<String>(
+                                      value: t.id,
+                                      child: Row(
+                                        children: [
+                                          if (t.isBuiltin)
+                                            const Icon(Icons.check_circle, size: 14, color: Color(0xFF10B981)),
+                                          if (!t.isBuiltin)
+                                            const Icon(Icons.edit, size: 14, color: Color(0xFF8B5CF6)),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              t.name,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(fontSize: 14),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    )),
+                          ],
+                          onChanged: (v) {
+                            setState(() => _selectedTemplateId = v);
+                            if (v != null) {
+                              final t = widget.templates.firstWhere(
+                                (e) => e.id == v,
+                                orElse: () => widget.templates.first,
+                              );
+                              // 应用模板到标题/标签占位
+                              if (_title.text.isEmpty) {
+                                _title.text = _articleType == 'page' ? '新页面' : '新文章';
+                              }
+                            }
+                          },
+                        ),
+                      ),
+                      if (widget.onManageTemplates != null) ...[
+                        const SizedBox(width: 8),
+                        IconButton(
+                          tooltip: '管理模板',
+                          onPressed: widget.onManageTemplates,
+                          icon: const Icon(Icons.settings_outlined),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                // ── 框架信息 ──
+                if (_repo != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F9FF),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFBAE6FD)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline, size: 16, color: Color(0xFF0EA5E9)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '框架: ${BlogFramework.byId(_repo!.frameworkId)?.name ?? _repo!.frameworkId} | '
+                            '文件名: ${_articleType == 'page' ? '无日期' : (_repo!.fileNameRule.postDatePrefix ? '自动加日期' : '纯标题')}',
+                            style: const TextStyle(fontSize: 12, color: Color(0xFF0369A1)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 TextField(
                   controller: _title,
                   decoration: const InputDecoration(
@@ -1044,10 +1175,53 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
+  Widget _typeToggle({
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: active ? const Color(0xFF0EA5E9).withOpacity(0.08) : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: active ? const Color(0xFF0EA5E9) : const Color(0xFFE2E8F0),
+            width: active ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: active ? const Color(0xFF0EA5E9) : const Color(0xFF94A3B8)),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: active ? const Color(0xFF0EA5E9) : const Color(0xFF475569),
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
 }
-
-
 
 class _ToolChip extends StatelessWidget {
   final IconData icon;

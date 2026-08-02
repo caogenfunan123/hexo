@@ -9,9 +9,12 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'models/ai_profile.dart';
 import 'models/app_settings.dart';
 import 'models/article.dart';
+import 'models/blog_framework.dart';
 import 'models/github_token_profile.dart';
 import 'models/repo_config.dart';
 import 'models/session_state.dart';
+import 'models/template_item.dart';
+import 'core/template_engine/template_resolver.dart';
 import 'screens/article_reader_screen.dart';
 import 'screens/drafts_screen.dart';
 import 'screens/remote_screen.dart';
@@ -22,6 +25,7 @@ import 'screens/folder_upload_screen.dart';
 import 'screens/preview_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/site_editor_screen.dart';
+import 'screens/template_manager_screen.dart';
 import 'services/ai_service.dart';
 import 'services/github_service.dart';
 import 'services/image_service.dart';
@@ -105,6 +109,8 @@ class _RootShellState extends State<RootShell> {
   List<GitHubFileItem> remotePosts = [];
   List<RssItem> rssItems = [];
   List<GitCommitItem> commits = [];
+  List<TemplateItem> templates = [];
+  List<SnippetItem> snippets = [];
 
   int _currentPage = 0;
   bool loading = true;
@@ -132,6 +138,8 @@ class _RootShellState extends State<RootShell> {
   late TextEditingController _categoriesCtrl;
   late TextEditingController _coverCtrl;
   late Article _currentArticle;
+  String _articleType = 'post';
+  String? _selectedTemplateId;
   RepoConfig? _editorRepo;
   bool _editorBusy = false;
   String? _editorStatus;
@@ -200,6 +208,7 @@ class _RootShellState extends State<RootShell> {
       updatedAt: DateTime.now(),
       isDraft: true,
       repoId: activeRepo?.id,
+      articleType: 'post',
     );
     _bootstrap();
   }
@@ -222,6 +231,8 @@ class _RootShellState extends State<RootShell> {
       var s = await storage.loadSettings();
       var r = await storage.loadRepos();
       final d = await storage.loadDrafts();
+      final t = await storage.loadAllTemplates();
+      final sn = await storage.loadSnippets();
       s = _ensureGithubTokensFromLegacy(s, r);
       await storage.saveSettings(s);
       if (r.isEmpty) {
@@ -259,10 +270,18 @@ class _RootShellState extends State<RootShell> {
         }
       }
       _editorRepo = activeRepo ?? (r.isNotEmpty ? r.first : null);
+      // 自动解析编辑器默认模板
+      String? autoTemplateId;
+      if (_editorRepo != null) {
+        autoTemplateId = TemplateResolver.resolvePostTemplateId(_editorRepo!, t);
+        _selectedTemplateId = autoTemplateId;
+      }
       setState(() {
         settings = s;
         repos = r;
         drafts = d..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        templates = t;
+        snippets = sn;
         loading = false;
       });
       // 会话恢复
@@ -475,6 +494,14 @@ class _RootShellState extends State<RootShell> {
   }
 
   void _resetEditor() {
+    final repo = activeRepo;
+    _editorRepo = repo;
+    _articleType = 'post';
+    // 自动解析仓库默认模板（重置后默认文章类型）
+    String? autoTemplateId;
+    if (repo != null) {
+      autoTemplateId = TemplateResolver.resolvePostTemplateId(repo, templates);
+    }
     _currentArticle = Article(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: '',
@@ -482,7 +509,9 @@ class _RootShellState extends State<RootShell> {
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
       isDraft: true,
-      repoId: activeRepo?.id,
+      repoId: repo?.id,
+      articleType: _articleType,
+      templateId: autoTemplateId,
     );
     _titleCtrl.text = '';
     _contentCtrl.text = '';
@@ -491,6 +520,16 @@ class _RootShellState extends State<RootShell> {
     _coverCtrl.text = '';
     _lastSavedContent = '';
     _hasUnsavedChanges = false;
+    _selectedTemplateId = autoTemplateId;
+  }
+
+  /// 根据当前文章类型和仓库配置自动选择模板
+  void _autoSelectTemplate() {
+    final repo = _editorRepo;
+    if (repo == null) return;
+    _selectedTemplateId = _articleType == 'post'
+        ? TemplateResolver.resolvePostTemplateId(repo, templates)
+        : TemplateResolver.resolvePageTemplateId(repo, templates);
   }
 
   // ============ 自动保存 ============
@@ -590,12 +629,12 @@ class _RootShellState extends State<RootShell> {
       title: title.isEmpty ? '未命名' : title,
       content: _contentCtrl.text,
       tags: _tagsCtrl.text
-          .split(',')
+          .split(RegExp(r'[,，]'))
           .map((e) => e.trim())
           .where((e) => e.isNotEmpty)
           .toList(),
       categories: _categoriesCtrl.text
-          .split(',')
+          .split(RegExp(r'[,，]'))
           .map((e) => e.trim())
           .where((e) => e.isNotEmpty)
           .toList(),
@@ -604,6 +643,8 @@ class _RootShellState extends State<RootShell> {
       isDraft: draft,
       published: draft ? false : true,
       repoId: _editorRepo?.id ?? _currentArticle.repoId,
+      articleType: _articleType,
+      templateId: _selectedTemplateId,
     );
   }
 
@@ -2310,9 +2351,13 @@ class _RootShellState extends State<RootShell> {
                               ),
                               title: Text(r.name),
                               subtitle: Text(
-                                '${r.fullName} @ ${r.branch}\n${r.postsPath}',
+                                '${r.fullName} @ ${r.branch}\n'
+                                '${BlogFramework.byId(r.frameworkId)?.name ?? r.frameworkId} | '
+                                '文章: ${r.postsPath} | 页面: ${r.pagesPath}\n'
+                                '${TemplateResolver.describeRepoDefaults(r, templates)}',
                               ),
-                              isThreeLine: true,
+                              isThreeLine: false,
+                              dense: false,
                               onTap: () async {
                                 settings = settings.copyWith(
                                     activeRepoId: r.id);
@@ -2395,6 +2440,8 @@ class _RootShellState extends State<RootShell> {
         text: existing?.branch ?? 'main');
     final posts = TextEditingController(
         text: existing?.postsPath ?? 'source/_posts');
+    final pages = TextEditingController(
+        text: existing?.pagesPath ?? 'source');
     final site = TextEditingController(
         text: existing?.siteUrl ??
             'https://caogenfunan.me/');
@@ -2402,6 +2449,9 @@ class _RootShellState extends State<RootShell> {
         text: existing?.token.isNotEmpty == true
             ? existing!.token
             : settings.effectiveGithubToken);
+    String frameworkId = existing?.frameworkId ?? 'hexo';
+    final String originalFrameworkId = existing?.frameworkId ?? 'hexo';
+    bool postDatePrefix = existing?.postDatePrefix ?? false;
     String? selectedTokenId = settings.activeGithubTokenId;
     if (existing?.token.isNotEmpty == true) {
       for (final t in settings.githubTokens) {
@@ -2424,6 +2474,35 @@ class _RootShellState extends State<RootShell> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // ── 博客框架选择 ──
+                    DropdownButtonFormField<String>(
+                      value: frameworkId,
+                      decoration: const InputDecoration(
+                        labelText: '博客框架',
+                        prefixIcon: Icon(Icons.web, size: 18),
+                      ),
+                      items: [
+                        ...BlogFramework.presets.map((f) =>
+                          DropdownMenuItem(value: f.id, child: Text('${f.name} (${f.defaultPostsPath})')),
+                        ),
+                        const DropdownMenuItem(value: 'custom', child: Text('自定义')),
+                      ],
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setDlg(() {
+                          frameworkId = v;
+                          if (v != 'custom') {
+                            final fw = BlogFramework.byId(v);
+                            if (fw != null) {
+                              posts.text = fw.defaultPostsPath;
+                              pages.text = fw.defaultPagesPath;
+                              postDatePrefix = fw.postDatePrefix;
+                            }
+                          }
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
                     TextField(
                         controller: name,
                         decoration: const InputDecoration(
@@ -2440,10 +2519,26 @@ class _RootShellState extends State<RootShell> {
                         controller: branch,
                         decoration: const InputDecoration(
                             labelText: 'Branch')),
+                    // ── 双目录配置 ──
                     TextField(
                         controller: posts,
                         decoration: const InputDecoration(
-                            labelText: '文章目录')),
+                            labelText: '博文目录 (posts)',
+                            helperText: '例如: source/_posts, content/posts')),
+                    TextField(
+                        controller: pages,
+                        decoration: const InputDecoration(
+                            labelText: '页面目录 (pages)',
+                            helperText: '例如: source, content')),
+                    // ── 文件名规则 ──
+                    CheckboxListTile(
+                      title: const Text('博文自动日期前缀'),
+                      subtitle: const Text('2026-08-02-title.md (Jekyll/Hugo)'),
+                      value: postDatePrefix,
+                      dense: true,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      onChanged: (v) => setDlg(() => postDatePrefix = v ?? false),
+                    ),
                     TextField(
                         controller: site,
                         decoration: const InputDecoration(
@@ -2511,6 +2606,40 @@ class _RootShellState extends State<RootShell> {
     if (ok != true) return;
 
     final tokenValue = token.text.trim();
+
+    // ── 框架变更弹窗询问 ──
+    bool updateTemplates = true;
+    if (existing != null && frameworkId != originalFrameworkId) {
+      updateTemplates = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('框架已变更'),
+              content: Text(
+                '当前仓库框架从 $originalFrameworkId 变更为 $frameworkId，\n是否更新仓库默认文章/页面模板？',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('保持现有模板不变'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('更新默认模板'),
+                ),
+              ],
+            ),
+          ) ??
+          true;
+    }
+
+    // 自动绑定框架默认模板
+    String? defaultPostId = existing?.defaultPostTemplateId;
+    String? defaultPageId = existing?.defaultPageTemplateId;
+    if (existing == null || updateTemplates) {
+      defaultPostId = RepoConfig.defaultPostTemplateForFramework(frameworkId);
+      defaultPageId = RepoConfig.defaultPageTemplateForFramework(frameworkId);
+    }
+
     final cfg = RepoConfig(
       id: existing?.id ??
           DateTime.now().millisecondsSinceEpoch.toString(),
@@ -2525,9 +2654,20 @@ class _RootShellState extends State<RootShell> {
       postsPath: posts.text.trim().isEmpty
           ? 'source/_posts'
           : posts.text.trim(),
+      pagesPath: pages.text.trim().isEmpty
+          ? 'source'
+          : pages.text.trim(),
+      frameworkId: frameworkId,
+      postDatePrefix: postDatePrefix,
+      fileNameRule: FileNameRule(
+        postDatePrefix: postDatePrefix,
+        dateFormat: existing?.fileNameRule.dateFormat ?? 'yyyy-MM-dd',
+      ),
       siteUrl: site.text.trim(),
       token: tokenValue,
       isDefault: existing?.isDefault ?? repos.isEmpty,
+      defaultPostTemplateId: defaultPostId,
+      defaultPageTemplateId: defaultPageId,
     );
     if (existing == null) {
       repos.add(cfg);
@@ -3050,6 +3190,10 @@ class _RootShellState extends State<RootShell> {
                   _drawerItem(6, Icons.drive_folder_upload, '批量上传'),
                   _drawerItem(7, Icons.language, '网站预览'),
                   _drawerItem(4, Icons.rss_feed_outlined, 'RSS 订阅'),
+                  _drawerAction(Icons.view_quilt_outlined, '模板管理', _showTemplateManager),
+                  _drawerAction(Icons.content_paste, '片段素材库', _showSnippetManager),
+                  _drawerAction(Icons.settings_applications, '配置编辑器', _showSiteConfigEditor),
+                  _drawerAction(Icons.swap_horiz, 'AI批量迁移', _showMigrationTool),
                   const SizedBox(height: 8),
                   _drawerSection('系统'),
                   _drawerItem(8, Icons.settings_outlined, '设置'),
@@ -3159,6 +3303,35 @@ class _RootShellState extends State<RootShell> {
                               ? Colors.white
                               : AppTheme.muted)),
                 ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _drawerAction(IconData icon, String label, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            child: Row(children: [
+              Icon(icon, size: 20, color: AppTheme.text),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(label,
+                    style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                        color: AppTheme.text)),
+              ),
             ]),
           ),
         ),
@@ -3304,6 +3477,122 @@ class _RootShellState extends State<RootShell> {
                     onChanged: (v) => setState(() =>
                         _editorRepo =
                             repos.firstWhere((e) => e.id == v)),
+                  ),
+                ),
+              const SizedBox(height: 8),
+              // ── 文章类型切换 ──
+              Row(
+                children: [
+                  Expanded(
+                    child: _editorTypeToggle(
+                      icon: Icons.article_outlined,
+                      label: '博文',
+                      subtitle: _editorRepo != null
+                          ? '${_editorRepo!.postsPath}'
+                          : '文章目录',
+                      active: _articleType == 'post',
+                      onTap: () => setState(() {
+                        _articleType = 'post';
+                        _autoSelectTemplate();
+                      }),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _editorTypeToggle(
+                      icon: Icons.web_outlined,
+                      label: '页面',
+                      subtitle: _editorRepo != null
+                          ? '${_editorRepo!.pagesPath}'
+                          : '页面目录',
+                      active: _articleType == 'page',
+                      onTap: () => setState(() {
+                        _articleType = 'page';
+                        _autoSelectTemplate();
+                      }),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              // ── 模板选择器 ──
+              if (templates.isNotEmpty)
+                _editorCard(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedTemplateId,
+                          decoration: InputDecoration(
+                            labelText: '模板 (${_articleType == 'post' ? '博文' : '页面'})',
+                            prefixIcon: const Icon(Icons.view_quilt_outlined, size: 18),
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          items: [
+                            const DropdownMenuItem<String>(
+                              value: null,
+                              child: Text('无模板', style: TextStyle(fontSize: 13)),
+                            ),
+                            ...templates
+                                .where((t) => t.isPost == (_articleType == 'post'))
+                                .map((t) => DropdownMenuItem<String>(
+                                      value: t.id,
+                                      child: Text(
+                                        '${t.isBuiltin ? "[内置] " : ""}${t.name}',
+                                        style: const TextStyle(fontSize: 13),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    )),
+                          ],
+                          onChanged: (v) => setState(() => _selectedTemplateId = v),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: '设为本仓库默认模板',
+                        onPressed: _editorRepo != null && _selectedTemplateId != null
+                            ? () => _setAsRepoDefault(_selectedTemplateId!)
+                            : null,
+                        icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.all(4),
+                      ),
+                      IconButton(
+                        tooltip: '管理模板',
+                        onPressed: () => _showTemplateManager(),
+                        icon: const Icon(Icons.settings_outlined, size: 18),
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.all(4),
+                      ),
+                    ],
+                  ),
+                ),
+              // ── 框架信息 ──
+              if (_editorRepo != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F9FF),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFBAE6FD)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline, size: 14, color: Color(0xFF0EA5E9)),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '框架: ${BlogFramework.byId(_editorRepo!.frameworkId)?.name ?? _editorRepo!.frameworkId} | '
+                            '文件名: ${_articleType == 'page' ? '无日期前缀' : (_editorRepo!.fileNameRule.postDatePrefix ? '自动加日期' : '纯标题')}',
+                            style: const TextStyle(fontSize: 11, color: Color(0xFF0369A1)),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               const SizedBox(height: 8),
@@ -3552,5 +3841,387 @@ class _RootShellState extends State<RootShell> {
         ),
       ),
     );
+  }
+
+  Widget _editorTypeToggle({
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: active ? const Color(0xFF0EA5E9).withOpacity(0.08) : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: active ? const Color(0xFF0EA5E9) : const Color(0xFFE2E8F0),
+            width: active ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: active ? const Color(0xFF0EA5E9) : const Color(0xFF94A3B8)),
+            const SizedBox(width: 6),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                    color: active ? const Color(0xFF0EA5E9) : const Color(0xFF475569),
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: const TextStyle(fontSize: 9, color: Color(0xFF94A3B8)),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── 新功能导航 ──
+
+  void _showTemplateManager() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => TemplateManagerScreen(
+          storage: storage,
+          aiService: aiService,
+          settings: settings,
+        ),
+      ),
+    );
+    // 刷新模板列表
+    final t = await storage.loadAllTemplates();
+    if (mounted) {
+      // 模板变更后检查降级
+      var reposChanged = false;
+      for (int i = 0; i < repos.length; i++) {
+        final updated = TemplateResolver.ensureTemplateFallback(repos[i], t);
+        if (updated != repos[i]) {
+          repos[i] = updated;
+          reposChanged = true;
+        }
+      }
+      if (reposChanged) await _persistRepos();
+      setState(() => templates = t);
+    }
+  }
+
+  /// 将当前选中的模板设为仓库默认模板
+  Future<void> _setAsRepoDefault(String templateId) async {
+    final repo = _editorRepo;
+    if (repo == null) return;
+    final template = templates.firstWhere(
+      (t) => t.id == templateId,
+      orElse: () => templates.first,
+    );
+    final isPost = template.isPost;
+    final updated = isPost
+        ? repo.copyWith(defaultPostTemplateId: templateId)
+        : repo.copyWith(defaultPageTemplateId: templateId);
+
+    final idx = repos.indexWhere((r) => r.id == repo.id);
+    if (idx >= 0) {
+      repos[idx] = updated;
+      _editorRepo = updated;
+      await _persistRepos();
+      if (mounted) {
+        _showToast('已将「${template.name}」设为仓库默认${isPost ? "文章" : "页面"}模板');
+        setState(() {});
+      }
+    }
+  }
+
+  void _showSnippetManager() async {
+    // 片段管理器 - 跳转到片段管理对话框
+    _showSnippetDialog();
+  }
+
+  void _showSnippetDialog() {
+    final nameCtrl = TextEditingController();
+    final contentCtrl = TextEditingController();
+    String category = '自定义';
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            title: const Text('片段素材库'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 已有片段列表
+                  if (snippets.isNotEmpty) ...[
+                    SizedBox(
+                      height: 160,
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: snippets.length,
+                        itemBuilder: (_, i) {
+                          final sn = snippets[i];
+                          return ListTile(
+                            dense: true,
+                            title: Text(sn.name, style: const TextStyle(fontSize: 13)),
+                            subtitle: Text(sn.category, style: const TextStyle(fontSize: 11)),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.content_copy, size: 16),
+                                  onPressed: () {
+                                    _insertText(sn.content);
+                                    Navigator.pop(ctx);
+                                  },
+                                  constraints: const BoxConstraints(),
+                                  padding: EdgeInsets.zero,
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                                  onPressed: () async {
+                                    snippets.removeAt(i);
+                                    await storage.saveSnippets(snippets);
+                                    setDialogState(() {});
+                                    if (mounted) {
+                                      setState(() => this.snippets = List.from(snippets));
+                                    }
+                                  },
+                                  constraints: const BoxConstraints(),
+                                  padding: EdgeInsets.zero,
+                                ),
+                              ],
+                            ),
+                            onTap: () {
+                              _insertText(sn.content);
+                              Navigator.pop(ctx);
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                    const Divider(),
+                  ],
+                  // 新增片段
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(labelText: '片段名称', isDense: true),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: category,
+                    decoration: const InputDecoration(labelText: '分类', isDense: true),
+                    items: const [
+                      DropdownMenuItem(value: '友链模板', child: Text('友链模板')),
+                      DropdownMenuItem(value: '公告片段', child: Text('公告片段')),
+                      DropdownMenuItem(value: '版权声明', child: Text('版权声明')),
+                      DropdownMenuItem(value: '代码块', child: Text('代码块')),
+                      DropdownMenuItem(value: '自定义提示块', child: Text('自定义提示块')),
+                      DropdownMenuItem(value: '自定义', child: Text('自定义')),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) category = v;
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: contentCtrl,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: '片段内容',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+              FilledButton(
+                onPressed: () async {
+                  if (nameCtrl.text.trim().isEmpty) return;
+                  final now = DateTime.now();
+                  snippets.add(SnippetItem(
+                    id: now.millisecondsSinceEpoch.toString(),
+                    name: nameCtrl.text.trim(),
+                    content: contentCtrl.text,
+                    category: category,
+                    createdAt: now,
+                  ));
+                  await storage.saveSnippets(snippets);
+                  if (mounted) setState(() => this.snippets = List.from(snippets));
+                  Navigator.pop(ctx);
+                },
+                child: const Text('保存片段'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showConfigEditor() async {
+    final repo = effectiveRepo;
+    if (repo == null) {
+      _showToast('请先配置仓库');
+      return;
+    }
+    try {
+      // 尝试读取 _config.yml
+      final configPath = repo.frameworkId == 'hugo' ? 'config.toml' : '_config.yml';
+      final result = await github.getRawFile(repo, configPath);
+      String content = result?['content'] ?? '';
+      String sha = result?['sha'] ?? '';
+
+      if (!mounted) return;
+      final ctrl = TextEditingController(text: content);
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('${repo.frameworkId} 配置编辑'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 400,
+            child: TextField(
+              controller: ctrl,
+              maxLines: null,
+              expands: true,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: '# 站点配置文件',
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            FilledButton(
+              onPressed: () async {
+                try {
+                  await github.putRawFile(
+                    repo,
+                    configPath,
+                    ctrl.text,
+                    sha: sha,
+                    commitMessage: 'chore: update $configPath',
+                  );
+                  _showToast('配置已保存');
+                  Navigator.pop(ctx, true);
+                } catch (e) {
+                  _showToast('保存失败: $e');
+                }
+              },
+              child: const Text('保存到GitHub'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      _showToast('读取配置失败: $e');
+    }
+  }
+
+  void _showMigrationTool() {
+    final sourceCtrl = TextEditingController();
+    final targetCtrl = TextEditingController();
+    String sourceFramework = 'hexo';
+    String targetFramework = 'hugo';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            title: const Text('AI 批量迁移工具'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('选择源框架和目标框架，AI 自动转换',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: sourceFramework,
+                    decoration: const InputDecoration(labelText: '源框架', isDense: true),
+                    items: BlogFramework.presets
+                        .map((f) => DropdownMenuItem(value: f.id, child: Text(f.name)))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) {
+                        sourceFramework = v;
+                        setDialogState(() {});
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: targetFramework,
+                    decoration: const InputDecoration(labelText: '目标框架', isDense: true),
+                    items: BlogFramework.presets
+                        .map((f) => DropdownMenuItem(value: f.id, child: Text(f.name)))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) {
+                        targetFramework = v;
+                        setDialogState(() {});
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('选择要迁移的文章（多选）',
+                      style: TextStyle(fontSize: 12)),
+                  const SizedBox(height: 8),
+                  if (remotePosts.isNotEmpty)
+                    SizedBox(
+                      height: 150,
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: remotePosts.length,
+                        itemBuilder: (_, i) {
+                          final item = remotePosts[i];
+                          return CheckboxListTile(
+                            dense: true,
+                            title: Text(item.name, style: const TextStyle(fontSize: 12)),
+                            value: false,
+                            onChanged: (_) {},
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              FilledButton(
+                onPressed: () async {
+                  _showToast('迁移功能开发中...');
+                  Navigator.pop(ctx);
+                },
+                child: const Text('开始迁移'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showSiteConfigEditor() {
+    _showConfigEditor();
   }
 }

@@ -54,8 +54,7 @@ class _SiteEditorScreenState extends State<SiteEditorScreen> {
 
   Future<void> _loadSiteData() async {
     try {
-      final g = GitHubService();
-      final configRaw = await g.getRawFile(widget.repo, '_config.yml');
+      final configRaw = await widget.github.getRawFile(widget.repo, '_config.yml');
       if (configRaw != null) {
         final c = configRaw['content']!;
         final titleMatch =
@@ -74,7 +73,7 @@ class _SiteEditorScreenState extends State<SiteEditorScreen> {
       }
 
       final themeRaw =
-          await g.getRawFile(widget.repo, 'themes/A4/_config.yml');
+          await widget.github.getRawFile(widget.repo, 'themes/A4/_config.yml');
       if (themeRaw != null) {
         final tc = themeRaw['content']!;
         for (final line in tc.split('\n')) {
@@ -95,17 +94,17 @@ class _SiteEditorScreenState extends State<SiteEditorScreen> {
         }
       }
 
-      final aboutRaw = await g.getRawFile(widget.repo, 'source/about/index.md');
+      final aboutRaw = await widget.github.getRawFile(widget.repo, 'source/about/index.md');
       if (aboutRaw != null) _aboutCtrl.text = aboutRaw['content']!;
       final guestbookRaw =
-          await g.getRawFile(widget.repo, 'source/comments/index.md');
+          await widget.github.getRawFile(widget.repo, 'source/comments/index.md');
       if (guestbookRaw != null) _guestbookCtrl.text = guestbookRaw['content']!;
-      final nowRaw = await g.getRawFile(widget.repo, 'source/now/index.md');
+      final nowRaw = await widget.github.getRawFile(widget.repo, 'source/now/index.md');
       if (nowRaw != null) _nowCtrl.text = nowRaw['content']!;
-      final worksRaw = await g.getRawFile(widget.repo, 'source/works/index.md');
+      final worksRaw = await widget.github.getRawFile(widget.repo, 'source/works/index.md');
       if (worksRaw != null) _worksCtrl.text = worksRaw['content']!;
       final indexRaw =
-          await g.getRawFile(widget.repo, 'source/index/index.md');
+          await widget.github.getRawFile(widget.repo, 'source/index/index.md');
       if (indexRaw != null) _indexCtrl.text = indexRaw['content']!;
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
@@ -131,10 +130,8 @@ class _SiteEditorScreenState extends State<SiteEditorScreen> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      final g = GitHubService();
-
       // 1. Update _config.yml
-      final configRaw = await g.getRawFile(widget.repo, '_config.yml');
+      final configRaw = await widget.github.getRawFile(widget.repo, '_config.yml');
       if (configRaw != null) {
         String cc = configRaw['content']!;
         cc = cc
@@ -148,13 +145,13 @@ class _SiteEditorScreenState extends State<SiteEditorScreen> {
             .replaceAll(
                 RegExp(r'^description:.*$', multiLine: true),
                 "description: '${_descCtrl.text.trim()}'");
-        await g.putRawFile(widget.repo, '_config.yml', cc,
+        await widget.github.putRawFile(widget.repo, '_config.yml', cc,
             sha: configRaw['sha']);
       }
 
       // 2. Update themes/A4/_config.yml
       final themeRaw =
-          await g.getRawFile(widget.repo, 'themes/A4/_config.yml');
+          await widget.github.getRawFile(widget.repo, 'themes/A4/_config.yml');
       if (themeRaw != null) {
         String tc = themeRaw['content']!;
         tc = tc
@@ -171,14 +168,14 @@ class _SiteEditorScreenState extends State<SiteEditorScreen> {
               headerVal.split('\n').map((l) => '    - "${l.trim()}"').join('\n');
           tc = tc.replaceAllMapped(headerBlockRe, (m) => '  header:\n$lines');
         }
-        await g.putRawFile(widget.repo, 'themes/A4/_config.yml', tc,
+        await widget.github.putRawFile(widget.repo, 'themes/A4/_config.yml', tc,
             sha: themeRaw['sha']);
       }
 
       // 3. Update page files
       Future<void> savePage(String path, String content) async {
-        final existing = await g.getRawFile(widget.repo, path);
-        await g.putRawFile(widget.repo, path, content,
+        final existing = await widget.github.getRawFile(widget.repo, path);
+        await widget.github.putRawFile(widget.repo, path, content,
             sha: existing?['sha']);
       }
 

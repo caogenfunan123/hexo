@@ -263,4 +263,58 @@ class AiService {
         systemPrompt: '按用户指令改写给定 Markdown 片段，只输出改写后的文本。',
         userPrompt: '指令: $instruction\n\n原文:\n$selection',
       );
+
+  /// AI 生成 FrontMatter 模板
+  Future<String> generateTemplate({
+    required AppSettings settings,
+    required String userPrompt,
+    AiProfile? profile,
+  }) async {
+    return complete(
+      settings: settings,
+      profile: profile,
+      systemPrompt: '''你是静态博客 FrontMatter 模板生成器。根据用户描述生成 YAML FrontMatter 模板（含 --- 包裹）。
+
+规则：
+1. 支持变量：{{title}} {{date}} {{tags}} {{categories}} {{slug}} {{draft}}
+2. 根据框架自动适配字段：
+   - Hexo: title, date, tags, categories, cover, comments
+   - Hugo: title, date, draft, tags, categories, slug, type
+   - Jekyll: layout, title, date, categories, tags, permalink
+   - Astro: title, pubDate, draft, tags, layout
+   - VuePress: title, date, tags, sidebar, navbar
+   - Gatsby: title, date, slug, tags, featuredImage
+   - Next.js: title, date, tags, excerpt, author
+   - Pelican: Title, Date, Tags, Category, Slug, Summary
+   - 11ty: title, date, tags, layout, eleventyExcludeFromCollections
+3. 只输出模板代码，不要解释。''',
+      userPrompt: '请生成以下模板：\n$userPrompt',
+    );
+  }
+
+  /// AI 批量迁移：转换 FrontMatter
+  Future<String> migrateFrontMatter({
+    required AppSettings settings,
+    required String sourceFramework,
+    required String targetFramework,
+    required String frontMatter,
+    AiProfile? profile,
+  }) async {
+    return complete(
+      settings: settings,
+      profile: profile,
+      systemPrompt: '''你是静态博客 FrontMatter 迁移工具。将输入的文章 FrontMatter 从 $sourceFramework 格式转换为 $targetFramework 格式。
+
+转换规则：
+- Hexo → Hugo: 添加 draft: true, title 加引号
+- Hexo → Jekyll: 添加 layout: post, 改为 permalink 格式
+- Hexo → Astro: date 改为 pubDate, 添加 draft
+- Jekyll → Hexo: 移除 layout/permalink, 改为 date/tags
+- Hugo → Hexo: 移除 draft, title 去引号
+- 任意 → 任意: 保留所有能对应的字段，补全缺失的必需字段
+
+只输出转换后的 FrontMatter（含 ---），不要解释。''',
+      userPrompt: '请转换以下 FrontMatter：\n\n$frontMatter',
+    );
+  }
 }

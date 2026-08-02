@@ -1,3 +1,6 @@
+import 'blog_framework.dart';
+import 'repo_config.dart';
+
 class Article {
   final String id;
   final String title;
@@ -12,6 +15,8 @@ class Article {
   final String? repoId;
   final String? cover;
   final bool published;
+  final String articleType; // 'post' 或 'page'
+  final String? templateId; // 使用的模板ID
 
   const Article({
     required this.id,
@@ -27,6 +32,8 @@ class Article {
     this.repoId,
     this.cover,
     this.published = false,
+    this.articleType = 'post',
+    this.templateId,
   });
 
   Article copyWith({
@@ -43,6 +50,8 @@ class Article {
     Object? repoId = _sentinel,
     Object? cover = _sentinel,
     bool? published,
+    String? articleType,
+    Object? templateId = _sentinel,
   }) {
     return Article(
       id: id ?? this.id,
@@ -58,6 +67,8 @@ class Article {
       repoId: identical(repoId, _sentinel) ? this.repoId : repoId as String?,
       cover: identical(cover, _sentinel) ? this.cover : cover as String?,
       published: published ?? this.published,
+      articleType: articleType ?? this.articleType,
+      templateId: identical(templateId, _sentinel) ? this.templateId : templateId as String?,
     );
   }
 
@@ -77,6 +88,8 @@ class Article {
         'repoId': repoId,
         'cover': cover,
         'published': published,
+        'articleType': articleType,
+        'templateId': templateId,
       };
 
   factory Article.fromJson(Map<String, dynamic> j) => Article(
@@ -97,23 +110,55 @@ class Article {
         repoId: j['repoId']?.toString(),
         cover: j['cover']?.toString(),
         published: j['published'] == true,
+        articleType: j['articleType']?.toString() ?? 'post',
+        templateId: j['templateId']?.toString(),
       );
 
-  String toMarkdownWithFrontMatter() {
-    final date =
+  /// 用指定框架预设生成 FrontMatter + 正文
+  String toMarkdownWithFrontMatter({String frameworkId = 'hexo'}) {
+    final dateFull =
         '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')} ${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}:${createdAt.second.toString().padLeft(2, '0')}';
+    final dateShort =
+        '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}';
     final tagsStr = tags.isEmpty
         ? '[]'
         : '[${tags.map((t) => t.contains(' ') ? '"$t"' : t).join(', ')}]';
     final catsStr = categories.isEmpty
         ? '[]'
         : '[${categories.map((c) => c.contains(' ') ? '"$c"' : c).join(', ')}]';
+
+    // 尝试从框架预设获取模板
+    final fw = BlogFramework.byId(frameworkId);
+    if (fw != null) {
+      final template = articleType == 'page' ? fw.pageFrontMatter : fw.postFrontMatter;
+      if (template.isNotEmpty) {
+        var fm = template
+            .replaceAll('{{title}}', title.isEmpty ? '未命名' : title)
+            .replaceAll('{{date}}', fw.id == 'jekyll' ? dateFull : dateFull)
+            .replaceAll('{{tags}}', tagsStr)
+            .replaceAll('{{categories}}', catsStr);
+        if (cover != null && cover!.isNotEmpty) {
+          fm = fm.replaceAll('{{cover}}', cover!);
+        }
+        fm = fm.replaceAll('{{draft}}', isDraft.toString());
+        fm = fm.replaceAll('{{slug}}', title.toLowerCase().replaceAll(RegExp(r'\s+'), '-'));
+        return '$fm\n$content';
+      }
+    }
+
+    // 回退：通用 Hexo 格式
     final buf = StringBuffer()
       ..writeln('---')
       ..writeln('title: ${title.isEmpty ? '未命名' : title}')
-      ..writeln('date: $date')
+      ..writeln('date: $dateFull')
       ..writeln('tags: $tagsStr')
       ..writeln('categories: $catsStr');
+    if (articleType == 'page') {
+      buf.writeln('type: page');
+    }
+    if (isDraft) {
+      buf.writeln('draft: true');
+    }
     if (cover != null && cover!.isNotEmpty) {
       buf.writeln('cover: $cover');
     }
@@ -124,12 +169,21 @@ class Article {
     return buf.toString();
   }
 
+  /// 绑定框架的 toMarkdownWithFrontMatter
+  String toMarkdownWithFrontMatterForRepo(RepoConfig repo) {
+    return toMarkdownWithFrontMatter(
+      frameworkId: repo.frameworkId,
+    );
+  }
+
   static Article fromMarkdown(String md, {String? id, String? remotePath, String? remoteSha, String? repoId}) {
     String title = '未命名';
     DateTime created = DateTime.now();
     List<String> tags = [];
     List<String> categories = [];
     String? cover;
+    String articleType = 'post';
+    String? templateId;
     String body = md;
 
     if (md.trimLeft().startsWith('---')) {
@@ -149,6 +203,14 @@ class Article {
             categories = _parseList(t.substring(11).trim());
           } else if (t.startsWith('cover:')) {
             cover = _stripQuotes(t.substring(6).trim());
+          } else if (t.startsWith('type:') && t.substring(5).trim().toLowerCase() == 'page') {
+            articleType = 'page';
+          } else if (t.startsWith('layout:') && t.substring(7).trim().toLowerCase() == 'page') {
+            articleType = 'page';
+          } else if (t.startsWith('articleType:')) {
+            articleType = t.substring(12).trim().toLowerCase() == 'page' ? 'page' : 'post';
+          } else if (t.startsWith('templateId:')) {
+            templateId = _stripQuotes(t.substring(11).trim());
           }
         }
       }
@@ -169,6 +231,8 @@ class Article {
       repoId: repoId,
       cover: cover,
       published: true,
+      articleType: articleType,
+      templateId: templateId,
     );
   }
 
@@ -194,13 +258,23 @@ class Article {
         .toList();
   }
 
-  String fileName() {
+  String fileName({bool postDatePrefix = false}) {
+    final datePrefix = postDatePrefix
+        ? '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}-'
+        : '';
     final base = title.isEmpty
         ? 'untitled'
         : title
             .replaceAll(RegExp(r'[\\/:*?"<>|]'), '-')
             .replaceAll(RegExp(r'\s+'), '-')
             .toLowerCase();
-    return base.endsWith('.md') ? base : '$base.md';
+    final name = base.endsWith('.md') ? base : '$base.md';
+    return '$datePrefix$name';
+  }
+
+  /// 根据仓库配置生成文件名（页面永不加日期）
+  String fileNameForRepo(RepoConfig repo) {
+    if (articleType == 'page') return fileName(postDatePrefix: false);
+    return fileName(postDatePrefix: repo.fileNameRule.postDatePrefix);
   }
 }

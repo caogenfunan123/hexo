@@ -181,9 +181,13 @@ class GitHubService {
   }
 
   Future<Article> upsertArticle(RepoConfig repo, Article article, {String? commitMessage}) async {
-    final path = article.remotePath ??
-        '${repo.postsPath.replaceAll(RegExp(r'/+$'), '')}/${article.fileName()}';
-    final md = article.toMarkdownWithFrontMatter();
+    final isPage = article.articleType == 'page';
+    final basePath = isPage
+        ? repo.pagesPath.replaceAll(RegExp(r'/+$'), '')
+        : repo.postsPath.replaceAll(RegExp(r'/+$'), '');
+    final fileName = article.fileNameForRepo(repo);
+    final path = article.remotePath ?? '$basePath/$fileName';
+    final md = article.toMarkdownWithFrontMatterForRepo(repo);
     final content = base64Encode(utf8.encode(md));
     final message = commitMessage ??
         (article.remoteSha == null
