@@ -57,7 +57,9 @@ class AiSessionManager {
     String? targetFramework,
   }) {
     final buf = StringBuffer();
+    final now = DateTime.now();
     buf.writeln('\n=====实时上下文信息=====');
+    buf.writeln('当前日期：${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}');
     if (blogFramework != null) buf.writeln('当前静态博客框架：$blogFramework');
     if (targetFramework != null) buf.writeln('目标迁移框架：$targetFramework');
     if (postsPath != null) buf.writeln('仓库博文目录：$postsPath');
@@ -78,9 +80,10 @@ class AiSessionManager {
 
 # 基础运行规则
 1. 根据上下文携带的仓库框架、默认文章模板自动生成规范FrontMatter。
-2. 支持持续交互式创作：增量修改段落、润色、扩写、精简，不需要全文反复重写。
-3. 环境约束：软件没有本地构建环境，修改保存后推送Git远端构建网站查看效果。
-4. 输出规范：完整Markdown代码，FrontMatter严格匹配当前博客框架规范。
+2. **date 字段必须使用上下文提供的「当前日期」，不要自己编造或使用旧日期。**
+3. 支持持续交互式创作：增量修改段落、润色、扩写、精简，不需要全文反复重写。
+4. 环境约束：软件没有本地构建环境，修改保存后推送Git远端构建网站查看效果。
+5. 输出规范：完整Markdown代码，FrontMatter严格匹配当前博客框架规范。
 
 # 可识别自然语言指令
 1. 新建文章：标题xxx，内容方向xxx

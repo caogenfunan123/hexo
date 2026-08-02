@@ -222,18 +222,21 @@ class AiChatPanelState extends State<AiChatPanel> {
   void _addSystemMessage(String text) {
     setState(() => _messages.add(ChatMessage(role: 'system', content: text)));
     _saveHistory();
+    _scrollToBottom();
   }
 
   void _addUserMessage(String text) {
     setState(() => _messages.add(ChatMessage(role: 'user', content: text)));
     widget.dispatcher.addUserMessage(text);
     _saveHistory();
+    _scrollToBottom();
   }
 
   void _addAssistantMessage(String text) {
     setState(() => _messages.add(ChatMessage(role: 'assistant', content: text)));
     widget.dispatcher.addAssistantMessage(text);
     _saveHistory();
+    _scrollToBottom();
   }
 
   void addMessage(String role, String text) {
@@ -392,6 +395,7 @@ class AiChatPanelState extends State<AiChatPanel> {
       _streamingMsgIndex = null;
     });
     _streamBuffer = StringBuffer();
+    _scrollToBottom();
   }
 
   void _scrollToBottom() {
