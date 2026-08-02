@@ -472,7 +472,7 @@ class BuiltinTools {
         return ToolCallResult(toolId: 'file_read', content: '', success: false, error: '文件不存在: $path');
       }
       final content = result['content'] ?? '';
-      return ToolCallResult(toolId: 'file_read', content: content, success: true, data: {'path': path, 'sha': result['sha']});
+      return ToolCallResult(toolId: 'file_read', content: content, success: true);
     } catch (e) {
       return ToolCallResult(toolId: 'file_read', content: '', success: false, error: '读取失败: $e');
     }
@@ -497,7 +497,7 @@ class BuiltinTools {
         sha = existing?['sha']?.toString();
       } catch (_) {}
       await gitHubService!.putRawFile(activeRepo!, path, content, sha: sha, commitMessage: commitMsg);
-      return ToolCallResult(toolId: 'file_write', content: '文件已成功写入: $path', success: true, data: {'path': path});
+      return ToolCallResult(toolId: 'file_write', content: '文件已成功写入: $path', success: true);
     } catch (e) {
       return ToolCallResult(toolId: 'file_write', content: '', success: false, error: '写入失败: $e');
     }
@@ -520,7 +520,7 @@ class BuiltinTools {
         return ToolCallResult(toolId: 'file_delete', content: '', success: false, error: '文件不存在: $path');
       }
       await gitHubService!.deleteRawFile(activeRepo!, path, sha, commitMessage: commitMsg);
-      return ToolCallResult(toolId: 'file_delete', content: '文件已删除: $path', success: true, data: {'path': path});
+      return ToolCallResult(toolId: 'file_delete', content: '文件已删除: $path', success: true);
     } catch (e) {
       return ToolCallResult(toolId: 'file_delete', content: '', success: false, error: '删除失败: $e');
     }
@@ -542,7 +542,7 @@ class BuiltinTools {
         buf.writeln('$typeIcon ${item.name}  (${item.path})');
       }
       if (items.isEmpty) buf.writeln('(空目录)');
-      return ToolCallResult(toolId: 'list_dir', content: buf.toString(), success: true, data: {'count': items.length});
+      return ToolCallResult(toolId: 'list_dir', content: buf.toString(), success: true);
     } catch (e) {
       return ToolCallResult(toolId: 'list_dir', content: '', success: false, error: '列目录失败: $e');
     }
@@ -562,7 +562,7 @@ class BuiltinTools {
         'Snapshot: $desc\nTime: $timestamp',
         commitMessage: 'snapshot: $desc',
       );
-      return ToolCallResult(toolId: 'git_snapshot', content: '快照已创建: $desc', success: true, data: {'timestamp': timestamp});
+      return ToolCallResult(toolId: 'git_snapshot', content: '快照已创建: $desc', success: true);
     } catch (e) {
       return ToolCallResult(toolId: 'git_snapshot', content: '', success: false, error: '快照创建失败: $e');
     }
@@ -596,7 +596,6 @@ class BuiltinTools {
         toolId: 'git_rollback',
         content: '已创建回滚备份: $path.bak\n请手动恢复到目标版本。',
         success: true,
-        data: {'path': path, 'backup': '$path.bak'},
       );
     } catch (e) {
       return ToolCallResult(toolId: 'git_rollback', content: '', success: false, error: '回滚失败: $e');
