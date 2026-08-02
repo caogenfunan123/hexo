@@ -48,6 +48,13 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
         elevation: 0,
         title: const Text('站点管理', style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
+          // 添加动态 CMS 站点
+          TextButton.icon(
+            onPressed: _addDynamicSite,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('添加CMS'),
+          ),
+          const SizedBox(width: 4),
           // 批量测试按钮
           TextButton.icon(
             onPressed: _testing ? null : _batchTestConnections,
@@ -250,6 +257,20 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
         appSettings: widget.siteManager.appSettings,
         onSaved: (updated) async {
           widget.siteManager.updateDynamicSite(updated);
+          widget.onChanged();
+          setState(() {});
+        },
+      ),
+    ));
+  }
+
+  // ── 添加动态站点 ──
+  void _addDynamicSite() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => BlogSiteEditorScreen(
+        appSettings: widget.siteManager.appSettings,
+        onSaved: (updated) async {
+          widget.siteManager.dynamicSites.add(updated);
           widget.onChanged();
           setState(() {});
         },
