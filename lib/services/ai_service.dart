@@ -416,7 +416,7 @@ class AiService {
             .toList();
 
         // 将 assistant 消息（含 tool_calls）加入历史
-        allMessages.add(message);
+        allMessages.add(Map<String, dynamic>.from(message));
 
         return ToolCallResponse(
           content: message['content']?.toString(),

@@ -82,7 +82,7 @@ class BuiltinTools {
   /// 执行 Web 搜索（使用 DuckDuckGo Instant Answer API）
   static Future<ToolCallResult> _executeWebSearch(ToolCallRequest req) async {
     final query = req.arguments['query']?.toString() ?? '';
-    final num = (req.arguments['num'] as num?)?.toInt() ?? 5;
+    final resultCount = (req.arguments['num'] as num?)?.toInt() ?? 5;
 
     if (query.isEmpty) {
       return ToolCallResult(
@@ -127,7 +127,7 @@ class BuiltinTools {
           buf.writeln('🔗 相关结果:');
           var count = 0;
           for (final topic in relatedTopics) {
-            if (count >= num) break;
+            if (count >= resultCount) break;
             if (topic is Map) {
               final text = topic['Text']?.toString() ?? '';
               final url = topic['FirstURL']?.toString() ?? '';
