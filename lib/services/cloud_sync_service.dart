@@ -138,7 +138,7 @@ class GitHubSyncBackend implements SyncBackend {
         if (prefix.isEmpty || relativePath.startsWith(prefix)) {
           result.add(SyncFileInfo(
             path: relativePath,
-            size: item.size,
+            size: item.size ?? 0,
             modified: item.lastModified ?? DateTime.now(),
             sha: item.sha,
           ));
@@ -240,7 +240,7 @@ class WebDavSyncBackend implements SyncBackend {
         if (!item.isDir && (prefix.isEmpty || item.name.startsWith(prefix))) {
           result.add(SyncFileInfo(
             path: item.name,
-            size: item.size,
+            size: item.size ?? 0,
             modified: item.modified,
           ));
         }

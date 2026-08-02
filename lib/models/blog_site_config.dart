@@ -102,7 +102,7 @@ class BlogSiteConfig {
   /// 创建时间
   final DateTime createdAt;
 
-  const BlogSiteConfig({
+  BlogSiteConfig({
     required this.id,
     required this.name,
     required this.type,
