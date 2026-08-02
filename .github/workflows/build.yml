@@ -62,8 +62,10 @@ jobs:
       - name: Build APK
         id: build
         run: |
+          set +e
           flutter build apk --release --no-pub --no-android-gradle-daemon 2>&1 | tee /tmp/build.log
           BUILD_EXIT=${PIPESTATUS[0]}
+          set -e
           if [ $BUILD_EXIT -ne 0 ]; then
             echo "::warning::Android build failed. Check logs for details."
             echo "=== Last 100 lines of output ==="
