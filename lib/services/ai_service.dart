@@ -11,8 +11,9 @@ class StreamChunk {
   final String content;
   final bool isDone;
   final String? finishReason;
+  final List<Map<String, dynamic>>? toolCalls;
 
-  const StreamChunk({required this.content, this.isDone = false, this.finishReason});
+  const StreamChunk({required this.content, this.isDone = false, this.finishReason, this.toolCalls});
 }
 
 class AiService {
@@ -300,6 +301,9 @@ class AiService {
           .transform(utf8.decoder)
           .transform(const LineSplitter());
 
+      // 工具调用累积器
+      final Map<int, Map<String, dynamic>> toolCallAccum = {};
+
       await for (final line in lineStream) {
         if (line.startsWith('data: ')) {
           final data = line.substring(6).trim();
@@ -315,16 +319,45 @@ class AiService {
                 final choice = choices.first;
                 if (choice is Map) {
                   final delta = choice['delta'];
-                  if (delta is Map && delta['content'] != null) {
-                    yield StreamChunk(content: delta['content'].toString());
+                  if (delta is Map) {
+                    if (delta['content'] != null) {
+                      yield StreamChunk(content: delta['content'].toString());
+                    }
+                    // 工具调用增量
+                    if (delta['tool_calls'] is List) {
+                      for (final tc in (delta['tool_calls'] as List)) {
+                        if (tc is Map) {
+                          final idx = (tc['index'] as num?)?.toInt() ?? 0;
+                          toolCallAccum.putIfAbsent(idx, () => <String, dynamic>{});
+                          final acc = toolCallAccum[idx]!;
+                          if (tc['id'] != null) acc['id'] = tc['id'];
+                          if (tc['type'] != null) acc['type'] = tc['type'];
+                          if (tc['function'] is Map) {
+                            final func = tc['function'] as Map;
+                            acc.putIfAbsent('function', () => <String, dynamic>{});
+                            final accFunc = acc['function'] as Map<String, dynamic>;
+                            if (func['name'] != null) accFunc['name'] = func['name'];
+                            if (func['arguments'] != null) {
+                              accFunc['arguments'] = (accFunc['arguments'] ?? '') + (func['arguments'] as String);
+                            }
+                          }
+                        }
+                      }
+                    }
                   }
                   // 检查是否结束
                   final finish = choice['finish_reason'];
                   if (finish != null && finish.toString().isNotEmpty) {
+                    final toolCalls = toolCallAccum.isNotEmpty
+                        ? toolCallAccum.entries
+                            .map((e) => Map<String, dynamic>.from(e.value))
+                            .toList()
+                        : null;
                     yield StreamChunk(
                       content: '',
                       isDone: true,
                       finishReason: finish.toString(),
+                      toolCalls: toolCalls,
                     );
                   }
                 }

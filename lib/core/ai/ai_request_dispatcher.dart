@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import '../../models/ai_profile.dart';
 import '../../models/app_settings.dart';
@@ -76,7 +77,9 @@ class AiRequestDispatcher {
     required AppSettings settings,
     AiModelEntity? preferredModel,
     double temperature = 0.7,
+    int toolRound = 0,
   }) async {
+    const maxToolRounds = 5;
     final stopwatch = Stopwatch()..start();
     final fullContent = StringBuffer();
 
@@ -113,6 +116,9 @@ class AiRequestDispatcher {
         tools: tools,
       );
 
+      List<Map<String, dynamic>>? pendingToolCalls;
+      String? finishReason;
+
       await for (final chunk in stream) {
         if (controller.isClosed) break;
         if (chunk.content.isNotEmpty) {
@@ -120,22 +126,88 @@ class AiRequestDispatcher {
           controller.add(chunk);
         }
         if (chunk.isDone) {
-          stopwatch.stop();
-          if (preferredModel != null) {
-            _modelManager.recordCall(
-              preferredModel.modelId,
-              preferredModel.apiBase,
-              stopwatch.elapsedMilliseconds,
-              true,
-            );
-          }
-          addAssistantMessage(fullContent.toString());
-          if (!controller.isClosed) {
-            controller.add(const StreamChunk(content: '', isDone: true));
-            await controller.close();
-          }
-          return;
+          finishReason = chunk.finishReason;
+          pendingToolCalls = chunk.toolCalls;
+          break;
         }
+      }
+
+      // 处理工具调用
+      if (pendingToolCalls != null &&
+          pendingToolCalls.isNotEmpty &&
+          finishReason == 'tool_calls' &&
+          toolRound < maxToolRounds) {
+        // 添加 assistant 消息（含 tool_calls）
+        final assistantMsg = <String, dynamic>{
+          'role': 'assistant',
+          'content': fullContent.isNotEmpty ? fullContent.toString() : null,
+          'tool_calls': pendingToolCalls,
+        };
+        _chatHistory.add({'role': 'assistant', 'content': fullContent.toString()});
+
+        // 执行工具
+        final toolExecutor = ToolExecutor();
+        for (final tc in pendingToolCalls) {
+          final func = tc['function'] as Map<String, dynamic>?;
+          if (func == null) continue;
+          final toolName = func['name']?.toString() ?? '';
+          final argsStr = func['arguments']?.toString() ?? '{}';
+          Map<String, dynamic> args;
+          try {
+            args = jsonDecode(argsStr) as Map<String, dynamic>;
+          } catch (_) {
+            args = {};
+          }
+
+          final request = ToolCallRequest(
+            toolId: toolName,
+            callId: tc['id']?.toString() ?? '',
+            arguments: args,
+          );
+
+          final result = await toolExecutor.execute(request);
+          final toolResultMsg = {
+            'role': 'tool',
+            'tool_call_id': request.callId,
+            'content': result.success ? result.content : 'Error: ${result.error}',
+          };
+          _chatHistory.add(toolResultMsg.map((k, v) => MapEntry(k, v.toString())));
+        }
+
+        // 如果 fullContent 为空，显示工具执行摘要
+        if (fullContent.isEmpty) {
+          final toolNames = pendingToolCalls
+              .map((tc) => (tc['function'] as Map?)?['name']?.toString() ?? '')
+              .where((n) => n.isNotEmpty)
+              .join(', ');
+          controller.add(StreamChunk(content: '正在使用工具: $toolNames...\n'));
+        }
+
+        // 递归调用，让 AI 处理工具结果
+        await _runStream(
+          controller,
+          settings: settings,
+          preferredModel: preferredModel,
+          temperature: temperature,
+          toolRound: toolRound + 1,
+        );
+        return;
+      }
+
+      // 正常结束
+      stopwatch.stop();
+      if (preferredModel != null) {
+        _modelManager.recordCall(
+          preferredModel.modelId,
+          preferredModel.apiBase,
+          stopwatch.elapsedMilliseconds,
+          true,
+        );
+      }
+      addAssistantMessage(fullContent.toString());
+      if (!controller.isClosed) {
+        controller.add(const StreamChunk(content: '', isDone: true));
+        await controller.close();
       }
     } catch (e) {
       stopwatch.stop();
