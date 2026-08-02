@@ -53,12 +53,13 @@ jobs:
           echo "FLUTTER_ROOT=$FLUTTER_ROOT"
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          flutter config --android-sdk "$ANDROID_HOME"
           flutter doctor --verbose 2>&1 | head -50
 
       - name: Build APK
         id: build
         run: |
-          flutter build apk --release --verbose 2>&1 | tee /tmp/build.log
+          flutter build apk --release 2>&1 | tee /tmp/build.log
           BUILD_EXIT=${PIPESTATUS[0]}
           if [ $BUILD_EXIT -ne 0 ]; then
             echo "::error::Build failed. Check logs for details."
