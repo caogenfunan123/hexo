@@ -402,7 +402,7 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
         ],
       ),
     ),
-    );
+  );
   }
 
   Widget _filterChip(String label, String value) {
