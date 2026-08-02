@@ -18,10 +18,13 @@ class AiSelfChecker {
   }) async {
     // 先做本地快速检查
     final localIssues = _localCheck(generatedContent, blogFramework: blogFramework);
-    if (localIssues.isNotEmpty) {
+
+    // 只有本地检查发现严重错误（❌）时才跳过AI深度检查
+    final hasError = localIssues.any((i) => i.startsWith('❌'));
+    if (hasError) {
       return SelfCheckResult(
-        level: CheckLevel.warning,
-        message: '本地检查发现 ${localIssues.length} 个问题',
+        level: CheckLevel.error,
+        message: '本地检查发现严重错误，需先修复',
         issues: localIssues,
       );
     }
@@ -46,12 +49,19 @@ $generatedContent
         temperature: 0.3,
       );
 
-      return SelfCheckResult.fromResponse(result);
+      final aiResult = SelfCheckResult.fromResponse(result);
+      // 合并本地警告到AI结果
+      final mergedIssues = [...localIssues, ...aiResult.issues];
+      return SelfCheckResult(
+        level: aiResult.level,
+        message: aiResult.message,
+        issues: mergedIssues,
+      );
     } catch (e) {
       return SelfCheckResult(
         level: CheckLevel.warning,
         message: '自检执行异常: $e',
-        issues: ['自检服务不可用，请手动检查代码'],
+        issues: [...localIssues, '自检服务不可用，请手动检查代码'],
       );
     }
   }

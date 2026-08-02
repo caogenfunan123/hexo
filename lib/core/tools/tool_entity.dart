@@ -173,14 +173,20 @@ class ToolEntity {
 /// 工具调用请求
 class ToolCallRequest {
   final String toolId;
+  final String callId;
   final Map<String, dynamic> arguments;
 
-  const ToolCallRequest({required this.toolId, required this.arguments});
+  const ToolCallRequest({
+    required this.toolId,
+    this.callId = '',
+    required this.arguments,
+  });
 
   factory ToolCallRequest.fromOpenAi(Map<String, dynamic> j) {
     final func = j['function'] as Map<String, dynamic>? ?? {};
     return ToolCallRequest(
       toolId: func['name']?.toString() ?? '',
+      callId: j['id']?.toString() ?? '',
       arguments: _parseArgs(func['arguments']),
     );
   }

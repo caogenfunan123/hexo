@@ -264,10 +264,16 @@ class AiSessionManager {
 - 【SKILL_RUN】skill_id=xxx;vars={...} → 程序启动Skill流水线
 - 【联网搜索】关键词 → 程序执行网页搜索并返回结果
 - 【网页抓取】URL → 程序抓取网页内容并返回结果
-- 【文件路径】path + 代码块 → 程序提供一键写入仓库按钮
+- 【调用工具】工具名称 | 参数 → 程序查找并执行已保存的工具
+- 【文件路径】仓库相对路径 + 紧跟代码块 → 程序解析文件并提供一键写入仓库按钮
 
-禁止自定义其它调用标记，只允许规范内指令。
-''';
+格式示例：
+【文件路径】source/_posts/my-article.md
+```markdown
+（完整文件内容）
+```
+
+禁止自定义其它调用标记，只允许规范内指令。''';
 
   // ── ① ArticleSession 博文编辑专用 ──
   static const _articlePrompt = '''
@@ -536,6 +542,62 @@ AI优先完成：基础页面布局、目录结构、基础配置迁移。
 ⚠️ 存在隐患：列出风险点+简易修复建议
 ❌ 严重错误：明确标注问题，给出修正方案
 ''';
+
+  // ═══════════════════════════════════════════════════════════
+  // 编辑器内联工具 Prompt（润色、续写、摘要等）
+  // ═══════════════════════════════════════════════════════════
+
+  static const polishPrompt =
+      '你是中文 Markdown 写作助手。润色用户文章，保持原意与 Markdown 结构（含代码块、列表、标题），只输出完整正文，不要解释。';
+
+  static const continueWritePrompt =
+      '你是中文 Markdown 写作助手。根据已有内容自然续写，保持 Markdown 格式，只输出续写部分。';
+
+  static const summarizePrompt =
+      '用中文为文章生成 2-4 句摘要，以及 3-6 个标签（#标签 形式）。';
+
+  static const generateOutlinePrompt =
+      '根据主题生成 Hexo 博客 Markdown 大纲，含标题建议、小节与代码块占位说明。';
+
+  static const generateCodePrompt =
+      '你是编程助手。根据用户需求输出可直接粘贴进 Markdown 的 fenced code block（带语言标记），必要时附简短说明。';
+
+  static const rewriteSelectionPrompt =
+      '按用户指令改写给定 Markdown 片段，只输出改写后的文本。';
+
+  static const generateTemplatePrompt = '''你是静态博客 FrontMatter 模板生成器。根据用户描述生成 YAML FrontMatter 模板（含 --- 包裹）。
+
+规则：
+1. 支持变量：{{title}} {{date}} {{tags}} {{categories}} {{slug}} {{draft}}
+2. 根据框架自动适配字段：
+   - Hexo: title, date, tags, categories, cover, comments
+   - Hugo: title, date, draft, tags, categories, slug, type
+   - Jekyll: layout, title, date, categories, tags, permalink
+   - Astro: title, pubDate, draft, tags, layout
+   - VuePress: title, date, tags, sidebar, navbar
+   - Gatsby: title, date, slug, tags, featuredImage
+   - Next.js: title, date, tags, excerpt, author
+   - Pelican: Title, Date, Tags, Category, Slug, Summary
+   - 11ty: title, date, tags, layout, eleventyExcludeFromCollections
+3. 只输出模板代码，不要解释。''';
+
+  static String migrateFrontMatterPrompt(String sourceFramework, String targetFramework) =>
+      '''你是静态博客 FrontMatter 迁移工具。将输入的文章 FrontMatter 从 $sourceFramework 格式转换为 $targetFramework 格式。
+
+转换规则：
+- Hexo → Hugo: 添加 draft: true, title 加引号
+- Hexo → Jekyll: 添加 layout: post, 改为 permalink 格式
+- Hexo → Astro: date 改为 pubDate, 添加 draft
+- Jekyll → Hexo: 移除 layout/permalink, 改为 date/tags
+- Hugo → Hexo: 移除 draft, title 去引号
+- 任意 → 任意: 保留所有能对应的字段，补全缺失的必需字段
+
+只输出转换后的 FrontMatter（含 ---），不要解释。''';
+
+  static const themeAnalysisPrompt =
+      '你是静态博客主题分析专家。只输出 JSON，不要解释。';
+
+  static const modelTestPrompt = '你是一个助手。';
 
   /// 构建动态上下文 JSON（兼容旧接口）
   static String buildContextJson({

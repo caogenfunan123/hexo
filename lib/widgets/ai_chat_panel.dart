@@ -103,6 +103,7 @@ class AiChatPanelState extends State<AiChatPanel> {
   bool _busy = false;
   bool _isThinking = false;
   String? _status;
+  bool _showScrollButton = false;
 
   /// 每个 assistant 消息对应的解析文件列表（按消息索引）
   final Map<int, List<ParsedFileOp>> _parsedFiles = {};
@@ -129,6 +130,15 @@ class AiChatPanelState extends State<AiChatPanel> {
     _loadModels();
     _initSession();
     _loadHistory();
+    _scrollCtrl.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (!_scrollCtrl.hasClients) return;
+    final atBottom = _scrollCtrl.position.pixels >= _scrollCtrl.position.maxScrollExtent - 50;
+    if (_showScrollButton == atBottom) {
+      setState(() => _showScrollButton = !atBottom);
+    }
   }
 
   Future<void> _initTools() async {
@@ -142,14 +152,18 @@ class AiChatPanelState extends State<AiChatPanel> {
 
   String get _chatFileKey => 'ai_chat_${widget.sessionType.name}.json';
 
-  /// 加载已保存的对话历史
+  /// 加载已保存的对话历史（含工具调用上下文）
   Future<void> _loadHistory() async {
     final storage = widget.storageService;
-    if (storage == null) return;
+    if (storage == null) {
+      if (widget.initialMessage != null) {
+        _addSystemMessage(widget.initialMessage!);
+      }
+      return;
+    }
     try {
       final file = File('${(await storage.root).path}/$_chatFileKey');
       if (!await file.exists()) {
-        // 首次打开，显示欢迎语
         if (widget.initialMessage != null) {
           _addSystemMessage(widget.initialMessage!);
         }
@@ -162,27 +176,41 @@ class AiChatPanelState extends State<AiChatPanel> {
         }
         return;
       }
-      final list = jsonDecode(text);
-      if (list is! List) return;
-      final messages = list
-          .whereType<Map>()
-          .map((e) => ChatMessage.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
-      if (messages.isEmpty) {
+      final data = jsonDecode(text);
+      // 兼容新旧格式：新格式为 {"context": [...]}，旧格式为 [...]
+      List contextList;
+      if (data is Map && data['context'] is List) {
+        contextList = data['context'] as List;
+      } else if (data is List) {
+        contextList = data;
+      } else {
         if (widget.initialMessage != null) {
           _addSystemMessage(widget.initialMessage!);
         }
         return;
       }
-      setState(() => _messages.addAll(messages));
-      // 恢复 dispatcher 上下文
-      for (final m in messages) {
-        if (m.role == 'user') {
-          widget.dispatcher.addUserMessage(m.content);
-        } else if (m.role == 'assistant') {
-          widget.dispatcher.addAssistantMessage(m.content);
+
+      final context = contextList
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      if (context.isEmpty) {
+        if (widget.initialMessage != null) {
+          _addSystemMessage(widget.initialMessage!);
         }
+        return;
       }
+
+      // 恢复 dispatcher 完整上下文（含 tool_calls / tool 消息）
+      widget.dispatcher.restoreHistory(context);
+
+      // 从上下文中派生 UI 消息（过滤掉 tool 角色，只显示 user / assistant / system）
+      final uiMessages = context
+          .map((m) => ChatMessage.fromContextMap(m))
+          .where((m) => m.showInUi)
+          .toList();
+      setState(() => _messages.addAll(uiMessages));
+
       // 重新解析已有 assistant 消息中的文件操作
       for (int i = 0; i < _messages.length; i++) {
         final m = _messages[i];
@@ -200,13 +228,14 @@ class AiChatPanelState extends State<AiChatPanel> {
     }
   }
 
-  /// 保存对话历史到本地文件
+  /// 保存完整对话上下文到本地文件（含工具调用上下文）
   Future<void> _saveHistory() async {
     final storage = widget.storageService;
     if (storage == null) return;
     try {
       final file = File('${(await storage.root).path}/$_chatFileKey');
-      final json = jsonEncode(_messages.map((m) => m.toJson()).toList());
+      final context = widget.dispatcher.chatHistory;
+      final json = jsonEncode({'context': context});
       await file.writeAsString(json);
     } catch (_) {}
   }
@@ -286,9 +315,10 @@ class AiChatPanelState extends State<AiChatPanel> {
     _chatCtrl.clear();
 
     // 添加用户消息到 UI（dispatcher 在 dispatchStream 内部也添加）
+    // 注意：_saveHistory() 不在此时调用，因为 dispatcher._chatHistory 尚未包含用户消息
+    // 完整的上下文保存由 _finishStreaming 在流处理完成后统一执行
     setState(() => _messages.add(ChatMessage(role: 'user', content: msg)));
     widget.onContentGenerated?.call(msg);
-    _saveHistory();
 
     // 先添加一个空 assistant 消息，后续流式填充
     _streamBuffer = StringBuffer();
@@ -411,8 +441,8 @@ class AiChatPanelState extends State<AiChatPanel> {
       _handleInstructions(content, idx);
       // 持久化
       _saveHistory();
-      // 自检
-      if (widget.selfCheckEnabled && widget.selfChecker != null) {
+      // 自检：仅当 AI 回复包含文件操作内容时才触发（避免对纯对话内容自检）
+      if (widget.selfCheckEnabled && widget.selfChecker != null && (files.isNotEmpty || content.contains('【文件路径】'))) {
         widget.selfChecker!.check(
           settings: widget.settings,
           generatedContent: content,
@@ -533,6 +563,32 @@ class AiChatPanelState extends State<AiChatPanel> {
     setState(() => _messages.clear());
     // 删除本地持久化文件
     _deleteHistoryFile();
+  }
+
+  /// 新建会话：清空当前对话，保留欢迎语和系统提示
+  Future<void> newSession() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('新建会话'),
+        content: const Text('将清空当前对话历史，开始全新会话。\n\n系统提示词和工具配置不受影响。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认新建'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    clearHistory();
+    if (widget.initialMessage != null) {
+      _addSystemMessage(widget.initialMessage!);
+    }
   }
 
   Future<void> _deleteHistoryFile() async {
@@ -687,33 +743,51 @@ class AiChatPanelState extends State<AiChatPanel> {
         // 自定义头部
         if (widget.headerBuilder != null)
           ...widget.headerBuilder!(context, this),
-        // 消息列表
+        // ── 会话标题栏：显示类型 + 新建/清空按钮 ──
+        _buildSessionHeader(cs),
+        // 消息列表（含一键到底按钮）
         Expanded(
-          child: _messages.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.chat_bubble_outline, size: 48, color: cs.outline.withOpacity(0.4)),
-                      const SizedBox(height: 12),
-                      Text(
-                        _emptyHint,
-                        style: TextStyle(fontSize: 14, color: cs.outline),
+          child: Stack(
+            children: [
+              _messages.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.chat_bubble_outline, size: 48, color: cs.outline.withOpacity(0.4)),
+                          const SizedBox(height: 12),
+                          Text(
+                            _emptyHint,
+                            style: TextStyle(fontSize: 14, color: cs.outline),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '输入你的需求开始对话',
+                            style: TextStyle(fontSize: 12, color: cs.outline.withOpacity(0.6)),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '输入你的需求开始对话',
-                        style: TextStyle(fontSize: 12, color: cs.outline.withOpacity(0.6)),
-                      ),
-                    ],
+                    )
+                  : ListView.builder(
+                      controller: _scrollCtrl,
+                      padding: const EdgeInsets.all(12),
+                      itemCount: _messages.length,
+                      itemBuilder: (ctx, i) => _buildBubble(_messages[i], cs),
+                    ),
+              // 👇 一键到底箭头按钮
+              if (_showScrollButton)
+                Positioned(
+                  bottom: 16,
+                  right: 16,
+                  child: FloatingActionButton.small(
+                    heroTag: 'scroll_to_bottom_${widget.sessionType.name}',
+                    onPressed: _scrollToBottom,
+                    backgroundColor: cs.primaryContainer,
+                    child: Icon(Icons.arrow_downward, color: cs.onPrimaryContainer),
                   ),
-                )
-              : ListView.builder(
-                  controller: _scrollCtrl,
-                  padding: const EdgeInsets.all(12),
-                  itemCount: _messages.length,
-                  itemBuilder: (ctx, i) => _buildBubble(_messages[i], cs),
                 ),
+            ],
+          ),
         ),
         // 状态栏
         if (_status != null)
@@ -783,6 +857,56 @@ class AiChatPanelState extends State<AiChatPanel> {
       case AiSessionType.audit:
         return 'AI 站点巡检助手';
     }
+  }
+
+  String get _sessionTitle {
+    switch (widget.sessionType) {
+      case AiSessionType.article:
+        return '博文编辑';
+      case AiSessionType.page:
+        return '页面编辑';
+      case AiSessionType.theme:
+        return '主题开发';
+      case AiSessionType.themeMigration:
+        return '主题迁移';
+      case AiSessionType.audit:
+        return '站点巡检';
+    }
+  }
+
+  Widget _buildSessionHeader(ColorScheme cs) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(0.5),
+        border: Border(bottom: BorderSide(color: cs.outlineVariant.withOpacity(0.3))),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.chat_outlined, size: 16, color: cs.primary),
+          const SizedBox(width: 6),
+          Text(
+            _sessionTitle,
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface),
+          ),
+          if (_messages.isNotEmpty) ...[
+            const SizedBox(width: 4),
+            Text(
+              '(${_messages.length} 条消息)',
+              style: TextStyle(fontSize: 11, color: cs.outline),
+            ),
+          ],
+          const Spacer(),
+          if (_messages.isNotEmpty)
+            _SessionHeaderButton(
+              icon: Icons.add_comment_outlined,
+              label: '新建',
+              tooltip: '新建会话（清空当前对话）',
+              onTap: _busy ? null : newSession,
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _buildInput(ColorScheme cs) {
@@ -1008,20 +1132,48 @@ class ChatMessage {
   final String role;
   final String content;
   final DateTime time;
+  final List<Map<String, dynamic>>? toolCalls;   // assistant 消息携带的工具调用
+  final String? toolCallId;                      // tool 消息携带的调用 ID
 
-  ChatMessage({required this.role, required this.content, DateTime? time})
-      : time = time ?? DateTime.now();
+  ChatMessage({
+    required this.role,
+    required this.content,
+    DateTime? time,
+    this.toolCalls,
+    this.toolCallId,
+  }) : time = time ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
         'role': role,
         'content': content,
         'time': time.toIso8601String(),
+        if (toolCalls != null) 'toolCalls': toolCalls,
+        if (toolCallId != null) 'toolCallId': toolCallId,
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
         role: j['role']?.toString() ?? 'system',
         content: j['content']?.toString() ?? '',
         time: DateTime.tryParse(j['time']?.toString() ?? '') ?? DateTime.now(),
+        toolCalls: (j['toolCalls'] as List?)
+            ?.whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList(),
+        toolCallId: j['toolCallId']?.toString(),
+      );
+
+  /// 是否能在 UI 中显示（system / user / assistant 可显示，tool 不可显示）
+  bool get showInUi => role == 'system' || role == 'user' || role == 'assistant';
+
+  /// 从 dispatcher 的 Map 格式创建
+  factory ChatMessage.fromContextMap(Map<String, dynamic> m) => ChatMessage(
+        role: m['role']?.toString() ?? 'system',
+        content: m['content']?.toString() ?? '',
+        toolCalls: (m['tool_calls'] as List?)
+            ?.whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList(),
+        toolCallId: m['tool_call_id']?.toString(),
       );
 }
 
@@ -1160,6 +1312,51 @@ class _StreamingTextState extends State<_StreamingText> with SingleTickerProvide
           ),
         );
       },
+    );
+  }
+}
+
+/// 会话标题栏按钮
+class _SessionHeaderButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  const _SessionHeaderButton({
+    required this.icon,
+    required this.label,
+    required this.tooltip,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final enabled = onTap != null;
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: enabled ? cs.primary : cs.outline),
+              const SizedBox(width: 3),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: enabled ? cs.primary : cs.outline,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

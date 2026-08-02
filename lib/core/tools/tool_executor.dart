@@ -139,9 +139,12 @@ class ToolExecutor {
     final messages = <Map<String, dynamic>>[];
     for (var i = 0; i < results.length && i < requests.length; i++) {
       final result = results[i];
+      final request = requests[i];
       messages.add({
         'role': 'tool',
-        'tool_call_id': 'call_${result.toolId}_${DateTime.now().millisecondsSinceEpoch}',
+        'tool_call_id': request.callId.isNotEmpty
+            ? request.callId
+            : 'call_${result.toolId}_${DateTime.now().millisecondsSinceEpoch}',
         'content': result.success
             ? result.content
             : '工具执行失败: ${result.error}',

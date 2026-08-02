@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../core/tools/tool_entity.dart';
+import '../core/ai/ai_session_manager.dart';
 import '../models/ai_profile.dart';
 import '../models/app_settings.dart';
 
@@ -243,7 +244,7 @@ class AiService {
     required String userPrompt,
     AiProfile? profile,
     double temperature = 0.7,
-    List<Map<String, String>>? messages,
+    List<Map<String, dynamic>>? messages,
     List<Map<String, dynamic>>? tools,
   }) async* {
     final p = resolveProfile(settings, override: profile);
@@ -303,12 +304,25 @@ class AiService {
 
       // 工具调用累积器
       final Map<int, Map<String, dynamic>> toolCallAccum = {};
+      var doneProcessed = false;
 
       await for (final line in lineStream) {
         if (line.startsWith('data: ')) {
           final data = line.substring(6).trim();
           if (data == '[DONE]') {
-            yield const StreamChunk(content: '', isDone: true);
+            doneProcessed = true;
+            // 即使 [DONE] 到达，也要带上累积的工具调用
+            final doneToolCalls = toolCallAccum.isNotEmpty
+                ? toolCallAccum.entries
+                    .map((e) => Map<String, dynamic>.from(e.value))
+                    .toList()
+                : null;
+            toolCallAccum.clear();
+            yield StreamChunk(
+              content: '',
+              isDone: true,
+              toolCalls: doneToolCalls,
+            );
             break;
           }
           try {
@@ -353,12 +367,14 @@ class AiService {
                             .map((e) => Map<String, dynamic>.from(e.value))
                             .toList()
                         : null;
+                    toolCallAccum.clear();
                     yield StreamChunk(
                       content: '',
                       isDone: true,
                       finishReason: finish.toString(),
                       toolCalls: toolCalls,
                     );
+                    break; // finish_reason 即表示流结束，不再等待 [DONE]
                   }
                 }
               }
@@ -367,6 +383,17 @@ class AiService {
             // 跳过无法解析的行
           }
         }
+      }
+      // 兜底：流意外结束时，如果还有未处理的工具调用，务必 yield
+      // 但如果 [DONE] 已处理过，则跳过（避免重复 yield）
+      if (!doneProcessed && toolCallAccum.isNotEmpty) {
+        yield StreamChunk(
+          content: '',
+          isDone: true,
+          toolCalls: toolCallAccum.entries
+              .map((e) => Map<String, dynamic>.from(e.value))
+              .toList(),
+        );
       }
     } finally {
       client.close(force: true);
@@ -393,96 +420,86 @@ class AiService {
     }
 
     final url = _chatUrl(p);
-    final allMessages = <Map<String, dynamic>>[
-      {'role': 'system', 'content': systemPrompt},
-      ...messages,
-    ];
+    final allMessages = <Map<String, dynamic>>[];
+    // 避免重复添加 system prompt（多轮调用时 messages 可能已包含）
+    final hasSystemPrompt = messages.isNotEmpty && messages.first['role'] == 'system';
+    if (!hasSystemPrompt) {
+      allMessages.add({'role': 'system', 'content': systemPrompt});
+    }
+    allMessages.addAll(messages);
 
-    var remainingRounds = maxToolRounds;
-    List<ToolCallRequest>? lastToolCalls;
+    final body = <String, dynamic>{
+      'model': p.model,
+      'messages': allMessages,
+      'temperature': temperature,
+      'stream': false,
+    };
 
-    while (remainingRounds > 0) {
-      remainingRounds--;
-
-      final body = <String, dynamic>{
-        'model': p.model,
-        'messages': allMessages,
-        'temperature': temperature,
-        'stream': false,
-      };
-
-      if (tools != null && tools.isNotEmpty) {
-        body['tools'] = tools;
-        body['tool_choice'] = 'auto';
-      }
-
-      final text = await _http(
-        method: 'POST',
-        url: url,
-        apiKey: p.apiKey,
-        useBearer: p.useBearer,
-        body: body,
-      );
-
-      final data = jsonDecode(text);
-      if (data is! Map) {
-        throw Exception('AI 返回格式异常');
-      }
-
-      final choices = data['choices'] as List?;
-      if (choices == null || choices.isEmpty) {
-        throw Exception('AI 返回无 choices');
-      }
-
-      final choice = choices.first as Map;
-      final message = choice['message'] as Map?;
-
-      if (message == null) {
-        // 兼容非标准格式
-        if (choice['text'] != null) {
-          return ToolCallResponse(content: choice['text'].toString());
-        }
-        throw Exception('AI 返回格式异常: ${text.length > 300 ? text.substring(0, 300) : text}');
-      }
-
-      // 检查是否有 tool_calls
-      final toolCallsRaw = message['tool_calls'];
-      if (toolCallsRaw is List && toolCallsRaw.isNotEmpty) {
-        lastToolCalls = toolCallsRaw
-            .whereType<Map>()
-            .map((tc) => ToolCallRequest.fromOpenAi(Map<String, dynamic>.from(tc)))
-            .toList();
-
-        // 将 assistant 消息（含 tool_calls）加入历史
-        allMessages.add(Map<String, dynamic>.from(message));
-
-        return ToolCallResponse(
-          content: message['content']?.toString(),
-          toolCalls: lastToolCalls,
-          allMessages: allMessages,
-        );
-      }
-
-      // 没有工具调用，返回纯文本
-      final content = message['content']?.toString();
-      if (content != null && content.isNotEmpty) {
-        return ToolCallResponse(content: content, allMessages: allMessages);
-      }
-
-      // 如果 content 为空且没有 tool_calls，可能是结束了
-      final finishReason = choice['finish_reason']?.toString();
-      if (finishReason == 'stop') {
-        return ToolCallResponse(content: '', allMessages: allMessages);
-      }
-
-      throw Exception('AI 返回空内容');
+    if (tools != null && tools.isNotEmpty) {
+      body['tools'] = tools;
+      body['tool_choice'] = 'auto';
     }
 
-    return ToolCallResponse(
-      content: '',
-      toolCalls: lastToolCalls,
-      allMessages: allMessages,
+    final text = await _http(
+      method: 'POST',
+      url: url,
+      apiKey: p.apiKey,
+      useBearer: p.useBearer,
+      body: body,
     );
+
+    final data = jsonDecode(text);
+    if (data is! Map) {
+      throw Exception('AI 返回格式异常');
+    }
+
+    final choices = data['choices'] as List?;
+    if (choices == null || choices.isEmpty) {
+      throw Exception('AI 返回无 choices');
+    }
+
+    final choice = choices.first as Map;
+    final message = choice['message'] as Map?;
+
+    if (message == null) {
+      // 兼容非标准格式
+      if (choice['text'] != null) {
+        return ToolCallResponse(content: choice['text'].toString());
+      }
+      throw Exception('AI 返回格式异常: ${text.length > 300 ? text.substring(0, 300) : text}');
+    }
+
+    // 检查是否有 tool_calls
+    final toolCallsRaw = message['tool_calls'];
+    if (toolCallsRaw is List && toolCallsRaw.isNotEmpty) {
+      final toolCalls = toolCallsRaw
+          .whereType<Map>()
+          .map((tc) => ToolCallRequest.fromOpenAi(Map<String, dynamic>.from(tc)))
+          .toList();
+
+      // 将 assistant 消息（含 tool_calls）加入历史
+      allMessages.add(Map<String, dynamic>.from(message));
+
+      return ToolCallResponse(
+        content: message['content']?.toString(),
+        toolCalls: toolCalls,
+        allMessages: allMessages,
+      );
+    }
+
+    // 没有工具调用，返回纯文本
+    final content = message['content']?.toString();
+    if (content != null && content.isNotEmpty) {
+      return ToolCallResponse(content: content, allMessages: allMessages);
+    }
+
+    // 如果 content 为空且没有 tool_calls，可能是结束了
+    final finishReason = choice['finish_reason']?.toString();
+    if (finishReason == 'stop') {
+      return ToolCallResponse(content: '', allMessages: allMessages);
+    }
+
+    throw Exception('AI 返回空内容');
   }
 
   /// 将工具执行结果发回 AI 并获取最终回复
@@ -558,41 +575,38 @@ class AiService {
 
   Future<String> polish(AppSettings s, String content) => complete(
         settings: s,
-        systemPrompt:
-            '你是中文 Markdown 写作助手。润色用户文章，保持原意与 Markdown 结构（含代码块、列表、标题），只输出完整正文，不要解释。',
+        systemPrompt: AiSessionManager.polishPrompt,
         userPrompt: content,
       );
 
   Future<String> continueWrite(AppSettings s, String content) => complete(
         settings: s,
-        systemPrompt:
-            '你是中文 Markdown 写作助手。根据已有内容自然续写，保持 Markdown 格式，只输出续写部分。',
+        systemPrompt: AiSessionManager.continueWritePrompt,
         userPrompt: content,
       );
 
   Future<String> summarize(AppSettings s, String content) => complete(
         settings: s,
-        systemPrompt: '用中文为文章生成 2-4 句摘要，以及 3-6 个标签（#标签 形式）。',
+        systemPrompt: AiSessionManager.summarizePrompt,
         userPrompt: content,
       );
 
   Future<String> generateOutline(AppSettings s, String topic) => complete(
         settings: s,
-        systemPrompt: '根据主题生成 Hexo 博客 Markdown 大纲，含标题建议、小节与代码块占位说明。',
+        systemPrompt: AiSessionManager.generateOutlinePrompt,
         userPrompt: topic,
       );
 
   Future<String> generateCode(AppSettings s, String prompt) => complete(
         settings: s,
-        systemPrompt:
-            '你是编程助手。根据用户需求输出可直接粘贴进 Markdown 的 fenced code block（带语言标记），必要时附简短说明。',
+        systemPrompt: AiSessionManager.generateCodePrompt,
         userPrompt: prompt,
       );
 
   Future<String> rewriteSelection(AppSettings s, String selection, String instruction) =>
       complete(
         settings: s,
-        systemPrompt: '按用户指令改写给定 Markdown 片段，只输出改写后的文本。',
+        systemPrompt: AiSessionManager.rewriteSelectionPrompt,
         userPrompt: '指令: $instruction\n\n原文:\n$selection',
       );
 
@@ -605,21 +619,7 @@ class AiService {
     return complete(
       settings: settings,
       profile: profile,
-      systemPrompt: '''你是静态博客 FrontMatter 模板生成器。根据用户描述生成 YAML FrontMatter 模板（含 --- 包裹）。
-
-规则：
-1. 支持变量：{{title}} {{date}} {{tags}} {{categories}} {{slug}} {{draft}}
-2. 根据框架自动适配字段：
-   - Hexo: title, date, tags, categories, cover, comments
-   - Hugo: title, date, draft, tags, categories, slug, type
-   - Jekyll: layout, title, date, categories, tags, permalink
-   - Astro: title, pubDate, draft, tags, layout
-   - VuePress: title, date, tags, sidebar, navbar
-   - Gatsby: title, date, slug, tags, featuredImage
-   - Next.js: title, date, tags, excerpt, author
-   - Pelican: Title, Date, Tags, Category, Slug, Summary
-   - 11ty: title, date, tags, layout, eleventyExcludeFromCollections
-3. 只输出模板代码，不要解释。''',
+      systemPrompt: AiSessionManager.generateTemplatePrompt,
       userPrompt: '请生成以下模板：\n$userPrompt',
     );
   }
@@ -635,17 +635,7 @@ class AiService {
     return complete(
       settings: settings,
       profile: profile,
-      systemPrompt: '''你是静态博客 FrontMatter 迁移工具。将输入的文章 FrontMatter 从 $sourceFramework 格式转换为 $targetFramework 格式。
-
-转换规则：
-- Hexo → Hugo: 添加 draft: true, title 加引号
-- Hexo → Jekyll: 添加 layout: post, 改为 permalink 格式
-- Hexo → Astro: date 改为 pubDate, 添加 draft
-- Jekyll → Hexo: 移除 layout/permalink, 改为 date/tags
-- Hugo → Hexo: 移除 draft, title 去引号
-- 任意 → 任意: 保留所有能对应的字段，补全缺失的必需字段
-
-只输出转换后的 FrontMatter（含 ---），不要解释。''',
+      systemPrompt: AiSessionManager.migrateFrontMatterPrompt(sourceFramework, targetFramework),
       userPrompt: '请转换以下 FrontMatter：\n\n$frontMatter',
     );
   }

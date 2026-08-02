@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/ai/ai_model_entity.dart';
 import '../core/ai/ai_model_manager.dart';
+import '../core/ai/ai_session_manager.dart';
 import '../models/ai_profile.dart';
 import '../models/app_settings.dart';
 import '../services/ai_service.dart';
@@ -313,7 +314,7 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
     try {
       await widget.aiService.complete(
         settings: widget.settings,
-        systemPrompt: '你是一个助手。',
+        systemPrompt: AiSessionManager.modelTestPrompt,
         userPrompt: '回复 OK',
         profile: AiProfile(
           id: model.modelId,

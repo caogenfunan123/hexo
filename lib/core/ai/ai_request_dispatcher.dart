@@ -24,11 +24,16 @@ class AiRequestDispatcher {
     _activeStreamController = null;
   }
 
-  /// 上下文持有器：保存完整会话历史，保证切换模型时上下文不丢失
-  final List<Map<String, String>> _chatHistory = [];
+  /// 上下文持有器：保存完整会话历史（含 tool_calls），保证切换模型时上下文不丢失
+  final List<Map<String, dynamic>> _chatHistory = [];
   String _systemPrompt = '';
 
-  List<Map<String, String>> get chatHistory => List.unmodifiable(_chatHistory);
+  List<Map<String, dynamic>> get chatHistory => List.unmodifiable(_chatHistory);
+
+  void restoreHistory(List<Map<String, dynamic>> history) {
+    _chatHistory.clear();
+    _chatHistory.addAll(history);
+  }
 
   void setSystemPrompt(String prompt) {
     _systemPrompt = prompt;
@@ -117,7 +122,6 @@ class AiRequestDispatcher {
       );
 
       List<Map<String, dynamic>>? pendingToolCalls;
-      String? finishReason;
 
       await for (final chunk in stream) {
         if (controller.isClosed) break;
@@ -126,24 +130,21 @@ class AiRequestDispatcher {
           controller.add(chunk);
         }
         if (chunk.isDone) {
-          finishReason = chunk.finishReason;
           pendingToolCalls = chunk.toolCalls;
           break;
         }
       }
 
-      // 处理工具调用
+      // 处理工具调用（兼容多种 finish_reason，部分厂商返回 "stop" 而非 "tool_calls"）
       if (pendingToolCalls != null &&
           pendingToolCalls.isNotEmpty &&
-          finishReason == 'tool_calls' &&
           toolRound < maxToolRounds) {
-        // 添加 assistant 消息（含 tool_calls）
-        final assistantMsg = <String, dynamic>{
+        // 添加 assistant 消息（含 tool_calls，确保 API 能正确匹配工具调用上下文）
+        _chatHistory.add({
           'role': 'assistant',
           'content': fullContent.isNotEmpty ? fullContent.toString() : null,
           'tool_calls': pendingToolCalls,
-        };
-        _chatHistory.add({'role': 'assistant', 'content': fullContent.toString()});
+        });
 
         // 执行工具
         final toolExecutor = ToolExecutor();
@@ -171,7 +172,7 @@ class AiRequestDispatcher {
             'tool_call_id': request.callId,
             'content': result.success ? result.content : 'Error: ${result.error}',
           };
-          _chatHistory.add(toolResultMsg.map((k, v) => MapEntry(k, v.toString())));
+          _chatHistory.add(toolResultMsg);
         }
 
         // 如果 fullContent 为空，显示工具执行摘要
@@ -183,6 +184,7 @@ class AiRequestDispatcher {
           controller.add(StreamChunk(content: '正在使用工具: $toolNames...\n'));
         }
 
+        stopwatch.stop();
         // 递归调用，让 AI 处理工具结果
         await _runStream(
           controller,
@@ -204,7 +206,9 @@ class AiRequestDispatcher {
           true,
         );
       }
-      addAssistantMessage(fullContent.toString());
+      if (fullContent.isNotEmpty) {
+        addAssistantMessage(fullContent.toString());
+      }
       if (!controller.isClosed) {
         controller.add(const StreamChunk(content: '', isDone: true));
         await controller.close();
@@ -373,14 +377,18 @@ class AiRequestDispatcher {
         .timeout(Duration(seconds: timeoutSeconds));
   }
 
-  String _buildMessagesString(List<Map<String, String>> messages) {
+  String _buildMessagesString(List<Map<String, dynamic>> messages) {
     final buf = StringBuffer();
     for (final m in messages) {
-      if (m['role'] == 'system') continue; // system 单独传
-      if (m['role'] == 'user') {
-        buf.writeln(m['content']);
-      } else if (m['role'] == 'assistant') {
-        buf.writeln(m['content']);
+      final role = m['role'];
+      if (role == 'system') continue; // system 单独传
+      final content = m['content']?.toString();
+      if (role == 'user') {
+        if (content != null) buf.writeln(content);
+      } else if (role == 'assistant') {
+        if (content != null) buf.writeln(content);
+      } else if (role == 'tool') {
+        buf.writeln('[工具结果: ${content ?? ""}]');
       }
     }
     return buf.toString();
@@ -444,6 +452,16 @@ class AiRequestDispatcher {
           onToolStatus?.call(tc.toolId, '执行中...');
         }
 
+        // 添加到对话历史，确保上下文不丢失
+        final assistantMsg = response.allMessages.isNotEmpty
+            ? response.allMessages.last
+            : null;
+        if (assistantMsg != null &&
+            assistantMsg['role'] == 'assistant' &&
+            assistantMsg['tool_calls'] != null) {
+          _chatHistory.add(Map<String, dynamic>.from(assistantMsg));
+        }
+
         // 执行工具
         final results = await toolExecutor.executeAll(response.toolCalls!);
 
@@ -452,6 +470,11 @@ class AiRequestDispatcher {
           response.toolCalls!,
           results,
         );
+
+        // 工具结果也加入对话历史
+        for (final tr in toolResults) {
+          _chatHistory.add(Map<String, dynamic>.from(tr));
+        }
 
         for (var i = 0; i < results.length && i < response.toolCalls!.length; i++) {
           final r = results[i];

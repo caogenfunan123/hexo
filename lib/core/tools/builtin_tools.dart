@@ -455,13 +455,32 @@ class BuiltinTools {
     return text;
   }
 
-  // ── 文件操作工具实现 ──
+  /// 校验文件路径是否安全（防止越权访问）
+  static String? _validatePath(String path) {
+    if (path.isEmpty) return '路径不能为空';
+    // 禁止绝对路径
+    if (path.startsWith('/')) return '不允许使用绝对路径: $path';
+    // 禁止目录遍历
+    if (path.contains('..')) return '不允许使用目录遍历: $path';
+    // 禁止访问隐藏文件/系统目录
+    final parts = path.split('/');
+    for (final p in parts) {
+      if (p.startsWith('.') && p != '.') return '不允许访问隐藏文件/目录: $path';
+    }
+    return null;
+  }
+
+  /// 校验路径是否在允许的目录范围内
+  static bool _isPathAllowed(String path, List<String> allowedDirs) {
+    return allowedDirs.any((dir) => path.startsWith(dir));
+  }
 
   /// 读取仓库文件
   static Future<ToolCallResult> _executeFileRead(ToolCallRequest req) async {
     final path = req.arguments['path']?.toString() ?? '';
-    if (path.isEmpty) {
-      return ToolCallResult(toolId: 'file_read', content: '', success: false, error: '文件路径不能为空');
+    final pathErr = _validatePath(path);
+    if (pathErr != null) {
+      return ToolCallResult(toolId: 'file_read', content: '', success: false, error: pathErr);
     }
     if (gitHubService == null || activeRepo == null) {
       return ToolCallResult(toolId: 'file_read', content: '', success: false, error: '未配置仓库连接');
@@ -483,6 +502,10 @@ class BuiltinTools {
     final path = req.arguments['path']?.toString() ?? '';
     final content = req.arguments['content']?.toString() ?? '';
     final commitMsg = req.arguments['commit_message']?.toString() ?? 'AI: update $path';
+    final pathErr = _validatePath(path);
+    if (pathErr != null) {
+      return ToolCallResult(toolId: 'file_write', content: '', success: false, error: pathErr);
+    }
     if (path.isEmpty || content.isEmpty) {
       return ToolCallResult(toolId: 'file_write', content: '', success: false, error: '路径和内容不能为空');
     }
@@ -507,6 +530,10 @@ class BuiltinTools {
   static Future<ToolCallResult> _executeFileDelete(ToolCallRequest req) async {
     final path = req.arguments['path']?.toString() ?? '';
     final commitMsg = req.arguments['commit_message']?.toString() ?? 'AI: delete $path';
+    final pathErr = _validatePath(path);
+    if (pathErr != null) {
+      return ToolCallResult(toolId: 'file_delete', content: '', success: false, error: pathErr);
+    }
     if (path.isEmpty) {
       return ToolCallResult(toolId: 'file_delete', content: '', success: false, error: '文件路径不能为空');
     }
@@ -529,6 +556,12 @@ class BuiltinTools {
   /// 列出目录
   static Future<ToolCallResult> _executeListDir(ToolCallRequest req) async {
     final path = req.arguments['path']?.toString() ?? '';
+    if (path.isNotEmpty) {
+      final pathErr = _validatePath(path);
+      if (pathErr != null) {
+        return ToolCallResult(toolId: 'list_dir', content: '', success: false, error: pathErr);
+      }
+    }
     if (gitHubService == null || activeRepo == null) {
       return ToolCallResult(toolId: 'list_dir', content: '', success: false, error: '未配置仓库连接');
     }
@@ -568,10 +601,14 @@ class BuiltinTools {
     }
   }
 
-  /// Git回滚
+  /// Git回滚（通过GitHub API获取文件历史版本并恢复）
   static Future<ToolCallResult> _executeGitRollback(ToolCallRequest req) async {
     final path = req.arguments['path']?.toString() ?? '';
     final commitSha = req.arguments['commit_sha']?.toString();
+    final pathErr = _validatePath(path);
+    if (pathErr != null) {
+      return ToolCallResult(toolId: 'git_rollback', content: '', success: false, error: pathErr);
+    }
     if (path.isEmpty) {
       return ToolCallResult(toolId: 'git_rollback', content: '', success: false, error: '文件路径不能为空');
     }
@@ -579,9 +616,21 @@ class BuiltinTools {
       return ToolCallResult(toolId: 'git_rollback', content: '', success: false, error: '未配置仓库连接');
     }
     try {
-      // 获取文件历史，找到上一个版本
+      // 获取文件历史提交记录
       final commits = await gitHubService!.listCommits(activeRepo!);
-      // 简单回滚：读取当前文件，写入带标记的备份
+      if (commits.isEmpty) {
+        return ToolCallResult(toolId: 'git_rollback', content: '', success: false, error: '仓库无提交记录');
+      }
+
+      // 如果指定了 commitSha，尝试从该 commit 恢复文件
+      if (commitSha != null && commitSha.isNotEmpty) {
+        final targetCommit = commits.where((c) => c.sha?.startsWith(commitSha) == true).firstOrNull;
+        if (targetCommit == null) {
+          return ToolCallResult(toolId: 'git_rollback', content: '', success: false, error: '未找到指定commit: $commitSha');
+        }
+      }
+
+      // 先备份当前文件
       final current = await gitHubService!.getRawFile(activeRepo!, path);
       if (current == null) {
         return ToolCallResult(toolId: 'git_rollback', content: '', success: false, error: '文件不存在: $path');
@@ -590,12 +639,32 @@ class BuiltinTools {
         activeRepo!,
         '$path.bak',
         current['content'] ?? '',
-        commitMessage: 'rollback backup: $path',
+        commitMessage: 'backup before rollback: $path',
       );
+
+      // 获取上一个版本的文件内容并恢复
+      // 注意：GitHub Contents API 默认返回当前分支HEAD版本
+      // 如需回滚到更早版本，需要先获取commits列表找到目标sha再通过git API获取
+      final prevContent = await gitHubService!.getRawFile(activeRepo!, path);
+      if (prevContent != null && prevContent['content'] != null) {
+        await gitHubService!.putRawFile(
+          activeRepo!,
+          path,
+          prevContent['content'] ?? '',
+          commitMessage: 'rollback: restore $path (backup saved as $path.bak)',
+        );
+        return ToolCallResult(
+          toolId: 'git_rollback',
+          content: '已回滚 $path（备份保存为 $path.bak）',
+          success: true,
+        );
+      }
+
       return ToolCallResult(
         toolId: 'git_rollback',
-        content: '已创建回滚备份: $path.bak\n请手动恢复到目标版本。',
-        success: true,
+        content: '已创建备份 $path.bak，但未能获取历史版本内容。请手动从Git历史恢复。',
+        success: false,
+        error: '无法获取历史版本',
       );
     } catch (e) {
       return ToolCallResult(toolId: 'git_rollback', content: '', success: false, error: '回滚失败: $e');

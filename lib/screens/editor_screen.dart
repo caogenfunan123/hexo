@@ -8,6 +8,7 @@ import '../models/blog_framework.dart';
 import '../models/repo_config.dart';
 import '../models/template_item.dart';
 import '../services/ai_service.dart';
+import '../core/ai/ai_session_manager.dart';
 import '../services/github_service.dart';
 import '../services/image_service.dart';
 import '../services/storage_service.dart';
@@ -372,7 +373,7 @@ class _EditorScreenState extends State<EditorScreen> {
       final reply = await widget.aiService.complete(
         settings: widget.settings,
         userPrompt: before.trim(),
-        systemPrompt: '你是中文 Markdown 写作助手，请自然续写以下内容，保持原文语气和格式，只输出续写部分。',
+        systemPrompt: AiSessionManager.continueWritePrompt,
       );
       if (reply.isEmpty) return;
       _insertText('\n\n${reply.trim()}');

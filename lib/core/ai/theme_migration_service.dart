@@ -43,7 +43,7 @@ $sourceCode
 
     final result = await _aiService.complete(
       settings: settings,
-      systemPrompt: '你是静态博客主题分析专家。只输出 JSON，不要解释。',
+      systemPrompt: AiSessionManager.themeAnalysisPrompt,
       userPrompt: prompt,
       temperature: 0.3,
     );
