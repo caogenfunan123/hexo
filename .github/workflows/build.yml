@@ -47,7 +47,17 @@ jobs:
           cache: true
 
       - run: flutter pub get
-      - run: flutter build apk --release
+      - name: Build APK
+        id: build
+        run: |
+          flutter build apk --release 2>&1 | tee /tmp/build.log
+          BUILD_EXIT=${PIPESTATUS[0]}
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "::error::Build failed. Check logs for details."
+            echo "=== Last 80 lines of output ==="
+            tail -80 /tmp/build.log
+            exit $BUILD_EXIT
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
