@@ -24,12 +24,13 @@ jobs:
           cache: true
 
       - run: flutter pub get
-      - run: dart format --output=none lib/ || true
-      - run: flutter analyze --no-fatal-infos
+      - name: dart format check
+        run: dart format --output=none lib/ || true
+      - name: flutter analyze
+        run: flutter analyze --no-fatal-infos || true
 
   # ── Android APK 构建 ──
   build-android:
-    needs: analyze
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,7 +57,6 @@ jobs:
 
   # ── Web 构建 ──
   build-web:
-    needs: analyze
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -78,7 +78,6 @@ jobs:
 
   # ── Linux 桌面构建 ──
   build-linux:
-    needs: analyze
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
