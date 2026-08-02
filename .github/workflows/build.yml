@@ -47,15 +47,23 @@ jobs:
           cache: true
 
       - run: flutter pub get
+
+      - name: Setup Android SDK
+        run: |
+          echo "FLUTTER_ROOT=$FLUTTER_ROOT"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          flutter doctor --verbose 2>&1 | head -50
+
       - name: Build APK
         id: build
         run: |
-          flutter build apk --release 2>&1 | tee /tmp/build.log
+          flutter build apk --release --verbose 2>&1 | tee /tmp/build.log
           BUILD_EXIT=${PIPESTATUS[0]}
           if [ $BUILD_EXIT -ne 0 ]; then
             echo "::error::Build failed. Check logs for details."
-            echo "=== Last 80 lines of output ==="
-            tail -80 /tmp/build.log
+            echo "=== Last 100 lines of output ==="
+            tail -100 /tmp/build.log
             exit $BUILD_EXIT
           fi
 
