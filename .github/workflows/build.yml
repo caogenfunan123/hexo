@@ -29,14 +29,14 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build APK (debug)
-        run: flutter build apk --debug
+      - name: Build APK (release)
+        run: flutter build apk --release
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: hexo-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -47,5 +47,5 @@ jobs:
             自动构建 — 提交 `${{ github.sha }}`
 
             [查看构建详情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          files: build/app/outputs/flutter-apk/app-debug.apk
+          files: build/app/outputs/flutter-apk/app-release.apk
           prerelease: true
