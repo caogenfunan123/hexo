@@ -158,9 +158,7 @@ $generatedContent
 
   static void _checkCodeBlockClosure(String content, List<String> issues) {
     int openBlocks = 0;
-    int lineNum = 0;
     for (final line in content.split('\n')) {
-      lineNum++;
       if (line.trim().startsWith('```')) {
         if (openBlocks == 0) {
           openBlocks++;
@@ -176,9 +174,6 @@ $generatedContent
 
   static void _checkEJSTags(String content, List<String> issues) {
     // 检查 EJS 标签闭合
-    final ejsOpen = RegExp(r'<%[^%>]*%>').allMatches(content).length;
-    final ejsClose = RegExp(r'<%[^%>]*%>').allMatches(content).length;
-    // 实际上 EJS 标签是自闭合的 <% ... %>，但检查嵌套
     int depth = 0;
     for (final line in content.split('\n')) {
       final opens = '<%'.allMatches(line).length;

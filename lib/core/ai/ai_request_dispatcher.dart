@@ -118,13 +118,14 @@ class AiRequestDispatcher {
       } catch (e) {
         lastError = e.toString();
         attemptIndex++;
+        stopwatch.stop();
 
         // 记录失败
         if (currentModel != null) {
           _modelManager.recordCall(
             currentModel.modelId,
             currentModel.apiBase,
-            currentModel.timeoutSecond * 1000,
+            stopwatch.elapsedMilliseconds,
             false,
           );
         }
@@ -184,6 +185,8 @@ class AiRequestDispatcher {
     for (final m in messages) {
       if (m['role'] == 'system') continue; // system 单独传
       if (m['role'] == 'user') {
+        buf.writeln(m['content']);
+      } else if (m['role'] == 'assistant') {
         buf.writeln(m['content']);
       }
     }

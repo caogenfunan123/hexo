@@ -1,5 +1,3 @@
-import '../../models/repo_config.dart';
-
 /// AI 会话类型
 enum AiSessionType {
   article, // 博文编辑
