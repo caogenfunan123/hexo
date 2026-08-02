@@ -10,6 +10,10 @@ import '../core/ai/ai_model_manager.dart';
 import '../core/ai/ai_request_dispatcher.dart';
 import '../core/ai/ai_self_checker.dart';
 import '../core/ai/ai_session_manager.dart';
+import '../core/tools/instruction_parser.dart';
+import '../core/tools/mcp_runtime.dart';
+import '../core/tools/skill_manager.dart';
+import '../core/tools/tool_registry.dart';
 import '../models/app_settings.dart';
 import '../models/repo_config.dart';
 import '../services/ai_service.dart';
@@ -108,14 +112,31 @@ class AiChatPanelState extends State<AiChatPanel> {
   StringBuffer _streamBuffer = StringBuffer();
   int? _streamingMsgIndex;
 
+  /// 工具系统
+  late final SkillManager _skillManager;
+  late final McpRuntime _mcpRuntime;
+  bool _toolsInitialized = false;
+
   List<ChatMessage> get messages => _messages;
 
   @override
   void initState() {
     super.initState();
+    _skillManager = SkillManager();
+    _mcpRuntime = McpRuntime(_skillManager, ToolRegistry());
+    _initTools();
     _loadModels();
     _initSession();
     _loadHistory();
+  }
+
+  Future<void> _initTools() async {
+    final storage = widget.storageService;
+    if (storage == null) return;
+    try {
+      await _skillManager.init(await storage.root);
+      _toolsInitialized = true;
+    } catch (_) {}
   }
 
   String get _chatFileKey => 'ai_chat_${widget.sessionType.name}.json';
@@ -190,6 +211,14 @@ class AiChatPanelState extends State<AiChatPanel> {
   }
 
   void _initSession() {
+    // 构建已保存工具清单
+    String? savedToolsList;
+    if (_toolsInitialized) {
+      final tools = _skillManager.allTools;
+      if (tools.isNotEmpty) {
+        savedToolsList = tools.map((t) => '${t.name}(${t.id})').join(', ');
+      }
+    }
     widget.dispatcher.setSystemPrompt(
       AiSessionManager.getSystemPrompt(
         widget.sessionType,
@@ -198,6 +227,7 @@ class AiChatPanelState extends State<AiChatPanel> {
         pagesPath: widget.pagesPath,
         themesPath: widget.themesPath,
         targetFramework: widget.targetFramework,
+        savedToolsList: savedToolsList,
       ),
     );
   }
@@ -372,6 +402,8 @@ class AiChatPanelState extends State<AiChatPanel> {
       if (files.isNotEmpty) {
         _parsedFiles[idx] = files;
       }
+      // 解析指令（【NEW_MCP】【NEW_SKILL】【联网搜索】等）
+      _handleInstructions(content, idx);
       // 持久化
       _saveHistory();
       // 自检
@@ -388,6 +420,7 @@ class AiChatPanelState extends State<AiChatPanel> {
         });
       }
     }
+    if (mounted)
     setState(() {
       _busy = false;
       _isThinking = false;
@@ -398,11 +431,85 @@ class AiChatPanelState extends State<AiChatPanel> {
     _scrollToBottom();
   }
 
+  /// 处理 AI 输出中的指令标记
+  Future<void> _handleInstructions(String content, int msgIndex) async {
+    if (!InstructionParser.hasInstructions(content)) return;
+
+    final instructions = InstructionParser.parseAll(content);
+    if (instructions.isEmpty) return;
+
+    for (final inst in instructions) {
+      switch (inst.type) {
+        case InstructionType.webSearch:
+          final result = await _mcpRuntime.executeInstruction(inst);
+          if (result.success && result.data != null) {
+            _addSystemMessage('🔍 [联网搜索] ${inst.queryText}\n\n${result.data!['result']}');
+          } else {
+            _addSystemMessage('🔍 [联网搜索] 失败: ${result.error ?? "未知错误"}');
+          }
+          break;
+
+        case InstructionType.webFetch:
+          final result = await _mcpRuntime.executeInstruction(inst);
+          if (result.success && result.data != null) {
+            final fetchResult = result.data!['result']?.toString() ?? '';
+            final truncated = fetchResult.length > 2000
+                ? '${fetchResult.substring(0, 2000)}\n\n...(内容已截断)'
+                : fetchResult;
+            _addSystemMessage('🌐 [网页抓取] ${inst.queryText}\n\n$truncated');
+          } else {
+            _addSystemMessage('🌐 [网页抓取] 失败: ${result.error ?? "未知错误"}');
+          }
+          break;
+
+        case InstructionType.newMcp:
+          final result = await _mcpRuntime.executeInstruction(inst);
+          if (result.success) {
+            _addSystemMessage('✅ ${result.message}');
+          } else {
+            _addSystemMessage('❌ ${result.message}: ${result.error}');
+          }
+          break;
+
+        case InstructionType.newSkill:
+          final result = await _mcpRuntime.executeInstruction(inst);
+          if (result.success) {
+            _addSystemMessage('✅ ${result.message}');
+          } else {
+            _addSystemMessage('❌ ${result.message}: ${result.error}');
+          }
+          break;
+
+        case InstructionType.mcpCall:
+          final result = await _mcpRuntime.executeInstruction(inst);
+          if (result.success) {
+            _addSystemMessage('🔧 [MCP] ${result.message}');
+          } else {
+            _addSystemMessage('❌ [MCP] ${result.message}');
+          }
+          break;
+
+        case InstructionType.skillRun:
+          final result = await _mcpRuntime.executeInstruction(inst);
+          if (result.success) {
+            _addSystemMessage('🚀 [Skill] ${result.message}');
+          } else {
+            _addSystemMessage('❌ [Skill] ${result.message}');
+          }
+          break;
+
+        default:
+          break;
+      }
+    }
+  }
+
   void _scrollToBottom() {
     // 双重 postFrame 回调：确保新消息及其按钮（复制/写入）完成布局后再滚动
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_scrollCtrl.hasClients) return;
+        if (!mounted || !_scrollCtrl.hasClients) return;
         final max = _scrollCtrl.position.maxScrollExtent;
         if (max > 0) {
           _scrollCtrl.animateTo(

@@ -3,6 +3,9 @@ import 'dart:async';
 import '../../models/ai_profile.dart';
 import '../../models/app_settings.dart';
 import '../../services/ai_service.dart';
+import '../tools/tool_entity.dart';
+import '../tools/tool_executor.dart';
+import '../tools/tool_registry.dart';
 import 'ai_model_entity.dart';
 import 'ai_model_manager.dart';
 
@@ -304,6 +307,103 @@ class AiRequestDispatcher {
       }
     }
     return buf.toString();
+  }
+
+  /// 带工具调用的分发（支持 Function Calling）
+  /// 返回完整的 AI 回复文本（自动处理工具调用循环）
+  Future<String> dispatchWithTools({
+    required AppSettings settings,
+    required String userMessage,
+    AiModelEntity? preferredModel,
+    double temperature = 0.7,
+    int maxToolRounds = 5,
+    void Function(String toolName, String status)? onToolStatus,
+  }) async {
+    addUserMessage(userMessage);
+
+    AiProfile? profile;
+    if (preferredModel != null) {
+      profile = AiProfile(
+        id: preferredModel.modelId,
+        name: preferredModel.modelName,
+        baseUrl: preferredModel.apiBase,
+        apiKey: preferredModel.apiKey,
+        model: preferredModel.modelId,
+        apiPath: preferredModel.apiPath,
+        useBearer: preferredModel.useBearer,
+      );
+    }
+
+    final toolRegistry = ToolRegistry();
+    final toolExecutor = ToolExecutor();
+    final tools = toolRegistry.enabledTools.isNotEmpty
+        ? toolRegistry.toOpenAiTools()
+        : null;
+
+    // 构建消息列表（使用 Map<String, dynamic> 以支持 tool_calls）
+    final messages = <Map<String, dynamic>>[
+      {'role': 'system', 'content': _systemPrompt},
+      ..._chatHistory.map((m) => Map<String, dynamic>.from(m)),
+    ];
+
+    var remainingRounds = maxToolRounds;
+    final fullContent = StringBuffer();
+
+    while (remainingRounds > 0) {
+      remainingRounds--;
+
+      final response = await _aiService.completeWithTools(
+        settings: settings,
+        systemPrompt: _systemPrompt,
+        messages: messages,
+        profile: profile,
+        tools: tools,
+        temperature: temperature,
+      );
+
+      // 如果有工具调用
+      if (response.hasToolCalls) {
+        for (final tc in response.toolCalls!) {
+          onToolStatus?.call(tc.toolId, '执行中...');
+        }
+
+        // 执行工具
+        final results = await toolExecutor.executeAll(response.toolCalls!);
+
+        // 格式化工具结果
+        final toolResults = ToolExecutor.formatToolResultsForAi(
+          response.toolCalls!,
+          results,
+        );
+
+        for (var i = 0; i < results.length && i < response.toolCalls!.length; i++) {
+          final r = results[i];
+          onToolStatus?.call(
+            r.toolId,
+            r.success ? '完成' : '失败: ${r.error}',
+          );
+        }
+
+        // 更新消息列表
+        messages.clear();
+        messages.addAll(response.allMessages);
+        messages.addAll(toolResults);
+
+        continue;
+      }
+
+      // 没有工具调用，返回纯文本
+      if (response.content != null && response.content!.isNotEmpty) {
+        fullContent.write(response.content);
+      }
+      break;
+    }
+
+    final result = fullContent.toString();
+    if (result.isNotEmpty) {
+      addAssistantMessage(result);
+    }
+    return result;
   }
 }
 

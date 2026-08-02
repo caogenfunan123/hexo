@@ -44,20 +44,22 @@ class AiArticleChatScreen extends StatelessWidget {
     final repo = activeRepo;
     final fw = repo?.frameworkId;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(isPage ? 'AI 页面创作' : 'AI 博文创作'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            tooltip: '清空对话',
-            onPressed: () {
-              // Handled via GlobalKey
-            },
-          ),
-        ],
-      ),
-      body: AiChatPanel(
+    return PopScope(
+      canPop: true,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(isPage ? 'AI 页面创作' : 'AI 博文创作'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: '清空对话',
+              onPressed: () {
+                // Handled via GlobalKey
+              },
+            ),
+          ],
+        ),
+        body: AiChatPanel(
         settings: settings,
         aiService: aiService,
         modelManager: modelManager,
@@ -74,6 +76,7 @@ class AiArticleChatScreen extends StatelessWidget {
             ? '欢迎使用 AI 页面创作助手！\n\n你可以直接告诉我：\n• 创建关于我页面\n• 创建友链页面\n• 修改页面文案\n• 调整排版布局\n\n我会根据仓库框架「${fw ?? "未指定"}」自动生成符合规范的页面源码。'
             : '欢迎使用 AI 博文创作助手！\n\n你可以直接告诉我：\n• 新建文章：标题xxx，内容方向xxx\n• 优化全文、精简文字\n• 补充标签、分类、摘要\n• SEO优化标题与描述\n\n我会根据仓库框架「${fw ?? "未指定"}」自动生成符合规范的博文。',
         onSettingsChanged: onSettingsChanged,
+      ),
       ),
     );
   }

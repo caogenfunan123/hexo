@@ -209,7 +209,9 @@ class _SiteEditorScreenState extends State<SiteEditorScreen> {
         body: Center(child: CircularProgressIndicator()),
       );
     }
-    return Scaffold(
+    return PopScope(
+      canPop: true,
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('网站页面编辑'),
         actions: [
@@ -331,6 +333,7 @@ class _SiteEditorScreenState extends State<SiteEditorScreen> {
             const SizedBox(height: 32),
           ],
         ),
+      ),
       ),
     );
   }

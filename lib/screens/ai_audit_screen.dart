@@ -41,7 +41,9 @@ class AiAuditScreen extends StatelessWidget {
     final repo = activeRepo;
     final fw = repo?.frameworkId;
 
-    return Scaffold(
+    return PopScope(
+      canPop: true,
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('AI 站点巡检'),
         actions: [
@@ -79,6 +81,7 @@ class AiAuditScreen extends StatelessWidget {
             '• 给出优化建议\n\n'
             '当前框架：${fw ?? "未指定"}',
         onSettingsChanged: onSettingsChanged,
+      ),
       ),
     );
   }

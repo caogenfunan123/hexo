@@ -438,7 +438,9 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
     final repo = widget.activeRepo ?? (widget.repos.isNotEmpty ? widget.repos.first : null);
     final fw = repo != null ? BlogFramework.byId(repo.frameworkId) : null;
 
-    return Scaffold(
+    return PopScope(
+      canPop: true,
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('AI 主题迁移'),
         actions: [
@@ -598,6 +600,7 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
               ),
           ];
         },
+      ),
       ),
     );
   }

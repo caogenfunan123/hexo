@@ -344,7 +344,9 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Scaffold(
+    return PopScope(
+      canPop: true,
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('AI 模型管理'),
         actions: [
@@ -510,6 +512,7 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                         );
                       },
                     ),
+      ),
     );
   }
 }

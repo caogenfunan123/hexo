@@ -37,6 +37,8 @@ import 'screens/settings_screen.dart';
 import 'screens/site_editor_screen.dart';
 import 'screens/template_manager_screen.dart';
 import 'screens/theme_migration_screen.dart';
+import 'screens/tool_library_screen.dart';
+import 'core/tools/skill_manager.dart';
 import 'services/ai_service.dart';
 import 'services/github_service.dart';
 import 'services/image_service.dart';
@@ -114,6 +116,7 @@ class _RootShellState extends State<RootShell> {
   late final aiDispatcher = AiRequestDispatcher(aiService, aiModelManager);
   late final themeMigrationService = ThemeMigrationService(aiService, github);
   late final aiSelfChecker = AiSelfChecker(aiService);
+  final skillManager = SkillManager();
   final rssService = RssService();
   final webdavService = WebDavService();
   final sessionService = SessionService();
@@ -308,6 +311,10 @@ class _RootShellState extends State<RootShell> {
     } catch (_) {
       if (mounted) setState(() => loading = false);
     }
+    // 初始化工具系统
+    try {
+      await skillManager.init(await storage.root);
+    } catch (_) {}
   }
 
   AppSettings _ensureGithubTokensFromLegacy(
@@ -342,7 +349,10 @@ class _RootShellState extends State<RootShell> {
       _stopAutoSave();
     }
     setState(() => _currentPage = page);
-    Navigator.pop(context); // close drawer
+    // 仅在抽屉打开时才关闭抽屉，避免对根路由执行无意义的 pop
+    if (_scaffoldKey.currentState?.isDrawerOpen == true) {
+      Navigator.pop(context);
+    }
     // 进入编辑器时启动自动保存
     if (page == 0) {
       _startAutoSave();
@@ -3034,9 +3044,8 @@ class _RootShellState extends State<RootShell> {
           await _onCloseEditor();
         } else if (_currentPage == 9) {
           _onCloseReader();
-        } else {
-          if (mounted) Navigator.of(context).maybePop();
         }
+        // 其他页面：canPop=false 已阻止退出，不做额外处理
       },
       child: Scaffold(
         key: _scaffoldKey,
@@ -3219,6 +3228,7 @@ class _RootShellState extends State<RootShell> {
                   _drawerItem(10, Icons.auto_fix_high, 'AI 主题迁移'),
                   _drawerAction(Icons.fact_check_outlined, 'AI 站点巡检', _showAiAudit),
                   _drawerAction(Icons.psychology_outlined, 'AI 模型管理', _showAiModelManager),
+                  _drawerAction(Icons.build_outlined, '工具库', _showToolLibrary),
                   const SizedBox(height: 8),
                   _drawerSection('系统'),
                   _drawerItem(8, Icons.settings_outlined, '设置'),
@@ -4264,6 +4274,14 @@ class _RootShellState extends State<RootShell> {
           settings: settings,
           onSettingsChanged: _updateSettings,
         ),
+      ),
+    );
+  }
+
+  void _showToolLibrary() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ToolLibraryScreen(skillManager: skillManager),
       ),
     );
   }

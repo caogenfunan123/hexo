@@ -344,7 +344,9 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: true,
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('模板管理'),
         actions: [
@@ -536,6 +538,7 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

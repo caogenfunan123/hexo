@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../core/tools/tool_entity.dart';
 import '../models/ai_profile.dart';
 import '../models/app_settings.dart';
 
@@ -334,6 +335,189 @@ class AiService {
     }
   }
 
+  /// 带工具调用的请求（支持 Function Calling）
+  /// 返回 {content, toolCalls} —— 如果 AI 调用了工具，toolCalls 非空
+  Future<ToolCallResponse> completeWithTools({
+    required AppSettings settings,
+    required String systemPrompt,
+    required List<Map<String, dynamic>> messages,
+    AiProfile? profile,
+    List<Map<String, dynamic>>? tools,
+    double temperature = 0.7,
+    int maxToolRounds = 5,
+  }) async {
+    final p = resolveProfile(settings, override: profile);
+    if (p.apiKey.isEmpty) {
+      throw Exception('请先在设置中配置 AI 中转站并填写 API Key');
+    }
+    if (p.model.isEmpty) {
+      throw Exception('请先选择模型');
+    }
+
+    final url = _chatUrl(p);
+    final allMessages = <Map<String, dynamic>>[
+      {'role': 'system', 'content': systemPrompt},
+      ...messages,
+    ];
+
+    var remainingRounds = maxToolRounds;
+    List<ToolCallRequest>? lastToolCalls;
+
+    while (remainingRounds > 0) {
+      remainingRounds--;
+
+      final body = <String, dynamic>{
+        'model': p.model,
+        'messages': allMessages,
+        'temperature': temperature,
+        'stream': false,
+      };
+
+      if (tools != null && tools.isNotEmpty) {
+        body['tools'] = tools;
+        body['tool_choice'] = 'auto';
+      }
+
+      final text = await _http(
+        method: 'POST',
+        url: url,
+        apiKey: p.apiKey,
+        useBearer: p.useBearer,
+        body: body,
+      );
+
+      final data = jsonDecode(text);
+      if (data is! Map) {
+        throw Exception('AI 返回格式异常');
+      }
+
+      final choices = data['choices'] as List?;
+      if (choices == null || choices.isEmpty) {
+        throw Exception('AI 返回无 choices');
+      }
+
+      final choice = choices.first as Map;
+      final message = choice['message'] as Map?;
+
+      if (message == null) {
+        // 兼容非标准格式
+        if (choice['text'] != null) {
+          return ToolCallResponse(content: choice['text'].toString());
+        }
+        throw Exception('AI 返回格式异常: ${text.length > 300 ? text.substring(0, 300) : text}');
+      }
+
+      // 检查是否有 tool_calls
+      final toolCallsRaw = message['tool_calls'];
+      if (toolCallsRaw is List && toolCallsRaw.isNotEmpty) {
+        lastToolCalls = toolCallsRaw
+            .whereType<Map>()
+            .map((tc) => ToolCallRequest.fromOpenAi(Map<String, dynamic>.from(tc)))
+            .toList();
+
+        // 将 assistant 消息（含 tool_calls）加入历史
+        allMessages.add(message);
+
+        return ToolCallResponse(
+          content: message['content']?.toString(),
+          toolCalls: lastToolCalls,
+          allMessages: allMessages,
+        );
+      }
+
+      // 没有工具调用，返回纯文本
+      final content = message['content']?.toString();
+      if (content != null && content.isNotEmpty) {
+        return ToolCallResponse(content: content, allMessages: allMessages);
+      }
+
+      // 如果 content 为空且没有 tool_calls，可能是结束了
+      final finishReason = choice['finish_reason']?.toString();
+      if (finishReason == 'stop') {
+        return ToolCallResponse(content: '', allMessages: allMessages);
+      }
+
+      throw Exception('AI 返回空内容');
+    }
+
+    return ToolCallResponse(
+      content: '',
+      toolCalls: lastToolCalls,
+      allMessages: allMessages,
+    );
+  }
+
+  /// 将工具执行结果发回 AI 并获取最终回复
+  Future<ToolCallResponse> submitToolResults({
+    required AppSettings settings,
+    required List<Map<String, dynamic>> messages,
+    required List<Map<String, dynamic>> toolResults,
+    AiProfile? profile,
+    List<Map<String, dynamic>>? tools,
+    double temperature = 0.7,
+  }) async {
+    final p = resolveProfile(settings, override: profile);
+    if (p.apiKey.isEmpty) {
+      throw Exception('请先配置 API Key');
+    }
+    if (p.model.isEmpty) {
+      throw Exception('请先选择模型');
+    }
+
+    final url = _chatUrl(p);
+    final allMessages = [...messages, ...toolResults];
+
+    final body = <String, dynamic>{
+      'model': p.model,
+      'messages': allMessages,
+      'temperature': temperature,
+      'stream': false,
+    };
+
+    if (tools != null && tools.isNotEmpty) {
+      body['tools'] = tools;
+      body['tool_choice'] = 'auto';
+    }
+
+    final text = await _http(
+      method: 'POST',
+      url: url,
+      apiKey: p.apiKey,
+      useBearer: p.useBearer,
+      body: body,
+    );
+
+    final data = jsonDecode(text);
+    if (data is! Map) {
+      throw Exception('AI 返回格式异常');
+    }
+
+    final choices = data['choices'] as List?;
+    if (choices == null || choices.isEmpty) {
+      throw Exception('AI 返回无 choices');
+    }
+
+    final choice = choices.first as Map;
+    final message = choice['message'] as Map?;
+    final content = message?['content']?.toString() ?? choice['text']?.toString() ?? '';
+
+    // 检查是否还有 tool_calls
+    final toolCallsRaw = message?['tool_calls'];
+    List<ToolCallRequest>? moreToolCalls;
+    if (toolCallsRaw is List && toolCallsRaw.isNotEmpty) {
+      moreToolCalls = toolCallsRaw
+          .whereType<Map>()
+          .map((tc) => ToolCallRequest.fromOpenAi(Map<String, dynamic>.from(tc)))
+          .toList();
+    }
+
+    return ToolCallResponse(
+      content: content,
+      toolCalls: moreToolCalls,
+      allMessages: allMessages,
+    );
+  }
+
   Future<String> polish(AppSettings s, String content) => complete(
         settings: s,
         systemPrompt:
@@ -427,4 +611,19 @@ class AiService {
       userPrompt: '请转换以下 FrontMatter：\n\n$frontMatter',
     );
   }
+}
+
+/// 工具调用响应
+class ToolCallResponse {
+  final String? content;
+  final List<ToolCallRequest>? toolCalls;
+  final List<Map<String, dynamic>> allMessages;
+
+  const ToolCallResponse({
+    this.content,
+    this.toolCalls,
+    this.allMessages = const [],
+  });
+
+  bool get hasToolCalls => toolCalls != null && toolCalls!.isNotEmpty;
 }

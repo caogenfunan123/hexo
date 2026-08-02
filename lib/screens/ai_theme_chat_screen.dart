@@ -41,7 +41,9 @@ class AiThemeChatScreen extends StatelessWidget {
     final repo = activeRepo;
     final fw = repo?.frameworkId;
 
-    return Scaffold(
+    return PopScope(
+      canPop: true,
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('AI 主题开发'),
         actions: [
@@ -77,6 +79,7 @@ class AiThemeChatScreen extends StatelessWidget {
             '• 分析当前代码构建风险\n\n'
             '当前框架：${fw ?? "未指定"} | 主题目录：themes',
         onSettingsChanged: onSettingsChanged,
+      ),
       ),
     );
   }
