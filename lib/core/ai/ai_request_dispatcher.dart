@@ -83,6 +83,7 @@ class AiRequestDispatcher {
           ..._chatHistory,
         ];
 
+        final stopwatch = Stopwatch()..start();
         final result = await _aiService
             .complete(
               settings: settings,
@@ -94,6 +95,17 @@ class AiRequestDispatcher {
             .timeout(
               Duration(seconds: currentModel?.timeoutSecond ?? 30),
             );
+        stopwatch.stop();
+
+        // 记录响应速度
+        if (currentModel != null) {
+          _modelManager.recordCall(
+            currentModel.modelId,
+            currentModel.apiBase,
+            stopwatch.elapsedMilliseconds,
+            true,
+          );
+        }
 
         addAssistantMessage(result);
         return DispatchResult(
@@ -101,10 +113,21 @@ class AiRequestDispatcher {
           usedModel: currentModel?.modelId ?? (profile?.model ?? 'default'),
           switched: attemptIndex > 0,
           attempts: attemptIndex + 1,
+          durationMs: stopwatch.elapsedMilliseconds,
         );
       } catch (e) {
         lastError = e.toString();
         attemptIndex++;
+
+        // 记录失败
+        if (currentModel != null) {
+          _modelManager.recordCall(
+            currentModel.modelId,
+            currentModel.apiBase,
+            currentModel.timeoutSecond * 1000,
+            false,
+          );
+        }
 
         // 判断是否可重试
         if (isRetryableError != null && !isRetryableError(lastError!)) {
@@ -173,12 +196,14 @@ class DispatchResult {
   final String usedModel;
   final bool switched;
   final int attempts;
+  final int durationMs;
 
   const DispatchResult({
     required this.content,
     required this.usedModel,
     this.switched = false,
     this.attempts = 1,
+    this.durationMs = 0,
   });
 }
 

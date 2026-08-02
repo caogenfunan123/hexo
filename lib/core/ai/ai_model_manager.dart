@@ -112,6 +112,54 @@ class AiModelManager {
         .toList();
   }
 
+  // ── 响应速度统计 ──
+
+  static const _statsFile = 'ai_model_stats.json';
+
+  Future<Map<String, ModelStats>> loadStats() async {
+    try {
+      final f = File('${(await _storage.root).path}/$_statsFile');
+      if (!await f.exists()) return {};
+      final text = await f.readAsString();
+      if (text.trim().isEmpty) return {};
+      final list = jsonDecode(text);
+      if (list is! List) return {};
+      final map = <String, ModelStats>{};
+      for (final e in list) {
+        if (e is Map) {
+          final s = ModelStats.fromJson(Map<String, dynamic>.from(e));
+          map['${s.apiBase}|${s.modelId}'] = s;
+        }
+      }
+      return map;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> saveStats(Map<String, ModelStats> stats) async {
+    final f = File('${(await _storage.root).path}/$_statsFile');
+    await f.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(
+        stats.values.map((e) => e.toJson()).toList(),
+      ),
+    );
+  }
+
+  Future<ModelStats?> getStatsFor(String modelId, String apiBase) async {
+    final stats = await loadStats();
+    return stats['$apiBase|$modelId'];
+  }
+
+  Future<void> recordCall(String modelId, String apiBase, int durationMs, bool success) async {
+    final stats = await loadStats();
+    final key = '$apiBase|$modelId';
+    final existing = stats[key];
+    stats[key] = (existing ?? ModelStats(modelId: modelId, apiBase: apiBase))
+        .recordCall(durationMs, success);
+    await saveStats(stats);
+  }
+
   /// 批量拉取中转站模型列表
   Future<List<AiModelEntity>> fetchModelsFromProxy({
     required String apiBase,

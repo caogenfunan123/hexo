@@ -27,6 +27,7 @@ class AiModelManagerScreen extends StatefulWidget {
 
 class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
   List<AiModelEntity> _models = [];
+  Map<String, ModelStats> _stats = {};
   bool _loading = true;
   String? _error;
 
@@ -43,6 +44,7 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
     });
     try {
       _models = await widget.modelManager.loadAll();
+      _stats = await widget.modelManager.loadStats();
     } catch (e) {
       _error = e.toString();
     }
@@ -410,6 +412,8 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                       itemCount: _models.length,
                       itemBuilder: (ctx, i) {
                         final m = _models[i];
+                        final statKey = '${m.apiBase}|${m.modelId}';
+                        final stat = _stats[statKey];
                         return Card(
                           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                           child: ListTile(
@@ -430,11 +434,48 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                                 color: m.enable ? null : cs.outline,
                               ),
                             ),
-                            subtitle: Text(
-                              m.modelId,
-                              style: TextStyle(fontSize: 12, color: cs.outline),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  m.modelId,
+                                  style: TextStyle(fontSize: 12, color: cs.outline),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (stat != null && stat.totalCalls > 0)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.speed, size: 12, color: cs.primary),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          '${stat.avgLabel}  ',
+                                          style: TextStyle(fontSize: 11, color: cs.primary),
+                                        ),
+                                        Icon(Icons.check_circle_outline, size: 12, color: Colors.green),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          stat.successLabel,
+                                          style: const TextStyle(fontSize: 11, color: Colors.green),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '${stat.totalCalls}次',
+                                          style: TextStyle(fontSize: 11, color: cs.outline),
+                                        ),
+                                        if (stat.fastestMs > 0) ...[
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '最快${stat.fastestMs}ms',
+                                            style: TextStyle(fontSize: 11, color: cs.outline),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                              ],
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,

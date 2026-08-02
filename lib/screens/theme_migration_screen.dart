@@ -64,6 +64,11 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
   bool _selfCheckEnabled = true;
   int _currentStep = 0; // 0=输入, 1=分析, 2=迁移中, 3=交互式微调
 
+  // 文件差异预览 & 选择性迁移
+  Set<String> _selectedFilePaths = {};
+  bool _showDiffPreview = false;
+  int? _previewFileIndex;
+
   @override
   void initState() {
     super.initState();
@@ -203,6 +208,9 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
         themeName: themeName,
       );
 
+      // 默认全选所有文件
+      _selectedFilePaths = _migrationResult!.files.map((f) => f.path).toSet();
+
       setState(() {
         _status = '迁移完成！共 ${_migrationResult!.files.length} 个文件';
         _currentStep = 3;
@@ -210,14 +218,10 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
 
       _addAssistantMessage(
         '✅ 主题迁移完成！\n\n'
-        '生成文件 ${_migrationResult!.files.length} 个：\n'
+        '生成文件 ${_migrationResult!.files.length} 个（已全选）：\n'
         '${_migrationResult!.files.map((f) => '• ${f.path}').join('\n')}\n\n'
-        '现在可以继续交互式微调，例如：\n'
-        '• 调整导航栏样式\n'
-        '• 增加暗色模式\n'
-        '• 移除不需要的模块\n'
-        '• 修改配色方案\n\n'
-        '输入「确认写入」将文件写入仓库 themes/$themeName/',
+        '点击右上角 📋 按钮预览文件差异并选择性迁移，\n'
+        '或继续交互式微调后写入。',
       );
 
       // Step 4: Self-check
@@ -307,12 +311,26 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
   Future<void> _writeFiles() async {
     if (_migrationResult == null) return;
 
+    final selectedFiles = _migrationResult!.files
+        .where((f) => _selectedFilePaths.contains(f.path))
+        .toList();
+
+    if (selectedFiles.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('没有选中任何文件')),
+        );
+      }
+      return;
+    }
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认写入主题文件'),
         content: Text(
-          '即将写入 ${_migrationResult!.files.length} 个文件到 themes/${_migrationResult!.themeName}/，\n\n'
+          '即将写入 ${selectedFiles.length} 个文件到 themes/${_migrationResult!.themeName}/，\n\n'
+          '${_selectedFilePaths.length < _migrationResult!.files.length ? '⚠️ 已取消选中 ${_migrationResult!.files.length - _selectedFilePaths.length} 个文件\n\n' : ''}'
           '⚠️ 请确保已推送仓库最新代码，建议先创建 Git 快照备份。',
         ),
         actions: [
@@ -326,12 +344,12 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
 
     setState(() {
       _busy = true;
-      _status = '正在写入文件...';
+      _status = '正在写入 ${selectedFiles.length} 个文件...';
     });
 
     try {
       final repo = widget.activeRepo ?? widget.repos.first;
-      for (final file in _migrationResult!.files) {
+      for (final file in selectedFiles) {
         await widget.githubService.putRawFile(
           repo,
           file.path,
@@ -341,19 +359,196 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
       }
 
       _addAssistantMessage(
-        '✅ 已写入 ${_migrationResult!.files.length} 个文件到 themes/${_migrationResult!.themeName}/\n\n'
+        '✅ 已写入 ${selectedFiles.length} 个文件到 themes/${_migrationResult!.themeName}/\n\n'
         '请推送仓库并在远端构建测试。如有异常，可使用「回滚主题快照」指令恢复。',
       );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已写入 ${_migrationResult!.files.length} 个文件到主题目录')),
+          SnackBar(content: Text('已写入 $selectedFiles.length 个文件到主题目录')),
         );
       }
     } catch (e) {
       _addAssistantMessage('❌ 写入失败: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _showDiffPreview() {
+    if (_migrationResult == null) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          final cs = Theme.of(ctx).colorScheme;
+          final files = _migrationResult!.files;
+          final selectedCount = _selectedFilePaths.length;
+          return DraggableScrollableSheet(
+            initialChildSize: 0.85,
+            minChildSize: 0.5,
+            maxChildSize: 0.95,
+            expand: false,
+            builder: (ctx, scrollCtrl) => Column(
+              children: [
+                // 头部
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: cs.surface,
+                    border: Border(bottom: BorderSide(color: cs.outlineVariant.withOpacity(0.3))),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.difference_outlined, color: cs.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '文件差异预览 ($selectedCount/${files.length})',
+                          style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          setSheet(() {
+                            if (selectedCount == files.length) {
+                              _selectedFilePaths.clear();
+                            } else {
+                              _selectedFilePaths = files.map((f) => f.path).toSet();
+                            }
+                          });
+                          setState(() {});
+                        },
+                        child: Text(selectedCount == files.length ? '取消全选' : '全选'),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                ),
+                // 文件列表
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollCtrl,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: files.length,
+                    itemBuilder: (ctx, i) {
+                      final file = files[i];
+                      final isSelected = _selectedFilePaths.contains(file.path);
+                      final isPreview = _previewFileIndex == i;
+                      return Column(
+                        children: [
+                          InkWell(
+                            onTap: () {
+                              setSheet(() {
+                                _previewFileIndex = _previewFileIndex == i ? null : i;
+                              });
+                              setState(() {});
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                              child: Row(
+                                children: [
+                                  Checkbox(
+                                    value: isSelected,
+                                    onChanged: (v) {
+                                      setSheet(() {
+                                        if (v == true) {
+                                          _selectedFilePaths.add(file.path);
+                                        } else {
+                                          _selectedFilePaths.remove(file.path);
+                                        }
+                                      });
+                                      setState(() {});
+                                    },
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    _fileIcon(file.path),
+                                    size: 18,
+                                    color: cs.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          file.path,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                            color: isSelected ? cs.onSurface : cs.outline,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        Text(
+                                          '${file.language} · ${file.content.length} 字符',
+                                          style: TextStyle(fontSize: 11, color: cs.outline),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Icon(
+                                    isPreview ? Icons.expand_less : Icons.expand_more,
+                                    size: 20,
+                                    color: cs.outline,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          // 展开预览
+                          if (isPreview)
+                            Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: cs.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: cs.outlineVariant.withOpacity(0.3)),
+                              ),
+                              constraints: const BoxConstraints(maxHeight: 300),
+                              child: SingleChildScrollView(
+                                child: SelectableText(
+                                  file.content,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontFamily: 'monospace',
+                                    color: cs.onSurface,
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          Divider(height: 1, color: cs.outlineVariant.withOpacity(0.2)),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  IconData _fileIcon(String path) {
+    final ext = path.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'ejs': case 'html': case 'njk': case 'liquid': return Icons.code;
+      case 'css': case 'scss': case 'less': return Icons.palette_outlined;
+      case 'js': case 'ts': case 'jsx': case 'tsx': return Icons.javascript;
+      case 'yml': case 'yaml': case 'toml': case 'json': return Icons.settings;
+      case 'md': return Icons.article_outlined;
+      default: return Icons.insert_drive_file_outlined;
     }
   }
 
@@ -397,6 +592,12 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
             tooltip: '自动自检: ${_selfCheckEnabled ? "开" : "关"}',
             onPressed: () => setState(() => _selfCheckEnabled = !_selfCheckEnabled),
           ),
+          if (_currentStep >= 3 && _migrationResult != null)
+            IconButton(
+              icon: const Icon(Icons.difference_outlined),
+              tooltip: '文件差异预览',
+              onPressed: _busy ? null : _showDiffPreview,
+            ),
           if (_currentStep >= 3 && _migrationResult != null)
             IconButton(
               icon: const Icon(Icons.save_outlined),

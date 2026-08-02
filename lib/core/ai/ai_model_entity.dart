@@ -98,3 +98,76 @@ class AiModelEntity {
 
   String get displayLabel => '$modelName · $modelId';
 }
+
+/// 模型响应速度统计
+class ModelStats {
+  final String modelId;
+  final String apiBase;
+  final int totalCalls;
+  final int totalSuccess;
+  final int totalFail;
+  final int totalDurationMs;
+  final int fastestMs;
+  final int slowestMs;
+  final DateTime lastUsedAt;
+
+  const ModelStats({
+    required this.modelId,
+    required this.apiBase,
+    this.totalCalls = 0,
+    this.totalSuccess = 0,
+    this.totalFail = 0,
+    this.totalDurationMs = 0,
+    this.fastestMs = 0,
+    this.slowestMs = 0,
+    DateTime? lastUsedAt,
+  }) : lastUsedAt = lastUsedAt ?? DateTime.now();
+
+  double get avgDurationMs =>
+      totalCalls > 0 ? totalDurationMs / totalCalls : 0;
+
+  double get successRate =>
+      totalCalls > 0 ? totalSuccess / totalCalls : 0;
+
+  String get avgLabel => '${avgDurationMs.toStringAsFixed(0)}ms';
+  String get successLabel => '${(successRate * 100).toStringAsFixed(0)}%';
+
+  ModelStats recordCall(int durationMs, bool success) {
+    return ModelStats(
+      modelId: modelId,
+      apiBase: apiBase,
+      totalCalls: totalCalls + 1,
+      totalSuccess: totalSuccess + (success ? 1 : 0),
+      totalFail: totalFail + (success ? 0 : 1),
+      totalDurationMs: totalDurationMs + durationMs,
+      fastestMs: fastestMs == 0 ? durationMs : (durationMs < fastestMs ? durationMs : fastestMs),
+      slowestMs: durationMs > slowestMs ? durationMs : slowestMs,
+      lastUsedAt: DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'modelId': modelId,
+        'apiBase': apiBase,
+        'totalCalls': totalCalls,
+        'totalSuccess': totalSuccess,
+        'totalFail': totalFail,
+        'totalDurationMs': totalDurationMs,
+        'fastestMs': fastestMs,
+        'slowestMs': slowestMs,
+        'lastUsedAt': lastUsedAt.toIso8601String(),
+      };
+
+  factory ModelStats.fromJson(Map<String, dynamic> j) => ModelStats(
+        modelId: j['modelId']?.toString() ?? '',
+        apiBase: j['apiBase']?.toString() ?? '',
+        totalCalls: (j['totalCalls'] as num?)?.toInt() ?? 0,
+        totalSuccess: (j['totalSuccess'] as num?)?.toInt() ?? 0,
+        totalFail: (j['totalFail'] as num?)?.toInt() ?? 0,
+        totalDurationMs: (j['totalDurationMs'] as num?)?.toInt() ?? 0,
+        fastestMs: (j['fastestMs'] as num?)?.toInt() ?? 0,
+        slowestMs: (j['slowestMs'] as num?)?.toInt() ?? 0,
+        lastUsedAt: DateTime.tryParse(j['lastUsedAt']?.toString() ?? '') ??
+            DateTime.now(),
+      );
+}
