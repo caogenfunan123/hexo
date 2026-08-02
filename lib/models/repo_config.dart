@@ -57,7 +57,7 @@ class RepoConfig {
   final String? defaultPageTemplateId; // 仓库默认页面模板ID
   final SyncType syncType; // 同步类型
 
-  const RepoConfig({
+  RepoConfig({
     required this.id,
     required this.name,
     required this.owner,
