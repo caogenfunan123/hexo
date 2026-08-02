@@ -22,6 +22,12 @@ class AiSessionManager {
     String? fileNameRuleDesc,
     String? targetFramework,
     String? savedToolsList,
+    // ── 动态 CMS 上下文 ──
+    bool isDynamicSite = false,
+    String? dynamicSiteType,
+    String? dynamicSiteName,
+    String? dynamicSiteUrl,
+    String? availableTools,
   }) {
     final context = _buildContext(
       blogFramework: blogFramework,
@@ -33,6 +39,11 @@ class AiSessionManager {
       fileNameRuleDesc: fileNameRuleDesc,
       targetFramework: targetFramework,
       savedToolsList: savedToolsList,
+      isDynamicSite: isDynamicSite,
+      dynamicSiteType: dynamicSiteType,
+      dynamicSiteName: dynamicSiteName,
+      dynamicSiteUrl: dynamicSiteUrl,
+      availableTools: availableTools,
     );
 
     // 加载顺序：【全局总控Prompt】+ 【场景独立Prompt】+ 运行时动态上下文
@@ -66,19 +77,38 @@ class AiSessionManager {
     String? fileNameRuleDesc,
     String? targetFramework,
     String? savedToolsList,
+    bool isDynamicSite = false,
+    String? dynamicSiteType,
+    String? dynamicSiteName,
+    String? dynamicSiteUrl,
+    String? availableTools,
   }) {
     final buf = StringBuffer();
     final now = DateTime.now();
     buf.writeln('\n=====运行时动态上下文=====');
     buf.writeln('当前日期：${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}');
-    if (blogFramework != null) buf.writeln('当前静态博客框架：$blogFramework');
+
+    // 站点类型标记
+    if (isDynamicSite) {
+      buf.writeln('当前站点类型：动态 CMS（远程 API 操作）');
+      buf.writeln('当前 CMS 平台：${dynamicSiteType ?? "未知"}');
+      buf.writeln('当前站点名称：${dynamicSiteName ?? "未设置"}');
+      buf.writeln('当前站点 URL：${dynamicSiteUrl ?? "未设置"}');
+      if (availableTools != null && availableTools.isNotEmpty) {
+        buf.writeln('可用远程工具：$availableTools');
+      }
+    } else {
+      buf.writeln('当前站点类型：静态博客（本地文件 + Git 仓库）');
+      if (blogFramework != null) buf.writeln('当前静态博客框架：$blogFramework');
+      if (postsPath != null) buf.writeln('仓库博文目录：$postsPath');
+      if (pagesPath != null) buf.writeln('仓库页面目录：$pagesPath');
+      if (themesPath != null) buf.writeln('仓库主题目录：$themesPath');
+      if (defaultPostTemplateId != null) buf.writeln('默认文章模板ID：$defaultPostTemplateId');
+      if (defaultPageTemplateId != null) buf.writeln('默认页面模板ID：$defaultPageTemplateId');
+      if (fileNameRuleDesc != null) buf.writeln('文件名规则：$fileNameRuleDesc');
+    }
+
     if (targetFramework != null) buf.writeln('目标迁移框架：$targetFramework');
-    if (postsPath != null) buf.writeln('仓库博文目录：$postsPath');
-    if (pagesPath != null) buf.writeln('仓库页面目录：$pagesPath');
-    if (themesPath != null) buf.writeln('仓库主题目录：$themesPath');
-    if (defaultPostTemplateId != null) buf.writeln('默认文章模板ID：$defaultPostTemplateId');
-    if (defaultPageTemplateId != null) buf.writeln('默认页面模板ID：$defaultPageTemplateId');
-    if (fileNameRuleDesc != null) buf.writeln('文件名规则：$fileNameRuleDesc');
     if (savedToolsList != null && savedToolsList.isNotEmpty) {
       buf.writeln('已保存工具清单：$savedToolsList');
     }
@@ -219,6 +249,46 @@ class AiSessionManager {
 - git_rollback：回滚文件到之前版本
 
 重要：你已接入GitHub仓库，可以直接通过上述工具操作文件，不需要让用户手动执行命令。
+
+## 九、动态 CMS 支持（远程博客平台操作）
+当上下文显示"当前站点类型：动态 CMS"时，你已切换到动态 CMS 操作模式。
+此模式下，你只能使用以下远程 CMS 工具，**禁止使用**文件读写、Git 操作、目录遍历等静态站点工具。
+
+### 动态 CMS 可用工具集
+#### WordPress 工具
+- wp_create_post：创建并发布文章到 WordPress（自动转换 Markdown → Gutenberg HTML）
+- wp_update_post：更新 WordPress 已有文章
+- wp_delete_post：删除 WordPress 文章（需用户确认）
+- wp_list_posts：获取 WordPress 文章列表
+- wp_test_connection：测试 WordPress 站点连接和鉴权
+
+#### Ghost 工具
+- ghost_create_post：创建并发布文章到 Ghost（自动转换 Markdown → Mobiledoc JSON）
+- ghost_update_post：更新 Ghost 已有文章
+- ghost_delete_post：删除 Ghost 文章
+- ghost_list_posts：获取 Ghost 文章列表
+- ghost_test_connection：测试 Ghost 站点连接和鉴权
+
+#### Typecho 工具
+- typecho_create_post：创建并发布文章到 Typecho（自动转换 Markdown → HTML）
+- typecho_update_post：更新 Typecho 已有文章
+- typecho_delete_post：删除 Typecho 文章
+- typecho_list_posts：获取 Typecho 文章列表
+- typecho_test_connection：测试 Typecho 站点连接和鉴权
+
+#### 通用工具
+- remote_media_upload：上传本地图片/媒体文件到远程 CMS
+
+### 动态 CMS 使用规则
+1. 根据当前 CMS 平台类型（WordPress/Ghost/Typecho），只调用对应平台的工具。
+   例如：WordPress 站点只调用 wp_* 工具，不要调用 ghost_* 或 typecho_* 工具。
+2. 发布文章时，title 和 content_md（Markdown 格式正文）为必填参数。
+3. status 参数：publish 表示直接发布，draft 表示保存为草稿，默认为 draft。
+4. 发表文章前，务必先自检 Markdown 内容完整性和格式正确性。
+5. 不要承诺"本地实时预览"，动态 CMS 站点发布后直接在线上查看效果。
+6. 遵守单向流转原则：Markdown 是唯一可信源，不拉取线上文章进行二次编辑。
+
+当上下文显示"当前站点类型：静态博客"时，你继续使用原有的文件读写、Git 操作等工具，**禁止使用**上述远程 CMS 工具。
 
 ## 三、跨会话功能互通规则（核心整合机制）
 四大会话体系（文章编辑 / 页面编辑 / 主题开发 / 站点巡检）工具库完全共享：
@@ -609,6 +679,11 @@ AI优先完成：基础页面布局、目录结构、基础配置迁移。
     String? defaultPageTemplateId,
     String? fileNameRuleDesc,
     String? targetFramework,
+    bool isDynamicSite = false,
+    String? dynamicSiteType,
+    String? dynamicSiteName,
+    String? dynamicSiteUrl,
+    String? availableTools,
   }) {
     return _buildContext(
       blogFramework: blogFramework,
@@ -619,6 +694,11 @@ AI优先完成：基础页面布局、目录结构、基础配置迁移。
       defaultPageTemplateId: defaultPageTemplateId,
       fileNameRuleDesc: fileNameRuleDesc,
       targetFramework: targetFramework,
+      isDynamicSite: isDynamicSite,
+      dynamicSiteType: dynamicSiteType,
+      dynamicSiteName: dynamicSiteName,
+      dynamicSiteUrl: dynamicSiteUrl,
+      availableTools: availableTools,
     );
   }
 }

@@ -285,6 +285,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 await widget.onSettingsChanged(s.copyWith(autoSaveDir: v));
               },
             ),
+            const SizedBox(height: 12),
+            _field(
+              label: '备份目录（默认 ~/.hexo_app/backup）',
+              value: s.backupDir,
+              onChanged: (v) async {
+                await widget.onSettingsChanged(s.copyWith(backupDir: v));
+              },
+            ),
           ],
           const SizedBox(height: 4),
           const Text(
@@ -347,6 +355,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (v) async {
               await widget.onSettingsChanged(s.copyWith(restoreSession: v));
             },
+          ),
+        ]),
+
+        const SizedBox(height: 20),
+        // ── 发布状态预设 ──
+        _sectionTitle('发布状态预设'),
+        const SizedBox(height: 8),
+        _settingsCard([
+          _statusPresetManager(s),
+          const Divider(height: 24),
+          const Text(
+            '自定义 CMS 发布时的可选状态。默认提供 publish（发布）、draft（草稿）、'
+            'pending（待审核）、private（私有）四种状态。',
+            style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+          ),
+        ]),
+
+        const SizedBox(height: 20),
+        // ── 网络超时设置 ──
+        _sectionTitle('网络设置'),
+        const SizedBox(height: 8),
+        _settingsCard([
+          DropdownButtonFormField<int>(
+            value: s.httpTimeoutSeconds,
+            decoration: const InputDecoration(
+              labelText: 'HTTP 请求超时',
+              prefixIcon: Icon(Icons.timer_outlined),
+            ),
+            items: const [
+              DropdownMenuItem(value: 10, child: Text('10 秒')),
+              DropdownMenuItem(value: 15, child: Text('15 秒')),
+              DropdownMenuItem(value: 30, child: Text('30 秒')),
+              DropdownMenuItem(value: 60, child: Text('60 秒')),
+              DropdownMenuItem(value: 120, child: Text('120 秒')),
+            ],
+            onChanged: (v) async {
+              if (v != null) {
+                await widget.onSettingsChanged(s.copyWith(httpTimeoutSeconds: v));
+              }
+            },
+          ),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('允许不安全的 HTTPS 证书'),
+            subtitle: const Text(
+                '开启后忽略 SSL 证书校验（适用于自签名证书站点）'),
+            value: s.allowInsecureHttps,
+            onChanged: (v) async {
+              await widget.onSettingsChanged(s.copyWith(allowInsecureHttps: v));
+            },
+          ),
+          const Divider(height: 24),
+          const Text(
+            '超时设置影响所有动态 CMS 站点（WordPress / Ghost / Typecho）的 HTTP 请求。'
+            '网络环境较差时可适当增大超时。',
+            style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
           ),
         ]),
 
@@ -655,6 +720,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
       ),
       onChanged: onChanged,
+    );
+  }
+
+  Widget _statusPresetManager(AppSettings s) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ...s.statusPresets.asMap().entries.map((entry) {
+          final idx = entry.key;
+          final status = entry.value;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    initialValue: status,
+                    decoration: InputDecoration(
+                      labelText: '状态 ${idx + 1}',
+                      prefixIcon: const Icon(Icons.label_outline, size: 18),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    onChanged: (v) async {
+                      final updated = List<String>.from(s.statusPresets);
+                      updated[idx] = v.trim();
+                      await widget.onSettingsChanged(s.copyWith(statusPresets: updated));
+                    },
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18, color: Colors.red),
+                  onPressed: s.statusPresets.length > 1
+                      ? () async {
+                          final updated = List<String>.from(s.statusPresets);
+                          updated.removeAt(idx);
+                          await widget.onSettingsChanged(s.copyWith(statusPresets: updated));
+                        }
+                      : null,
+                ),
+              ],
+            ),
+          );
+        }),
+        TextButton.icon(
+          onPressed: () async {
+            final updated = List<String>.from(s.statusPresets)..add('');
+            await widget.onSettingsChanged(s.copyWith(statusPresets: updated));
+          },
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('添加状态'),
+        ),
+      ],
     );
   }
 }

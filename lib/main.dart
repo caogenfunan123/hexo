@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import 'models/ai_profile.dart';
 import 'models/app_settings.dart';
 import 'models/article.dart';
 import 'models/blog_framework.dart';
+import 'models/blog_post.dart';
 import 'models/github_token_profile.dart';
 import 'models/repo_config.dart';
 import 'models/session_state.dart';
@@ -28,6 +30,9 @@ import 'screens/ai_theme_chat_screen.dart';
 import 'screens/article_reader_screen.dart';
 import 'screens/drafts_screen.dart';
 import 'screens/remote_screen.dart';
+import 'screens/remote_posts_screen.dart';
+import 'screens/sync_screen.dart';
+import 'screens/sync_settings_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/rss_screen.dart';
 import 'screens/history_screen.dart';
@@ -35,17 +40,28 @@ import 'screens/folder_upload_screen.dart';
 import 'screens/preview_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/site_editor_screen.dart';
+import 'screens/site_management_screen.dart';
 import 'screens/template_manager_screen.dart';
 import 'screens/theme_migration_screen.dart';
 import 'screens/tool_library_screen.dart';
+import 'screens/log_screen.dart';
 import 'core/tools/skill_manager.dart';
+import 'core/tools/remote_cms_tools.dart';
+import 'core/cancel_token.dart';
+import 'core/site_manager.dart';
+import 'core/repository/blog_repository.dart';
 import 'services/ai_service.dart';
 import 'services/github_service.dart';
 import 'services/image_service.dart';
 import 'services/rss_service.dart';
 import 'services/session_service.dart';
 import 'services/storage_service.dart';
+import 'services/cms_draft_service.dart';
 import 'services/webdav_service.dart';
+import 'services/log_service.dart';
+import 'services/sync_service.dart';
+import 'services/cloud_sync_service.dart';
+import 'services/html_to_markdown.dart';
 import 'theme/app_theme.dart';
 
 void main() {
@@ -106,7 +122,7 @@ class RootShell extends StatefulWidget {
   State<RootShell> createState() => _RootShellState();
 }
 
-class _RootShellState extends State<RootShell> {
+class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   static const _channel = MethodChannel('hexo/native');
   final storage = StorageService();
   final github = GitHubService();
@@ -120,6 +136,13 @@ class _RootShellState extends State<RootShell> {
   final rssService = RssService();
   final webdavService = WebDavService();
   final sessionService = SessionService();
+  final cmsDraftService = CmsDraftService();
+  final logService = LogService();
+  late final SyncService syncService;
+  late final CloudSyncService cloudSyncService;
+
+  /// 站点管理器：统一管理静态仓库和动态 CMS 站点
+  late SiteManager siteManager;
 
   AppSettings settings = const AppSettings();
   List<RepoConfig> repos = [];
@@ -146,6 +169,7 @@ class _RootShellState extends State<RootShell> {
   // ── 自动保存 ──
   Timer? _autoSaveTimer;
   Timer? _debounceTimer;
+  Timer? _autoSyncTimer; // 云端自动同步
   String _lastSavedContent = '';
   bool _hasUnsavedChanges = false;
 
@@ -161,6 +185,9 @@ class _RootShellState extends State<RootShell> {
   RepoConfig? _editorRepo;
   bool _editorBusy = false;
   String? _editorStatus;
+  final CancelToken _publishCancelToken = CancelToken();
+  Uint8List? _failedImageBytes; // 缓存上传失败的图片字节
+
   final FocusNode _contentFocus = FocusNode();
 
   RepoConfig? get activeRepo {
@@ -183,6 +210,19 @@ class _RootShellState extends State<RootShell> {
     return r.copyWith(token: t);
   }
 
+  /// 更新站点管理器（在 repos 或 settings 变更时调用）
+  void _updateSiteManager() {
+    final activeId = settings.effectiveActiveSiteId;
+    siteManager = SiteManager(
+      staticRepos: repos,
+      dynamicSites: settings.blogSiteConfigs,
+      appSettings: settings,
+      activeSiteId: activeId.isNotEmpty ? activeId : (activeRepo?.id ?? ''),
+    );
+    // 将站点管理器注入到工具系统
+    RemoteCmsTools.siteManager = siteManager;
+  }
+
   String get _pageTitle {
     switch (_currentPage) {
       case 0:
@@ -190,7 +230,7 @@ class _RootShellState extends State<RootShell> {
       case 1:
         return '草稿';
       case 2:
-        return '远程';
+        return siteManager.isDynamicSite ? '远程文章' : '远程';
       case 3:
         return '仪表盘';
       case 4:
@@ -207,6 +247,12 @@ class _RootShellState extends State<RootShell> {
         return '阅读';
       case 10:
         return 'AI 主题迁移';
+      case 11:
+        return '操作日志';
+      case 12:
+        return '同步状态';
+      case 13:
+        return '云同步';
       default:
         return '';
     }
@@ -215,11 +261,14 @@ class _RootShellState extends State<RootShell> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _titleCtrl = TextEditingController();
     _contentCtrl = TextEditingController();
     _tagsCtrl = TextEditingController();
     _categoriesCtrl = TextEditingController();
     _coverCtrl = TextEditingController();
+    syncService = SyncService(logService);
+    cloudSyncService = CloudSyncService(logService);
     _currentArticle = Article(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: '',
@@ -235,13 +284,17 @@ class _RootShellState extends State<RootShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _stopAutoSave();
+    _stopAutoSync();
     _titleCtrl.dispose();
     _contentCtrl.dispose();
     _tagsCtrl.dispose();
     _categoriesCtrl.dispose();
     _coverCtrl.dispose();
     _contentFocus.dispose();
+    siteManager.disposeAll();
+    cmsDraftService.close();
     super.dispose();
   }
 
@@ -304,6 +357,8 @@ class _RootShellState extends State<RootShell> {
         snippets = sn;
         loading = false;
       });
+      // 初始化站点管理器（统一管理静态仓库和动态 CMS 站点）
+      _updateSiteManager();
       // 会话恢复
       if (s.restoreSession) {
         await _restoreSession();
@@ -314,6 +369,94 @@ class _RootShellState extends State<RootShell> {
     // 初始化工具系统
     try {
       await skillManager.init(await storage.root);
+    } catch (_) {}
+    // 初始化云同步后端
+    _initCloudSync();
+  }
+
+  /// 初始化云同步后端
+  void _initCloudSync() async {
+    // 初始化设备密钥
+    final deviceKey = await storage.loadDeviceKey();
+    cloudSyncService.initDeviceKey(deviceKey);
+
+    // 注册 GitHub 后端
+    final githubBackend = GitHubSyncBackend(github);
+    cloudSyncService.registerBackend(githubBackend);
+    // 如果有活跃仓库，自动配置
+    if (effectiveRepo != null) {
+      githubBackend.configureRepo(effectiveRepo!);
+    }
+
+    // 注册 WebDAV 后端
+    final webdavBackend = WebDavSyncBackend();
+    webdavBackend.configureFromSettings(settings);
+    cloudSyncService.registerBackend(webdavBackend);
+
+    // 启动自动同步
+    _startAutoSync();
+
+    // 如果后端已配置，启动后自动拉取一次
+    if (cloudSyncService.hasConfiguredBackend) {
+      _autoPullFromCloud();
+    }
+  }
+
+  /// 启动云端自动同步定时器
+  void _startAutoSync() {
+    _stopAutoSync();
+    if (!settings.webdavAutoSyncEnabled) return;
+    _autoSyncTimer = Timer.periodic(
+      Duration(seconds: settings.webdavAutoSyncIntervalSeconds),
+      (_) => _autoSyncToCloud(),
+    );
+  }
+
+  void _stopAutoSync() {
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = null;
+  }
+
+  // ── 生命周期感知同步 ──
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      // 进入后台：推送当前数据
+      _autoSyncToCloud();
+    } else if (state == AppLifecycleState.resumed) {
+      // 回到前台：拉取最新数据
+      _autoPullFromCloud();
+    }
+  }
+
+  /// 自动同步到云端（推送）
+  Future<void> _autoSyncToCloud() async {
+    if (busy) return;
+    final backend = cloudSyncService.configuredBackends.firstOrNull;
+    if (backend == null) return;
+
+    try {
+      await cloudSyncService.pushDrafts(backend, drafts);
+      await cloudSyncService.pushSyncMappings(backend, syncService);
+    } catch (_) {}
+  }
+
+  /// 自动从云端拉取（后台静默，不弹 toast）
+  Future<void> _autoPullFromCloud() async {
+    if (busy) return;
+    final backend = cloudSyncService.configuredBackends.firstOrNull;
+    if (backend == null) return;
+
+    try {
+      final pulled = await cloudSyncService.pullDrafts(backend, existingDrafts: drafts);
+      if (pulled.isNotEmpty) {
+        setState(() {
+          drafts = pulled..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        });
+        storage.saveDrafts(drafts);
+      }
+      await cloudSyncService.pullSyncMappings(backend, syncService);
     } catch (_) {}
   }
 
@@ -691,12 +834,105 @@ class _RootShellState extends State<RootShell> {
       _editorStatus = '本地已保存';
     });
     await _saveDraft(a);
+    // 动态 CMS 站点：同时保存到 SQLite 草稿表
+    if (siteManager.isDynamicSite) {
+      final adapter = siteManager.currentAdapter;
+      if (adapter != null) {
+        final post = BlogPost(
+          title: a.title,
+          contentMd: a.content,
+          status: 'draft',
+          slug: _generateSlug(a.title),
+          tags: a.tags,
+          categories: a.categories,
+          date: DateTime.now(),
+          siteId: adapter.config.id,
+          siteType: adapter.config.type,
+        );
+        await cmsDraftService.saveDraft(post);
+      }
+    }
     _lastSavedContent = a.content;
     _hasUnsavedChanges = false;
+    logService.add('保存草稿', '标题: ${a.title.isNotEmpty ? a.title : "(无标题)"}');
     if (mounted) _showToast('草稿已保存到本地');
   }
 
   Future<void> _publish() async {
+    // ── 发布确认对话框 ──
+    final publishTarget = siteManager.isDynamicSite
+        ? siteManager.currentBlogType.displayName
+        : (_resolvedRepo?.fullName ?? 'GitHub');
+    bool saveMdBackup = false;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.cloud_upload_outlined,
+                  color: Theme.of(context).colorScheme.primary, size: 22),
+              const SizedBox(width: 8),
+              const Text('确认发布', style: TextStyle(fontSize: 17)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('即将发布到: $publishTarget',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 8),
+              Text(
+                '标题: ${_titleCtrl.text.isNotEmpty ? _titleCtrl.text : "(无标题)"}',
+                style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+              ),
+              const SizedBox(height: 16),
+              // 保存 MD 备份选项
+              CheckboxListTile(
+                value: saveMdBackup,
+                onChanged: (v) {
+                  setDialogState(() => saveMdBackup = v ?? false);
+                },
+                title: const Text('同时保存一份 MD 备份到本地目录',
+                    style: TextStyle(fontSize: 13)),
+                subtitle: const Text('备份到文档目录的 hexo_backups/ 文件夹',
+                    style: TextStyle(fontSize: 11)),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+              label: const Text('确认发布'),
+              onPressed: () => Navigator.pop(ctx, true),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    // ── 保存 MD 备份 ──
+    if (saveMdBackup) {
+      await _saveMdBackup();
+    }
+
+    // 动态 CMS 站点：推送到远程 CMS
+    if (siteManager.isDynamicSite) {
+      await _publishToCms();
+      return;
+    }
+    // 静态站点：Git 推送
     final repo = _resolvedRepo;
     if (repo == null || repo.token.isEmpty) {
       _showToast('请先配置仓库与 Token');
@@ -717,13 +953,208 @@ class _RootShellState extends State<RootShell> {
       _hasUnsavedChanges = false;
       await _saveDraft(pub.copyWith(isDraft: false, published: true));
       await _refreshRemote();
+      logService.add('发布成功', '已发布到 ${repo.fullName}: ${pub.title}');
       if (mounted) _showToast('已发布到 ${repo.fullName}');
     } catch (e) {
       setState(() => _editorStatus = '发布失败');
+      logService.add('发布失败', '$e', success: false);
       if (mounted) _showToast('发布失败: $e');
     } finally {
       if (mounted) setState(() => _editorBusy = false);
     }
+  }
+
+  /// 发布到动态 CMS（WordPress / Ghost / Typecho）
+  Future<void> _publishToCms() async {
+    final adapter = siteManager.currentAdapter;
+    if (adapter == null) {
+      _showToast('当前站点未配置动态 CMS 适配器，请先添加 CMS 站点');
+      return;
+    }
+
+    final a = _collect(draft: false);
+
+    // ── 发布前置校验 ──
+    if (settings.activeAiProfile != null) {
+      final checkResult = await aiSelfChecker.check(
+        settings: settings,
+        generatedContent: a.content,
+        sessionType: AiSessionType.article,
+        blogFramework: adapter.config.type.displayName,
+      );
+      if (checkResult.hasError) {
+        if (!mounted) return;
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber, color: Colors.orange),
+                SizedBox(width: 8),
+                Text('发布前自检发现问题'),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  Text(checkResult.message, style: const TextStyle(fontSize: 14)),
+                  if (checkResult.issues.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    const Text('具体问题:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ...checkResult.issues.map((i) => Padding(
+                          padding: const EdgeInsets.only(top: 4, left: 8),
+                          child: Text(i, style: const TextStyle(fontSize: 13, color: Color(0xFFEF4444))),
+                        )),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消发布'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.orange),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('仍然发布'),
+              ),
+            ],
+          ),
+        );
+        if (proceed != true) return;
+      } else if (!checkResult.isPassed && checkResult.issues.isNotEmpty) {
+        // 仅有警告，记录但不阻断
+        if (mounted) {
+          _showToast('自检警告: ${checkResult.issues.first}');
+        }
+      }
+    }
+
+    setState(() {
+      _editorBusy = true;
+      final isUpdate = _currentArticle.remoteSha != null;
+      _editorStatus = isUpdate
+          ? '正在更新到 ${adapter.config.type.displayName}...'
+          : '正在发布到 ${adapter.config.type.displayName}...';
+    });
+    try {
+      // 从 remoteSha 中提取远程文章 ID（加载远程文章时记录）
+      final remoteId = _currentArticle.remoteSha != null
+          ? int.tryParse(_currentArticle.remoteSha!)
+          : null;
+      final post = BlogPost(
+        id: remoteId,
+        title: a.title,
+        contentMd: a.content,
+        status: 'publish',
+        slug: _generateSlug(a.title),
+        tags: a.tags,
+        categories: a.categories,
+        date: DateTime.now(),
+        siteId: adapter.config.id,
+        siteType: adapter.config.type,
+      );
+
+      // ── 带重试的发布/更新 ──
+      _publishCancelToken.reset();
+      BlogPost? result;
+      int attempts = 0;
+      const maxRetries = 3;
+      while (result == null) {
+        _publishCancelToken.throwIfCancelled();
+        attempts++;
+        try {
+          if (attempts > 1) {
+            final action = remoteId != null ? '更新' : '发布';
+            setState(() => _editorStatus = '正在重试$action (第 $attempts 次)...');
+          }
+          result = remoteId != null
+              ? await adapter.updatePost(post)
+              : await adapter.createPost(post);
+        } on BlogRepositoryException catch (e) {
+          // 4xx 客户端错误不重试（鉴权失败、参数错误等）
+          if (e.statusCode >= 400 && e.statusCode < 500) {
+            rethrow;
+          }
+          // 5xx 服务端错误，尝试重试
+          if (attempts >= maxRetries) rethrow;
+          setState(() => _editorStatus = '发布失败，${2 * attempts}s 后重试...');
+          await Future.delayed(Duration(seconds: 2 * attempts));
+          _publishCancelToken.throwIfCancelled();
+        } catch (e) {
+          if (e is CancelledException) rethrow;
+          // 网络错误等其他异常，也尝试重试
+          if (attempts >= maxRetries) rethrow;
+          setState(() => _editorStatus = '网络异常，${2 * attempts}s 后重试...');
+          await Future.delayed(Duration(seconds: 2 * attempts));
+          _publishCancelToken.throwIfCancelled();
+        }
+      }
+      final finalResult = result!;
+      final isUpdate = remoteId != null;
+      // 更新本地文章状态，记录远程 ID
+      final pub = a.copyWith(
+        isDraft: false,
+        published: true,
+        remotePath: finalResult.link,
+        remoteSha: finalResult.id?.toString(),
+      );
+      setState(() {
+        _currentArticle = pub;
+        _editorStatus = isUpdate
+            ? '已更新到 ${adapter.config.type.displayName}'
+            : '已发布到 ${adapter.config.type.displayName}';
+      });
+      _lastSavedContent = a.content;
+      _hasUnsavedChanges = false;
+      await _saveDraft(pub);
+      // 保存到 CMS SQLite 草稿表
+      await cmsDraftService.saveDraft(finalResult);
+      // 更新同步映射
+      if (finalResult.id != null) {
+        syncService.setMapping(SyncMapping(
+          localArticleId: pub.id,
+          remotePostId: finalResult.id!,
+          siteId: adapter.config.id,
+          lastSyncAt: DateTime.now(),
+          localModifiedAt: pub.updatedAt,
+          remoteModifiedAt: finalResult.modifiedDate,
+        ));
+      }
+      final actionLabel = isUpdate ? '更新' : '发布';
+      logService.add('CMS$actionLabel成功', '已${actionLabel}到 ${adapter.config.type.displayName}: ${finalResult.title}');
+      if (mounted) {
+        _showToast('已${actionLabel}到 ${adapter.config.type.displayName}: ${finalResult.link ?? finalResult.title}');
+      }
+    } on BlogRepositoryException catch (e) {
+      setState(() => _editorStatus = '发布失败');
+      logService.add('CMS发布失败', e.message, success: false);
+      if (mounted) _showToast('发布失败: ${e.message}');
+    } on CancelledException {
+      setState(() => _editorStatus = '已取消发布');
+      logService.add('发布已取消', '用户取消了发布操作');
+      if (mounted) _showToast('发布已取消');
+    } catch (e) {
+      setState(() => _editorStatus = '发布失败');
+      logService.add('CMS发布失败', '$e', success: false);
+      if (mounted) _showToast('发布失败: $e');
+    } finally {
+      if (mounted) setState(() => _editorBusy = false);
+    }
+  }
+
+  /// 从标题生成 URL slug
+  String _generateSlug(String title) {
+    final slug = title
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s-]'), '')
+        .replaceAll(RegExp(r'\s+'), '-')
+        .replaceAll(RegExp(r'-+'), '-')
+        .replaceAll(RegExp(r'^-|-$'), '');
+    return slug.isEmpty ? 'untitled' : slug;
   }
 
   void _insertText(String t) {
@@ -808,7 +1239,7 @@ class _RootShellState extends State<RootShell> {
   Future<void> _insertImage() async {
     setState(() {
       _editorBusy = true;
-      _editorStatus = '上传图片...';
+      _editorStatus = '正在选择图片...';
     });
     try {
       final bytes = await imageService.pickImageBytes();
@@ -816,11 +1247,110 @@ class _RootShellState extends State<RootShell> {
         setState(() => _editorStatus = '已取消');
         return;
       }
+      _failedImageBytes = bytes; // 缓存以备重试
+      final sizeKB = (bytes.length / 1024).toStringAsFixed(1);
+      setState(() => _editorStatus = '正在上传图片 ($sizeKB KB)...');
       final url = await imageService.uploadToImageBed(bytes, settings);
       _insertText(imageService.markdownImage(url));
+      _failedImageBytes = null; // 清除失败缓存
       setState(() => _editorStatus = '图片已插入');
     } catch (e) {
-      if (mounted) _showToast('上传失败: $e');
+      // 缓存失败图片字节，插入重试标记
+      final retryMark = '\n> ⚠️ 图片上传失败，[点击重试](#retry-upload)\n';
+      _insertText(retryMark);
+      setState(() => _editorStatus = '上传失败（可点击重试）');
+      if (mounted) _showToast('上传失败，点击文中标记可重试');
+    } finally {
+      if (mounted) setState(() => _editorBusy = false);
+    }
+  }
+
+  /// 批量插入图片并上传到图床（含预处理）
+  Future<void> _batchInsertImages() async {
+    setState(() {
+      _editorBusy = true;
+      _editorStatus = '正在选择图片...';
+    });
+    try {
+      final bytesList = await imageService.pickMultipleImageBytes();
+      if (bytesList == null || bytesList.isEmpty) {
+        setState(() => _editorStatus = '已取消');
+        return;
+      }
+      final total = bytesList.length;
+
+      // ── 预处理阶段：批量压缩 ──
+      setState(() => _editorStatus = '正在预处理 $total 张图片...');
+      final preResult = await imageService.preprocessImages(
+        bytesList,
+        settings,
+        onProgress: (current, total, beforeKB, afterKB) {
+          if (mounted) {
+            setState(() =>
+                _editorStatus = '预处理 $current/$total: ${beforeKB}KB → ${afterKB}KB');
+          }
+        },
+      );
+      logService.add('图片预处理', preResult.summary);
+
+      // ── 上传阶段 ──
+      int uploaded = 0;
+      int failed = 0;
+      final buf = StringBuffer();
+      for (var i = 0; i < total; i++) {
+        setState(() => _editorStatus = '正在上传图片 ${i + 1}/$total...');
+        try {
+          final url = await imageService.uploadToImageBed(
+            preResult.images[i],
+            settings,
+            skipCompress: true, // 已预处理，跳过重复压缩
+          );
+          buf.writeln(imageService.markdownImage(url));
+          uploaded++;
+        } catch (_) {
+          buf.writeln('> ⚠️ 第 ${i + 1} 张图片上传失败');
+          failed++;
+        }
+      }
+      _insertText('\n\n${buf.toString()}');
+      logService.add('批量上传图片', '成功: $uploaded, 失败: $failed');
+      setState(() => _editorStatus = '完成: $uploaded/$total 张上传成功');
+    } catch (e) {
+      setState(() => _editorStatus = '批量上传失败');
+      if (mounted) _showToast('批量上传失败: $e');
+    } finally {
+      if (mounted) setState(() => _editorBusy = false);
+    }
+  }
+
+  /// 重试上传失败图片
+  Future<void> _retryUploadImage() async {
+    final bytes = _failedImageBytes;
+    if (bytes == null) {
+      _showToast('没有可重试的图片');
+      return;
+    }
+    // 移除重试标记文本
+    final txt = _contentCtrl.text;
+    final retryIdx = txt.indexOf('> ⚠️ 图片上传失败');
+    if (retryIdx >= 0) {
+      final endIdx = txt.indexOf('\n', txt.indexOf('#retry-upload', retryIdx));
+      final removeEnd = endIdx >= 0 ? endIdx + 1 : txt.length;
+      _contentCtrl.text = txt.replaceRange(retryIdx, removeEnd, '');
+    }
+
+    setState(() {
+      _editorBusy = true;
+      _editorStatus = '正在重试上传...';
+    });
+    try {
+      final url = await imageService.uploadToImageBed(bytes, settings);
+      _insertText(imageService.markdownImage(url));
+      _failedImageBytes = null;
+      setState(() => _editorStatus = '图片已插入');
+    } catch (e) {
+      setState(() => _editorStatus = '重试失败');
+      if (mounted) _showToast('重试上传失败: $e');
     } finally {
       if (mounted) setState(() => _editorBusy = false);
     }
@@ -929,6 +1459,11 @@ class _RootShellState extends State<RootShell> {
                   offset: sel.start + result.length));
           _contentFocus.requestFocus();
           break;
+        case 'format':
+          result = await aiService.polish(settings,
+              '请对以下 Markdown 内容进行排版优化：统一标题层级、规范空行、修正列表缩进、对齐表格格式。\n\n$text');
+          _contentCtrl.text = result;
+          break;
       }
       setState(() => _editorStatus = 'AI 完成');
     } catch (e) {
@@ -952,6 +1487,7 @@ class _RootShellState extends State<RootShell> {
   Future<void> _deleteDraft(Article a) async {
     drafts.removeWhere((e) => e.id == a.id);
     await storage.saveDrafts(drafts);
+    logService.add('删除草稿', '标题: ${a.title.isNotEmpty ? a.title : "(无标题)"}');
     if (mounted) setState(() {});
   }
 
@@ -986,18 +1522,45 @@ class _RootShellState extends State<RootShell> {
 
   Future<void> _updateSettings(AppSettings s) async {
     setState(() => settings = s);
+    _updateSiteManager();
+    _startAutoSync(); // 重启自动同步（间隔/开关可能变化）
     await storage.saveSettings(s);
     widget.onThemeChanged(Color(s.themeColor));
   }
 
   Future<void> _updateRepos(List<RepoConfig> r) async {
     setState(() => repos = r);
+    _updateSiteManager();
     await storage.saveRepos(r);
   }
 
   Future<void> _persistSettings() => storage.saveSettings(settings);
   Future<void> _persistRepos() => storage.saveRepos(repos);
   Future<void> _persistDrafts() => storage.saveDrafts(drafts);
+
+  /// 保存 MD 备份到本地目录
+  Future<void> _saveMdBackup() async {
+    try {
+      final a = _collect(draft: false);
+      final dir = Directory('${await storage.root}/hexo_backups');
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      final timestamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .replaceAll('.', '-');
+      final safeTitle = a.title.isNotEmpty
+          ? a.title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+          : 'untitled';
+      final fileName = '${timestamp}_$safeTitle.md';
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsString(a.content);
+      if (mounted) _showToast('MD 备份已保存到 hexo_backups/$fileName');
+    } catch (e) {
+      if (mounted) _showToast('MD 备份保存失败: $e');
+    }
+  }
 
   void _showToast(String msg) {
     if (!mounted) return;
@@ -1189,6 +1752,135 @@ class _RootShellState extends State<RootShell> {
     }
   }
 
+  // ============ 云同步 ============
+
+  /// 全量推送到云端
+  Future<void> _pushAllToCloud() async {
+    final backend = cloudSyncService.configuredBackends.firstOrNull;
+    if (backend == null) {
+      _showToast('请先配置同步后端');
+      return;
+    }
+
+    setState(() => busy = true);
+    try {
+      final result = await cloudSyncService.pushAll(
+        backend,
+        drafts: drafts,
+        settings: settings,
+        syncService: syncService,
+        templates: templates,
+        snippets: snippets,
+      );
+      if (mounted) {
+        setState(() => busy = false);
+        if (result.isSuccess) {
+          _showToast('推送完成: ${result.pushed} 项');
+        } else {
+          _showToast('推送完成: ${result.pushed} 成功, ${result.errors.length} 失败');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => busy = false);
+        _showToast('推送失败: $e');
+      }
+    }
+  }
+
+  /// 全量从云端拉取
+  Future<void> _pullAllFromCloud() async {
+    final backend = cloudSyncService.configuredBackends.firstOrNull;
+    if (backend == null) {
+      _showToast('请先配置同步后端');
+      return;
+    }
+
+    setState(() => busy = true);
+    try {
+      await cloudSyncService.pullAll(
+        backend,
+        existingDrafts: drafts,
+        syncService: syncService,
+        onSettingsLoaded: (s) {
+          setState(() => settings = s);
+          _updateSiteManager();
+          _startAutoSync();
+          storage.saveSettings(s);
+        },
+        onDraftsLoaded: (d) {
+          setState(() {
+            drafts = d..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+          });
+          storage.saveDrafts(drafts);
+        },
+        onTemplatesLoaded: (tList) {
+          // 合并远程模板到本地：按 ID 覆盖，保留本地独有
+          final remoteMap = <String, Map<String, dynamic>>{};
+          for (final t in tList) {
+            remoteMap[t['id']?.toString() ?? ''] = t;
+          }
+          final merged = <TemplateItem>[];
+          final seen = <String>{};
+          for (final t in templates) {
+            if (remoteMap.containsKey(t.id)) {
+              // 远程有同 ID → 使用远程版本（更新）
+              final remote = remoteMap[t.id]!;
+              merged.add(TemplateItem.fromJson(remote));
+              seen.add(t.id);
+            } else {
+              // 本地独有 → 保留
+              merged.add(t);
+              seen.add(t.id);
+            }
+          }
+          // 远程独有 → 添加
+          for (final entry in remoteMap.entries) {
+            if (!seen.contains(entry.key)) {
+              merged.add(TemplateItem.fromJson(entry.value));
+            }
+          }
+          setState(() => templates = merged);
+          storage.saveTemplates(merged);
+        },
+        onSnippetsLoaded: (sList) {
+          // 合并远程片段到本地：按 ID 覆盖
+          final remoteMap = <String, Map<String, dynamic>>{};
+          for (final s in sList) {
+            remoteMap[s['id']?.toString() ?? ''] = s;
+          }
+          final merged = <SnippetItem>[];
+          final seen = <String>{};
+          for (final s in snippets) {
+            if (remoteMap.containsKey(s.id)) {
+              merged.add(SnippetItem.fromJson(remoteMap[s.id]!));
+              seen.add(s.id);
+            } else {
+              merged.add(s);
+              seen.add(s.id);
+            }
+          }
+          for (final entry in remoteMap.entries) {
+            if (!seen.contains(entry.key)) {
+              merged.add(SnippetItem.fromJson(entry.value));
+            }
+          }
+          setState(() => snippets = merged);
+          storage.saveSnippets(merged);
+        },
+      );
+      if (mounted) {
+        setState(() => busy = false);
+        _showToast('拉取完成');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => busy = false);
+        _showToast('拉取失败: $e');
+      }
+    }
+  }
+
   // ============ Theme ============
 
   Future<void> _showThemeColorPicker() async {
@@ -1277,6 +1969,31 @@ class _RootShellState extends State<RootShell> {
       ),
     );
     if (mounted) setState(() {});
+  }
+
+  /// 打开动态 CMS 站点管理页面
+  Future<void> _showBlogSiteManager() async {
+    final result = await Navigator.of(context).push<BlogSiteConfig?>(
+      MaterialPageRoute(
+        builder: (_) => BlogSiteEditorScreen(
+          appSettings: settings,
+          onSaved: _handleBlogSiteSaved,
+        ),
+      ),
+    );
+  }
+
+  /// 处理动态 CMS 站点保存
+  Future<void> _handleBlogSiteSaved(BlogSiteConfig config) async {
+    final existing = List<BlogSiteConfig>.from(settings.blogSiteConfigs);
+    final idx = existing.indexWhere((s) => s.id == config.id);
+    if (idx >= 0) {
+      existing[idx] = config;
+    } else {
+      existing.add(config);
+    }
+    final updated = settings.copyWith(blogSiteConfigs: existing);
+    await _updateSettings(updated);
   }
 
   // ============ AI Profile Management ============
@@ -2832,6 +3549,58 @@ class _RootShellState extends State<RootShell> {
     }
   }
 
+  // ============ CMS Remote Post Operations ============
+
+  /// 将 CMS 远程文章加载到编辑器
+  void _openRemotePostInEditor(BlogPost post) {
+    // 关闭抽屉
+    if (_scaffoldKey.currentState?.isDrawerOpen == true) {
+      Navigator.pop(context);
+    }
+    // 将 BlogPost 转为 Article 加载到编辑器
+    _currentArticle = Article(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: post.title,
+      content: post.contentMd,
+      tags: post.tags,
+      categories: post.categories,
+      createdAt: post.date,
+      updatedAt: post.modifiedDate,
+      isDraft: false,
+      published: true,
+      articleType: 'post',
+      remotePath: post.link,
+      remoteSha: post.id?.toString(),
+    );
+    _titleCtrl.text = post.title;
+    _contentCtrl.text = post.contentMd;
+    _tagsCtrl.text = post.tags.join(', ');
+    _categoriesCtrl.text = post.categories.join(', ');
+    _coverCtrl.text = '';
+    _editorRepo = null; // CMS 文章不使用 Git 仓库
+    _lastSavedContent = post.contentMd;
+    _hasUnsavedChanges = false;
+    _startAutoSave();
+    _saveSession(SessionPageType.editor);
+    setState(() => _currentPage = 0);
+    logService.add('加载远程文章', '标题: ${post.title}');
+    if (mounted) _showToast('已加载远程文章: ${post.title}');
+  }
+
+  /// 删除 CMS 远程文章
+  Future<void> _deleteRemoteCmsPost(BlogPost post) async {
+    final adapter = siteManager.currentAdapter;
+    if (adapter == null || post.id == null) return;
+    try {
+      await adapter.deletePost(post.id!);
+      logService.add('删除远程文章', '已从 ${adapter.config.type.displayName} 删除: ${post.title}');
+      if (mounted) _showToast('已删除: ${post.title}');
+    } catch (e) {
+      logService.add('删除远程文章失败', '$e', success: false);
+      rethrow;
+    }
+  }
+
   // ============ Remote Delete ============
 
   Future<void> _deleteRemotePost(GitHubFileItem item) async {
@@ -3209,6 +3978,7 @@ class _RootShellState extends State<RootShell> {
                   const SizedBox(height: 8),
                   _drawerSection('管理'),
                   _drawerItem(2, Icons.cloud_outlined, '远程文章'),
+                  _drawerItem(12, Icons.sync, '同步状态'),
                   _drawerItem(3, Icons.dashboard_outlined, '仪表盘'),
                   _drawerItem(5, Icons.history_outlined, '提交历史'),
                   const SizedBox(height: 8),
@@ -3231,7 +4001,9 @@ class _RootShellState extends State<RootShell> {
                   _drawerAction(Icons.build_outlined, '工具库', _showToolLibrary),
                   const SizedBox(height: 8),
                   _drawerSection('系统'),
+                  _drawerItem(13, Icons.cloud_sync, '云同步'),
                   _drawerItem(8, Icons.settings_outlined, '设置'),
+                  _drawerItem(11, Icons.history, '操作日志'),
                 ],
               ),
             ),
@@ -3383,11 +4155,25 @@ class _RootShellState extends State<RootShell> {
       case 1:
         return DraftsScreen(
             drafts: drafts,
+            repos: repos,
+            blogSiteConfigs: settings.blogSiteConfigs,
             onOpen: (a) {
               _openExistingArticle(a);
             },
             onDelete: _deleteDraft);
       case 2:
+        if (siteManager.isDynamicSite) {
+          final adapter = siteManager.currentAdapter;
+          if (adapter == null) {
+            return const Center(child: Text('未配置 CMS 站点'));
+          }
+          return RemotePostsScreen(
+            adapter: adapter,
+            logService: logService,
+            onOpenInEditor: (post) => _openRemotePostInEditor(post),
+            onDeletePost: (post) => _deleteRemoteCmsPost(post),
+          );
+        }
         return RemoteScreen(
             posts: remotePosts,
             activeRepo: activeRepo,
@@ -3479,6 +4265,49 @@ class _RootShellState extends State<RootShell> {
           onSettingsChanged: _updateSettings,
           storageService: storage,
         );
+      case 11:
+        return LogScreen(logService: logService);
+      case 12:
+        if (siteManager.isDynamicSite) {
+          final adapter = siteManager.currentAdapter;
+          final config = siteManager.currentDynamicConfig;
+          if (adapter == null || config == null) {
+            return const Center(child: Text('未配置 CMS 站点'));
+          }
+          return SyncScreen(
+            adapter: adapter,
+            siteConfig: config,
+            syncService: syncService,
+            logService: logService,
+            localArticles: drafts,
+            onOpenArticle: _openExistingArticle,
+            onOpenRemotePost: _openRemotePostInEditor,
+          );
+        }
+        return const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.sync_disabled, size: 48, color: Colors.grey),
+              SizedBox(height: 12),
+              Text('双向同步仅支持动态 CMS 站点',
+                  style: TextStyle(color: Colors.grey, fontSize: 14)),
+              SizedBox(height: 4),
+              Text('请先在设置中添加 WordPress / Ghost / Typecho 站点',
+                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+            ],
+          ),
+        );
+      case 13:
+        return SyncSettingsScreen(
+          cloudSyncService: cloudSyncService,
+          logService: logService,
+          settings: settings,
+          repos: repos,
+          onSettingsChanged: _updateSettings,
+          onPushAll: _pushAllToCloud,
+          onPullAll: _pullAllFromCloud,
+        );
       default:
         return const SizedBox();
     }
@@ -3500,12 +4329,48 @@ class _RootShellState extends State<RootShell> {
     return Column(
       children: [
         if (_editorBusy) const LinearProgressIndicator(minHeight: 2),
+        if (_editorBusy)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 14, height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 8),
+                Text(_editorStatus ?? '处理中...',
+                    style: TextStyle(fontSize: 12, color: cs.primary)),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () {
+                    _publishCancelToken.cancel();
+                    setState(() {
+                      _editorBusy = false;
+                      _editorStatus = '已取消';
+                    });
+                  },
+                  icon: const Icon(Icons.close, size: 16),
+                  label: const Text('取消', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ],
+            ),
+          ),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 120),
             children: [
-              // ── 仓库选择器 ──
-              if (repos.isNotEmpty)
+              // ── 站点切换器 + 类型指示器 ──
+              _buildSiteSwitcher(cs),
+              const SizedBox(height: 8),
+              // ── 仓库选择器（静态站点时显示） ──
+              if (repos.isNotEmpty && !siteManager.isDynamicSite)
                 _editorCard(
                   child: DropdownButtonFormField<String>(
                     value: _editorRepo?.id,
@@ -3741,8 +4606,18 @@ class _RootShellState extends State<RootShell> {
                           () => _wrap('[', '](https://)', p: '链接文字')),
                       _toolChip(Icons.grid_on, '表格',
                           () => _insertText('\n| 列1 | 列2 |\n| --- | --- |\n| 值1 | 值2 |\n')),
+                      _toolChip(Icons.horizontal_rule, '分割线',
+                          () => _insertText('\n---\n')),
+                      _toolChip(Icons.format_strikethrough, '删除线',
+                          () => _wrap('~~', '~~', p: '删除文字')),
+                      _toolChip(Icons.checklist, '任务',
+                          () => _insertList('- [ ] ')),
+                      _toolChip(Icons.more_horiz, 'more',
+                          () => _insertText('\n<!--more-->\n')),
                       _toolChip(Icons.image_outlined, '图床',
                           _editorBusy ? null : _insertImage),
+                      _toolChip(Icons.collections_outlined, '批量图床',
+                          _editorBusy ? null : _batchInsertImages),
                       _toolChip(Icons.auto_awesome, 'AI润色',
                           _editorBusy ? null : () => _aiAction('polish'),
                           color: Colors.purple),
@@ -3758,6 +4633,9 @@ class _RootShellState extends State<RootShell> {
                       _toolChip(Icons.sync_alt, 'AI改写',
                           _editorBusy ? null : () => _aiAction('rewrite'),
                           color: Colors.purple),
+                      _toolChip(Icons.auto_fix_high, 'AI排版',
+                          _editorBusy ? null : () => _aiAction('format'),
+                          color: Colors.deepPurple),
                       _toolChip(Icons.chat, 'AI对话',
                           () => _showAiArticleChat(),
                           color: Colors.deepPurple),
@@ -3790,8 +4668,27 @@ class _RootShellState extends State<RootShell> {
               if (_editorStatus != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Text(_editorStatus!,
-                      style: TextStyle(color: cs.primary, fontSize: 12)),
+                  child: Row(
+                    children: [
+                      if (_editorBusy)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: cs.primary,
+                            ),
+                          ),
+                        ),
+                      Text(_editorStatus!,
+                          style: TextStyle(
+                            color: _editorBusy ? cs.primary : cs.outline,
+                            fontSize: 12,
+                          )),
+                    ],
+                  ),
                 ),
             ],
           ),
@@ -3809,6 +4706,23 @@ class _RootShellState extends State<RootShell> {
             ],
           ),
           child: Row(children: [
+            if (_failedImageBytes != null) ...[
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _editorBusy ? null : _retryUploadImage,
+                  icon: const Icon(Icons.refresh, size: 18, color: Colors.orange),
+                  label: const Text('重试上传',
+                      style: TextStyle(color: Colors.orange)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    side: const BorderSide(color: Colors.orange),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+            ],
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: _editorBusy ? null : _saveLocal,
@@ -3835,7 +4749,11 @@ class _RootShellState extends State<RootShell> {
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.cloud_upload_outlined, size: 18),
-                label: Text(_editorBusy ? '发布中...' : '发布到 GitHub'),
+                label: Text(_editorBusy
+                    ? '发布中...'
+                    : (siteManager.isDynamicSite
+                        ? '发布到 ${siteManager.currentBlogType.displayName}'
+                        : '发布到 GitHub')),
                 style: FilledButton.styleFrom(
                   backgroundColor: cs.primary,
                   padding: const EdgeInsets.symmetric(vertical: 13),
@@ -3848,6 +4766,138 @@ class _RootShellState extends State<RootShell> {
         ),
       ],
     );
+  }
+
+  /// 站点切换器 + 类型指示器
+  Widget _buildSiteSwitcher(ColorScheme cs) {
+    final allSites = siteManager.allSites;
+    final currentIdentity = siteManager.currentSiteIdentity;
+    final isDynamic = siteManager.isDynamicSite;
+
+    return _editorCard(
+      child: Row(
+        children: [
+          // ── 站点类型指示器 ──
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: isDynamic
+                  ? const Color(0xFF7C3AED).withOpacity(0.1)
+                  : cs.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: isDynamic
+                    ? const Color(0xFF7C3AED).withOpacity(0.3)
+                    : cs.primary.withOpacity(0.3),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isDynamic ? Icons.cloud_outlined : Icons.folder_outlined,
+                  size: 14,
+                  color: isDynamic ? const Color(0xFF7C3AED) : cs.primary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  isDynamic ? '动态CMS' : '静态博客',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: isDynamic ? const Color(0xFF7C3AED) : cs.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          // ── 站点切换下拉 ──
+          Expanded(
+            child: DropdownButtonFormField<String>(
+              value: siteManager.activeSiteId,
+              decoration: InputDecoration(
+                labelText: '当前站点',
+                prefixIcon: Icon(
+                  isDynamic ? Icons.dns_outlined : Icons.storage_outlined,
+                  size: 18,
+                ),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              isExpanded: true,
+              style: TextStyle(fontSize: 13, color: cs.onSurface),
+              items: allSites.map((site) {
+                final typeIcon = site.isDynamic ? Icons.cloud : Icons.folder;
+                final typeLabel = site.isDynamic ? 'CMS' : '静态';
+                return DropdownMenuItem<String>(
+                  value: site.id,
+                  child: Row(
+                    children: [
+                      Icon(typeIcon, size: 16, color: cs.outline),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '${site.name}  [$typeLabel]',
+                          style: const TextStyle(fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: _editorBusy ? null : _onSiteChanged,
+            ),
+          ),
+          // ── 管理按钮 ──
+          const SizedBox(width: 6),
+          IconButton(
+            icon: Icon(Icons.settings_outlined, size: 20, color: cs.outline),
+            onPressed: _editorBusy ? null : _openSiteManagement,
+            tooltip: '管理站点',
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            padding: EdgeInsets.zero,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 切换站点
+  void _onSiteChanged(String? siteId) {
+    if (siteId == null || siteId == siteManager.activeSiteId) return;
+    siteManager.setActiveSite(siteId);
+    final identity = siteManager.currentSiteIdentity;
+    if (identity == null) return;
+
+    setState(() {
+      // 如果是静态站点，自动设置对应的仓库
+      if (identity.isStatic) {
+        final repo = repos.firstWhere(
+          (r) => r.id == siteId,
+          orElse: () => repos.first,
+        );
+        _editorRepo = repo;
+      }
+      _editorStatus = '已切换到: ${identity.name}';
+    });
+  }
+
+  /// 打开站点管理面板
+  void _openSiteManagement() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SiteManagementScreen(
+        siteManager: siteManager,
+        repos: repos,
+        onChanged: () {
+          _persistRepos();
+          setState(() {});
+        },
+      ),
+    ));
   }
 
   Widget _editorCard(

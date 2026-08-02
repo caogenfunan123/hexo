@@ -16,6 +16,7 @@ class StorageService {
   static const _draftsFile = 'drafts.json';
   static const _templatesFile = 'templates.json';
   static const _snippetsFile = 'snippets.json';
+  static const _deviceKeyFile = '.device_key';
 
   Directory? _root;
 
@@ -150,6 +151,33 @@ class StorageService {
 
   Future<void> saveSnippets(List<SnippetItem> snippets) =>
       _write(_snippetsFile, snippets.map((e) => e.toJson()).toList());
+
+  // ── 设备密钥（用于云端同步加密） ──
+  Future<String> loadDeviceKey() async {
+    try {
+      final f = await _file(_deviceKeyFile);
+      if (await f.exists()) {
+        final text = await f.readAsString();
+        if (text.trim().isNotEmpty) return text.trim();
+      }
+    } catch (_) {}
+    // 生成新的设备密钥
+    final key = _generateDeviceKey();
+    await saveDeviceKey(key);
+    return key;
+  }
+
+  Future<void> saveDeviceKey(String key) async {
+    final f = await _file(_deviceKeyFile);
+    await f.writeAsString(key);
+  }
+
+  /// 生成一个伪随机设备密钥
+  String _generateDeviceKey() {
+    final r = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+    final s = (DateTime.now().hashCode.abs() & 0xFFFF).toRadixString(16);
+    return 'hexo_${r}_$s';
+  }
 }
 
 /// 自定义内容片段

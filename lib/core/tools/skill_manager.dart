@@ -4,6 +4,7 @@ import 'dart:io';
 import 'tool_entity.dart';
 import 'tool_registry.dart';
 import 'builtin_tools.dart';
+import 'remote_cms_tools.dart';
 
 /// 技能管理器：管理用户自定义技能（Skill）的 CRUD 和持久化
 class SkillManager {
@@ -20,6 +21,8 @@ class SkillManager {
     _storageDir = storageDir;
     // 注册内置工具
     _registry.registerAll(BuiltinTools.all);
+    // 注册远程 CMS 工具
+    _registry.registerAll(RemoteCmsTools.all);
     // 加载自定义技能
     await _loadSkills();
   }

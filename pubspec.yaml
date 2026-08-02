@@ -13,6 +13,9 @@ dependencies:
   flutter_markdown: ^0.6.12
   webview_flutter: ^4.4.0
   file_picker: ^6.1.1
+  crypto: ^3.0.3
+  sqflite: ^2.3.0
+  path: ^1.8.0
 
 flutter:
   uses-material-design: true

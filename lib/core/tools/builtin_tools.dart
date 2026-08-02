@@ -3,6 +3,7 @@ import 'dart:io';
 
 import '../../services/github_service.dart';
 import '../../models/repo_config.dart';
+import 'remote_cms_tools.dart';
 import 'tool_entity.dart';
 
 /// 内置工具定义和实现
@@ -219,8 +220,28 @@ class BuiltinTools {
     updatedAt: DateTime(2026, 1, 1),
   );
 
+  /// 远程 CMS 工具 ID 集合（用于路由判断）
+  static const _remoteCmsToolIds = {
+    // WordPress
+    'wp_create_post', 'wp_update_post', 'wp_delete_post',
+    'wp_list_posts', 'wp_test_connection',
+    // Ghost
+    'ghost_create_post', 'ghost_update_post', 'ghost_delete_post',
+    'ghost_list_posts', 'ghost_test_connection',
+    // Typecho
+    'typecho_create_post', 'typecho_update_post', 'typecho_delete_post',
+    'typecho_list_posts', 'typecho_test_connection',
+    // 通用
+    'remote_media_upload',
+  };
+
   // ── 执行内置工具 ──
   static Future<ToolCallResult> execute(ToolCallRequest request) async {
+    // 远程 CMS 工具 → 委托给 RemoteCmsTools（含站点类型路由拦截）
+    if (_remoteCmsToolIds.contains(request.toolId)) {
+      return RemoteCmsTools.execute(request);
+    }
+
     switch (request.toolId) {
       case 'web_search':
         return _executeWebSearch(request);

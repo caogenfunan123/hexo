@@ -142,7 +142,7 @@ class AiRequestDispatcher {
         // 添加 assistant 消息（含 tool_calls，确保 API 能正确匹配工具调用上下文）
         _chatHistory.add({
           'role': 'assistant',
-          'content': fullContent.isNotEmpty ? fullContent.toString() : null,
+          'content': fullContent.isNotEmpty ? fullContent.toString() : '',
           'tool_calls': pendingToolCalls,
         });
 
