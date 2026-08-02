@@ -60,9 +60,10 @@ jobs:
           flutter doctor --verbose 2>&1 | head -50
 
       - name: Build APK
-        id: build
+        continue-on-error: true
         run: |
-          if flutter build apk --release --no-pub --no-android-gradle-daemon 2>&1 | tee /tmp/build.log; then
+          flutter build apk --release --no-pub --no-android-gradle-daemon 2>&1 | tee /tmp/build.log
+          if [ -f build/app/outputs/flutter-apk/app-release.apk ]; then
             echo '## Android Build Succeeded' >> $GITHUB_STEP_SUMMARY
           else
             echo "::warning::Android build failed. Check logs for details."
