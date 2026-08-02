@@ -10,8 +10,15 @@ import 'ai_model_manager.dart';
 class AiRequestDispatcher {
   final AiService _aiService;
   final AiModelManager _modelManager;
+  StreamController<StreamChunk>? _activeStreamController;
 
   AiRequestDispatcher(this._aiService, this._modelManager);
+
+  /// 取消当前正在进行的流式请求
+  void cancelCurrent() {
+    _activeStreamController?.close();
+    _activeStreamController = null;
+  }
 
   /// 上下文持有器：保存完整会话历史，保证切换模型时上下文不丢失
   final List<Map<String, String>> _chatHistory = [];
@@ -33,6 +40,110 @@ class AiRequestDispatcher {
 
   void clearHistory() {
     _chatHistory.clear();
+  }
+
+  /// 流式分发：逐字返回 AI 回复，支持取消
+  Stream<StreamChunk> dispatchStream({
+    required AppSettings settings,
+    required String userMessage,
+    AiModelEntity? preferredModel,
+    double temperature = 0.7,
+  }) {
+    // 取消之前的请求
+    cancelCurrent();
+
+    addUserMessage(userMessage);
+
+    final controller = StreamController<StreamChunk>();
+    _activeStreamController = controller;
+
+    // 启动异步流式处理（不保存返回值，通过 controller 控制取消）
+    _runStream(
+      controller,
+      settings: settings,
+      preferredModel: preferredModel,
+      temperature: temperature,
+    );
+
+    return controller.stream;
+  }
+
+  Future<void> _runStream(
+    StreamController<StreamChunk> controller, {
+    required AppSettings settings,
+    AiModelEntity? preferredModel,
+    double temperature = 0.7,
+  }) async {
+    final stopwatch = Stopwatch()..start();
+    final fullContent = StringBuffer();
+
+    try {
+      AiProfile? profile;
+      if (preferredModel != null) {
+        profile = AiProfile(
+          id: preferredModel.modelId,
+          name: preferredModel.modelName,
+          baseUrl: preferredModel.apiBase,
+          apiKey: preferredModel.apiKey,
+          model: preferredModel.modelId,
+          apiPath: preferredModel.apiPath,
+          useBearer: preferredModel.useBearer,
+        );
+      }
+
+      final messages = [
+        {'role': 'system', 'content': _systemPrompt},
+        ..._chatHistory,
+      ];
+
+      final stream = _aiService.completeStream(
+        settings: settings,
+        systemPrompt: _systemPrompt,
+        userPrompt: _buildMessagesString(messages),
+        profile: profile,
+        temperature: temperature,
+        messages: messages,
+      );
+
+      await for (final chunk in stream) {
+        if (controller.isClosed) break;
+        if (chunk.content.isNotEmpty) {
+          fullContent.write(chunk.content);
+          controller.add(chunk);
+        }
+        if (chunk.isDone) {
+          stopwatch.stop();
+          if (preferredModel != null) {
+            _modelManager.recordCall(
+              preferredModel.modelId,
+              preferredModel.apiBase,
+              stopwatch.elapsedMilliseconds,
+              true,
+            );
+          }
+          addAssistantMessage(fullContent.toString());
+          if (!controller.isClosed) {
+            controller.add(const StreamChunk(content: '', isDone: true));
+            await controller.close();
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      stopwatch.stop();
+      if (preferredModel != null) {
+        _modelManager.recordCall(
+          preferredModel.modelId,
+          preferredModel.apiBase,
+          stopwatch.elapsedMilliseconds,
+          false,
+        );
+      }
+      if (!controller.isClosed) {
+        controller.addError(e);
+        await controller.close();
+      }
+    }
   }
 
   /// 完整的请求分发：自动故障切换

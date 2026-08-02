@@ -3467,6 +3467,7 @@ class _RootShellState extends State<RootShell> {
           migrationService: themeMigrationService,
           selfChecker: aiSelfChecker,
           onSettingsChanged: _updateSettings,
+          storageService: storage,
         );
       default:
         return const SizedBox();

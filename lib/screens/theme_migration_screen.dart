@@ -12,6 +12,7 @@ import '../models/blog_framework.dart';
 import '../models/repo_config.dart';
 import '../services/ai_service.dart';
 import '../services/github_service.dart';
+import '../services/storage_service.dart';
 import '../widgets/ai_chat_panel.dart';
 
 /// AI 主题跨框架迁移页面 — 始终对话模式
@@ -26,6 +27,7 @@ class ThemeMigrationScreen extends StatefulWidget {
   final ThemeMigrationService migrationService;
   final AiSelfChecker selfChecker;
   final Future<void> Function(AppSettings) onSettingsChanged;
+  final StorageService? storageService;
 
   const ThemeMigrationScreen({
     super.key,
@@ -39,6 +41,7 @@ class ThemeMigrationScreen extends StatefulWidget {
     required this.migrationService,
     required this.selfChecker,
     required this.onSettingsChanged,
+    this.storageService,
   });
 
   @override
@@ -474,7 +477,7 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
         themesPath: 'themes',
         gitHubService: widget.githubService,
         activeRepo: repo,
-        storageService: null, // 主题迁移有独立的状态管理，不需要持久化
+        storageService: widget.storageService,
         initialMessage: '欢迎使用 AI 主题跨框架迁移助手！\n\n'
             '你可以直接输入主题 Git 地址开始迁移，例如：\n'
             '「拉取 https://github.com/xxx/theme 转换到 Hexo，命名为 my-theme」\n\n'

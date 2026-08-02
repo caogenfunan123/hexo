@@ -1,8 +1,18 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import '../models/ai_profile.dart';
 import '../models/app_settings.dart';
+
+/// SSE 流式块
+class StreamChunk {
+  final String content;
+  final bool isDone;
+  final String? finishReason;
+
+  const StreamChunk({required this.content, this.isDone = false, this.finishReason});
+}
 
 class AiService {
   String _joinUrl(String base, String path) {
@@ -222,6 +232,106 @@ class AiService {
       return data['output_text'].toString();
     }
     throw Exception('AI 返回格式异常: ${text.length > 300 ? text.substring(0, 300) : text}');
+  }
+
+  /// 流式请求：返回 SSE 文本块流，支持取消
+  Stream<StreamChunk> completeStream({
+    required AppSettings settings,
+    required String systemPrompt,
+    required String userPrompt,
+    AiProfile? profile,
+    double temperature = 0.7,
+    List<Map<String, String>>? messages,
+  }) async* {
+    final p = resolveProfile(settings, override: profile);
+    if (p.apiKey.isEmpty) {
+      throw Exception('请先在设置中配置 AI 中转站并填写 API Key');
+    }
+    if (p.model.isEmpty) {
+      throw Exception('请先选择模型');
+    }
+
+    final url = _chatUrl(p);
+    final msgs = messages ??
+        [
+          {'role': 'system', 'content': systemPrompt},
+          {'role': 'user', 'content': userPrompt},
+        ];
+
+    final body = {
+      'model': p.model,
+      'messages': msgs,
+      'temperature': temperature,
+      'stream': true,
+    };
+
+    final client = HttpClient();
+    try {
+      final uri = Uri.parse(url);
+      final req = await client.openUrl('POST', uri);
+      req.headers.set('Content-Type', 'application/json');
+      req.headers.set('Accept', 'text/event-stream');
+      if (p.apiKey.isNotEmpty) {
+        if (p.useBearer) {
+          req.headers.set('Authorization', 'Bearer ${p.apiKey}');
+        } else {
+          req.headers.set('Authorization', p.apiKey);
+          req.headers.set('api-key', p.apiKey);
+          req.headers.set('x-api-key', p.apiKey);
+        }
+      }
+      final bytes = utf8.encode(jsonEncode(body));
+      req.contentLength = bytes.length;
+      req.add(bytes);
+
+      final res = await req.close();
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        final errorText = await res.transform(utf8.decoder).join();
+        throw Exception('HTTP ${res.statusCode}: $errorText');
+      }
+
+      final lineStream = res
+          .transform(utf8.decoder)
+          .transform(const LineSplitter());
+
+      await for (final line in lineStream) {
+        if (line.startsWith('data: ')) {
+          final data = line.substring(6).trim();
+          if (data == '[DONE]') {
+            yield const StreamChunk(content: '', isDone: true);
+            break;
+          }
+          try {
+            final json = jsonDecode(data);
+            if (json is Map && json['choices'] is List) {
+              final choices = json['choices'] as List;
+              if (choices.isNotEmpty) {
+                final choice = choices.first;
+                if (choice is Map) {
+                  final delta = choice['delta'];
+                  if (delta is Map && delta['content'] != null) {
+                    yield StreamChunk(content: delta['content'].toString());
+                  }
+                  // 检查是否结束
+                  final finish = choice['finish_reason'];
+                  if (finish != null && finish.toString().isNotEmpty) {
+                    yield StreamChunk(
+                      content: '',
+                      isDone: true,
+                      finishReason: finish.toString(),
+                    );
+                  }
+                }
+              }
+            }
+          } catch (_) {
+            // 跳过无法解析的行
+          }
+        }
+      }
+    } finally {
+      client.close(force: true);
+    }
   }
 
   Future<String> polish(AppSettings s, String content) => complete(

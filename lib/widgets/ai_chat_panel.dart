@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -94,11 +95,17 @@ class AiChatPanelState extends State<AiChatPanel> {
   List<AiModelEntity> _models = [];
   AiModelEntity? _selectedModel;
   bool _busy = false;
+  bool _isThinking = false;
   String? _status;
 
   /// 每个 assistant 消息对应的解析文件列表（按消息索引）
   final Map<int, List<ParsedFileOp>> _parsedFiles = {};
   bool _writeBusy = false;
+
+  /// 流式相关
+  StreamSubscription<void>? _streamSub;
+  StringBuffer _streamBuffer = StringBuffer();
+  int? _streamingMsgIndex;
 
   List<ChatMessage> get messages => _messages;
 
@@ -221,6 +228,11 @@ class AiChatPanelState extends State<AiChatPanel> {
 
   void addMessage(String role, String text) {
     setState(() => _messages.add(ChatMessage(role: role, content: text)));
+    if (role == 'user') {
+      widget.dispatcher.addUserMessage(text);
+    } else if (role == 'assistant') {
+      widget.dispatcher.addAssistantMessage(text);
+    }
     _saveHistory();
   }
 
@@ -229,69 +241,147 @@ class AiChatPanelState extends State<AiChatPanel> {
     if (msg.isEmpty || _busy) return;
     _chatCtrl.clear();
 
-    _addUserMessage(msg);
+    // 添加用户消息到 UI（dispatcher 在 dispatchStream 内部也添加）
+    setState(() => _messages.add(ChatMessage(role: 'user', content: msg)));
     widget.onContentGenerated?.call(msg);
+    _saveHistory();
 
+    // 先添加一个空 assistant 消息，后续流式填充
+    _streamBuffer = StringBuffer();
     setState(() {
+      _messages.add(ChatMessage(role: 'assistant', content: ''));
+      _streamingMsgIndex = _messages.length - 1;
       _busy = true;
-      _status = 'AI 思考中...';
+      _isThinking = true;
+      _status = '思考中...';
     });
 
     _scrollToBottom();
 
     try {
-      final result = await widget.dispatcher.dispatch(
+      final stream = widget.dispatcher.dispatchStream(
         settings: widget.settings,
         userMessage: msg,
         preferredModel: _selectedModel,
-        maxRetries: 3,
-        enableAutoSwitch: true,
       );
 
-      _addAssistantMessage(result.content);
-      widget.onContentGenerated?.call(result.content);
+      _streamSub = stream.listen(
+        (chunk) {
+          if (!mounted) return;
+          if (chunk.isDone) {
+            _finishStreaming();
+            return;
+          }
+          if (chunk.content.isNotEmpty) {
+            _streamBuffer.write(chunk.content);
+            final idx = _streamingMsgIndex;
+            if (idx != null && idx < _messages.length) {
+              setState(() {
+                _isThinking = false;
+                _status = '生成中...';
+                _messages[idx] = ChatMessage(
+                  role: 'assistant',
+                  content: _streamBuffer.toString(),
+                  time: _messages[idx].time,
+                );
+              });
+              _scrollToBottom();
+            }
+          }
+        },
+        onError: (e) {
+          if (!mounted) return;
+          final idx = _streamingMsgIndex;
+          if (idx != null && idx < _messages.length) {
+            setState(() {
+              _messages[idx] = ChatMessage(
+                role: 'assistant',
+                content: _streamBuffer.isNotEmpty
+                    ? '${_streamBuffer.toString()}\n\n---\n❌ 请求失败: $e'
+                    : '❌ 请求失败: $e',
+                time: _messages[idx].time,
+              );
+            });
+          }
+          _finishStreaming(error: true);
+          _saveHistory();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('请求失败: $e')),
+            );
+          }
+        },
+        onDone: () {
+          if (!mounted) return;
+          _finishStreaming();
+        },
+        cancelOnError: true,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _addAssistantMessage('❌ 请求失败: $e');
+      _finishStreaming(error: true);
+    }
+  }
 
-      // 解析 AI 回复中的文件操作
-      final files = _parseFileOps(result.content);
-      if (files.isNotEmpty) {
-        _parsedFiles[_messages.length - 1] = files;
-        setState(() {}); // 刷新以显示写入按钮
+  /// 取消当前流式请求
+  void _cancelStream() {
+    _streamSub?.cancel();
+    _streamSub = null;
+    widget.dispatcher.cancelCurrent();
+    final idx = _streamingMsgIndex;
+    if (idx != null && idx < _messages.length) {
+      final hasContent = _streamBuffer.isNotEmpty;
+      if (hasContent) {
+        widget.dispatcher.addAssistantMessage(_streamBuffer.toString());
       }
-
-      if (result.switched && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已自动切换到备选模型: ${result.usedModel}')),
+      setState(() {
+        _messages[idx] = ChatMessage(
+          role: 'assistant',
+          content: hasContent
+              ? '${_streamBuffer.toString()}\n\n---\n⚠️ *已打断*'
+              : '⚠️ *已打断*',
+          time: _messages[idx].time,
         );
-      }
+      });
+    }
+    _finishStreaming();
+  }
 
-      // Self-check
+  void _finishStreaming({bool error = false}) {
+    _streamSub?.cancel();
+    _streamSub = null;
+    final idx = _streamingMsgIndex;
+    if (idx != null && idx < _messages.length && !error) {
+      final content = _streamBuffer.toString();
+      // 解析文件操作
+      final files = _parseFileOps(content);
+      if (files.isNotEmpty) {
+        _parsedFiles[idx] = files;
+      }
+      // 持久化
+      _saveHistory();
+      // 自检
       if (widget.selfCheckEnabled && widget.selfChecker != null) {
-        final checkResult = await widget.selfChecker!.check(
+        widget.selfChecker!.check(
           settings: widget.settings,
-          generatedContent: result.content,
+          generatedContent: content,
           sessionType: widget.sessionType,
           blogFramework: widget.blogFramework,
-        );
-        if (checkResult.hasError) {
-          _addAssistantMessage('⚠️ 自检发现问题：\n${checkResult.issues.join('\n')}');
-        }
-      }
-    } catch (e) {
-      _addAssistantMessage('❌ 请求失败: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('所有模型请求失败: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _status = null;
+        ).then((checkResult) {
+          if (mounted && checkResult.hasError) {
+            _addAssistantMessage('⚠️ 自检发现问题：\n${checkResult.issues.join('\n')}');
+          }
         });
       }
-      _scrollToBottom();
     }
+    setState(() {
+      _busy = false;
+      _isThinking = false;
+      _status = null;
+      _streamingMsgIndex = null;
+    });
+    _streamBuffer = StringBuffer();
   }
 
   void _scrollToBottom() {
@@ -450,6 +540,7 @@ class AiChatPanelState extends State<AiChatPanel> {
 
   @override
   void dispose() {
+    _streamSub?.cancel();
     _chatCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -572,20 +663,52 @@ class AiChatPanelState extends State<AiChatPanel> {
               ),
               minLines: 1,
               maxLines: 4,
-              onSubmitted: (_) => sendMessage(),
+              enabled: !_busy,
+              onSubmitted: _busy ? null : (_) => sendMessage(),
             ),
           ),
           const SizedBox(width: 8),
-          IconButton.filled(
-            onPressed: _busy ? null : () => sendMessage(),
-            icon: _busy
-                ? const SizedBox(
-                    width: 16, height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                : const Icon(Icons.send),
-          ),
+          if (_busy)
+            IconButton.filled(
+              onPressed: _cancelStream,
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.stop),
+              tooltip: '打断对话',
+            )
+          else
+            IconButton.filled(
+              onPressed: () => sendMessage(),
+              icon: const Icon(Icons.send),
+            ),
         ],
+      ),
+    );
+  }
+
+  /// 思考动画：跳动的三个点
+  Widget _buildThinkingAnimation(ColorScheme cs) {
+    return _ThinkingDots(color: cs.primary);
+  }
+
+  /// 消息内容：支持流式光标
+  Widget _buildMessageContent(ChatMessage msg, ColorScheme cs, bool isUser, bool isAssistant, bool isStreaming) {
+    if (isStreaming && isAssistant) {
+      return _StreamingText(
+        text: msg.content,
+        cs: cs,
+        showCursor: true,
+      );
+    }
+    return SelectableText(
+      msg.content,
+      style: TextStyle(
+        fontSize: 14,
+        color: isUser ? cs.onPrimaryContainer : cs.onSurface,
+        fontFamily: isAssistant ? 'monospace' : null,
+        height: 1.5,
       ),
     );
   }
@@ -595,6 +718,8 @@ class AiChatPanelState extends State<AiChatPanel> {
     final isSystem = msg.role == 'system';
     final isAssistant = msg.role == 'assistant';
     final msgIndex = _messages.indexOf(msg);
+    final isStreaming = msgIndex == _streamingMsgIndex && _busy;
+    final isThinkingBubble = isStreaming && _isThinking && msg.content.isEmpty;
     final fileOps = _parsedFiles[msgIndex];
     final hasFiles = fileOps != null && fileOps.isNotEmpty;
     final allWritten = hasFiles && fileOps.every((f) => f.written);
@@ -619,16 +744,10 @@ class AiChatPanelState extends State<AiChatPanel> {
           children: [
             if (isSystem)
               Text(msg.content, style: TextStyle(fontSize: 13, color: cs.outline))
+            else if (isThinkingBubble)
+              _buildThinkingAnimation(cs)
             else
-              SelectableText(
-                msg.content,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isUser ? cs.onPrimaryContainer : cs.onSurface,
-                  fontFamily: isAssistant ? 'monospace' : null,
-                  height: 1.5,
-                ),
-              ),
+              _buildMessageContent(msg, cs, isUser, isAssistant, isStreaming),
             // 👇 文件操作按钮
             if (hasFiles && isAssistant) ...[
               const SizedBox(height: 10),
@@ -732,4 +851,143 @@ class ChatMessage {
         content: j['content']?.toString() ?? '',
         time: DateTime.tryParse(j['time']?.toString() ?? '') ?? DateTime.now(),
       );
+}
+
+/// 思考动画：三个跳动的点
+class _ThinkingDots extends StatefulWidget {
+  final Color color;
+  const _ThinkingDots({required this.color});
+
+  @override
+  State<_ThinkingDots> createState() => _ThinkingDotsState();
+}
+
+class _ThinkingDotsState extends State<_ThinkingDots> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late List<Animation<double>> _animations;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    _animations = List.generate(3, (i) {
+      return Tween<double>(begin: 0.3, end: 1.0).animate(
+        CurvedAnimation(
+          parent: _ctrl,
+          curve: Interval(i * 0.2, 0.6 + i * 0.2, curve: Curves.easeInOut),
+        ),
+      );
+    });
+    _ctrl.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('思考中', style: TextStyle(fontSize: 13, color: widget.color.withOpacity(0.7))),
+        const SizedBox(width: 6),
+        ...List.generate(3, (i) {
+          return AnimatedBuilder(
+            animation: _animations[i],
+            builder: (_, child) => Padding(
+              padding: EdgeInsets.only(left: i > 0 ? 3 : 0),
+              child: Opacity(
+                opacity: _animations[i].value,
+                child: Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: widget.color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+}
+
+/// 流式文本：带闪烁光标
+class _StreamingText extends StatefulWidget {
+  final String text;
+  final ColorScheme cs;
+  final bool showCursor;
+
+  const _StreamingText({required this.text, required this.cs, required this.showCursor});
+
+  @override
+  State<_StreamingText> createState() => _StreamingTextState();
+}
+
+class _StreamingTextState extends State<_StreamingText> with SingleTickerProviderStateMixin {
+  late AnimationController _cursorCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _cursorCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+    _cursorCtrl.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _cursorCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _cursorCtrl,
+      builder: (_, child) {
+        return RichText(
+          text: TextSpan(
+            style: TextStyle(
+              fontSize: 14,
+              color: widget.cs.onSurface,
+              fontFamily: 'monospace',
+              height: 1.5,
+            ),
+            children: [
+              TextSpan(text: widget.text),
+              if (widget.showCursor)
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.baseline,
+                  baseline: TextBaseline.alphabetic,
+                  child: Opacity(
+                    opacity: _cursorCtrl.value,
+                    child: Container(
+                      width: 2,
+                      height: 16,
+                      margin: const EdgeInsets.only(left: 1),
+                      decoration: BoxDecoration(
+                        color: widget.cs.primary,
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
