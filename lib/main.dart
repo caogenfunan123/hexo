@@ -14,7 +14,14 @@ import 'models/github_token_profile.dart';
 import 'models/repo_config.dart';
 import 'models/session_state.dart';
 import 'models/template_item.dart';
+import 'core/ai/ai_model_entity.dart';
+import 'core/ai/ai_model_manager.dart';
+import 'core/ai/ai_request_dispatcher.dart';
+import 'core/ai/ai_self_checker.dart';
+import 'core/ai/ai_session_manager.dart';
+import 'core/ai/theme_migration_service.dart';
 import 'core/template_engine/template_resolver.dart';
+import 'screens/ai_model_manager_screen.dart';
 import 'screens/article_reader_screen.dart';
 import 'screens/drafts_screen.dart';
 import 'screens/remote_screen.dart';
@@ -26,6 +33,7 @@ import 'screens/preview_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/site_editor_screen.dart';
 import 'screens/template_manager_screen.dart';
+import 'screens/theme_migration_screen.dart';
 import 'services/ai_service.dart';
 import 'services/github_service.dart';
 import 'services/image_service.dart';
@@ -99,6 +107,10 @@ class _RootShellState extends State<RootShell> {
   final github = GitHubService();
   late final imageService = ImageService(github);
   final aiService = AiService();
+  late final aiModelManager = AiModelManager(storage);
+  late final aiDispatcher = AiRequestDispatcher(aiService, aiModelManager);
+  late final themeMigrationService = ThemeMigrationService(aiService, github);
+  late final aiSelfChecker = AiSelfChecker(aiService);
   final rssService = RssService();
   final webdavService = WebDavService();
   final sessionService = SessionService();
@@ -187,6 +199,8 @@ class _RootShellState extends State<RootShell> {
         return '设置';
       case 9:
         return '阅读';
+      case 10:
+        return 'AI 主题迁移';
       default:
         return '';
     }
@@ -3195,6 +3209,10 @@ class _RootShellState extends State<RootShell> {
                   _drawerAction(Icons.settings_applications, '配置编辑器', _showSiteConfigEditor),
                   _drawerAction(Icons.swap_horiz, 'AI批量迁移', _showMigrationTool),
                   const SizedBox(height: 8),
+                  _drawerSection('AI 工具'),
+                  _drawerItem(10, Icons.auto_fix_high, 'AI 主题迁移'),
+                  _drawerAction(Icons.psychology_outlined, 'AI 模型管理', _showAiModelManager),
+                  const SizedBox(height: 8),
                   _drawerSection('系统'),
                   _drawerItem(8, Icons.settings_outlined, '设置'),
                 ],
@@ -3429,6 +3447,19 @@ class _RootShellState extends State<RootShell> {
           article: _currentArticle,
           onEnterEdit: () => _enterEditorFromReader(_currentArticle),
           onClose: () => _onCloseReader(),
+        );
+      case 10:
+        return ThemeMigrationScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          repos: repos,
+          aiService: aiService,
+          githubService: github,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          migrationService: themeMigrationService,
+          selfChecker: aiSelfChecker,
+          onSettingsChanged: _updateSettings,
         );
       default:
         return const SizedBox();
@@ -4136,87 +4167,18 @@ class _RootShellState extends State<RootShell> {
   }
 
   void _showMigrationTool() {
-    final sourceCtrl = TextEditingController();
-    final targetCtrl = TextEditingController();
-    String sourceFramework = 'hexo';
-    String targetFramework = 'hugo';
+    _navigateTo(10);
+  }
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          return AlertDialog(
-            title: const Text('AI 批量迁移工具'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('选择源框架和目标框架，AI 自动转换',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: sourceFramework,
-                    decoration: const InputDecoration(labelText: '源框架', isDense: true),
-                    items: BlogFramework.presets
-                        .map((f) => DropdownMenuItem(value: f.id, child: Text(f.name)))
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) {
-                        sourceFramework = v;
-                        setDialogState(() {});
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    value: targetFramework,
-                    decoration: const InputDecoration(labelText: '目标框架', isDense: true),
-                    items: BlogFramework.presets
-                        .map((f) => DropdownMenuItem(value: f.id, child: Text(f.name)))
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) {
-                        targetFramework = v;
-                        setDialogState(() {});
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  const Text('选择要迁移的文章（多选）',
-                      style: TextStyle(fontSize: 12)),
-                  const SizedBox(height: 8),
-                  if (remotePosts.isNotEmpty)
-                    SizedBox(
-                      height: 150,
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: remotePosts.length,
-                        itemBuilder: (_, i) {
-                          final item = remotePosts[i];
-                          return CheckboxListTile(
-                            dense: true,
-                            title: Text(item.name, style: const TextStyle(fontSize: 12)),
-                            value: false,
-                            onChanged: (_) {},
-                          );
-                        },
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-              FilledButton(
-                onPressed: () async {
-                  _showToast('迁移功能开发中...');
-                  Navigator.pop(ctx);
-                },
-                child: const Text('开始迁移'),
-              ),
-            ],
-          );
-        },
+  void _showAiModelManager() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AiModelManagerScreen(
+          modelManager: aiModelManager,
+          aiService: aiService,
+          settings: settings,
+          onSettingsChanged: _updateSettings,
+        ),
       ),
     );
   }

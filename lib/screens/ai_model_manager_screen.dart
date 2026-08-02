@@ -1,0 +1,474 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../core/ai/ai_model_entity.dart';
+import '../core/ai/ai_model_manager.dart';
+import '../models/ai_profile.dart';
+import '../models/app_settings.dart';
+import '../services/ai_service.dart';
+
+/// AI 模型管理面板
+class AiModelManagerScreen extends StatefulWidget {
+  final AiModelManager modelManager;
+  final AiService aiService;
+  final AppSettings settings;
+  final Future<void> Function(AppSettings) onSettingsChanged;
+
+  const AiModelManagerScreen({
+    super.key,
+    required this.modelManager,
+    required this.aiService,
+    required this.settings,
+    required this.onSettingsChanged,
+  });
+
+  @override
+  State<AiModelManagerScreen> createState() => _AiModelManagerScreenState();
+}
+
+class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
+  List<AiModelEntity> _models = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadModels();
+  }
+
+  Future<void> _loadModels() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      _models = await widget.modelManager.loadAll();
+    } catch (e) {
+      _error = e.toString();
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _fetchFromProxy() async {
+    final apiBaseCtrl = TextEditingController(
+      text: widget.settings.aiBaseUrl,
+    );
+    final apiKeyCtrl = TextEditingController(
+      text: widget.settings.aiApiKey,
+    );
+    String group = 'general';
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          title: const Text('批量拉取中转站模型'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: apiBaseCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '中转 API 地址',
+                    hintText: 'https://api.openai.com/v1',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: apiKeyCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'API Key',
+                  ),
+                  obscureText: true,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: group,
+                  decoration: const InputDecoration(labelText: '模型分组'),
+                  items: const [
+                    DropdownMenuItem(value: 'general', child: Text('📝 通用对话')),
+                    DropdownMenuItem(value: 'code', child: Text('🧑‍💻 代码优选')),
+                    DropdownMenuItem(value: 'longtext', child: Text('📄 长文本')),
+                  ],
+                  onChanged: (v) => setDlg(() => group = v ?? 'general'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('拉取'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (ok != true) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final ids = await widget.aiService.listModels(
+        widget.settings,
+        profile: AiProfile(
+          id: 'temp',
+          name: '临时',
+          baseUrl: apiBaseCtrl.text.trim(),
+          apiKey: apiKeyCtrl.text.trim(),
+          model: '',
+        ),
+      );
+
+      final newModels = ids.map((id) => AiModelEntity(
+        modelId: id,
+        modelName: id,
+        apiBase: apiBaseCtrl.text.trim(),
+        apiKey: apiKeyCtrl.text.trim(),
+        group: group,
+        enable: true,
+        priority: 0,
+      )).toList();
+
+      await widget.modelManager.batchImport(newModels);
+      await _loadModels();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('成功拉取 ${newModels.length} 个模型')),
+        );
+      }
+    } catch (e) {
+      setState(() => _error = e.toString());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('拉取失败: $e')),
+        );
+      }
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _addModel() async {
+    final idCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
+    final baseCtrl = TextEditingController(text: widget.settings.aiBaseUrl);
+    final keyCtrl = TextEditingController(text: widget.settings.aiApiKey);
+    String group = 'general';
+    int timeout = 30;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          title: const Text('添加模型'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: '显示名称'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: idCtrl,
+                  decoration: const InputDecoration(labelText: '模型 ID', hintText: 'gpt-4o-mini'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: baseCtrl,
+                  decoration: const InputDecoration(labelText: 'API Base URL'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: keyCtrl,
+                  decoration: const InputDecoration(labelText: 'API Key'),
+                  obscureText: true,
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: group,
+                  decoration: const InputDecoration(labelText: '分组'),
+                  items: const [
+                    DropdownMenuItem(value: 'general', child: Text('📝 通用对话')),
+                    DropdownMenuItem(value: 'code', child: Text('🧑‍💻 代码优选')),
+                    DropdownMenuItem(value: 'longtext', child: Text('📄 长文本')),
+                  ],
+                  onChanged: (v) => setDlg(() => group = v ?? 'general'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('添加')),
+          ],
+        ),
+      ),
+    );
+
+    if (ok != true) return;
+
+    final model = AiModelEntity(
+      modelId: idCtrl.text.trim(),
+      modelName: nameCtrl.text.trim().isEmpty ? idCtrl.text.trim() : nameCtrl.text.trim(),
+      apiBase: baseCtrl.text.trim(),
+      apiKey: keyCtrl.text.trim(),
+      group: group,
+      timeoutSecond: timeout,
+    );
+
+    await widget.modelManager.addModel(model);
+    await _loadModels();
+  }
+
+  Future<void> _toggleModel(AiModelEntity model) async {
+    await widget.modelManager.toggleModel(model.modelId, model.apiBase, !model.enable);
+    await _loadModels();
+  }
+
+  Future<void> _deleteModel(AiModelEntity model) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除模型'),
+        content: Text('确认删除「${model.displayLabel}」？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    await widget.modelManager.deleteModel(model.modelId, model.apiBase);
+    await _loadModels();
+  }
+
+  Future<void> _exportModels() async {
+    final json = widget.modelManager.exportToJson(_models);
+    await Clipboard.setData(ClipboardData(text: json));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('模型配置已复制到剪贴板')),
+      );
+    }
+  }
+
+  Future<void> _importModels() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (data?.text == null || data!.text!.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('剪贴板为空')),
+        );
+      }
+      return;
+    }
+
+    try {
+      final imported = widget.modelManager.importFromJson(data.text!);
+      if (imported.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('未解析到有效模型配置')),
+          );
+        }
+        return;
+      }
+      await widget.modelManager.batchImport(imported);
+      await _loadModels();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('成功导入 ${imported.length} 个模型')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导入失败: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _testModel(AiModelEntity model) async {
+    setState(() => _loading = true);
+    try {
+      await widget.aiService.complete(
+        settings: widget.settings,
+        systemPrompt: '你是一个助手。',
+        userPrompt: '回复 OK',
+        profile: AiProfile(
+          id: model.modelId,
+          name: model.modelName,
+          baseUrl: model.apiBase,
+          apiKey: model.apiKey,
+          model: model.modelId,
+          apiPath: model.apiPath,
+          useBearer: model.useBearer,
+        ),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${model.modelName} ✅ 连通正常')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${model.modelName} ❌ 失败: $e')),
+        );
+      }
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AI 模型管理'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.file_upload_outlined),
+            tooltip: '导入',
+            onPressed: _importModels,
+          ),
+          IconButton(
+            icon: const Icon(Icons.file_download_outlined),
+            tooltip: '导出',
+            onPressed: _exportModels,
+          ),
+        ],
+      ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.small(
+            heroTag: 'fetch',
+            onPressed: _fetchFromProxy,
+            tooltip: '批量拉取',
+            child: const Icon(Icons.cloud_download_outlined),
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton(
+            heroTag: 'add',
+            onPressed: _addModel,
+            tooltip: '添加模型',
+            child: const Icon(Icons.add),
+          ),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.error_outline, size: 48, color: cs.error),
+                      const SizedBox(height: 12),
+                      Text(_error!, style: TextStyle(color: cs.error)),
+                      const SizedBox(height: 12),
+                      FilledButton(onPressed: _loadModels, child: const Text('重试')),
+                    ],
+                  ),
+                )
+              : _models.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.psychology_outlined, size: 64, color: cs.outline),
+                          const SizedBox(height: 16),
+                          Text('暂无模型', style: TextStyle(color: cs.outline, fontSize: 16)),
+                          const SizedBox(height: 8),
+                          Text('点击右下角按钮添加模型或批量拉取',
+                              style: TextStyle(color: cs.outline, fontSize: 13)),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.only(bottom: 100),
+                      itemCount: _models.length,
+                      itemBuilder: (ctx, i) {
+                        final m = _models[i];
+                        return Card(
+                          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: m.enable
+                                  ? cs.primaryContainer
+                                  : cs.surfaceContainerHighest,
+                              child: Icon(
+                                m.group == 'code' ? Icons.code : Icons.chat_outlined,
+                                size: 20,
+                                color: m.enable ? cs.onPrimaryContainer : cs.outline,
+                              ),
+                            ),
+                            title: Text(
+                              m.modelName,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: m.enable ? null : cs.outline,
+                              ),
+                            ),
+                            subtitle: Text(
+                              m.modelId,
+                              style: TextStyle(fontSize: 12, color: cs.outline),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: cs.primaryContainer,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    m.groupLabel,
+                                    style: TextStyle(fontSize: 10, color: cs.onPrimaryContainer),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.wifi_find, size: 18, color: cs.primary),
+                                  tooltip: '测试连通性',
+                                  onPressed: () => _testModel(m),
+                                ),
+                                Switch(
+                                  value: m.enable,
+                                  onChanged: (_) => _toggleModel(m),
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.delete_outline, size: 18, color: cs.error),
+                                  onPressed: () => _deleteModel(m),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+    );
+  }
+}
