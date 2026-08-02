@@ -32,7 +32,6 @@ jobs:
   # ── Android APK 构建 ──
   build-android:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -54,7 +53,6 @@ jobs:
           echo "FLUTTER_ROOT=$FLUTTER_ROOT"
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          # 确保 local.properties 存在且正确
           echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
           echo "sdk.dir=$ANDROID_HOME" >> android/local.properties
           cat android/local.properties
@@ -63,7 +61,6 @@ jobs:
 
       - name: Build APK
         id: build
-        continue-on-error: true
         run: |
           flutter build apk --release --no-pub --no-android-gradle-daemon 2>&1 | tee /tmp/build.log
           BUILD_EXIT=${PIPESTATUS[0]}
@@ -75,8 +72,10 @@ jobs:
             echo '```' >> $GITHUB_STEP_SUMMARY
             tail -100 /tmp/build.log >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "build_success=false" >> $GITHUB_OUTPUT
           else
             echo '## Android Build Succeeded' >> $GITHUB_STEP_SUMMARY
+            echo "build_success=true" >> $GITHUB_OUTPUT
           fi
 
       - name: Upload build log
@@ -87,7 +86,9 @@ jobs:
           path: /tmp/build.log
           retention-days: 3
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload APK
+        if: steps.build.outputs.build_success == 'true'
+        uses: actions/upload-artifact@v4
         with:
           name: hexo-apk
           path: build/app/outputs/flutter-apk/app-release.apk
@@ -156,11 +157,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v4
+      - name: Download APK artifact
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v4
         with:
           name: hexo-apk
 
       - name: Create Release
+        if: steps.download.outcome == 'success'
         uses: softprops/action-gh-release@v2
         with:
           name: Latest Build
