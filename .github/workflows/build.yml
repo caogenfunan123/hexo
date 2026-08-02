@@ -163,7 +163,7 @@ jobs:
           name: hexo-apk
 
       - name: Create Release
-        if: steps.download.outcome == 'success'
+        if: steps.download.conclusion == 'success'
         uses: softprops/action-gh-release@v2
         with:
           name: Latest Build
