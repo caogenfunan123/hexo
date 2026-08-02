@@ -204,7 +204,16 @@ class AiChatPanelState extends State<AiChatPanel> {
   Future<void> _loadModels() async {
     _models = await widget.modelManager.getEnabled();
     if (_models.isNotEmpty) {
-      _selectedModel = _models.first;
+      // 优先使用全局持久化的默认模型
+      final savedId = widget.settings.defaultModelId;
+      final savedBase = widget.settings.defaultModelBase;
+      if (savedId.isNotEmpty && savedBase.isNotEmpty) {
+        _selectedModel = _models.firstWhere(
+          (m) => m.modelId == savedId && m.apiBase == savedBase,
+          orElse: () => _models.first,
+        );
+      }
+      _selectedModel ??= _models.first;
     }
     if (mounted) setState(() {});
   }
@@ -610,7 +619,18 @@ class AiChatPanelState extends State<AiChatPanel> {
         AiModelBottomBar(
           models: _models,
           selectedModel: _selectedModel,
-          onChanged: (m) => setState(() => _selectedModel = m),
+          onChanged: (m) {
+            setState(() => _selectedModel = m);
+            // 持久化全局默认模型
+            if (m != null) {
+              widget.onSettingsChanged(
+                widget.settings.copyWith(
+                  defaultModelId: m.modelId,
+                  defaultModelBase: m.apiBase,
+                ),
+              );
+            }
+          },
           onManageModels: () {
             Navigator.of(context).push(
               MaterialPageRoute(

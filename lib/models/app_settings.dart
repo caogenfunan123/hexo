@@ -47,6 +47,10 @@ class AppSettings {
   final int webdavAutoSyncIntervalSeconds;
   final bool webdavSyncWifiOnly;
 
+  // ── 全局默认 AI 模型 ──
+  final String defaultModelId;   // modelId
+  final String defaultModelBase; // apiBase
+
   // ── 会话恢复 ──
   final bool restoreSession;
 
@@ -91,6 +95,8 @@ class AppSettings {
     this.webdavAutoSyncEnabled = false,
     this.webdavAutoSyncIntervalSeconds = 300,
     this.webdavSyncWifiOnly = true,
+    this.defaultModelId = '',
+    this.defaultModelBase = '',
     this.restoreSession = true,
   });
 
@@ -178,6 +184,8 @@ class AppSettings {
     bool? webdavAutoSyncEnabled,
     int? webdavAutoSyncIntervalSeconds,
     bool? webdavSyncWifiOnly,
+    String? defaultModelId,
+    String? defaultModelBase,
     bool? restoreSession,
   }) {
     return AppSettings(
@@ -221,6 +229,8 @@ class AppSettings {
       webdavAutoSyncEnabled: webdavAutoSyncEnabled ?? this.webdavAutoSyncEnabled,
       webdavAutoSyncIntervalSeconds: webdavAutoSyncIntervalSeconds ?? this.webdavAutoSyncIntervalSeconds,
       webdavSyncWifiOnly: webdavSyncWifiOnly ?? this.webdavSyncWifiOnly,
+      defaultModelId: defaultModelId ?? this.defaultModelId,
+      defaultModelBase: defaultModelBase ?? this.defaultModelBase,
       restoreSession: restoreSession ?? this.restoreSession,
     );
   }
@@ -266,6 +276,8 @@ class AppSettings {
         'webdavAutoSyncEnabled': webdavAutoSyncEnabled,
         'webdavAutoSyncIntervalSeconds': webdavAutoSyncIntervalSeconds,
         'webdavSyncWifiOnly': webdavSyncWifiOnly,
+        'defaultModelId': defaultModelId,
+        'defaultModelBase': defaultModelBase,
         'restoreSession': restoreSession,
       };
 
@@ -389,6 +401,8 @@ class AppSettings {
       webdavAutoSyncEnabled: j['webdavAutoSyncEnabled'] == true,
       webdavAutoSyncIntervalSeconds: (j['webdavAutoSyncIntervalSeconds'] as num?)?.toInt() ?? 300,
       webdavSyncWifiOnly: j['webdavSyncWifiOnly'] != false,
+      defaultModelId: j['defaultModelId']?.toString() ?? '',
+      defaultModelBase: j['defaultModelBase']?.toString() ?? '',
       restoreSession: j['restoreSession'] != false,
     );
   }
