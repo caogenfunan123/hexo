@@ -21,7 +21,10 @@ import 'core/ai/ai_self_checker.dart';
 import 'core/ai/ai_session_manager.dart';
 import 'core/ai/theme_migration_service.dart';
 import 'core/template_engine/template_resolver.dart';
+import 'screens/ai_article_chat_screen.dart';
+import 'screens/ai_audit_screen.dart';
 import 'screens/ai_model_manager_screen.dart';
+import 'screens/ai_theme_chat_screen.dart';
 import 'screens/article_reader_screen.dart';
 import 'screens/drafts_screen.dart';
 import 'screens/remote_screen.dart';
@@ -3210,7 +3213,11 @@ class _RootShellState extends State<RootShell> {
                   _drawerAction(Icons.swap_horiz, 'AI批量迁移', _showMigrationTool),
                   const SizedBox(height: 8),
                   _drawerSection('AI 工具'),
+                  _drawerAction(Icons.article_outlined, 'AI 博文创作', _showAiArticleChat),
+                  _drawerAction(Icons.web_outlined, 'AI 页面创作', _showAiPageChat),
+                  _drawerAction(Icons.palette_outlined, 'AI 主题开发', _showAiThemeChat),
                   _drawerItem(10, Icons.auto_fix_high, 'AI 主题迁移'),
+                  _drawerAction(Icons.fact_check_outlined, 'AI 站点巡检', _showAiAudit),
                   _drawerAction(Icons.psychology_outlined, 'AI 模型管理', _showAiModelManager),
                   const SizedBox(height: 8),
                   _drawerSection('系统'),
@@ -3740,6 +3747,9 @@ class _RootShellState extends State<RootShell> {
                       _toolChip(Icons.sync_alt, 'AI改写',
                           _editorBusy ? null : () => _aiAction('rewrite'),
                           color: Colors.purple),
+                      _toolChip(Icons.chat, 'AI对话',
+                          () => _showAiArticleChat(),
+                          color: Colors.deepPurple),
                     ]),
               ),
               const SizedBox(height: 10),
@@ -4168,6 +4178,72 @@ class _RootShellState extends State<RootShell> {
 
   void _showMigrationTool() {
     _navigateTo(10);
+  }
+
+  void _showAiArticleChat() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AiArticleChatScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          aiService: aiService,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          selfChecker: aiSelfChecker,
+          isPage: false,
+          onSettingsChanged: _updateSettings,
+        ),
+      ),
+    );
+  }
+
+  void _showAiPageChat() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AiArticleChatScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          aiService: aiService,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          selfChecker: aiSelfChecker,
+          isPage: true,
+          onSettingsChanged: _updateSettings,
+        ),
+      ),
+    );
+  }
+
+  void _showAiThemeChat() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AiThemeChatScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          aiService: aiService,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          selfChecker: aiSelfChecker,
+          onSettingsChanged: _updateSettings,
+        ),
+      ),
+    );
+  }
+
+  void _showAiAudit() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AiAuditScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          aiService: aiService,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          selfChecker: aiSelfChecker,
+          onSettingsChanged: _updateSettings,
+        ),
+      ),
+    );
   }
 
   void _showAiModelManager() {
