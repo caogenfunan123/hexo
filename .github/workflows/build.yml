@@ -83,22 +83,13 @@ jobs:
           path: /tmp/build.log
           retention-days: 3
 
-      - name: Check APK
-        id: check-apk
-        if: always()
-        run: |
-          if [ -f build/app/outputs/flutter-apk/app-release.apk ]; then
-            echo "apk_exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "apk_exists=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Upload APK
-        if: steps.check-apk.outputs.apk_exists == 'true'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: hexo-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: ignore
           retention-days: 30
 
   # ── Web 构建 ──
