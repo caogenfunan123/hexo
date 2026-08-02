@@ -472,6 +472,9 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
         blogFramework: repo?.frameworkId,
         targetFramework: fw?.name,
         themesPath: 'themes',
+        gitHubService: widget.githubService,
+        activeRepo: repo,
+        storageService: null, // 主题迁移有独立的状态管理，不需要持久化
         initialMessage: '欢迎使用 AI 主题跨框架迁移助手！\n\n'
             '你可以直接输入主题 Git 地址开始迁移，例如：\n'
             '「拉取 https://github.com/xxx/theme 转换到 Hexo，命名为 my-theme」\n\n'

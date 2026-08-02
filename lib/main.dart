@@ -4192,6 +4192,8 @@ class _RootShellState extends State<RootShell> {
           selfChecker: aiSelfChecker,
           isPage: false,
           onSettingsChanged: _updateSettings,
+          gitHubService: github,
+          storageService: storage,
         ),
       ),
     );
@@ -4209,6 +4211,8 @@ class _RootShellState extends State<RootShell> {
           selfChecker: aiSelfChecker,
           isPage: true,
           onSettingsChanged: _updateSettings,
+          gitHubService: github,
+          storageService: storage,
         ),
       ),
     );
@@ -4225,6 +4229,8 @@ class _RootShellState extends State<RootShell> {
           dispatcher: aiDispatcher,
           selfChecker: aiSelfChecker,
           onSettingsChanged: _updateSettings,
+          gitHubService: github,
+          storageService: storage,
         ),
       ),
     );
@@ -4241,6 +4247,8 @@ class _RootShellState extends State<RootShell> {
           dispatcher: aiDispatcher,
           selfChecker: aiSelfChecker,
           onSettingsChanged: _updateSettings,
+          gitHubService: github,
+          storageService: storage,
         ),
       ),
     );

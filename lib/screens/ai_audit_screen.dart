@@ -7,6 +7,8 @@ import '../core/ai/ai_session_manager.dart';
 import '../models/app_settings.dart';
 import '../models/repo_config.dart';
 import '../services/ai_service.dart';
+import '../services/github_service.dart';
+import '../services/storage_service.dart';
 import '../widgets/ai_chat_panel.dart';
 
 /// AI 站点巡检对话页面
@@ -18,6 +20,8 @@ class AiAuditScreen extends StatelessWidget {
   final AiRequestDispatcher dispatcher;
   final AiSelfChecker selfChecker;
   final Future<void> Function(AppSettings) onSettingsChanged;
+  final GitHubService? gitHubService;
+  final StorageService? storageService;
 
   const AiAuditScreen({
     super.key,
@@ -28,6 +32,8 @@ class AiAuditScreen extends StatelessWidget {
     required this.dispatcher,
     required this.selfChecker,
     required this.onSettingsChanged,
+    this.gitHubService,
+    this.storageService,
   });
 
   @override
@@ -61,6 +67,9 @@ class AiAuditScreen extends StatelessWidget {
         postsPath: repo?.postsPath,
         pagesPath: repo?.pagesPath,
         themesPath: 'themes',
+        gitHubService: gitHubService,
+        activeRepo: repo,
+        storageService: storageService,
         initialMessage: '欢迎使用 AI 站点巡检助手！\n\n你可以直接告诉我：\n'
             '• 开始全面巡检\n'
             '• 检查配置文件语法\n'

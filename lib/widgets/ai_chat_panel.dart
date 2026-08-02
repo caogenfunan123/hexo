@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../core/ai/ai_model_entity.dart';
@@ -6,9 +9,12 @@ import '../core/ai/ai_request_dispatcher.dart';
 import '../core/ai/ai_self_checker.dart';
 import '../core/ai/ai_session_manager.dart';
 import '../models/app_settings.dart';
+import '../models/repo_config.dart';
+import '../services/ai_service.dart';
+import '../services/github_service.dart';
+import '../services/storage_service.dart';
 import 'ai_model_picker.dart';
 import '../screens/ai_model_manager_screen.dart';
-import '../services/ai_service.dart';
 
 /// 可复用的 AI 对话面板
 /// 用于所有 AI 会话场景：文章、页面、主题、巡检、主题迁移
@@ -30,6 +36,13 @@ class AiChatPanel extends StatefulWidget {
   final List<Widget> Function(BuildContext, AiChatPanelState)? headerBuilder;
   final void Function(String content)? onContentGenerated;
 
+  /// 👇 文件执行能力：Git 服务 + 仓库配置
+  final GitHubService? gitHubService;
+  final RepoConfig? activeRepo;
+
+  /// 👇 对话持久化：本地存储
+  final StorageService? storageService;
+
   const AiChatPanel({
     super.key,
     required this.settings,
@@ -48,10 +61,30 @@ class AiChatPanel extends StatefulWidget {
     required this.onSettingsChanged,
     this.headerBuilder,
     this.onContentGenerated,
+    this.gitHubService,
+    this.activeRepo,
+    this.storageService,
   });
 
   @override
   State<AiChatPanel> createState() => AiChatPanelState();
+}
+
+/// 解析出的文件操作
+class ParsedFileOp {
+  final String path;
+  final String content;
+  final String language;
+  bool written;
+  String? writeError;
+
+  ParsedFileOp({
+    required this.path,
+    required this.content,
+    this.language = 'text',
+    this.written = false,
+    this.writeError,
+  });
 }
 
 class AiChatPanelState extends State<AiChatPanel> {
@@ -63,6 +96,10 @@ class AiChatPanelState extends State<AiChatPanel> {
   bool _busy = false;
   String? _status;
 
+  /// 每个 assistant 消息对应的解析文件列表（按消息索引）
+  final Map<int, List<ParsedFileOp>> _parsedFiles = {};
+  bool _writeBusy = false;
+
   List<ChatMessage> get messages => _messages;
 
   @override
@@ -70,9 +107,78 @@ class AiChatPanelState extends State<AiChatPanel> {
     super.initState();
     _loadModels();
     _initSession();
-    if (widget.initialMessage != null) {
-      _addSystemMessage(widget.initialMessage!);
+    _loadHistory();
+  }
+
+  String get _chatFileKey => 'ai_chat_${widget.sessionType.name}.json';
+
+  /// 加载已保存的对话历史
+  Future<void> _loadHistory() async {
+    final storage = widget.storageService;
+    if (storage == null) return;
+    try {
+      final file = File('${(await storage.root).path}/$_chatFileKey');
+      if (!await file.exists()) {
+        // 首次打开，显示欢迎语
+        if (widget.initialMessage != null) {
+          _addSystemMessage(widget.initialMessage!);
+        }
+        return;
+      }
+      final text = await file.readAsString();
+      if (text.trim().isEmpty) {
+        if (widget.initialMessage != null) {
+          _addSystemMessage(widget.initialMessage!);
+        }
+        return;
+      }
+      final list = jsonDecode(text);
+      if (list is! List) return;
+      final messages = list
+          .whereType<Map>()
+          .map((e) => ChatMessage.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      if (messages.isEmpty) {
+        if (widget.initialMessage != null) {
+          _addSystemMessage(widget.initialMessage!);
+        }
+        return;
+      }
+      setState(() => _messages.addAll(messages));
+      // 恢复 dispatcher 上下文
+      for (final m in messages) {
+        if (m.role == 'user') {
+          widget.dispatcher.addUserMessage(m.content);
+        } else if (m.role == 'assistant') {
+          widget.dispatcher.addAssistantMessage(m.content);
+        }
+      }
+      // 重新解析已有 assistant 消息中的文件操作
+      for (int i = 0; i < _messages.length; i++) {
+        final m = _messages[i];
+        if (m.role == 'assistant') {
+          final files = _parseFileOps(m.content);
+          if (files.isNotEmpty) {
+            _parsedFiles[i] = files;
+          }
+        }
+      }
+    } catch (_) {
+      if (widget.initialMessage != null && _messages.isEmpty) {
+        _addSystemMessage(widget.initialMessage!);
+      }
     }
+  }
+
+  /// 保存对话历史到本地文件
+  Future<void> _saveHistory() async {
+    final storage = widget.storageService;
+    if (storage == null) return;
+    try {
+      final file = File('${(await storage.root).path}/$_chatFileKey');
+      final json = jsonEncode(_messages.map((m) => m.toJson()).toList());
+      await file.writeAsString(json);
+    } catch (_) {}
   }
 
   void _initSession() {
@@ -98,20 +204,24 @@ class AiChatPanelState extends State<AiChatPanel> {
 
   void _addSystemMessage(String text) {
     setState(() => _messages.add(ChatMessage(role: 'system', content: text)));
+    _saveHistory();
   }
 
   void _addUserMessage(String text) {
     setState(() => _messages.add(ChatMessage(role: 'user', content: text)));
     widget.dispatcher.addUserMessage(text);
+    _saveHistory();
   }
 
   void _addAssistantMessage(String text) {
     setState(() => _messages.add(ChatMessage(role: 'assistant', content: text)));
     widget.dispatcher.addAssistantMessage(text);
+    _saveHistory();
   }
 
   void addMessage(String role, String text) {
     setState(() => _messages.add(ChatMessage(role: role, content: text)));
+    _saveHistory();
   }
 
   Future<void> sendMessage([String? text]) async {
@@ -140,6 +250,13 @@ class AiChatPanelState extends State<AiChatPanel> {
 
       _addAssistantMessage(result.content);
       widget.onContentGenerated?.call(result.content);
+
+      // 解析 AI 回复中的文件操作
+      final files = _parseFileOps(result.content);
+      if (files.isNotEmpty) {
+        _parsedFiles[_messages.length - 1] = files;
+        setState(() {}); // 刷新以显示写入按钮
+      }
 
       if (result.switched && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -191,7 +308,144 @@ class AiChatPanelState extends State<AiChatPanel> {
 
   void clearHistory() {
     widget.dispatcher.clearHistory();
+    _parsedFiles.clear();
     setState(() => _messages.clear());
+    // 删除本地持久化文件
+    _deleteHistoryFile();
+  }
+
+  Future<void> _deleteHistoryFile() async {
+    final storage = widget.storageService;
+    if (storage == null) return;
+    try {
+      final file = File('${(await storage.root).path}/$_chatFileKey');
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
+  }
+
+  /// 解析 AI 回复中的【文件路径】标记，提取文件操作
+  List<ParsedFileOp> _parseFileOps(String content) {
+    final files = <ParsedFileOp>[];
+    final lines = content.split('\n');
+    String? currentPath;
+    StringBuffer? currentContent;
+    String? currentLang;
+
+    for (final line in lines) {
+      // 匹配 【文件路径】themes/xxx/file.ext
+      final pathMatch = RegExp(r'【文件路径】\s*(.+)').firstMatch(line);
+      if (pathMatch != null) {
+        if (currentPath != null && currentContent != null) {
+          files.add(ParsedFileOp(
+            path: currentPath,
+            content: currentContent.toString().trim(),
+            language: currentLang ?? 'text',
+          ));
+        }
+        currentPath = pathMatch.group(1)!.trim();
+        currentContent = StringBuffer();
+        currentLang = 'text';
+        continue;
+      }
+
+      // 代码块开始
+      final codeStart = RegExp(r'^```(\w+)?').firstMatch(line);
+      if (codeStart != null && currentPath != null) {
+        currentLang = codeStart.group(1) ?? 'text';
+        continue;
+      }
+
+      // 代码块结束
+      if (line.trim() == '```' && currentPath != null) {
+        continue;
+      }
+
+      if (currentPath != null && currentContent != null) {
+        currentContent.writeln(line);
+      }
+    }
+
+    // 保存最后一个文件
+    if (currentPath != null && currentContent != null) {
+      files.add(ParsedFileOp(
+        path: currentPath,
+        content: currentContent.toString().trim(),
+        language: currentLang ?? 'text',
+      ));
+    }
+
+    return files;
+  }
+
+  /// 写入单个文件到 Git 仓库
+  Future<void> _writeSingleFile(ParsedFileOp file) async {
+    final repo = widget.activeRepo;
+    final git = widget.gitHubService;
+    if (repo == null || git == null) {
+      throw Exception('未配置 Git 仓库');
+    }
+    await git.putRawFile(
+      repo,
+      file.path,
+      file.content,
+      commitMessage: 'ai: create ${file.path}',
+    );
+    file.written = true;
+  }
+
+  /// 写入所有已解析文件到 Git 仓库
+  Future<void> _writeAllFiles(int msgIndex) async {
+    final files = _parsedFiles[msgIndex];
+    if (files == null || files.isEmpty) return;
+    if (_writeBusy) return;
+
+    final repo = widget.activeRepo;
+    final git = widget.gitHubService;
+    if (repo == null || git == null) {
+      _addAssistantMessage('❌ 未配置 Git 仓库，无法写入文件。请先在设置中关联仓库。');
+      return;
+    }
+
+    setState(() {
+      _writeBusy = true;
+      _status = '正在写入 ${files.length} 个文件...';
+    });
+
+    int success = 0;
+    int fail = 0;
+    final errors = <String>[];
+
+    for (final file in files) {
+      if (file.written) {
+        success++;
+        continue;
+      }
+      try {
+        await git.putRawFile(
+          repo,
+          file.path,
+          file.content,
+          commitMessage: 'ai: create ${file.path}',
+        );
+        file.written = true;
+        success++;
+      } catch (e) {
+        file.writeError = e.toString();
+        fail++;
+        errors.add('${file.path}: $e');
+      }
+    }
+
+    setState(() {
+      _writeBusy = false;
+      _status = null;
+    });
+
+    if (fail == 0) {
+      _addAssistantMessage('✅ 已成功写入 $success 个文件到仓库。\n\n请推送远端构建测试。');
+    } else {
+      _addAssistantMessage('⚠️ 写入完成：$success 成功 / $fail 失败\n\n${errors.map((e) => '• $e').join('\n')}');
+    }
   }
 
   @override
@@ -340,6 +594,11 @@ class AiChatPanelState extends State<AiChatPanel> {
     final isUser = msg.role == 'user';
     final isSystem = msg.role == 'system';
     final isAssistant = msg.role == 'assistant';
+    final msgIndex = _messages.indexOf(msg);
+    final fileOps = _parsedFiles[msgIndex];
+    final hasFiles = fileOps != null && fileOps.isNotEmpty;
+    final allWritten = hasFiles && fileOps.every((f) => f.written);
+    final canWrite = widget.gitHubService != null && widget.activeRepo != null;
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -370,6 +629,83 @@ class AiChatPanelState extends State<AiChatPanel> {
                   height: 1.5,
                 ),
               ),
+            // 👇 文件操作按钮
+            if (hasFiles && isAssistant) ...[
+              const SizedBox(height: 10),
+              Divider(height: 1, color: cs.outlineVariant.withOpacity(0.3)),
+              const SizedBox(height: 8),
+              // 文件列表摘要
+              ...fileOps.map((f) => Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Row(
+                  children: [
+                    Icon(
+                      f.written ? Icons.check_circle : Icons.insert_drive_file_outlined,
+                      size: 14,
+                      color: f.written ? Colors.green : cs.primary,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        f.path,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                          color: f.written ? Colors.green : cs.onSurface,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Text(
+                      '${f.content.length} 字符',
+                      style: TextStyle(fontSize: 10, color: cs.outline),
+                    ),
+                  ],
+                ),
+              )),
+              const SizedBox(height: 8),
+              // 写入按钮
+              if (!allWritten && canWrite)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _writeBusy ? null : () => _writeAllFiles(msgIndex),
+                    icon: _writeBusy
+                        ? const SizedBox(
+                            width: 14, height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.cloud_upload_outlined, size: 16),
+                    label: Text('写入 ${fileOps.where((f) => !f.written).length} 个文件到仓库'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      textStyle: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ),
+              if (allWritten)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_circle, size: 14, color: Colors.green),
+                      SizedBox(width: 6),
+                      Text('已写入仓库', style: TextStyle(fontSize: 12, color: Colors.green)),
+                    ],
+                  ),
+                ),
+              if (!canWrite && hasFiles)
+                Text(
+                  '⚠️ 未关联 Git 仓库，无法写入',
+                  style: TextStyle(fontSize: 11, color: cs.outline),
+                ),
+            ],
           ],
         ),
       ),
@@ -384,4 +720,16 @@ class ChatMessage {
 
   ChatMessage({required this.role, required this.content, DateTime? time})
       : time = time ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'role': role,
+        'content': content,
+        'time': time.toIso8601String(),
+      };
+
+  factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
+        role: j['role']?.toString() ?? 'system',
+        content: j['content']?.toString() ?? '',
+        time: DateTime.tryParse(j['time']?.toString() ?? '') ?? DateTime.now(),
+      );
 }

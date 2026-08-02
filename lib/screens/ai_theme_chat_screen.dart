@@ -7,6 +7,8 @@ import '../core/ai/ai_session_manager.dart';
 import '../models/app_settings.dart';
 import '../models/repo_config.dart';
 import '../services/ai_service.dart';
+import '../services/github_service.dart';
+import '../services/storage_service.dart';
 import '../widgets/ai_chat_panel.dart';
 
 /// AI 主题开发对话页面
@@ -18,6 +20,8 @@ class AiThemeChatScreen extends StatelessWidget {
   final AiRequestDispatcher dispatcher;
   final AiSelfChecker selfChecker;
   final Future<void> Function(AppSettings) onSettingsChanged;
+  final GitHubService? gitHubService;
+  final StorageService? storageService;
 
   const AiThemeChatScreen({
     super.key,
@@ -28,6 +32,8 @@ class AiThemeChatScreen extends StatelessWidget {
     required this.dispatcher,
     required this.selfChecker,
     required this.onSettingsChanged,
+    this.gitHubService,
+    this.storageService,
   });
 
   @override
@@ -59,6 +65,9 @@ class AiThemeChatScreen extends StatelessWidget {
         sessionType: AiSessionType.theme,
         blogFramework: fw,
         themesPath: 'themes',
+        gitHubService: gitHubService,
+        activeRepo: repo,
+        storageService: storageService,
         initialMessage: '欢迎使用 AI 主题开发助手！\n\n你可以直接告诉我：\n'
             '• 新建主题 [名称]\n'
             '• 修改文件 [路径]，实现 [功能]\n'
