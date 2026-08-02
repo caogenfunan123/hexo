@@ -53,22 +53,17 @@ jobs:
           echo "FLUTTER_ROOT=$FLUTTER_ROOT"
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          # 确保 local.properties 存在且正确
+          echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
+          echo "sdk.dir=$ANDROID_HOME" >> android/local.properties
+          cat android/local.properties
           flutter config --android-sdk "$ANDROID_HOME"
           flutter doctor --verbose 2>&1 | head -50
-          echo "=== local.properties ==="
-          cat android/local.properties 2>/dev/null || echo "local.properties not found"
 
       - name: Build APK
         id: build
         run: |
-          set -e
-          # 确保 local.properties 存在
-          if [ ! -f android/local.properties ]; then
-            echo "Creating android/local.properties..."
-            echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
-            echo "sdk.dir=$ANDROID_HOME" >> android/local.properties
-          fi
-          flutter build apk --release 2>&1 | tee /tmp/build.log
+          flutter build apk --release --no-pub --no-android-gradle-daemon 2>&1 | tee /tmp/build.log
           BUILD_EXIT=${PIPESTATUS[0]}
           if [ $BUILD_EXIT -ne 0 ]; then
             echo "::error::Build failed. Check logs for details."
