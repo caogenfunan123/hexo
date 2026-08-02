@@ -99,6 +99,10 @@ class AiRequestDispatcher {
         ..._chatHistory,
       ];
 
+      final tools = ToolRegistry().enabledTools.isNotEmpty
+          ? ToolRegistry().toOpenAiTools()
+          : null;
+
       final stream = _aiService.completeStream(
         settings: settings,
         systemPrompt: _systemPrompt,
@@ -106,6 +110,7 @@ class AiRequestDispatcher {
         profile: profile,
         temperature: temperature,
         messages: messages,
+        tools: tools,
       );
 
       await for (final chunk in stream) {

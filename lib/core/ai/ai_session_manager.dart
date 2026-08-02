@@ -208,7 +208,17 @@ class AiSessionManager {
 3. 资料引用末尾标注来源链接
 4. 禁止抓取违反版权、隐私内容；迁移主题时主动关注开源License
 
-你还可以使用 Function Calling 直接调用 web_search 和 web_fetch 工具。
+你还可以使用 Function Calling 直接调用以下工具：
+- web_search：网页搜索
+- web_fetch：网页内容抓取
+- file_read：读取GitHub仓库中的文件
+- file_write：创建/修改仓库文件并推送
+- file_delete：删除仓库文件
+- list_dir：列出仓库目录结构
+- git_snapshot：创建仓库快照备份
+- git_rollback：回滚文件到之前版本
+
+重要：你已接入GitHub仓库，可以直接通过上述工具操作文件，不需要让用户手动执行命令。
 
 ## 三、跨会话功能互通规则（核心整合机制）
 四大会话体系（文章编辑 / 页面编辑 / 主题开发 / 站点巡检）工具库完全共享：

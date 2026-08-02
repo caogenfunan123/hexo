@@ -14,6 +14,7 @@ import '../core/tools/instruction_parser.dart';
 import '../core/tools/mcp_runtime.dart';
 import '../core/tools/skill_manager.dart';
 import '../core/tools/tool_registry.dart';
+import '../core/tools/builtin_tools.dart';
 import '../models/app_settings.dart';
 import '../models/repo_config.dart';
 import '../services/ai_service.dart';
@@ -300,6 +301,10 @@ class AiChatPanelState extends State<AiChatPanel> {
     });
 
     _scrollToBottom();
+
+    // 注入仓库引用到工具系统
+    BuiltinTools.gitHubService = widget.gitHubService;
+    BuiltinTools.activeRepo = widget.activeRepo;
 
     try {
       final stream = widget.dispatcher.dispatchStream(

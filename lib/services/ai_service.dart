@@ -243,6 +243,7 @@ class AiService {
     AiProfile? profile,
     double temperature = 0.7,
     List<Map<String, String>>? messages,
+    List<Map<String, dynamic>>? tools,
   }) async* {
     final p = resolveProfile(settings, override: profile);
     if (p.apiKey.isEmpty) {
@@ -265,6 +266,10 @@ class AiService {
       'temperature': temperature,
       'stream': true,
     };
+    if (tools != null && tools.isNotEmpty) {
+      body['tools'] = tools;
+      body['tool_choice'] = 'auto';
+    }
 
     final client = HttpClient();
     try {
