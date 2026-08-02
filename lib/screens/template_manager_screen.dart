@@ -540,7 +540,6 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
           ],
         ),
       ),
-      ),
     );
   }
 }
