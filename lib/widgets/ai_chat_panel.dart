@@ -399,14 +399,19 @@ class AiChatPanelState extends State<AiChatPanel> {
   }
 
   void _scrollToBottom() {
+    // 双重 postFrame 回调：确保新消息及其按钮（复制/写入）完成布局后再滚动
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollCtrl.hasClients) {
-        _scrollCtrl.animateTo(
-          _scrollCtrl.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_scrollCtrl.hasClients) return;
+        final max = _scrollCtrl.position.maxScrollExtent;
+        if (max > 0) {
+          _scrollCtrl.animateTo(
+            max,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
+      });
     });
   }
 
