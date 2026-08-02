@@ -58,7 +58,7 @@ class AiThemeChatScreen extends StatelessWidget {
         selfChecker: selfChecker,
         sessionType: AiSessionType.theme,
         blogFramework: fw,
-        themesPath: repo?.themesPath ?? 'themes',
+        themesPath: 'themes',
         initialMessage: '欢迎使用 AI 主题开发助手！\n\n你可以直接告诉我：\n'
             '• 新建主题 [名称]\n'
             '• 修改文件 [路径]，实现 [功能]\n'
@@ -66,7 +66,7 @@ class AiThemeChatScreen extends StatelessWidget {
             '• 创建主题备份快照\n'
             '• 回滚主题至上一个可用快照\n'
             '• 分析当前代码构建风险\n\n'
-            '当前框架：${fw ?? "未指定"} | 主题目录：${repo?.themesPath ?? "themes"}',
+            '当前框架：${fw ?? "未指定"} | 主题目录：themes',
         onSettingsChanged: onSettingsChanged,
       ),
     );

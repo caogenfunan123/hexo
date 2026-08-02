@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../core/ai/ai_model_manager.dart';
+import '../core/ai/ai_request_dispatcher.dart';
 import '../core/ai/ai_self_checker.dart';
 import '../core/ai/ai_session_manager.dart';
 import '../core/ai/theme_migration_service.dart';
@@ -469,7 +471,7 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
         sessionType: AiSessionType.themeMigration,
         blogFramework: repo?.frameworkId,
         targetFramework: fw?.name,
-        themesPath: repo?.themesPath ?? 'themes',
+        themesPath: 'themes',
         initialMessage: '欢迎使用 AI 主题跨框架迁移助手！\n\n'
             '你可以直接输入主题 Git 地址开始迁移，例如：\n'
             '「拉取 https://github.com/xxx/theme 转换到 Hexo，命名为 my-theme」\n\n'

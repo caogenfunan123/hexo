@@ -60,7 +60,7 @@ class AiAuditScreen extends StatelessWidget {
         blogFramework: fw,
         postsPath: repo?.postsPath,
         pagesPath: repo?.pagesPath,
-        themesPath: repo?.themesPath,
+        themesPath: 'themes',
         initialMessage: '欢迎使用 AI 站点巡检助手！\n\n你可以直接告诉我：\n'
             '• 开始全面巡检\n'
             '• 检查配置文件语法\n'
