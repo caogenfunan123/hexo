@@ -397,6 +397,12 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
     try {
       final repo = widget.activeRepo ??
             (widget.repos.isNotEmpty ? widget.repos.first : null);
+      if (repo == null) {
+        _chatKey.currentState?.addMessage('assistant',
+          '❌ 未找到可用仓库，请先在设置中配置仓库。',
+        );
+        return;
+      }
       for (final file in selectedFiles) {
         await widget.githubService.putRawFile(
           repo,

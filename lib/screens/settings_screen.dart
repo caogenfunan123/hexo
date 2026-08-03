@@ -47,6 +47,7 @@ class SettingsScreen extends StatefulWidget {
     required this.onShowPwaGuide,
     required this.onPersistSettings,
     required this.onShowToast,
+    this.onShowBlogSiteManager,
   });
 
   @override
@@ -202,9 +203,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               leading: const Icon(Icons.cloud_outlined),
               title: const Text('动态博客登录'),
               subtitle: Text(
-                settings.blogSiteConfigs.isEmpty
+                widget.settings.blogSiteConfigs.isEmpty
                     ? 'WordPress / Ghost / Typecho'
-                    : '已配置 ${settings.blogSiteConfigs.length} 个站点',
+                    : '已配置 ${widget.settings.blogSiteConfigs.length} 个站点',
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: widget.onShowBlogSiteManager,
