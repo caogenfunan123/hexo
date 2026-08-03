@@ -28,6 +28,9 @@ class DesktopEditorArea extends StatelessWidget {
   final WorkMode workMode;
   final ValueChanged<int> onTabChange;
   final ValueChanged<int> onTabClose;
+  final VoidCallback? onNewArticle;
+  final VoidCallback? onSync;
+  final VoidCallback? onSettings;
 
   const DesktopEditorArea({
     super.key,
@@ -36,6 +39,9 @@ class DesktopEditorArea extends StatelessWidget {
     required this.workMode,
     required this.onTabChange,
     required this.onTabClose,
+    this.onNewArticle,
+    this.onSync,
+    this.onSettings,
   });
 
   @override
@@ -148,11 +154,11 @@ class DesktopEditorArea extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _quickAction(context, Icons.add, '新建文章'),
+              _quickAction(context, Icons.add, '新建文章', onNewArticle),
               const SizedBox(width: 16),
-              _quickAction(context, Icons.sync, '同步数据'),
+              _quickAction(context, Icons.sync, '同步数据', onSync),
               const SizedBox(width: 16),
-              _quickAction(context, Icons.settings_outlined, '设置'),
+              _quickAction(context, Icons.settings_outlined, '设置', onSettings),
             ],
           ),
         ],
@@ -160,23 +166,26 @@ class DesktopEditorArea extends StatelessWidget {
     );
   }
 
-  Widget _quickAction(BuildContext context, IconData icon, String label) {
+  Widget _quickAction(BuildContext context, IconData icon, String label, VoidCallback? onTap) {
     final cs = Theme.of(context).colorScheme;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: cs.primary.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(12),
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: cs.primary.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: cs.primary, size: 22),
           ),
-          child: Icon(icon, color: cs.primary, size: 22),
-        ),
-        const SizedBox(height: 6),
-        Text(label, style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.5))),
-      ],
+          const SizedBox(height: 6),
+          Text(label, style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.5))),
+        ],
+      ),
     );
   }
 }
