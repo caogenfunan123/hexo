@@ -1974,7 +1974,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   }
 
   /// 打开动态 CMS 站点管理页面
-  Future<void> _showBlogSiteManager() async {
+  void _showBlogSiteManager() async {
     final result = await Navigator.of(context).push<BlogSiteConfig?>(
       MaterialPageRoute(
         builder: (_) => BlogSiteEditorScreen(
@@ -3981,6 +3981,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   _drawerSection('管理'),
                   _drawerItem(2, Icons.cloud_outlined, '远程文章'),
                   _drawerItem(12, Icons.sync, '同步状态'),
+                  _drawerAction(Icons.dns_outlined, '动态博客登录', _showBlogSiteManager),
                   _drawerItem(3, Icons.dashboard_outlined, '仪表盘'),
                   _drawerItem(5, Icons.history_outlined, '提交历史'),
                   const SizedBox(height: 8),
