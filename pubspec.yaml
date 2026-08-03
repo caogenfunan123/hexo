@@ -23,7 +23,7 @@ dependencies:
   system_tray: ^2.0.3
   tray_manager: ^0.2.1
   desktop_drop: ^0.4.4
-  hotkey_manager: 0.1.7
+  # hotkey_manager: 0.1.7  # 暂时移除，与 Flutter 3.24 不兼容
   # Markdown 增强
   flutter_highlight: ^0.7.0
   highlight: ^0.7.0

@@ -27,6 +27,7 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - run: flutter pub cache repair
       - run: flutter pub get
       - name: dart format check
         run: dart format --output=none lib/ || true
@@ -184,6 +185,7 @@ jobs:
           flutter create --platforms=windows .
           flutter config --enable-windows-desktop
 
+      - run: flutter pub cache repair
       - run: flutter pub get
       - name: Build Windows
         run: flutter build windows --release --target=lib/desktop/desktop_main.dart 2>&1 | Tee-Object -FilePath build-windows.log

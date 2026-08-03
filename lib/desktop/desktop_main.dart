@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:system_tray/system_tray.dart';
-import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../theme/app_theme.dart';
@@ -20,7 +19,7 @@ Future<void> runDesktopApp() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
   try {
-    await hotKeyManager.unregisterAll();
+    // await hotKeyManager.unregisterAll();
   } catch (_) {}
   runApp(const DesktopApp());
 }
@@ -59,7 +58,7 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
   @override
   void dispose() {
     windowManager.removeListener(this);
-    hotKeyManager.unregisterAll();
+    // hotKeyManager.unregisterAll();
     super.dispose();
   }
 
@@ -67,7 +66,7 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
     await _restoreLayout();
     await _initWindow();
     _initSystemTray();
-    _registerHotkeys();
+    // _registerHotkeys();
   }
 
   // ============================================================
@@ -205,89 +204,8 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
   // ============================================================
 
   void _registerHotkeys() async {
-    await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyS, modifiers: [KeyModifier.control]),
-      keyDownHandler: (_) => _invokeShell('save'),
-    );
-    await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyP, modifiers: [KeyModifier.control]),
-      keyDownHandler: (_) => _invokeShell('publish'),
-    );
-    await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyN, modifiers: [KeyModifier.control]),
-      keyDownHandler: (_) => _invokeShell('new'),
-    );
-    await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyO, modifiers: [KeyModifier.control]),
-      keyDownHandler: (_) => _invokeShell('openFile'),
-    );
-    await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyB, modifiers: [KeyModifier.control]),
-      keyDownHandler: (_) => _invokeShell('bold'),
-    );
-    await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyI, modifiers: [KeyModifier.control]),
-      keyDownHandler: (_) => _invokeShell('italic'),
-    );
-    await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyD, modifiers: [KeyModifier.control]),
-      keyDownHandler: (_) => _invokeShell('strikethrough'),
-    );
-    await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyK, modifiers: [KeyModifier.control]),
-      keyDownHandler: (_) => _invokeShell('link'),
-    );
-    await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.digit1, modifiers: [KeyModifier.control]),
-      keyDownHandler: (_) => _invokeShell('h1'),
-    );
-    await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.digit2, modifiers: [KeyModifier.control]),
-      keyDownHandler: (_) => _invokeShell('h2'),
-    );
-    await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.digit3, modifiers: [KeyModifier.control]),
-      keyDownHandler: (_) => _invokeShell('h3'),
-    );
-    await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyF, modifiers: [KeyModifier.control]),
-      keyDownHandler: (_) => _invokeShell('focus'),
-    );
-    await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyL, modifiers: [KeyModifier.control]),
-      keyDownHandler: (_) => _invokeShell('toggleLeft'),
-    );
-    await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyE, modifiers: [KeyModifier.control]),
-      keyDownHandler: (_) => _invokeShell('preview'),
-    );
-    await hotKeyManager.register(
-      HotKey(
-        key: PhysicalKeyboardKey.keyV,
-        modifiers: [KeyModifier.control, KeyModifier.shift],
-      ),
-      keyDownHandler: (_) => _invokeShell('pasteImage'),
-    );
-    await hotKeyManager.register(
-      HotKey(
-        key: PhysicalKeyboardKey.keyP,
-        modifiers: [KeyModifier.control, KeyModifier.shift],
-      ),
-      keyDownHandler: (_) => _invokeShell('commandPalette'),
-    );
-    await hotKeyManager.register(
-      HotKey(
-        key: PhysicalKeyboardKey.keyS,
-        modifiers: [KeyModifier.control, KeyModifier.shift],
-      ),
-      keyDownHandler: (_) => _invokeShell('saveAs'),
-    );
-    await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.f1),
-      keyDownHandler: (_) => _invokeShell('help'),
-    );
+    // TODO: fix hotkey_manager compatibility with Flutter 3.24
   }
-
   void _invokeShell(String action) {
     final state = DesktopApp.shellKey.currentState;
     if (state == null) return;
