@@ -1450,15 +1450,23 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                   minLines: minLines,
                   maxLines: null,
                   keyboardType: TextInputType.multiline,
+                  cursorColor: cs.primary,
                   onChanged: (_) => _onContentChanged(),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Markdown 正文',
+                    labelStyle: TextStyle(color: hintColor, fontSize: 13),
                     alignLabelWithHint: true,
                     hintText: '支持 # 标题、**粗体**、代码块、列表...\n编辑完可存草稿或直接发布',
+                    hintStyle: TextStyle(color: hintColor, fontSize: 13),
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                   ),
-                  style: const TextStyle(fontFamily: 'monospace', height: 1.6, fontSize: 14.5),
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    height: 1.6,
+                    fontSize: 14.5,
+                    color: textColor,
+                  ),
                 );
               },
             ),
@@ -1486,6 +1494,30 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           const SizedBox(height: 16),
           // ── 底部操作栏 ──
           Row(children: [
+            // 导出下拉菜单
+            PopupMenuButton<String>(
+              tooltip: '导出',
+              offset: const Offset(0, -200),
+              enabled: !_editorBusy,
+              icon: const Icon(Icons.file_download_outlined, size: 18),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'html', child: ListTile(leading: Icon(Icons.html), title: Text('导出 HTML'), dense: true)),
+                const PopupMenuItem(value: 'pdf', child: ListTile(leading: Icon(Icons.picture_as_pdf), title: Text('导出 PDF'), dense: true)),
+                const PopupMenuItem(value: 'md', child: ListTile(leading: Icon(Icons.description), title: Text('导出 Markdown'), dense: true)),
+              ],
+              onSelected: (v) {
+                switch (v) {
+                  case 'html': _exportHtml(); break;
+                  case 'pdf': _exportPdf(); break;
+                  case 'md': _saveMdBackup(); break;
+                }
+              },
+            ),
+            const SizedBox(width: 8),
             if (_failedImageBytes != null) ...[
               Expanded(
                 child: OutlinedButton.icon(
@@ -1494,12 +1526,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                   label: const Text('重试上传', style: TextStyle(color: Colors.orange)),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     side: const BorderSide(color: Colors.orange),
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
             ],
             Expanded(
               child: OutlinedButton.icon(
@@ -1508,20 +1540,20 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 label: const Text('存草稿'),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             Expanded(
               flex: 2,
               child: ElevatedButton.icon(
                 onPressed: _editorBusy ? null : _handlePublish,
                 icon: const Icon(Icons.cloud_upload_outlined, size: 18),
-                label: const Text('发布到 GitHub'),
+                label: const Text('发布'),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
             ),
@@ -1534,13 +1566,17 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ── 编辑器辅助组件 ──
 
   Widget _editorCard({required Widget child, EdgeInsetsGeometry? padding}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
       elevation: 0,
       shadowColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.black.withOpacity(0.05)),
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.05),
+        ),
       ),
+      color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
       margin: EdgeInsets.zero,
       child: Padding(
         padding: padding ?? const EdgeInsets.all(12),
@@ -1557,21 +1593,26 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     required VoidCallback onTap,
   }) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: active ? cs.primary.withOpacity(0.08) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          color: active
+              ? cs.primary.withOpacity(0.08)
+              : (isDark ? const Color(0xFF1E1E2E) : Colors.white),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: active ? cs.primary : Colors.grey.shade200,
+            color: active
+                ? cs.primary
+                : (isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E7EB)),
             width: active ? 1.5 : 1,
           ),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: active ? cs.primary : Colors.grey),
+            Icon(icon, size: 18, color: active ? cs.primary : (isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF))),
             const SizedBox(width: 8),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1579,11 +1620,11 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 Text(label, style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: active ? cs.primary : AppTheme.text,
+                  color: active ? cs.primary : (isDark ? Colors.white.withOpacity(0.8) : const Color(0xFF374151)),
                 )),
                 Text(subtitle, style: TextStyle(
                   fontSize: 10,
-                  color: active ? cs.primary.withOpacity(0.7) : Colors.grey,
+                  color: active ? cs.primary.withOpacity(0.7) : (isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
                 )),
               ],
             ),
@@ -6987,6 +7028,26 @@ $htmlContent
           _focusToolbarButton(Icons.save_outlined, '保存草稿', _saveLocal, isDark),
           _focusToolbarButton(Icons.send_outlined, '发布', _handlePublish, isDark),
           _focusToolbarButton(Icons.image_outlined, '插入图片', _insertImage, isDark),
+          _focusToolbarButton(Icons.visibility_outlined, '切换预览', () => setState(() => _rightDrawerOpen = !_rightDrawerOpen), isDark, active: _rightDrawerOpen),
+          PopupMenuButton<String>(
+            tooltip: '导出',
+            offset: const Offset(0, 36),
+            enabled: !_editorBusy,
+            color: isDark ? const Color(0xFF252536) : null,
+            icon: Icon(Icons.file_download_outlined, size: 16, color: isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280)),
+            itemBuilder: (_) => [
+              PopupMenuItem(value: 'html', child: Text('导出 HTML', style: TextStyle(fontSize: 13, color: isDark ? Colors.white.withOpacity(0.8) : null))),
+              PopupMenuItem(value: 'pdf', child: Text('导出 PDF', style: TextStyle(fontSize: 13, color: isDark ? Colors.white.withOpacity(0.8) : null))),
+              PopupMenuItem(value: 'md', child: Text('导出 Markdown', style: TextStyle(fontSize: 13, color: isDark ? Colors.white.withOpacity(0.8) : null))),
+            ],
+            onSelected: (v) {
+              switch (v) {
+                case 'html': _exportHtml(); break;
+                case 'pdf': _exportPdf(); break;
+                case 'md': _saveMdBackup(); break;
+              }
+            },
+          ),
           Container(
             width: 1,
             height: 18,
@@ -6999,19 +7060,24 @@ $htmlContent
     );
   }
 
-  Widget _focusToolbarButton(IconData icon, String tooltip, VoidCallback onTap, bool isDark) {
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(5),
-      child: InkWell(
+  Widget _focusToolbarButton(IconData icon, String tooltip, VoidCallback onTap, bool isDark, {bool active = false}) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: active ? Colors.white.withOpacity(0.1) : Colors.transparent,
         borderRadius: BorderRadius.circular(5),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(6),
-          child: Icon(
-            icon,
-            size: 16,
-            color: isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(5),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Icon(
+              icon,
+              size: 16,
+              color: active
+                  ? Theme.of(context).colorScheme.primary
+                  : (isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280)),
+            ),
           ),
         ),
       ),
@@ -7023,92 +7089,163 @@ $htmlContent
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
-      child: Center(
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 900),
-          padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
-          child: Column(
-            children: [
-              // 标题输入
-              TextField(
-                controller: _titleCtrl,
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w700,
-                  height: 1.3,
-                  color: isDark ? Colors.white : const Color(0xFF1F2937),
-                  fontFamily: _resolveFontFamily(_editorFontFamily),
-                ),
-                decoration: InputDecoration(
-                  hintText: '在此输入标题...',
-                  hintStyle: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w700,
-                    color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
-                  ),
-                  border: InputBorder.none,
-                ),
-                onChanged: (_) => _onContentChanged(),
-              ),
-              const SizedBox(height: 32),
-              // 内容编辑区（专注模式：左侧编辑 + 右侧实时预览）
-              Expanded(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Scrollbar(
-                        controller: _focusScrollCtrl,
-                        child: SingleChildScrollView(
-                          controller: _focusScrollCtrl,
-                          padding: const EdgeInsets.only(bottom: 200),
-                          child: SizedBox(
-                            height: _contentCtrl.text.split('\n').length * (_editorFontSize * _editorLineHeight) + 400,
-                            child: TextField(
-                              controller: _contentCtrl,
-                              maxLines: null,
-                              expands: true,
-                              focusNode: _contentFocus,
+      child: Column(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                // 左侧编辑区
+                Expanded(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      controller: _focusScrollCtrl,
+                      padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 40),
+                      child: Container(
+                        constraints: const BoxConstraints(maxWidth: 800),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // 标题输入
+                            TextField(
+                              controller: _titleCtrl,
                               style: TextStyle(
-                                fontSize: _editorFontSize,
-                                height: _editorLineHeight,
-                                color: isDark ? Colors.white.withOpacity(0.9) : const Color(0xFF374151),
+                                fontSize: 32,
+                                fontWeight: FontWeight.w700,
+                                height: 1.3,
+                                color: isDark ? Colors.white : const Color(0xFF1F2937),
                                 fontFamily: _resolveFontFamily(_editorFontFamily),
                               ),
+                              cursorColor: cs.primary,
                               decoration: InputDecoration(
-                                border: InputBorder.none,
-                                hintText: '开始写作...',
+                                hintText: '在此输入标题...',
                                 hintStyle: TextStyle(
-                                  fontSize: _editorFontSize,
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.w700,
                                   color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
                                 ),
+                                border: InputBorder.none,
                               ),
                               onChanged: (_) => _onContentChanged(),
                             ),
+                            const SizedBox(height: 24),
+                            // 文章元信息
+                            Row(
+                              children: [
+                                _focusMetaChip(Icons.person_outline, '作者', _editorRepo?.author ?? '未设置', isDark),
+                                const SizedBox(width: 12),
+                                _focusMetaChip(Icons.calendar_today, '日期', DateTime.now().toLocal().toString().split(' ')[0], isDark),
+                                const SizedBox(width: 12),
+                                _focusMetaChip(Icons.text_fields, '字数', '$_wordCount 词', isDark),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                            Container(
+                              height: 1,
+                              color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E7EB),
+                            ),
+                            const SizedBox(height: 24),
+                            // 内容编辑区
+                            SizedBox(
+                              height: _contentCtrl.text.split('\n').length * (_editorFontSize * _editorLineHeight) + 600,
+                              child: TextField(
+                                controller: _contentCtrl,
+                                maxLines: null,
+                                expands: true,
+                                focusNode: _contentFocus,
+                                cursorColor: cs.primary,
+                                style: TextStyle(
+                                  fontSize: _editorFontSize,
+                                  height: _editorLineHeight,
+                                  color: isDark ? Colors.white.withOpacity(0.9) : const Color(0xFF374151),
+                                  fontFamily: _resolveFontFamily(_editorFontFamily),
+                                ),
+                                decoration: InputDecoration(
+                                  border: InputBorder.none,
+                                  hintText: '开始写作...',
+                                  hintStyle: TextStyle(
+                                    fontSize: _editorFontSize,
+                                    color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+                                  ),
+                                ),
+                                onChanged: (_) => _onContentChanged(),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // 右侧预览面板（可选）
+                if (_rightDrawerOpen)
+                  Container(
+                    width: 400,
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFFAFAFC),
+                      border: Border(
+                        left: BorderSide(
+                          color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
+                        ),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        // 预览面板头部
+                        Container(
+                          height: 36,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(
+                                color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
+                              ),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.visibility, size: 14, color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
+                              const SizedBox(width: 6),
+                              Text('实时预览', style: TextStyle(fontSize: 11, color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF))),
+                              const Spacer(),
+                              GestureDetector(
+                                onTap: () => setState(() => _rightDrawerOpen = false),
+                                child: Icon(Icons.close, size: 14, color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                    ),
-                    Container(
-                      width: 1,
-                      color: isDark
-                          ? Colors.white.withOpacity(0.06)
-                          : const Color(0xFFE5E5EA),
-                    ),
-                    Expanded(
-                      child: Scrollbar(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.only(left: 32, bottom: 200),
-                          child: _buildMarkdownPreview(_contentCtrl.text),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(16),
+                            child: _buildMarkdownPreview(_contentCtrl.text),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            ],
+                  ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
+    );
+  }
+
+  Widget _focusMetaChip(IconData icon, String label, String value, bool isDark) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF)),
+        const SizedBox(width: 4),
+        Text(
+          '$label: ',
+          style: TextStyle(fontSize: 11, color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF)),
+        ),
+        Text(
+          value,
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: isDark ? Colors.white.withOpacity(0.6) : const Color(0xFF6B7280)),
+        ),
+      ],
     );
   }
 
