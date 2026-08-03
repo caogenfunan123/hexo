@@ -15,13 +15,19 @@ import 'package:file_picker/file_picker.dart';
 import '../theme/app_theme.dart';
 import 'desktop_shell.dart';
 
-void main() async {
+/// 桌面版启动入口（由 lib/main.dart 根据平台自动调用，或通过 --target 直接使用）
+Future<void> runDesktopApp() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
   try {
     await hotKeyManager.unregisterAll();
   } catch (_) {}
   runApp(const DesktopApp());
+}
+
+/// 命令行入口：flutter build windows --target=lib/desktop/desktop_main.dart
+void main() async {
+  await runDesktopApp();
 }
 
 class DesktopApp extends StatefulWidget {

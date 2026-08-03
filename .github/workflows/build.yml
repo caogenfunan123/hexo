@@ -139,7 +139,7 @@ jobs:
         run: flutter create --platforms=linux . 2>/dev/null || true
 
       - run: flutter pub get
-      - run: flutter build linux --release 2>&1 | tee /tmp/build-linux.log
+      - run: flutter build linux --release --target=lib/desktop/desktop_main.dart 2>&1 | tee /tmp/build-linux.log
         continue-on-error: true
 
       - uses: actions/upload-artifact@v4
@@ -168,7 +168,7 @@ jobs:
 
       - run: flutter pub get
       - name: Build Windows
-        run: flutter build windows --release 2>&1
+        run: flutter build windows --release --target=lib/desktop/desktop_main.dart 2>&1
         continue-on-error: true
 
       - name: Upload Windows build
