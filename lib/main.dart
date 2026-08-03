@@ -1540,11 +1540,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   Future<void> _persistRepos() => storage.saveRepos(repos);
   Future<void> _persistDrafts() => storage.saveDrafts(drafts);
 
-  /// 保存 MD 备份到本地目录
   Future<void> _saveMdBackup() async {
     try {
       final a = _collect(draft: false);
-      final dir = Directory('${await storage.root}/hexo_backups');
+      final rootDir = await storage.root;
+      final dir = Directory('${rootDir.path}/hexo_backups');
       if (!await dir.exists()) {
         await dir.create(recursive: true);
       }

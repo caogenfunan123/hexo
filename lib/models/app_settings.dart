@@ -65,6 +65,21 @@ class AppSettings {
   // ── 会话恢复 ──
   final bool restoreSession;
 
+  // ── 网络代理 ──
+  final bool proxyEnabled;
+  final String proxyHost;
+  final int proxyPort;
+  final String proxyUsername;
+  final String proxyPassword;
+  final bool proxyApplyToAi; // 是否对 AI 接口也启用代理
+
+  // ── 离线模式 ──
+  final bool offlineMode;
+
+  // ── 夜间护眼 ──
+  final bool nightEyeProtection; // 暖色滤镜
+  final double nightEyeIntensity; // 0.0-1.0 暖色强度
+
   // ── 网络超时 ──
   final int httpTimeoutSeconds;
   final bool allowInsecureHttps;
@@ -119,6 +134,15 @@ class AppSettings {
     this.defaultModelId = '',
     this.defaultModelBase = '',
     this.restoreSession = true,
+    this.proxyEnabled = false,
+    this.proxyHost = '',
+    this.proxyPort = 1080,
+    this.proxyUsername = '',
+    this.proxyPassword = '',
+    this.proxyApplyToAi = false,
+    this.offlineMode = false,
+    this.nightEyeProtection = false,
+    this.nightEyeIntensity = 0.5,
     this.httpTimeoutSeconds = 30,
     this.allowInsecureHttps = false,
     this.statusPresets = const ['publish', 'draft', 'pending', 'private'],
@@ -234,6 +258,15 @@ class AppSettings {
     String? defaultModelId,
     String? defaultModelBase,
     bool? restoreSession,
+    bool? proxyEnabled,
+    String? proxyHost,
+    int? proxyPort,
+    String? proxyUsername,
+    String? proxyPassword,
+    bool? proxyApplyToAi,
+    bool? offlineMode,
+    bool? nightEyeProtection,
+    double? nightEyeIntensity,
     int? httpTimeoutSeconds,
     bool? allowInsecureHttps,
     List<String>? statusPresets,
@@ -285,6 +318,15 @@ class AppSettings {
       defaultModelId: defaultModelId ?? this.defaultModelId,
       defaultModelBase: defaultModelBase ?? this.defaultModelBase,
       restoreSession: restoreSession ?? this.restoreSession,
+      proxyEnabled: proxyEnabled ?? this.proxyEnabled,
+      proxyHost: proxyHost ?? this.proxyHost,
+      proxyPort: proxyPort ?? this.proxyPort,
+      proxyUsername: proxyUsername ?? this.proxyUsername,
+      proxyPassword: proxyPassword ?? this.proxyPassword,
+      proxyApplyToAi: proxyApplyToAi ?? this.proxyApplyToAi,
+      offlineMode: offlineMode ?? this.offlineMode,
+      nightEyeProtection: nightEyeProtection ?? this.nightEyeProtection,
+      nightEyeIntensity: nightEyeIntensity ?? this.nightEyeIntensity,
       httpTimeoutSeconds: httpTimeoutSeconds ?? this.httpTimeoutSeconds,
       allowInsecureHttps: allowInsecureHttps ?? this.allowInsecureHttps,
       statusPresets: statusPresets ?? this.statusPresets,
@@ -338,6 +380,15 @@ class AppSettings {
         'defaultModelId': defaultModelId,
         'defaultModelBase': defaultModelBase,
         'restoreSession': restoreSession,
+        'proxyEnabled': proxyEnabled,
+        'proxyHost': proxyHost,
+        'proxyPort': proxyPort,
+        'proxyUsername': proxyUsername,
+        'proxyPassword': proxyPassword,
+        'proxyApplyToAi': proxyApplyToAi,
+        'offlineMode': offlineMode,
+        'nightEyeProtection': nightEyeProtection,
+        'nightEyeIntensity': nightEyeIntensity,
         'httpTimeoutSeconds': httpTimeoutSeconds,
         'allowInsecureHttps': allowInsecureHttps,
         'statusPresets': statusPresets,
@@ -469,6 +520,15 @@ class AppSettings {
       defaultModelId: j['defaultModelId']?.toString() ?? '',
       defaultModelBase: j['defaultModelBase']?.toString() ?? '',
       restoreSession: j['restoreSession'] != false,
+      proxyEnabled: j['proxyEnabled'] == true,
+      proxyHost: j['proxyHost']?.toString() ?? '',
+      proxyPort: (j['proxyPort'] as num?)?.toInt() ?? 1080,
+      proxyUsername: j['proxyUsername']?.toString() ?? '',
+      proxyPassword: j['proxyPassword']?.toString() ?? '',
+      proxyApplyToAi: j['proxyApplyToAi'] == true,
+      offlineMode: j['offlineMode'] == true,
+      nightEyeProtection: j['nightEyeProtection'] == true,
+      nightEyeIntensity: (j['nightEyeIntensity'] as num?)?.toDouble() ?? 0.5,
       httpTimeoutSeconds: (j['httpTimeoutSeconds'] as num?)?.toInt() ?? 30,
       allowInsecureHttps: j['allowInsecureHttps'] == true,
       statusPresets: _parseStringList(j['statusPresets'], const ['publish', 'draft', 'pending', 'private']),
