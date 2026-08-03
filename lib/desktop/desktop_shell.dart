@@ -2383,7 +2383,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         onDelete: (item) async {
           try {
             final repo = effectiveRepo;
-            if (repo != null) { await github.deleteRawFile(repo, item.path, item.sha); _refreshRemote(); _showToast('已删除'); }
+            if (repo != null && item.sha != null) { await github.deleteRawFile(repo, item.path, item.sha!); _refreshRemote(); _showToast('已删除'); }
           } catch (e) { _showToast('删除失败: $e'); }
         },
         onBatchDelete: (items) async {},
@@ -4072,7 +4072,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     ));
   }
 
-  void _showWebDavDialog() async {
+  Future<void> _showWebDavDialog() async {
     final c = TextEditingController(text: settings.webdavUrl);
     final u = TextEditingController(text: settings.webdavUsername);
     final pw = TextEditingController(text: settings.webdavPassword);

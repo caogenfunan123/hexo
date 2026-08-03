@@ -58,9 +58,9 @@ class DesktopStatusBar extends StatelessWidget {
       child: Row(
         children: [
           // ── 左侧：工作模式 ──
-          _modeButton(WorkMode.workspace, Icons.dashboard, '工作台'),
-          _modeButton(WorkMode.focus, Icons.auto_awesome, '专注'),
-          _modeButton(WorkMode.source, Icons.code, '源码'),
+          _modeButton(context, WorkMode.workspace, Icons.dashboard, '工作台'),
+          _modeButton(context, WorkMode.focus, Icons.auto_awesome, '专注'),
+          _modeButton(context, WorkMode.source, Icons.code, '源码'),
 
           const SizedBox(width: 12),
           // 编辑器状态
@@ -82,11 +82,11 @@ class DesktopStatusBar extends StatelessWidget {
 
           // ── 右侧：统计信息 ──
           if (cursorPosition case (final row, final col))
-            _statusChip('$row:$col', Icons.pin),
+            _statusChip(context, '$row:$col', Icons.pin),
           if (wordCount != null)
-            _statusChip('$wordCount 词', Icons.text_fields),
+            _statusChip(context, '$wordCount 词', Icons.text_fields),
           if (charCount != null)
-            _statusChip('$charCount 字', Icons.abc),
+            _statusChip(context, '$charCount 字', Icons.abc),
 
           if (isSyncing) ...[
             const SizedBox(width: 8),
@@ -96,19 +96,19 @@ class DesktopStatusBar extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 1.5, color: cs.primary),
             ),
           ] else if (syncStatus != null) ...[
-            _statusChip(syncStatus!, Icons.cloud_done_outlined),
+            _statusChip(context, syncStatus!, Icons.cloud_done_outlined),
           ],
 
           if (siteName != null) ...[
             const SizedBox(width: 8),
-            _statusChip(siteName!, Icons.language),
+            _statusChip(context, siteName!, Icons.language),
           ],
         ],
       ),
     );
   }
 
-  Widget _modeButton(WorkMode mode, IconData icon, String label) {
+  Widget _modeButton(BuildContext context, WorkMode mode, IconData icon, String label) {
     final isActive = workMode == mode;
     final cs = Theme.of(context).colorScheme;
     return GestureDetector(
@@ -134,7 +134,7 @@ class DesktopStatusBar extends StatelessWidget {
     );
   }
 
-  Widget _statusChip(String text, IconData? icon) {
+  Widget _statusChip(BuildContext context, String text, IconData? icon) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(right: 12),
