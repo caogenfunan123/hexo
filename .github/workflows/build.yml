@@ -62,7 +62,7 @@ jobs:
       - name: Build APK
         continue-on-error: true
         run: |
-          flutter build apk --release --no-pub --no-android-gradle-daemon 2>&1 | tee /tmp/build.log
+          flutter build apk --release --no-android-gradle-daemon 2>&1 | tee /tmp/build.log
           if [ -f build/app/outputs/flutter-apk/app-release.apk ]; then
             echo '## Android Build Succeeded' >> $GITHUB_STEP_SUMMARY
           else
