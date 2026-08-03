@@ -34,6 +34,8 @@ dependencies:
   pdf: ^3.10.0
   # 工具
   path_provider: ^2.1.0
+  # 编码
+  gbk_codec: ^0.4.0
 
 flutter:
   uses-material-design: true

@@ -91,6 +91,7 @@ import 'package:flutter_math_fork/flutter_math_fork.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:printing/printing.dart';
 import 'package:markdown/markdown.dart' as md;
+import 'package:gbk_codec/gbk_codec.dart';
 
 import 'widgets/title_bar.dart';
 import 'widgets/left_panel.dart';
@@ -3135,8 +3136,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ── 发布增强 ──
 
   /// 发布变更日志：对比本地与线上版本，展示改动内容
-  void _showPublishChangeLog(String remoteContent) async {
+  void _showPublishChangeLog(String remoteContentParam) async {
     final localContent = _contentCtrl.text;
+    var remoteContent = remoteContentParam;
 
     // 如果未提供远程内容，尝试从当前发布目标获取
     if (remoteContent.isEmpty && siteManager.isDynamicSite) {
