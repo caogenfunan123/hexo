@@ -1,5 +1,5 @@
-/// 桌面版底部状态栏
-/// 显示：工作模式切换、行号/列号、字数统计、编辑器状态、同步状态
+/// 桌面端底部状态栏
+/// 专业桌面端设计：简洁的信息展示
 library;
 
 import 'package:flutter/material.dart';
@@ -8,26 +8,11 @@ import 'work_mode.dart';
 class DesktopStatusBar extends StatelessWidget {
   final WorkMode workMode;
   final ValueChanged<WorkMode> onModeChange;
-
-  /// 编辑器状态文本
   final String? editorStatus;
-
-  /// 光标位置 (行, 列)
   final (int, int)? cursorPosition;
-
-  /// 字数统计
-  final int? wordCount;
-
-  /// 字符数统计
-  final int? charCount;
-
-  /// 当前站点名称
-  final String? siteName;
-
-  /// 同步状态
-  final String? syncStatus;
-
-  /// 是否正在同步
+  final int wordCount;
+  final int charCount;
+  final String siteName;
   final bool isSyncing;
 
   const DesktopStatusBar({
@@ -36,96 +21,141 @@ class DesktopStatusBar extends StatelessWidget {
     required this.onModeChange,
     this.editorStatus,
     this.cursorPosition,
-    this.wordCount,
-    this.charCount,
-    this.siteName,
-    this.syncStatus,
+    this.wordCount = 0,
+    this.charCount = 0,
+    this.siteName = '',
     this.isSyncing = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       height: 28,
       decoration: BoxDecoration(
-        color: cs.surface,
+        color: isDark
+            ? const Color(0xFF252536)
+            : const Color(0xFFFAFAFC),
         border: Border(
-          top: BorderSide(color: cs.outlineVariant.withOpacity(0.2)),
+          top: BorderSide(
+            color: isDark
+                ? Colors.white.withOpacity(0.06)
+                : const Color(0xFFE5E5EA),
+          ),
         ),
       ),
       child: Row(
         children: [
-          // ── 左侧：工作模式 ──
-          _modeButton(context, WorkMode.workspace, Icons.dashboard, '工作台'),
-          _modeButton(context, WorkMode.focus, Icons.auto_awesome, '专注'),
-          _modeButton(context, WorkMode.source, Icons.code, '源码'),
-
-          const SizedBox(width: 12),
-          // 编辑器状态
-          if (editorStatus != null) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: cs.primary.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                editorStatus!,
-                style: TextStyle(fontSize: 10, color: cs.primary),
-              ),
-            ),
-          ],
+          // 工作模式切换
+          _modeButton(
+            label: '工作台',
+            icon: Icons.space_dashboard,
+            active: workMode == WorkMode.workspace,
+            onTap: () => onModeChange(WorkMode.workspace),
+            cs: cs,
+            isDark: isDark,
+          ),
+          _modeButton(
+            label: '专注',
+            icon: Icons.visibility,
+            active: workMode == WorkMode.focus,
+            onTap: () => onModeChange(WorkMode.focus),
+            cs: cs,
+            isDark: isDark,
+          ),
+          _modeButton(
+            label: '源码',
+            icon: Icons.code,
+            active: workMode == WorkMode.source,
+            onTap: () => onModeChange(WorkMode.source),
+            cs: cs,
+            isDark: isDark,
+          ),
 
           const Spacer(),
 
-          // ── 右侧：统计信息 ──
-          if (cursorPosition case (final row, final col))
-            _statusChip(context, '$row:$col', Icons.pin),
-          if (wordCount != null)
-            _statusChip(context, '$wordCount 词', Icons.text_fields),
-          if (charCount != null)
-            _statusChip(context, '$charCount 字', Icons.abc),
+          // 编辑器状态信息
+          if (editorStatus != null)
+            _statusLabel(
+              editorStatus!,
+              isDark: isDark,
+            ),
 
-          if (isSyncing) ...[
-            const SizedBox(width: 8),
-            SizedBox(
+          // 光标位置
+          if (cursorPosition != null) ...[
+            const SizedBox(width: 12),
+            _statusLabel(
+              '行 ${cursorPosition!.$1} 列 ${cursorPosition!.$2}',
+              isDark: isDark,
+            ),
+          ],
+
+          // 字数统计
+          const SizedBox(width: 12),
+          _statusLabel(
+            '$wordCount 词',
+            isDark: isDark,
+          ),
+          const SizedBox(width: 8),
+          _statusLabel(
+            '$charCount 字',
+            isDark: isDark,
+          ),
+
+          // 同步状态
+          const SizedBox(width: 12),
+          if (isSyncing)
+            const SizedBox(
               width: 12,
               height: 12,
-              child: CircularProgressIndicator(strokeWidth: 1.5, color: cs.primary),
+              child: CircularProgressIndicator(strokeWidth: 1.5),
+            )
+          else
+            _statusLabel(
+              siteName.isNotEmpty ? siteName : '未连接',
+              icon: Icons.cloud_outlined,
+              isDark: isDark,
             ),
-          ] else if (syncStatus != null) ...[
-            _statusChip(context, syncStatus!, Icons.cloud_done_outlined),
-          ],
-
-          if (siteName != null) ...[
-            const SizedBox(width: 8),
-            _statusChip(context, siteName!, Icons.language),
-          ],
+          const SizedBox(width: 12),
         ],
       ),
     );
   }
 
-  Widget _modeButton(BuildContext context, WorkMode mode, IconData icon, String label) {
-    final isActive = workMode == mode;
-    final cs = Theme.of(context).colorScheme;
+  Widget _modeButton({
+    required String label,
+    required IconData icon,
+    required bool active,
+    required VoidCallback onTap,
+    required ColorScheme cs,
+    required bool isDark,
+  }) {
     return GestureDetector(
-      onTap: () => onModeChange(mode),
+      onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10),
+        height: 28,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 13, color: isActive ? cs.primary : cs.onSurface.withOpacity(0.4)),
+            Icon(
+              icon,
+              size: 11,
+              color: active
+                  ? cs.primary
+                  : (isDark ? Colors.white.withOpacity(0.35) : const Color(0xFF9CA3AF)),
+            ),
             const SizedBox(width: 4),
             Text(
               label,
               style: TextStyle(
-                fontSize: 10,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                color: isActive ? cs.primary : cs.onSurface.withOpacity(0.5),
+                fontSize: 10.5,
+                fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                color: active
+                    ? cs.primary
+                    : (isDark ? Colors.white.withOpacity(0.35) : const Color(0xFF9CA3AF)),
               ),
             ),
           ],
@@ -134,23 +164,34 @@ class DesktopStatusBar extends StatelessWidget {
     );
   }
 
-  Widget _statusChip(BuildContext context, String text, IconData? icon) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 11, color: cs.onSurface.withOpacity(0.35)),
-            const SizedBox(width: 3),
-          ],
-          Text(
-            text,
-            style: TextStyle(fontSize: 10, color: cs.onSurface.withOpacity(0.4), fontFamily: 'monospace'),
+  Widget _statusLabel(
+    String text, {
+    IconData? icon,
+    bool isDark = false,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[
+          Icon(
+            icon,
+            size: 10,
+            color: isDark
+                ? Colors.white.withOpacity(0.25)
+                : const Color(0xFFD1D5DB),
           ),
+          const SizedBox(width: 4),
         ],
-      ),
+        Text(
+          text,
+          style: TextStyle(
+            fontSize: 10,
+            color: isDark
+                ? Colors.white.withOpacity(0.25)
+                : const Color(0xFF9CA3AF),
+          ),
+        ),
+      ],
     );
   }
 }

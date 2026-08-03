@@ -1,9 +1,5 @@
-/// 左侧导航面板
-/// 复刻手机版侧边栏全部菜单项：
-/// 创作（新建文章、草稿箱）、管理（远程文章、同步状态、仪表盘、提交历史）、
-/// 工具（批量上传、网站预览、RSS订阅、模板管理、片段素材库、配置编辑器、AI批量迁移）、
-/// AI工具（AI博文创作、AI页面创作、AI主题开发、AI主题迁移、AI站点巡检、AI模型管理、工具库）、
-/// 系统（云同步、设置、操作日志、动态博客登录、站点管理）
+/// 桌面端左侧导航面板
+/// 专业桌面端设计：分组折叠式导航，清晰的视觉层次
 library;
 
 import 'package:flutter/material.dart';
@@ -11,18 +7,18 @@ import '../../models/repo_config.dart';
 import '../../models/article.dart';
 import '../../core/site_manager.dart';
 
-class DesktopLeftPanel extends StatelessWidget {
+class DesktopLeftPanel extends StatefulWidget {
   final double width;
   final ValueChanged<double> onResize;
   final ValueChanged<String> onOpenDraft;
   final VoidCallback onCollapse;
 
-  // ── 实时数据 ──
+  // 实时数据
   final List<RepoConfig> repos;
   final List<Article> drafts;
   final SiteManager siteManager;
 
-  // ── 导航回调 ──
+  // 导航回调
   final VoidCallback onNewArticle;
   final VoidCallback onOpenDrafts;
   final VoidCallback onOpenRemote;
@@ -110,158 +106,375 @@ class DesktopLeftPanel extends StatelessWidget {
   });
 
   @override
+  State<DesktopLeftPanel> createState() => _DesktopLeftPanelState();
+}
+
+class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
+  // 折叠的分组
+  final Set<String> _collapsedSections = {};
+
+  // 拖拽调整宽度
+  bool _resizing = false;
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      width: width.clamp(200, 400),
+      width: widget.width.clamp(200, 400),
       decoration: BoxDecoration(
-        color: cs.surface.withOpacity(0.6),
-        border: Border(right: BorderSide(color: cs.outlineVariant.withOpacity(0.2))),
+        color: isDark
+            ? const Color(0xFF1E1E2E)
+            : const Color(0xFFF5F5F7),
+        border: Border(
+          right: BorderSide(
+            color: isDark
+                ? cs.outlineVariant.withOpacity(0.15)
+                : const Color(0xFFE0E0E5),
+          ),
+        ),
       ),
-      child: Column(
+      child: Stack(
         children: [
-          // 面板头部
-          _panelHeader(cs),
-          const Divider(height: 1),
+          // 主内容
+          Column(
+            children: [
+              // 面板头部
+              _buildHeader(cs, isDark),
+              const SizedBox(height: 4),
 
-          // 站点 & 导航列表
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 6),
+              // 滚动内容
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  children: [
+                    // 创作
+                    _buildSection(
+                      key: 'create',
+                      title: '创作',
+                      icon: Icons.edit_square,
+                      collapsed: _collapsedSections.contains('create'),
+                      onToggle: () => _toggleSection('create'),
+                      children: [
+                        _navItem(
+                          icon: Icons.add_circle_outline,
+                          label: '新建文章',
+                          onTap: widget.onNewArticle,
+                          isPrimary: true,
+                          shortcut: 'Ctrl+N',
+                        ),
+                        _navItem(
+                          icon: Icons.drafts_outlined,
+                          label: '草稿箱',
+                          onTap: widget.onOpenDrafts,
+                          badge: widget.drafts.where((d) => !d.published).length,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+
+                    // 站点
+                    _buildSection(
+                      key: 'sites',
+                      title: '站点',
+                      icon: Icons.folder_outlined,
+                      collapsed: _collapsedSections.contains('sites'),
+                      onToggle: () => _toggleSection('sites'),
+                      children: [
+                        ...widget.repos.map((r) => _siteItem(
+                          name: r.name,
+                          subtitle: r.fullName,
+                          icon: r.isDefault ? Icons.star : Icons.hexagon_outlined,
+                          isDefault: r.isDefault,
+                          isActive: false,
+                          onTap: () => widget.onSiteChange?.call(r),
+                        )),
+                        ...widget.siteManager.dynamicSites.map((s) => _siteItem(
+                          name: s.name,
+                          subtitle: s.siteUrl,
+                          icon: Icons.language,
+                          isActive: false,
+                          onTap: () {
+                            // 动态站点点击：打开站点管理
+                            widget.onShowBlogSiteManager();
+                          },
+                        )),
+                        _navItem(
+                          icon: Icons.add,
+                          label: '添加站点',
+                          onTap: widget.onShowSiteEditor,
+                          isSubtle: true,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+
+                    // 管理
+                    _buildSection(
+                      key: 'manage',
+                      title: '管理',
+                      icon: Icons.settings,
+                      collapsed: _collapsedSections.contains('manage'),
+                      onToggle: () => _toggleSection('manage'),
+                      children: [
+                        _navItem(icon: Icons.cloud_outlined, label: '远程文章', onTap: widget.onOpenRemote),
+                        _navItem(icon: Icons.sync, label: '同步状态', onTap: widget.onOpenSync),
+                        _navItem(icon: Icons.dashboard_outlined, label: '仪表盘', onTap: widget.onOpenDashboard),
+                        _navItem(icon: Icons.history_outlined, label: '提交历史', onTap: widget.onOpenHistory),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+
+                    // 工具
+                    _buildSection(
+                      key: 'tools',
+                      title: '工具',
+                      icon: Icons.build_outlined,
+                      collapsed: _collapsedSections.contains('tools'),
+                      onToggle: () => _toggleSection('tools'),
+                      children: [
+                        _navItem(icon: Icons.drive_folder_upload, label: '批量上传', onTap: widget.onOpenBatchUpload),
+                        _navItem(icon: Icons.language, label: '网站预览', onTap: widget.onOpenPreview),
+                        _navItem(icon: Icons.rss_feed_outlined, label: 'RSS 订阅', onTap: widget.onOpenRss),
+                        _navItem(icon: Icons.view_quilt_outlined, label: '模板管理', onTap: widget.onShowTemplateManager),
+                        _navItem(icon: Icons.content_paste, label: '片段素材库', onTap: widget.onShowSnippetManager),
+                        _navItem(icon: Icons.settings_applications, label: '配置编辑器', onTap: widget.onShowConfigEditor),
+                        _navItem(icon: Icons.swap_horiz, label: 'AI 批量迁移', onTap: widget.onOpenThemeMigration),
+                        _navItem(icon: Icons.photo_library_outlined, label: '图床管理', onTap: widget.onOpenImageBedManager),
+                        _navItem(icon: Icons.link_off, label: '链接检测', onTap: widget.onOpenLinkChecker),
+                        _navItem(icon: Icons.build_circle, label: '批量工具箱', onTap: widget.onOpenBatchTools),
+                        _navItem(icon: Icons.vpn_lock_outlined, label: '代理设置', onTap: widget.onOpenProxySettings),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+
+                    // AI 工具
+                    _buildSection(
+                      key: 'ai',
+                      title: 'AI 工具',
+                      icon: Icons.auto_awesome,
+                      collapsed: _collapsedSections.contains('ai'),
+                      onToggle: () => _toggleSection('ai'),
+                      children: [
+                        _navItem(icon: Icons.article_outlined, label: 'AI 博文创作', onTap: widget.onShowAiArticleChat),
+                        _navItem(icon: Icons.web_outlined, label: 'AI 页面创作', onTap: widget.onShowAiPageChat),
+                        _navItem(icon: Icons.palette_outlined, label: 'AI 主题开发', onTap: widget.onShowAiThemeChat),
+                        _navItem(icon: Icons.fact_check_outlined, label: 'AI 站点巡检', onTap: widget.onShowAiAudit),
+                        _navItem(icon: Icons.psychology_outlined, label: 'AI 模型管理', onTap: widget.onShowAiModelManager),
+                        _navItem(icon: Icons.text_snippet_outlined, label: 'AI 提示词模板', onTap: widget.onOpenAiPromptTemplates),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+
+                    // 系统
+                    _buildSection(
+                      key: 'system',
+                      title: '系统',
+                      icon: Icons.dns_outlined,
+                      collapsed: _collapsedSections.contains('system'),
+                      onToggle: () => _toggleSection('system'),
+                      children: [
+                        _navItem(icon: Icons.cloud_sync, label: '云同步', onTap: widget.onOpenSyncSettings),
+                        _navItem(icon: Icons.settings_outlined, label: '设置', onTap: widget.onOpenSettings),
+                        _navItem(icon: Icons.history, label: '操作日志', onTap: widget.onOpenLogs),
+                        _navItem(icon: Icons.delete_outline, label: '回收站', onTap: widget.onOpenRecycleBin),
+                        _navItem(icon: Icons.cleaning_services_outlined, label: '缓存清理', onTap: widget.onOpenCacheCleanup),
+                        _navItem(icon: Icons.bug_report_outlined, label: '导出日志', onTap: widget.onExportLogs),
+                        _navItem(icon: Icons.dns_outlined, label: '动态博客登录', onTap: widget.onShowBlogSiteManager),
+                        _navItem(icon: Icons.storage_outlined, label: '站点管理', onTap: widget.onShowSiteEditor),
+                        _navItem(icon: Icons.help_outline, label: '帮助 / 快捷键', onTap: widget.onShowHelp),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          // 右侧拖拽调整宽度手柄
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
+            child: _buildResizeHandle(isDark),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // 面板头部
+  // ============================================================
+  Widget _buildHeader(ColorScheme cs, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+      child: Row(
+        children: [
+          Icon(
+            Icons.auto_stories,
+            size: 18,
+            color: cs.primary,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '导航',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isDark
+                  ? cs.onSurface.withOpacity(0.5)
+                  : const Color(0xFF6B7280),
+              letterSpacing: 0.5,
+            ),
+          ),
+          const Spacer(),
+          _iconButton(
+            Icons.chevron_left,
+            tooltip: '折叠面板',
+            onTap: widget.onCollapse,
+            cs: cs,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // 可折叠分组
+  // ============================================================
+  Widget _buildSection({
+    required String key,
+    required String title,
+    required IconData icon,
+    required bool collapsed,
+    required VoidCallback onToggle,
+    required List<Widget> children,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 分组标题
+        GestureDetector(
+          onTap: onToggle,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(6, 6, 6, 4),
+            child: Row(
               children: [
-                // ── 创作 ──
-                _sectionHeader('创作', Icons.edit_square),
-                _navButton(Icons.add, '新建文章', onNewArticle, cs, isPrimary: true),
-                _navButton(Icons.drafts_outlined, '草稿箱', onOpenDrafts, cs,
-                    badge: drafts.where((d) => !d.published).length),
-                const SizedBox(height: 6),
-
-                // ── 站点列表 ──
-                _sectionHeader('站点', Icons.folder_outlined),
-                ...repos.map((r) => _siteItem(r.name, Icons.hexagon_outlined, cs, onTap: () => onSiteChange?.call(r))).toList(),
-                if (siteManager.dynamicSites.isNotEmpty)
-                  ...siteManager.dynamicSites.map((s) => _siteItem(s.name, Icons.language, cs)).toList(),
-                const SizedBox(height: 6),
-
-                // ── 管理 ──
-                _sectionHeader('管理', Icons.settings),
-                _navButton(Icons.cloud_outlined, '远程文章', onOpenRemote, cs),
-                _navButton(Icons.sync, '同步状态', onOpenSync, cs),
-                _navButton(Icons.dashboard_outlined, '仪表盘', onOpenDashboard, cs),
-                _navButton(Icons.history_outlined, '提交历史', onOpenHistory, cs),
-                const SizedBox(height: 6),
-
-                // ── 工具 ──
-                _sectionHeader('工具', Icons.build_outlined),
-                _navButton(Icons.drive_folder_upload, '批量上传', onOpenBatchUpload, cs),
-                _navButton(Icons.language, '网站预览', onOpenPreview, cs),
-                _navButton(Icons.rss_feed_outlined, 'RSS 订阅', onOpenRss, cs),
-                _navAction(Icons.view_quilt_outlined, '模板管理', onShowTemplateManager, cs),
-                _navAction(Icons.content_paste, '片段素材库', onShowSnippetManager, cs),
-                _navAction(Icons.settings_applications, '配置编辑器', onShowConfigEditor, cs),
-                _navAction(Icons.swap_horiz, 'AI批量迁移', onOpenThemeMigration, cs),
-                _navAction(Icons.photo_library_outlined, '图床管理', onOpenImageBedManager, cs),
-                _navAction(Icons.link_off, '链接检测', onOpenLinkChecker, cs),
-                _navAction(Icons.build_circle, '批量工具箱', onOpenBatchTools, cs),
-                _navAction(Icons.vpn_lock_outlined, '代理设置', onOpenProxySettings, cs),
-                const SizedBox(height: 6),
-
-                // ── AI 工具 ──
-                _sectionHeader('AI 工具', Icons.auto_awesome),
-                _navAction(Icons.article_outlined, 'AI 博文创作', onShowAiArticleChat, cs),
-                _navAction(Icons.web_outlined, 'AI 页面创作', onShowAiPageChat, cs),
-                _navAction(Icons.palette_outlined, 'AI 主题开发', onShowAiThemeChat, cs),
-                _navAction(Icons.fact_check_outlined, 'AI 站点巡检', onShowAiAudit, cs),
-                _navAction(Icons.psychology_outlined, 'AI 模型管理', onShowAiModelManager, cs),
-                _navAction(Icons.build_outlined, '工具库', onShowToolLibrary, cs),
-                _navAction(Icons.text_snippet_outlined, 'AI 提示词模板', onOpenAiPromptTemplates, cs),
-                const SizedBox(height: 6),
-
-                // ── 系统 ──
-                _sectionHeader('系统', Icons.dns_outlined),
-                _navButton(Icons.cloud_sync, '云同步', onOpenSyncSettings, cs),
-                _navButton(Icons.settings_outlined, '设置', onOpenSettings, cs),
-                _navButton(Icons.history, '操作日志', onOpenLogs, cs),
-                _navButton(Icons.help_outline, '帮助 / 快捷键', onShowHelp, cs),
-                _navButton(Icons.delete_outline, '回收站', onOpenRecycleBin, cs),
-                _navButton(Icons.cleaning_services_outlined, '缓存清理', onOpenCacheCleanup, cs),
-                _navButton(Icons.bug_report_outlined, '导出日志', onExportLogs, cs),
-                _navAction(Icons.dns_outlined, '动态博客登录', onShowBlogSiteManager, cs),
-                _navAction(Icons.storage_outlined, '站点管理', onShowSiteEditor, cs),
+                Icon(
+                  collapsed ? Icons.chevron_right : Icons.expand_more,
+                  size: 14,
+                  color: isDark
+                      ? Colors.white.withOpacity(0.3)
+                      : const Color(0xFF9CA3AF),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  icon,
+                  size: 12,
+                  color: isDark
+                      ? Colors.white.withOpacity(0.3)
+                      : const Color(0xFF9CA3AF),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: isDark
+                        ? Colors.white.withOpacity(0.3)
+                        : const Color(0xFF9CA3AF),
+                    letterSpacing: 0.8,
+                  ),
+                ),
               ],
             ),
           ),
-        ],
-      ),
+        ),
+        // 分组内容
+        if (!collapsed) ...children,
+      ],
     );
   }
 
-  Widget _panelHeader(ColorScheme cs) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: Row(
-        children: [
-          Icon(Icons.auto_stories, size: 18, color: cs.primary),
-          const SizedBox(width: 8),
-          Text(
-            'AI 博客编辑器',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.onSurface.withOpacity(0.6), letterSpacing: 0.5),
-          ),
-          const Spacer(),
-          Material(
-            color: Colors.transparent,
-            borderRadius: BorderRadius.circular(6),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(6),
-              onTap: onCollapse,
-              child: Padding(
-                padding: const EdgeInsets.all(4),
-                child: Icon(Icons.chevron_left, size: 16, color: cs.onSurface.withOpacity(0.5)),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // ============================================================
+  // 导航项
+  // ============================================================
+  Widget _navItem({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    bool isPrimary = false,
+    bool isSubtle = false,
+    String? shortcut,
+    int badge = 0,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
 
-  Widget _sectionHeader(String title, IconData icon) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: Row(
-        children: [
-          Icon(icon, size: 12, color: Colors.grey.shade400),
-          const SizedBox(width: 6),
-          Text(title, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.grey.shade400, letterSpacing: 0.8)),
-        ],
-      ),
-    );
-  }
-
-  Widget _navButton(IconData icon, String label, VoidCallback onTap, ColorScheme cs, {int badge = 0, bool isPrimary = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+      padding: const EdgeInsets.symmetric(vertical: 1),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
         child: InkWell(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(6),
           onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             child: Row(
               children: [
-                Icon(icon, size: 17, color: isPrimary ? cs.primary : cs.onSurface.withOpacity(0.6)),
+                Icon(
+                  icon,
+                  size: 16,
+                  color: isPrimary
+                      ? cs.primary
+                      : isSubtle
+                          ? (isDark ? Colors.white.withOpacity(0.35) : const Color(0xFF9CA3AF))
+                          : (isDark ? Colors.white.withOpacity(0.6) : const Color(0xFF4B5563)),
+                ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(label, style: TextStyle(fontSize: 13, fontWeight: isPrimary ? FontWeight.w600 : FontWeight.w400, color: cs.onSurface)),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: isPrimary ? FontWeight.w600 : FontWeight.w400,
+                      color: isPrimary
+                          ? cs.primary
+                          : (isDark ? Colors.white.withOpacity(0.8) : const Color(0xFF374151)),
+                    ),
+                  ),
                 ),
                 if (badge > 0)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(color: cs.primary.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
-                    child: Text('$badge', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: cs.primary)),
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                    decoration: BoxDecoration(
+                      color: cs.primary.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '$badge',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: cs.primary,
+                      ),
+                    ),
+                  ),
+                if (shortcut != null)
+                  Text(
+                    shortcut,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isDark ? Colors.white.withOpacity(0.2) : const Color(0xFFD1D5DB),
+                    ),
                   ),
               ],
             ),
@@ -271,25 +484,79 @@ class DesktopLeftPanel extends StatelessWidget {
     );
   }
 
-  Widget _navAction(IconData icon, String label, VoidCallback onTap, ColorScheme cs) {
+  // ============================================================
+  // 站点项
+  // ============================================================
+  Widget _siteItem({
+    required String name,
+    String? subtitle,
+    required IconData icon,
+    bool isDefault = false,
+    bool isActive = false,
+    VoidCallback? onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+      padding: const EdgeInsets.symmetric(vertical: 1),
       child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
+        color: isActive
+            ? (isDark ? Colors.white.withOpacity(0.08) : cs.primary.withOpacity(0.08))
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
         child: InkWell(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(6),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             child: Row(
               children: [
-                Icon(icon, size: 17, color: cs.onSurface.withOpacity(0.5)),
+                Icon(
+                  icon,
+                  size: 15,
+                  color: isDefault
+                      ? Colors.amber.shade600
+                      : (isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280)),
+                ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(label, style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(0.8))),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.white.withOpacity(0.85) : const Color(0xFF374151),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (subtitle != null && subtitle.isNotEmpty)
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isDark ? Colors.white.withOpacity(0.35) : const Color(0xFF9CA3AF),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
                 ),
-                Icon(Icons.open_in_new, size: 12, color: cs.onSurface.withOpacity(0.25)),
+                if (isDefault)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '默认',
+                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: Colors.amber.shade700),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -298,27 +565,72 @@ class DesktopLeftPanel extends StatelessWidget {
     );
   }
 
-  Widget _siteItem(String name, IconData icon, ColorScheme cs, {VoidCallback? onTap}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+  // ============================================================
+  // 图标按钮
+  // ============================================================
+  Widget _iconButton(
+    IconData icon, {
+    String? tooltip,
+    required VoidCallback onTap,
+    required ColorScheme cs,
+  }) {
+    return Tooltip(
+      message: tooltip ?? '',
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(4),
         child: InkWell(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(4),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              children: [
-                Icon(icon, size: 16, color: cs.primary.withOpacity(0.6)),
-                const SizedBox(width: 10),
-                Text(name, style: const TextStyle(fontSize: 12)),
-              ],
+            padding: const EdgeInsets.all(4),
+            child: Icon(icon, size: 15, color: cs.onSurface.withOpacity(0.4)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // 拖拽调整宽度手柄
+  // ============================================================
+  Widget _buildResizeHandle(bool isDark) {
+    return GestureDetector(
+      onHorizontalDragStart: (_) => setState(() => _resizing = true),
+      onHorizontalDragUpdate: (d) {
+        widget.onResize(widget.width + d.delta.dx);
+      },
+      onHorizontalDragEnd: (_) => setState(() => _resizing = false),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.resizeColumn,
+        child: Container(
+          width: 4,
+          color: _resizing
+              ? Theme.of(context).colorScheme.primary.withOpacity(0.3)
+              : Colors.transparent,
+          child: Center(
+            child: Container(
+              width: 1,
+              color: isDark
+                  ? Colors.white.withOpacity(0.06)
+                  : Colors.black.withOpacity(0.08),
             ),
           ),
         ),
       ),
     );
+  }
+
+  // ============================================================
+  // 切换分组折叠
+  // ============================================================
+  void _toggleSection(String key) {
+    setState(() {
+      if (_collapsedSections.contains(key)) {
+        _collapsedSections.remove(key);
+      } else {
+        _collapsedSections.add(key);
+      }
+    });
   }
 }

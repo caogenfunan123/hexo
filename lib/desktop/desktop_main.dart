@@ -48,6 +48,9 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
   Size _windowSize = const Size(1280, 800);
   bool _isMaximized = false;
 
+  // ── 主题 ──
+  ThemeMode _themeMode = ThemeMode.system;
+
   @override
   void initState() {
     super.initState();
@@ -242,6 +245,16 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
     }
   }
 
+  void _toggleAppTheme() {
+    setState(() {
+      _themeMode = _themeMode == ThemeMode.light
+          ? ThemeMode.dark
+          : _themeMode == ThemeMode.dark
+              ? ThemeMode.system
+              : ThemeMode.light;
+    });
+  }
+
   // ============================================================
   // 构建
   // ============================================================
@@ -261,8 +274,11 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
         title: 'AI 博客编辑器',
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
-        themeMode: ThemeMode.system,
-        home: DesktopShell(key: DesktopApp.shellKey),
+        themeMode: _themeMode,
+        home: DesktopShell(
+          key: DesktopApp.shellKey,
+          onToggleAppTheme: _toggleAppTheme,
+        ),
       ),
     );
   }

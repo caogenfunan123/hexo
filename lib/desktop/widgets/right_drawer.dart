@@ -1,9 +1,8 @@
 /// 右侧悬浮抽屉面板
-/// 包含：大纲、FrontMatter、AI 聊天、同步日志
+/// 专业桌面端设计：清晰的标签页切换，优雅的布局
 library;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 
 /// 右侧抽屉标签
 enum RightDrawerTab {
@@ -18,20 +17,13 @@ class DesktopRightDrawer extends StatelessWidget {
   final ValueChanged<RightDrawerTab> onTabChange;
   final VoidCallback onClose;
 
-  /// 大纲数据（Markdown标题列表）
   final List<OutlineItem> outlineItems;
-
-  /// FrontMatter 控制器
   final TextEditingController? titleCtrl;
   final TextEditingController? tagsCtrl;
   final TextEditingController? categoriesCtrl;
   final TextEditingController? coverCtrl;
   final TextEditingController? dateCtrl;
-
-  /// AI 聊天面板
   final Widget? aiChatPanel;
-
-  /// 同步日志
   final List<String> syncLogs;
 
   const DesktopRightDrawer({
@@ -52,97 +44,155 @@ class DesktopRightDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       width: 280,
       decoration: BoxDecoration(
-        color: cs.surface,
+        color: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFFAFAFC),
         border: Border(
-          left: BorderSide(color: cs.outlineVariant.withOpacity(0.2)),
+          left: BorderSide(
+            color: isDark
+                ? Colors.white.withOpacity(0.06)
+                : const Color(0xFFE5E5EA),
+          ),
         ),
       ),
       child: Column(
         children: [
-          // ── 顶部标签切换 ──
-          Container(
-            height: 40,
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: cs.outlineVariant.withOpacity(0.2)),
-              ),
-            ),
-            child: Row(
-              children: [
-                _tabButton(context, RightDrawerTab.outline, Icons.list_alt, '大纲'),
-                _tabButton(context, RightDrawerTab.frontMatter, Icons.tune, '属性'),
-                _tabButton(context, RightDrawerTab.aiChat, Icons.auto_awesome, 'AI'),
-                _tabButton(context, RightDrawerTab.syncLog, Icons.sync, '日志'),
-                const Spacer(),
-                GestureDetector(
-                  onTap: onClose,
-                  child: Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: Icon(Icons.close, size: 16, color: cs.onSurface.withOpacity(0.5)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // ── 内容区 ──
+          // 顶部标签栏
+          _buildTabBar(cs, isDark),
+          // 内容区
           Expanded(
-            child: _buildContent(context),
+            child: _buildContent(context, isDark),
           ),
         ],
       ),
     );
   }
 
-  Widget _tabButton(BuildContext context, RightDrawerTab tab, IconData icon, String label) {
+  Widget _buildTabBar(ColorScheme cs, bool isDark) {
+    return Container(
+      height: 40,
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? Colors.white.withOpacity(0.06)
+                : const Color(0xFFE5E5EA),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          _tabButton(RightDrawerTab.outline, Icons.list_alt, '大纲', cs, isDark),
+          _tabButton(RightDrawerTab.frontMatter, Icons.tune, '属性', cs, isDark),
+          _tabButton(RightDrawerTab.aiChat, Icons.auto_awesome, 'AI', cs, isDark),
+          _tabButton(RightDrawerTab.syncLog, Icons.sync, '日志', cs, isDark),
+          const Spacer(),
+          GestureDetector(
+            onTap: onClose,
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Icon(
+                Icons.close,
+                size: 15,
+                color: isDark
+                    ? Colors.white.withOpacity(0.4)
+                    : const Color(0xFF9CA3AF),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tabButton(RightDrawerTab tab, IconData icon, String label, ColorScheme cs, bool isDark) {
     final isActive = activeTab == tab;
-    final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: () => onTabChange(tab),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: isActive ? cs.primary : cs.onSurface.withOpacity(0.5)),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                color: isActive ? cs.primary : cs.onSurface.withOpacity(0.7),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          decoration: BoxDecoration(
+            color: isActive
+                ? (isDark ? Colors.white.withOpacity(0.08) : cs.primary.withOpacity(0.08))
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 14,
+                color: isActive
+                    ? cs.primary
+                    : (isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
               ),
-            ),
-          ],
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                  color: isActive
+                      ? cs.primary
+                      : (isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildContent(BuildContext context) {
+  Widget _buildContent(BuildContext context, bool isDark) {
     switch (activeTab) {
       case RightDrawerTab.outline:
-        return _buildOutline(context);
+        return _buildOutline(context, isDark);
       case RightDrawerTab.frontMatter:
-        return _buildFrontMatter(context);
+        return _buildFrontMatter(context, isDark);
       case RightDrawerTab.aiChat:
-        return _buildAiChat(context);
+        return _buildAiChat(context, isDark);
       case RightDrawerTab.syncLog:
-        return _buildSyncLog(context);
+        return _buildSyncLog(context, isDark);
     }
   }
 
-  // ── 大纲视图 ──
-  Widget _buildOutline(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+  Widget _buildOutline(BuildContext context, bool isDark) {
     if (outlineItems.isEmpty) {
       return Center(
-        child: Text('暂无大纲', style: TextStyle(color: cs.onSurface.withOpacity(0.3), fontSize: 13)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.list_alt,
+              size: 36,
+              color: isDark ? Colors.white.withOpacity(0.1) : const Color(0xFFE5E7EB),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '暂无大纲',
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '在文章中使用标题即可生成大纲',
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+              ),
+            ),
+          ],
+        ),
       );
     }
     return ListView.builder(
@@ -152,66 +202,122 @@ class DesktopRightDrawer extends StatelessWidget {
         final item = outlineItems[i];
         return Padding(
           padding: EdgeInsets.only(left: (item.level - 1) * 16.0),
-          child: ListTile(
-            dense: true,
-            leading: Icon(
-              item.level == 1 ? Icons.title : Icons.subdirectory_arrow_right,
-              size: 14,
-              color: cs.primary.withOpacity(0.6),
-            ),
-            title: Text(
-              item.title,
-              style: TextStyle(
-                fontSize: 12 + (3 - item.level).clamp(0, 2).toDouble(),
-                fontWeight: item.level == 1 ? FontWeight.w600 : FontWeight.w400,
-                color: cs.onSurface,
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(4),
+              onTap: item.onTap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                child: Row(
+                  children: [
+                    Icon(
+                      item.level == 1 ? Icons.title : Icons.subdirectory_arrow_right,
+                      size: 12,
+                      color: isDark
+                          ? Colors.white.withOpacity(0.3)
+                          : const Color(0xFF9CA3AF),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        item.title,
+                        style: TextStyle(
+                          fontSize: 12 + (3 - item.level).clamp(0, 2).toDouble(),
+                          fontWeight: item.level == 1 ? FontWeight.w600 : FontWeight.w400,
+                          color: isDark
+                              ? Colors.white.withOpacity(0.8)
+                              : const Color(0xFF374151),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            onTap: item.onTap,
           ),
         );
       },
     );
   }
 
-  // ── FrontMatter 编辑 ──
-  Widget _buildFrontMatter(BuildContext context) {
+  Widget _buildFrontMatter(BuildContext context, bool isDark) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _fmField(context, '标题', titleCtrl),
+          _fmField(context, '标题', titleCtrl, isDark: isDark),
           const SizedBox(height: 10),
-          _fmField(context, '标签', tagsCtrl, hint: '逗号分隔'),
+          _fmField(context, '标签', tagsCtrl, hint: '逗号分隔', isDark: isDark),
           const SizedBox(height: 10),
-          _fmField(context, '分类', categoriesCtrl, hint: '逗号分隔'),
+          _fmField(context, '分类', categoriesCtrl, hint: '逗号分隔', isDark: isDark),
           const SizedBox(height: 10),
-          _fmField(context, '封面图', coverCtrl, hint: '图片 URL'),
+          _fmField(context, '封面图', coverCtrl, hint: '图片 URL', isDark: isDark),
           const SizedBox(height: 10),
-          _fmField(context, '日期', dateCtrl, hint: 'YYYY-MM-DD'),
+          _fmField(context, '日期', dateCtrl, hint: 'YYYY-MM-DD', isDark: isDark),
         ],
       ),
     );
   }
 
-  Widget _fmField(BuildContext context, String label, TextEditingController? ctrl, {String? hint}) {
+  Widget _fmField(BuildContext context, String label, TextEditingController? ctrl, {String? hint, bool isDark = false}) {
     final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurface.withOpacity(0.5))),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: isDark
+                ? Colors.white.withOpacity(0.4)
+                : const Color(0xFF6B7280),
+          ),
+        ),
         const SizedBox(height: 4),
         TextField(
           controller: ctrl,
-          style: const TextStyle(fontSize: 13),
+          style: TextStyle(
+            fontSize: 13,
+            color: isDark ? Colors.white.withOpacity(0.85) : const Color(0xFF374151),
+          ),
           decoration: InputDecoration(
             hintText: hint,
+            hintStyle: TextStyle(
+              fontSize: 13,
+              color: isDark ? Colors.white.withOpacity(0.2) : const Color(0xFFD1D5DB),
+            ),
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            filled: true,
+            fillColor: isDark
+                ? Colors.white.withOpacity(0.04)
+                : const Color(0xFFF9FAFB),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(6),
-              borderSide: BorderSide(color: cs.outlineVariant.withOpacity(0.3)),
+              borderSide: BorderSide(
+                color: isDark
+                    ? Colors.white.withOpacity(0.08)
+                    : const Color(0xFFE5E7EB),
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: BorderSide(
+                color: isDark
+                    ? Colors.white.withOpacity(0.08)
+                    : const Color(0xFFE5E7EB),
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: BorderSide(
+                color: cs.primary.withOpacity(0.5),
+              ),
             ),
           ),
         ),
@@ -219,30 +325,70 @@ class DesktopRightDrawer extends StatelessWidget {
     );
   }
 
-  // ── AI 聊天面板 ──
-  Widget _buildAiChat(BuildContext context) {
+  Widget _buildAiChat(BuildContext context, bool isDark) {
     if (aiChatPanel != null) return aiChatPanel!;
-    final cs = Theme.of(context).colorScheme;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.auto_awesome, size: 48, color: cs.primary.withOpacity(0.3)),
+          Icon(
+            Icons.auto_awesome,
+            size: 40,
+            color: isDark
+                ? Colors.white.withOpacity(0.1)
+                : const Color(0xFFE5E7EB),
+          ),
           const SizedBox(height: 12),
-          Text('AI 助手', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: cs.onSurface.withOpacity(0.5))),
+          Text(
+            'AI 助手',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: isDark
+                  ? Colors.white.withOpacity(0.4)
+                  : const Color(0xFF9CA3AF),
+            ),
+          ),
           const SizedBox(height: 4),
-          Text('选择文章后可使用 AI 辅助写作', style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.3))),
+          Text(
+            '选择文章后可使用 AI 辅助写作',
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark
+                  ? Colors.white.withOpacity(0.25)
+                  : const Color(0xFFD1D5DB),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  // ── 同步日志 ──
-  Widget _buildSyncLog(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+  Widget _buildSyncLog(BuildContext context, bool isDark) {
     if (syncLogs.isEmpty) {
       return Center(
-        child: Text('暂无同步日志', style: TextStyle(color: cs.onSurface.withOpacity(0.3), fontSize: 13)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.sync,
+              size: 36,
+              color: isDark
+                  ? Colors.white.withOpacity(0.1)
+                  : const Color(0xFFE5E7EB),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '暂无同步日志',
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark
+                    ? Colors.white.withOpacity(0.3)
+                    : const Color(0xFF9CA3AF),
+              ),
+            ),
+          ],
+        ),
       );
     }
     return ListView.builder(
@@ -252,7 +398,13 @@ class DesktopRightDrawer extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 2),
         child: Text(
           syncLogs[i],
-          style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: cs.onSurface.withOpacity(0.7)),
+          style: TextStyle(
+            fontSize: 11,
+            fontFamily: 'monospace',
+            color: isDark
+                ? Colors.white.withOpacity(0.5)
+                : const Color(0xFF6B7280),
+          ),
         ),
       ),
     );

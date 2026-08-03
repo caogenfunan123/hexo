@@ -107,7 +107,9 @@ import 'widgets/editor_themes.dart';
 // ============================================================
 
 class DesktopShell extends StatefulWidget {
-  const DesktopShell({super.key});
+  final VoidCallback? onToggleAppTheme;
+
+  const DesktopShell({super.key, this.onToggleAppTheme});
 
   @override
   State<DesktopShell> createState() => DesktopShellState();
@@ -161,7 +163,6 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   bool _rightDrawerOpen = false;
   RightDrawerTab _activeDrawerTab = RightDrawerTab.outline;
   WorkMode _workMode = WorkMode.workspace;
-  ThemeMode _themeMode = ThemeMode.system;
 
   // ──────────────────────────────────────────────
   // 编辑器标签页
@@ -6734,9 +6735,7 @@ $htmlContent
   }
 
   void _toggleTheme() {
-    setState(() {
-      _themeMode = _themeMode == ThemeMode.light ? ThemeMode.dark : _themeMode == ThemeMode.dark ? ThemeMode.system : ThemeMode.light;
-    });
+    widget.onToggleAppTheme?.call();
   }
 
   void _switchWorkMode(WorkMode mode) {
@@ -6944,124 +6943,205 @@ $htmlContent
   // ============================================================
 
   Widget _focusModeTitleBar() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      height: 32,
-      color: Theme.of(context).colorScheme.surface,
+      height: 36,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF252536) : const Color(0xFFFAFAFC),
+        border: Border(
+          bottom: BorderSide(
+            color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
+          ),
+        ),
+      ),
       child: Row(
         children: [
           const SizedBox(width: 12),
+          Icon(
+            Icons.visibility,
+            size: 14,
+            color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF),
+          ),
+          const SizedBox(width: 8),
           Text(
-            _titleCtrl.text.isNotEmpty ? _titleCtrl.text : '未命名文章',
+            '专注模式',
             style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF),
+              letterSpacing: 0.5,
             ),
           ),
-          const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.save, size: 16),
-            onPressed: _saveLocal,
-            tooltip: '保存',
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _titleCtrl.text.isNotEmpty ? _titleCtrl.text : '未命名文章',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: isDark ? Colors.white.withOpacity(0.6) : const Color(0xFF6B7280),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-          IconButton(
-            icon: const Icon(Icons.publish, size: 16),
-            onPressed: _handlePublish,
-            tooltip: '发布',
+          _focusToolbarButton(Icons.save_outlined, '保存草稿', _saveLocal, isDark),
+          _focusToolbarButton(Icons.send_outlined, '发布', _handlePublish, isDark),
+          _focusToolbarButton(Icons.image_outlined, '插入图片', _insertImage, isDark),
+          Container(
+            width: 1,
+            height: 18,
+            color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
           ),
-          IconButton(
-            icon: const Icon(Icons.close_fullscreen, size: 16),
-            onPressed: () => _switchWorkMode(WorkMode.workspace),
-            tooltip: '退出专注模式',
-          ),
+          _focusToolbarButton(Icons.close_fullscreen, '退出专注模式', () => _switchWorkMode(WorkMode.workspace), isDark),
           const SizedBox(width: 8),
         ],
       ),
     );
   }
 
+  Widget _focusToolbarButton(IconData icon, String tooltip, VoidCallback onTap, bool isDark) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(5),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(5),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(
+            icon,
+            size: 16,
+            color: isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildFocusEditor() {
-    return Center(
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 800),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-        child: Column(
-          children: [
-            // 标题输入
-            TextField(
-              controller: _titleCtrl,
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w700,
-                height: 1.3,
-                color: _currentEditorTheme.headingColor,
-                fontFamily: _resolveFontFamily(_editorFontFamily),
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+      child: Center(
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 900),
+          padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
+          child: Column(
+            children: [
+              // 标题输入
+              TextField(
+                controller: _titleCtrl,
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w700,
+                  height: 1.3,
+                  color: isDark ? Colors.white : const Color(0xFF1F2937),
+                  fontFamily: _resolveFontFamily(_editorFontFamily),
+                ),
+                decoration: InputDecoration(
+                  hintText: '在此输入标题...',
+                  hintStyle: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+                  ),
+                  border: InputBorder.none,
+                ),
+                onChanged: (_) => _onContentChanged(),
               ),
-              decoration: const InputDecoration(
-                hintText: '在此输入标题...',
-                border: InputBorder.none,
-              ),
-              onChanged: (_) => _onContentChanged(),
-            ),
-            const SizedBox(height: 24),
-            // 内容编辑区（专注模式：左侧编辑 + 右侧实时预览）
-            Expanded(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Scrollbar(
-                      controller: _focusScrollCtrl,
-                      child: SingleChildScrollView(
+              const SizedBox(height: 32),
+              // 内容编辑区（专注模式：左侧编辑 + 右侧实时预览）
+              Expanded(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Scrollbar(
                         controller: _focusScrollCtrl,
-                        child: SizedBox(
-                          height: _contentCtrl.text.split('\n').length * (_editorFontSize * _editorLineHeight) + 400,
-                          child: TextField(
-                            controller: _contentCtrl,
-                            maxLines: null,
-                            expands: true,
-                            style: TextStyle(
-                              fontSize: _editorFontSize,
-                              height: _editorLineHeight,
-                              color: _currentEditorTheme.textColor,
-                              fontFamily: _resolveFontFamily(_editorFontFamily),
+                        child: SingleChildScrollView(
+                          controller: _focusScrollCtrl,
+                          padding: const EdgeInsets.only(bottom: 200),
+                          child: SizedBox(
+                            height: _contentCtrl.text.split('\n').length * (_editorFontSize * _editorLineHeight) + 400,
+                            child: TextField(
+                              controller: _contentCtrl,
+                              maxLines: null,
+                              expands: true,
+                              focusNode: _contentFocus,
+                              style: TextStyle(
+                                fontSize: _editorFontSize,
+                                height: _editorLineHeight,
+                                color: isDark ? Colors.white.withOpacity(0.9) : const Color(0xFF374151),
+                                fontFamily: _resolveFontFamily(_editorFontFamily),
+                              ),
+                              decoration: InputDecoration(
+                                border: InputBorder.none,
+                                hintText: '开始写作...',
+                                hintStyle: TextStyle(
+                                  fontSize: _editorFontSize,
+                                  color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+                                ),
+                              ),
+                              onChanged: (_) => _onContentChanged(),
                             ),
-                            decoration: const InputDecoration(
-                              border: InputBorder.none,
-                              hintText: '开始写作...',
-                            ),
-                            onChanged: (_) => _onContentChanged(),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  Container(width: 1, color: Colors.grey.shade200),
-                  Expanded(
-                    child: Scrollbar(
-                      child: SingleChildScrollView(
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 24),
+                    Container(
+                      width: 1,
+                      color: isDark
+                          ? Colors.white.withOpacity(0.06)
+                          : const Color(0xFFE5E5EA),
+                    ),
+                    Expanded(
+                      child: Scrollbar(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.only(left: 32, bottom: 200),
                           child: _buildMarkdownPreview(_contentCtrl.text),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _collapseToggle() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: _toggleLeftPanel,
-      child: Container(
-        width: 4,
-        color: Colors.grey.shade300,
-        child: Center(child: Icon(Icons.chevron_right, size: 12, color: Colors.grey.shade500)),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          width: 28,
+          decoration: BoxDecoration(
+            color: isDark
+                ? const Color(0xFF1E1E2E)
+                : const Color(0xFFF5F5F7),
+            border: Border(
+              right: BorderSide(
+                color: isDark
+                    ? Colors.white.withOpacity(0.06)
+                    : const Color(0xFFE5E5EA),
+              ),
+            ),
+          ),
+          child: Center(
+            child: Icon(
+              Icons.chevron_right,
+              size: 14,
+              color: isDark
+                  ? Colors.white.withOpacity(0.3)
+                  : const Color(0xFF9CA3AF),
+            ),
+          ),
+        ),
       ),
     );
   }
