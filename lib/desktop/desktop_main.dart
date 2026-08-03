@@ -111,7 +111,7 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
       center: _windowPosition == const Offset(100, 80),
       title: 'AI 博客编辑器',
       titleBarStyle: TitleBarStyle.hidden,
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.white,
       skipTaskbar: false,
     );
 
