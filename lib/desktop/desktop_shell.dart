@@ -1630,7 +1630,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   void _setAsRepoDefault(String templateId) {
     if (_editorRepo == null) return;
-    final updated = _editorRepo!.copyWith(defaultTemplateId: templateId);
+    final updated = _editorRepo!.copyWith(defaultPostTemplateId: templateId);
     final idx = repos.indexWhere((r) => r.id == _editorRepo!.id);
     if (idx >= 0) {
       repos[idx] = updated;
@@ -1638,6 +1638,23 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       _editorRepo = updated;
       setState(() {});
       _showToast('已设为仓库默认模板');
+    }
+  }
+
+  Future<void> _retryUploadImage() async {
+    if (_failedImageBytes == null) return;
+    final bytes = _failedImageBytes!;
+    setState(() { _editorBusy = true; _editorStatus = '正在重试上传...'; });
+    try {
+      final url = await imageService.uploadToImageBed(bytes, settings);
+      _insertText(imageService.markdownImage(url));
+      _failedImageBytes = null;
+      setState(() => _editorStatus = '图片已插入');
+    } catch (e) {
+      setState(() => _editorStatus = '重试上传失败');
+      if (mounted) _showToast('重试上传失败: $e');
+    } finally {
+      if (mounted) setState(() => _editorBusy = false);
     }
   }
 
