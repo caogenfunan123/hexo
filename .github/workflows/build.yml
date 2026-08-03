@@ -151,6 +151,15 @@ jobs:
         run: flutter build linux --release --target=lib/desktop/desktop_main.dart 2>&1 | tee /tmp/build-linux.log
         continue-on-error: true
 
+      - name: Pack Linux release
+        run: |
+          if [ -d "build/linux/x64/release/bundle" ]; then
+            cd build/linux/x64/release/bundle && tar -czf /tmp/hexo-linux.tar.gz . && mv /tmp/hexo-linux.tar.gz "$GITHUB_WORKSPACE/hexo-linux.tar.gz"
+            echo "Created hexo-linux.tar.gz ($(wc -c < hexo-linux.tar.gz) bytes)"
+          else
+            echo "::warning::Bundle directory not found, skipping"
+          fi
+
       - name: Upload Linux build log
         if: always()
         uses: actions/upload-artifact@v4
@@ -163,7 +172,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hexo-linux
-          path: build/linux/x64/release/bundle
+          path: hexo-linux.tar.gz
           if-no-files-found: warn
           retention-days: 30
 
@@ -200,11 +209,23 @@ jobs:
           path: build-windows.log
           retention-days: 7
 
+      - name: Pack Windows release
+        shell: pwsh
+        run: |
+          $src = "build/windows/x64/runner/Release"
+          $dest = "hexo-windows.zip"
+          if (Test-Path $src) {
+            Compress-Archive -Path "$src\*" -DestinationPath $dest -Force
+            Write-Host "Created $dest ($((Get-Item $dest).Length) bytes)"
+          } else {
+            Write-Host "::warning::Release directory not found, skipping"
+          }
+
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
           name: hexo-windows
-          path: build/windows/x64/runner/Release
+          path: hexo-windows.zip
           if-no-files-found: warn
           retention-days: 30
 
@@ -226,6 +247,24 @@ jobs:
 
       - name: List artifacts
         run: find artifacts -type f | sort || echo "No artifacts found"
+
+      - name: Delete old release (to clean up individual files)
+        run: |
+          # Delete old release
+          RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/latest" | \
+            python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null || echo "")
+          if [ -n "$RELEASE_ID" ]; then
+            curl -s -X DELETE -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID"
+            echo "Deleted old release (id=$RELEASE_ID)"
+          fi
+          # Delete old tag
+          curl -s -X DELETE -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/git/refs/tags/latest" 2>/dev/null || true
+          echo "Cleaned up old tag (if existed)"
+        continue-on-error: true
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
