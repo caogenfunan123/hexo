@@ -148,6 +148,33 @@ jobs:
           path: build/linux/x64/release/bundle
           retention-days: 30
 
+  # ── Windows 桌面构建 ──
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+
+      - name: Generate windows platform
+        run: flutter create --platforms=windows . 2>$null
+
+      - run: flutter pub get
+      - name: Build Windows
+        run: flutter build windows --release 2>&1
+        continue-on-error: true
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: hexo-windows
+          path: build/windows/x64/runner/Release
+          retention-days: 30
+
   # ── 发布 APK 到 GitHub Release（仅 main 分支 push） ──
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
