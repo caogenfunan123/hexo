@@ -1454,10 +1454,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                   onChanged: (_) => _onContentChanged(),
                   decoration: InputDecoration(
                     labelText: 'Markdown 正文',
-                    labelStyle: TextStyle(color: hintColor, fontSize: 13),
+                    labelStyle: TextStyle(color: cs.onSurface.withOpacity(0.38), fontSize: 13),
                     alignLabelWithHint: true,
                     hintText: '支持 # 标题、**粗体**、代码块、列表...\n编辑完可存草稿或直接发布',
-                    hintStyle: TextStyle(color: hintColor, fontSize: 13),
+                    hintStyle: TextStyle(color: cs.onSurface.withOpacity(0.38), fontSize: 13),
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                   ),
@@ -1465,7 +1465,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                     fontFamily: 'monospace',
                     height: 1.6,
                     fontSize: 14.5,
-                    color: textColor,
+                    color: cs.onSurface,
                   ),
                 );
               },
@@ -7131,7 +7131,7 @@ $htmlContent
                             // 文章元信息
                             Row(
                               children: [
-                                _focusMetaChip(Icons.person_outline, '作者', _editorRepo?.author ?? '未设置', isDark),
+                                _focusMetaChip(Icons.person_outline, '作者', _editorRepo?.owner ?? '未设置', isDark),
                                 const SizedBox(width: 12),
                                 _focusMetaChip(Icons.calendar_today, '日期', DateTime.now().toLocal().toString().split(' ')[0], isDark),
                                 const SizedBox(width: 12),
