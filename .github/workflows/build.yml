@@ -185,6 +185,7 @@ jobs:
           flutter create --platforms=windows .
           flutter config --enable-windows-desktop
 
+      - run: flutter clean
       - run: flutter pub cache repair
       - run: flutter pub get
       - name: Build Windows

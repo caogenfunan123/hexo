@@ -91,6 +91,7 @@ import 'package:flutter_highlight/themes/vs.dart' as highlight_vs;
 import 'package:flutter_math_fork/flutter_math_fork.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:gbk_codec/gbk_codec.dart';
 
@@ -6448,9 +6449,8 @@ $htmlContent
       return const Center(child: CircularProgressIndicator());
     }
 
-    return Stack(
-        children: [
-          Column(
+    final stackChildren = <Widget>[
+      Column(
         children: [
           // ── 顶部标题栏（专注模式下极简） ──
           if (_workMode != WorkMode.focus)
@@ -6587,8 +6587,10 @@ $htmlContent
             ),
         ],
       ),
-      // 夜间护眼滤镜
-      if (settings.nightEyeProtection)
+      ];
+    // 夜间护眼滤镜
+    if (settings.nightEyeProtection) {
+      stackChildren.add(
         Positioned.fill(
           child: IgnorePointer(
             child: Container(
@@ -6596,8 +6598,10 @@ $htmlContent
             ),
           ),
         ),
-        ],
-      ),
+      );
+    }
+    return Stack(
+      children: stackChildren,
     );
   }
 
