@@ -88,7 +88,6 @@ import 'package:flutter_highlight/themes/monokai-sublime.dart' as highlight_mono
 import 'package:flutter_highlight/themes/dracula.dart' as highlight_dracula;
 import 'package:flutter_highlight/themes/nord.dart' as highlight_nord;
 import 'package:flutter_highlight/themes/vs.dart' as highlight_vs;
-import 'package:flutter_math_fork/flutter_math_fork.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
@@ -4824,20 +4823,11 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         }
       }
       final latex = m.group(1) ?? '';
-      try {
-        parts.add(
-          Math.tex(
-            latex,
-            mathStyle: MathStyle.text,
-            textStyle: TextStyle(
-              fontSize: _editorFontSize,
-              color: _currentEditorTheme.textColor,
-            ),
-          ),
-        );
-      } catch (_) {
-        parts.add(Text('\$$latex\$', style: TextStyle(fontSize: _editorFontSize)));
-      }
+      parts.add(Text('\$$latex\$', style: TextStyle(
+        fontSize: _editorFontSize,
+        color: _currentEditorTheme.textColor,
+        fontStyle: FontStyle.italic,
+      )));
       lastEnd = m.end;
     }
     if (lastEnd < text.length) {
@@ -5426,41 +5416,26 @@ PLACEHOLDER
   // ──────────────────────────────────────────────
 
   Widget _buildLatexPreview(String latexCode) {
-    try {
-      return Container(
-        width: double.infinity,
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: _currentEditorTheme.codeBlockBackground.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey.shade300.withOpacity(0.5)),
-        ),
-        child: Center(
-          child: Math.tex(
-            latexCode.trim(),
-            mathStyle: MathStyle.display,
-            textStyle: TextStyle(
-              fontSize: _editorFontSize + 2,
-              color: _currentEditorTheme.textColor,
-            ),
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _currentEditorTheme.codeBlockBackground.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300.withOpacity(0.5)),
+      ),
+      child: Center(
+        child: SelectableText(
+          '\$\$$latexCode\$\$',
+          style: TextStyle(
+            fontSize: _editorFontSize + 2,
+            color: _currentEditorTheme.textColor,
+            fontStyle: FontStyle.italic,
           ),
         ),
-      );
-    } catch (e) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.red.shade50,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          'LaTeX 渲染错误: $latexCode',
-          style: TextStyle(fontSize: 12, color: Colors.red.shade700),
-        ),
-      );
-    }
+      ),
+    );
   }
 
   // ============================================================

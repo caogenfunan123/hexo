@@ -27,7 +27,7 @@ dependencies:
   # Markdown 增强
   flutter_highlight: ^0.7.0
   highlight: ^0.7.0
-  flutter_math_fork: 0.7.4
+  # flutter_math_fork: 0.7.4  # 移除，Windows 构建失败，改用文本渲染
   # 导出
   printing: ^5.11.0
   pdf: ^3.10.0
