@@ -4246,7 +4246,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             onShowThemeColorPicker: _showThemeColorPicker,
             onShowPwaGuide: _showPwaGuide,
             onPersistSettings: _persistSettings,
-            onShowToast: _showToast);
+            onShowToast: _showToast,
+            onShowBlogSiteManager: _showBlogSiteManager);
       case 9:
         return ArticleReaderScreen(
           article: _currentArticle,

@@ -25,6 +25,7 @@ class SettingsScreen extends StatefulWidget {
   final VoidCallback onShowPwaGuide;
   final VoidCallback onPersistSettings;
   final void Function(String) onShowToast;
+  final VoidCallback? onShowBlogSiteManager;
 
   const SettingsScreen({
     super.key,
@@ -194,6 +195,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             label: const Text('管理已登录令牌'),
           ),
           const SizedBox(height: 4),
+          if (widget.onShowBlogSiteManager != null) ...[
+            const Divider(height: 24),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.cloud_outlined),
+              title: const Text('动态博客登录'),
+              subtitle: Text(
+                settings.blogSiteConfigs.isEmpty
+                    ? 'WordPress / Ghost / Typecho'
+                    : '已配置 ${settings.blogSiteConfigs.length} 个站点',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: widget.onShowBlogSiteManager,
+            ),
+          ],
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('多仓库管理'),
