@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:archive/archive.dart';
 
 import '../models/ai_profile.dart';
 import '../models/app_settings.dart';
@@ -79,6 +80,7 @@ import '../screens/image_bed_screen.dart';
 import '../screens/link_checker_screen.dart';
 import '../screens/batch_tools_screen.dart';
 import '../screens/ai_prompt_templates_screen.dart';
+import '../widgets/ai_chat_panel.dart';
 import '../theme/app_theme.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
@@ -1911,26 +1913,26 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final after = text.substring(pos);
     final lineStart = before.lastIndexOf('\n') + 1;
     final lineEnd = after.indexOf('\n');
-    final currentLine = lineEnd >= 0
-        ? text.substring(lineStart, pos + lineEnd)
-        : text.substring(lineStart);
+    final actualLineEnd = lineEnd >= 0 ? pos + lineEnd : text.length;
+    final currentLine = text.substring(lineStart, actualLineEnd);
 
     if (!currentLine.trimLeft().startsWith('|')) {
       if (mounted) _showToast('光标不在表格中');
       return;
     }
 
-    // 找到表格块
+    // 找到表格块起始
     int tableStart = lineStart;
     while (tableStart > 0) {
-      final prevLineStart = text.lastIndexOf('\n', tableStart - 2) + 1;
-      final prevLineEnd = text.indexOf('\n', tableStart) >= 0 ? text.indexOf('\n', tableStart) : text.length;
+      final prevLineEnd = tableStart - 1;
+      final prevLineStart = text.lastIndexOf('\n', prevLineEnd - 1) + 1;
       final prevLine = text.substring(prevLineStart, prevLineEnd);
       if (!prevLine.trimLeft().startsWith('|')) break;
       tableStart = prevLineStart;
     }
 
-    int tableEnd = lineStart + (lineEnd >= 0 ? lineEnd : (text.length - lineStart));
+    // 找到表格块结束
+    int tableEnd = actualLineEnd;
     while (tableEnd < text.length) {
       final nextLineStart = tableEnd + 1;
       final nextLineEnd = text.indexOf('\n', nextLineStart);
@@ -1950,8 +1952,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     for (int i = 0; i < tableLines.length; i++) {
       final line = tableLines[i].trimRight();
       if (line.trimLeft().startsWith('|')) {
-        // 判断是否是分隔行
-        if (RegExp(r'^\|[\s\-:]+\|').hasMatch(line.trimLeft())) {
+        // 判断是否是分隔行（如 |---|---| 或 |:---:|:---:|）
+        if (RegExp(r'^\|[\s\-:]*-[\s\-:]*\|').hasMatch(line.trimLeft())) {
           buf.writeln('${line} --- |');
         } else {
           buf.writeln('$line 内容 |');
@@ -2011,12 +2013,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           }
 
           // 规范化标题级别：不允许跳级
+          int adjustedLevel = level;
           if (prevHeadingLevel > 0 && level > prevHeadingLevel + 1) {
             // 调整标题级别
-            final newLevel = prevHeadingLevel + 1;
-            line = '${'#' * newLevel}${line.substring(level)}';
+            adjustedLevel = prevHeadingLevel + 1;
+            line = '${'#' * adjustedLevel}${line.substring(level)}';
           }
-          prevHeadingLevel = headingMatch.group(1)!.length;
+          prevHeadingLevel = adjustedLevel;
           result.add(line);
 
           // 确保标题后有空行
@@ -2936,10 +2939,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   void _sendToAiChat(String prompt) {
     // 将提示词模板发送到 AI 聊天
-    _aiPromptToSend = prompt;
+    _aiChatKey.currentState?.sendMessage(prompt);
   }
 
-  String? _aiPromptToSend;
+  final _aiChatKey = GlobalKey<AiChatPanelState>();
 
   // ── AI 选区处理 ──
 
@@ -2957,7 +2960,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     }
     _openRightDrawer(RightDrawerTab.aiChat);
     Future.delayed(const Duration(milliseconds: 300), () {
-      _aiPromptToSend = '请对以下文字进行润色优化：\n\n$selectedText';
+      _aiChatKey.currentState?.sendMessage('请对以下文字进行润色优化：\n\n$selectedText');
     });
     _showToast('已发送选中文字(${selectedText.length}字符)到 AI');
   }
@@ -2971,7 +2974,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     }
     _openRightDrawer(RightDrawerTab.aiChat);
     Future.delayed(const Duration(milliseconds: 300), () {
-      _aiPromptToSend = '请对以下文章进行润色优化：\n\n$text';
+      _aiChatKey.currentState?.sendMessage('请对以下文章进行润色优化：\n\n$text');
     });
     _showToast('已发送全文到 AI');
   }
@@ -2979,7 +2982,21 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ── AI 输出对比 ──
 
   /// 显示 AI 修改内容 diff 预览，选择性接受改动
-  void _showAiDiffPreview(String original, String modified) {
+  void _showAiDiffPreview() {
+    final original = _contentCtrl.text;
+    // 从 AI 聊天面板获取最新的 AI 回复
+    final aiMessages = _aiChatKey.currentState?.messages ?? [];
+    final lastAiResponse = aiMessages
+        .where((m) => m.role == 'assistant')
+        .lastOrNull
+        ?.content ?? '';
+    
+    if (lastAiResponse.isEmpty) {
+      _showToast('暂无 AI 回复内容，请先在 AI 面板中发起对话');
+      return;
+    }
+    
+    final modified = lastAiResponse;
     final diffLines = _computeDiff(original, modified);
 
     showDialog(
@@ -3483,36 +3500,62 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   Future<String> _extractDocxText(Uint8List bytes) async {
-    // 简单文本提取：搜索 ZIP 中 document.xml 的文本内容
-    // 使用正则从原始字节中提取 XML 文本节点
     try {
-      final text = utf8.decode(bytes, allowMalformed: true);
-      // 提取 XML 标签之间的文本
+      // 使用 archive 库正确解压 ZIP/DOCX 文件
+      final archive = ZipDecoder().decodeBytes(bytes);
+      
+      // 查找 document.xml 文件
+      final documentFile = archive.findFile('word/document.xml');
+      if (documentFile == null) {
+        return '*无法在 DOCX 中找到 document.xml*';
+      }
+      
+      final xmlContent = utf8.decode(documentFile.content as List<int>);
+      
+      // 提取 <w:t> 标签中的文本
       final textRegex = RegExp(r'<w:t[^>]*>([^<]*)</w:t>');
-      final matches = textRegex.allMatches(text);
+      final matches = textRegex.allMatches(xmlContent);
       final paragraphs = <String>[];
       String currentParagraph = '';
-      String? lastParaEnd;
+      
+      // 同时检测段落边界
+      final paraRegex = RegExp(r'<w:p[ >]');
+      final paraEndRegex = RegExp(r'</w:p>');
+      final allParaStarts = paraRegex.allMatches(xmlContent).map((m) => m.start).toList();
+      final allParaEnds = paraEndRegex.allMatches(xmlContent).map((m) => m.end).toList();
 
       for (final match in matches) {
         final t = match.group(1) ?? '';
         currentParagraph += t;
-        // 检查是否在段落结束附近
+        
+        // 检查当前 match 之后是否有段落结束标记
         final matchEnd = match.end;
-        final afterMatch = text.substring(matchEnd, (matchEnd + 200) > text.length ? text.length : matchEnd + 200);
-        if (afterMatch.contains('</w:p>')) {
+        final nextParaEnd = allParaEnds.firstWhere(
+          (e) => e > matchEnd,
+          orElse: () => -1,
+        );
+        final nextParaStart = allParaStarts.firstWhere(
+          (s) => s > matchEnd,
+          orElse: () => -1,
+        );
+        
+        // 如果在下一个段落开始之前有段落结束，则当前段落结束
+        if (nextParaEnd > 0 && (nextParaStart < 0 || nextParaEnd < nextParaStart)) {
           if (currentParagraph.trim().isNotEmpty) {
             paragraphs.add(currentParagraph.trim());
           }
           currentParagraph = '';
         }
       }
+      
+      // 添加最后一个段落
       if (currentParagraph.trim().isNotEmpty) {
         paragraphs.add(currentParagraph.trim());
       }
-      return paragraphs.join('\n\n');
-    } catch (_) {
-      return '*无法解析 DOCX 文件内容，请尝试使用 HTML 格式导入*';
+      
+      return paragraphs.isEmpty ? '*DOCX 文件内容为空*' : paragraphs.join('\n\n');
+    } catch (e) {
+      return '*无法解析 DOCX 文件内容: $e\n请尝试使用 HTML 格式导入*';
     }
   }
 
@@ -4253,7 +4296,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       case 'aiFullText':   _sendFullToAi(); break;
       case 'schedulePublish': _schedulePublish(); break;
       case 'publishChangeLog': _showPublishChangeLog(''); break;
-      case 'aiDiffPreview': _showAiDiffPreview(_contentCtrl.text, ''); break;
+      case 'aiDiffPreview': _showAiDiffPreview(); break;
     }
   }
 
@@ -5674,7 +5717,7 @@ PLACEHOLDER
       _CommandItem('同步冲突解决', '', Icons.compare_arrows, () => _checkAndResolveConflicts()),
       _CommandItem('定时发布', '', Icons.schedule_send, () => _schedulePublish()),
       _CommandItem('发布变更日志', '', Icons.change_circle_outlined, () => _showPublishChangeLog('')),
-      _CommandItem('AI 输出对比', '', Icons.compare_arrows, () => _showAiDiffPreview(_contentCtrl.text, '')),
+      _CommandItem('AI 输出对比', '', Icons.compare_arrows, () => _showAiDiffPreview()),
     ];
 
     final searchCtrl = TextEditingController();
@@ -6126,159 +6169,16 @@ $htmlContent
         .replaceAll("'", '&apos;');
   }
 
-  /// 创建一个简单的 ZIP 文件（存储模式，无压缩）
+  /// 创建一个 ZIP 文件（使用 archive 库）
   /// 用于生成 DOCX / EPUB 等基于 ZIP 的格式
   Uint8List _createZip(Map<String, List<int>> entries) {
-    final buffer = BytesBuilder();
-    final localHeaders = <int>[];
-    final centralDir = BytesBuilder();
-
-    int offset = 0;
-
+    final archive = Archive();
     for (final entry in entries.entries) {
-      final name = entry.key;
-      final data = entry.value;
-      final nameBytes = utf8.encode(name);
-      final crc = _crc32(data);
-      final compressedSize = data.length;
-      final uncompressedSize = data.length;
-
-      // 本地文件头
-      localHeaders.add(offset);
-      final localHeader = _buildLocalFileHeader(
-        nameBytes, crc, compressedSize, uncompressedSize,
-      );
-      buffer.add(localHeader);
-      buffer.add(data);
-      offset += localHeader.length + data.length;
-
-      // 中央目录条目
-      final cdEntry = _buildCentralDirectoryEntry(
-        nameBytes, crc, compressedSize, uncompressedSize, localHeaders.last,
-      );
-      centralDir.add(cdEntry);
+      final file = ArchiveFile(entry.key, entry.value.length, entry.value);
+      archive.addFile(file);
     }
-
-    final centralDirBytes = centralDir.takeBytes();
-    final centralDirOffset = buffer.length;
-    buffer.add(centralDirBytes);
-
-    // EOCD 记录
-    final eocd = _buildEocd(
-      entries.length, centralDirBytes.length, centralDirOffset,
-    );
-    buffer.add(eocd);
-
-    return buffer.takeBytes().buffer.asUint8List();
-  }
-
-  List<int> _buildLocalFileHeader(
-    List<int> nameBytes, int crc, int compSize, int uncompSize,
-  ) {
-    final buffer = BytesBuilder();
-    buffer.add(_u32(0x04034b50)); // 签名
-    buffer.add(_u16(20)); // 提取版本
-    buffer.add(_u16(0)); // 通用标志（无压缩）
-    buffer.add(_u16(0)); // 压缩方法（存储）
-    buffer.add(_u16(0)); // 最后修改时间
-    buffer.add(_u16(0)); // 最后修改日期
-    buffer.add(_u32(crc)); // CRC-32
-    buffer.add(_u32(compSize)); // 压缩后大小
-    buffer.add(_u32(uncompSize)); // 原始大小
-    buffer.add(_u16(nameBytes.length)); // 文件名长度
-    buffer.add(_u16(0)); // 额外字段长度
-    buffer.add(nameBytes);
-    return buffer.takeBytes();
-  }
-
-  List<int> _buildCentralDirectoryEntry(
-    List<int> nameBytes, int crc, int compSize, int uncompSize, int localOffset,
-  ) {
-    final buffer = BytesBuilder();
-    buffer.add(_u32(0x02014b50)); // 签名
-    buffer.add(_u16(20)); // 创建版本
-    buffer.add(_u16(20)); // 提取版本
-    buffer.add(_u16(0)); // 通用标志
-    buffer.add(_u16(0)); // 压缩方法
-    buffer.add(_u16(0)); // 最后修改时间
-    buffer.add(_u16(0)); // 最后修改日期
-    buffer.add(_u32(crc)); // CRC-32
-    buffer.add(_u32(compSize)); // 压缩后大小
-    buffer.add(_u32(uncompSize)); // 原始大小
-    buffer.add(_u16(nameBytes.length)); // 文件名长度
-    buffer.add(_u16(0)); // 额外字段长度
-    buffer.add(_u16(0)); // 文件注释长度
-    buffer.add(_u16(0)); // 磁盘号起始
-    buffer.add(_u16(0)); // 内部文件属性
-    buffer.add(_u32(0)); // 外部文件属性
-    buffer.add(_u32(localOffset)); // 本地文件头偏移
-    buffer.add(nameBytes);
-    return buffer.takeBytes();
-  }
-
-  List<int> _buildEocd(int entryCount, int cdSize, int cdOffset) {
-    final buffer = BytesBuilder();
-    buffer.add(_u32(0x06054b50)); // 签名
-    buffer.add(_u16(0)); // 当前磁盘号
-    buffer.add(_u16(0)); // 中央目录起始磁盘号
-    buffer.add(_u16(entryCount)); // 当前磁盘条目数
-    buffer.add(_u16(entryCount)); // 总条目数
-    buffer.add(_u32(cdSize)); // 中央目录大小
-    buffer.add(_u32(cdOffset)); // 中央目录偏移
-    buffer.add(_u16(0)); // 注释长度
-    return buffer.takeBytes();
-  }
-
-  List<int> _u16(int value) {
-    return [(value) & 0xFF, (value >> 8) & 0xFF];
-  }
-
-  List<int> _u32(int value) {
-    return [(value) & 0xFF, (value >> 8) & 0xFF, (value >> 16) & 0xFF, (value >> 24) & 0xFF];
-  }
-
-  /// 简单的 CRC-32 计算
-  int _crc32(List<int> data) {
-    int crc = 0xFFFFFFFF;
-    // CRC-32 查找表
-    const table = [
-      0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419, 0x706AF48F, 0xE963A535, 0x9E6495A3,
-      0x0EDB8832, 0x79DCB8A4, 0xE0D5E91E, 0x97D2D988, 0x09B64C2B, 0x7EB17CBD, 0xE7B82D07, 0x90BF1D91,
-      0x1DB71064, 0x6AB020F2, 0xF3B97148, 0x84BE41DE, 0x1ADAD47D, 0x6DDDE4EB, 0xF4D4B551, 0x83D385C7,
-      0x136C9856, 0x646BA8C0, 0xFD62F97A, 0x8A65C9EC, 0x14015C4F, 0x63066CD9, 0xFA0F3D63, 0x8D080DF5,
-      0x3B6E20C8, 0x4C69105E, 0xD56041E4, 0xA2677172, 0x3C03E4D1, 0x4B04D447, 0xD20D85FD, 0xA50AB56B,
-      0x35B5A8FA, 0x42B2986C, 0xDBBBC9D6, 0xACBCF940, 0x32D86CE3, 0x45DF5C75, 0xDCD60DCF, 0xABD13D59,
-      0x26D930AC, 0x51DE003A, 0xC8D75180, 0xBFD06116, 0x21B4F4B5, 0x56B3C423, 0xCFBA9599, 0xB8BDA50F,
-      0x2802B89E, 0x5F058808, 0xC60CD9B2, 0xB10BE924, 0x2F6F7C87, 0x58684C11, 0xC1611DAB, 0xB6662D3D,
-      0x76DC4190, 0x01DB7106, 0x98D220BC, 0xEFD5102A, 0x71B18589, 0x06B6B51F, 0x9FBFE4A5, 0xE8B8D433,
-      0x7807C9A2, 0x0F00F934, 0x9609A88E, 0xE10E9818, 0x7F6A0DBB, 0x086D3D2D, 0x91646C97, 0xE6635C01,
-      0x6B6B51F4, 0x1C6C6162, 0x856530D8, 0xF262004E, 0x6C0695ED, 0x1B01A57B, 0x8208F4C1, 0xF50FC457,
-      0x65B0D9C6, 0x12B7E950, 0x8BBEB8EA, 0xFCB9887C, 0x62DD1DDF, 0x15DA2D49, 0x8CD37CF3, 0xFBD44C65,
-      0x4DB26158, 0x3AB551CE, 0xA3BC0074, 0xD4BB30E2, 0x4ADFA541, 0x3DD895D7, 0xA4D1C46D, 0xD3D6F4FB,
-      0x4369E96A, 0x346ED9FC, 0xAD678846, 0xDA60B8D0, 0x44042D73, 0x33031DE5, 0xAA0A4C5F, 0xDD0D7CC9,
-      0x5005713C, 0x270241AA, 0xBE0B1010, 0xC90C2086, 0x5768B525, 0x206F85B3, 0xB966D409, 0xCE61E49F,
-      0x5EDEF90E, 0x29D9C998, 0xB0D09822, 0xC7D7A8B4, 0x59B33D17, 0x2EB40D81, 0xB7BD5C3B, 0xC0BA6CAD,
-      0xEDB88320, 0x9ABFB3B6, 0x03B6E20C, 0x74B1D29A, 0xEAD54739, 0x9DD277AF, 0x04DB2615, 0x73DC1683,
-      0xE3630B12, 0x94643B84, 0x0D6D6A3E, 0x7A6A5AA8, 0xE40ECF0B, 0x9309FF9D, 0x0A00AE27, 0x7D079EB1,
-      0xF00F9344, 0x8708A3D2, 0x1E01F268, 0x6906C2FE, 0xF762575D, 0x806567CB, 0x196C3671, 0x6E6B06E7,
-      0xFED41B76, 0x89D32BE0, 0x10DA7A5A, 0x67DD4ACC, 0xF9B9DF6F, 0x8EBEEFF9, 0x17B7BE43, 0x60B08ED5,
-      0xD6D6A3E8, 0xA1D1937E, 0x38D8C2C4, 0x4FDFF252, 0xD1BB67F1, 0xA6BC5767, 0x3FB506DD, 0x48B2364B,
-      0xD80D2BDA, 0xAF0A1B4C, 0x36034AF6, 0x41047A60, 0xDF60EFC3, 0xA867DF55, 0x316E8EEF, 0x4669BE79,
-      0xCB61B38C, 0xBC66831A, 0x256FD2A0, 0x5268E236, 0xCC0C7795, 0xBB0B4703, 0x220216B9, 0x5505262F,
-      0xC5BA3BBE, 0xB2BD0B28, 0x2BB45A92, 0x5CB30A04, 0xC2D7FFA7, 0xB5D0CF31, 0x2CD99E8B, 0x5BDEAE1D,
-      0x9B64C2B0, 0xEC63F226, 0x756AA39C, 0x026D930A, 0x9C0906A9, 0xEB0E363F, 0x72076785, 0x05005713,
-      0x95BF4A82, 0xE2B87A14, 0x7BB12BAE, 0x0CB61B38, 0x92D28E9B, 0xE5D5BE0D, 0x7CDCEFB7, 0x0BDBDF21,
-      0x86D3D2D4, 0xF1D4E242, 0x68DDB3F8, 0x1FDA836E, 0x81BE16CD, 0xF6B9265B, 0x6FB077E1, 0x18B74777,
-      0x88085AE6, 0xFF0F6A70, 0x66063BCA, 0x11010B5C, 0x8F659EFF, 0xF862AE69, 0x616BFFD3, 0x166CCF45,
-      0xA00AE278, 0xD70DD2EE, 0x4E048354, 0x3903B3C2, 0xA7672661, 0xD06016F7, 0x4969474D, 0x3E6E77DB,
-      0xAED16A4A, 0xD9D65ADC, 0x40DF0B66, 0x37D83BF0, 0xA9BCAE53, 0xDEBB9EC5, 0x47B2CF7F, 0x30B5FFE9,
-      0xBDBDF21C, 0xCABAC28A, 0x53B39330, 0x24B4A3A6, 0xBAD03605, 0xCDD70693, 0x54DE5729, 0x23D967BF,
-      0xB3667A2E, 0xC4614AB8, 0x5D681B02, 0x2A6F2B94, 0xB40BBE37, 0xC30C8EA1, 0x5A05DF1B, 0x2D02EF8D,
-    ];
-    for (final byte in data) {
-      crc = table[(crc ^ byte) & 0xFF] ^ (crc >> 8);
-    }
-    return (crc ^ 0xFFFFFFFF) & 0xFFFFFFFF;
+    final encoded = ZipEncoder().encode(archive);
+    return Uint8List.fromList(encoded ?? []);
   }
 
   // ============================================================
@@ -6651,6 +6551,22 @@ $htmlContent
                     categoriesCtrl: _categoriesCtrl,
                     coverCtrl: _coverCtrl,
                     syncLogs: _syncLogs,
+                    aiChatPanel: AiChatPanel(
+                      key: _aiChatKey,
+                      settings: settings,
+                      aiService: aiService,
+                      modelManager: aiModelManager,
+                      dispatcher: aiDispatcher,
+                      selfChecker: aiSelfChecker,
+                      sessionType: AiSessionType.article,
+                      blogFramework: effectiveRepo?.framework,
+                      postsPath: effectiveRepo?.postsPath,
+                      pagesPath: effectiveRepo?.pagesPath,
+                      onSettingsChanged: _updateSettings,
+                      gitHubService: github,
+                      activeRepo: effectiveRepo,
+                      storageService: storage,
+                    ),
                   ),
               ],
             ),

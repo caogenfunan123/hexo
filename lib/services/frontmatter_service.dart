@@ -210,8 +210,11 @@ class FrontMatterService {
     final missingFields = <String>[];
     final warnings = <String>[];
 
-    // 标题校验
-    if (article.title.isEmpty || article.title == '未命名') {
+    // 标题校验：检查是否为空、未命名或默认占位符
+    if (article.title.isEmpty || 
+        article.title == '未命名' ||
+        article.title == 'Untitled' ||
+        article.title == '无标题') {
       missingFields.add('title');
     }
 
