@@ -85,6 +85,7 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
         ],
       ),
     );
+    if (isPost == null) return;
     if (nameCtrl.text.trim().isEmpty) return;
     final now = DateTime.now();
     final t = TemplateItem(

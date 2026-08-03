@@ -52,7 +52,10 @@ class AiAuditScreen extends StatelessWidget {
             tooltip: '重新巡检',
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('输入「开始巡检」或具体检查项指令')),
+                const SnackBar(
+                  content: Text('请在下方对话框中输入「开始巡检」或具体检查项指令，AI 将自动执行巡检'),
+                  duration: Duration(seconds: 3),
+                ),
               );
             },
           ),

@@ -127,6 +127,8 @@ class _ImageBedScreenState extends State<ImageBedScreen>
   List<_UrlReplacePreview> _replacePreviews = [];
   String? _replaceError;
 
+  HttpClient? _httpClient;
+
   @override
   void initState() {
     super.initState();
@@ -143,6 +145,7 @@ class _ImageBedScreenState extends State<ImageBedScreen>
     _tabController.dispose();
     _oldUrlController.dispose();
     _newUrlController.dispose();
+    _httpClient?.close(force: true);
     super.dispose();
   }
 
@@ -180,7 +183,7 @@ class _ImageBedScreenState extends State<ImageBedScreen>
 
   Future<dynamic> _apiRequest(String method, String url,
       {Object? body}) async {
-    final client = HttpClient();
+    final client = _httpClient ??= HttpClient();
     try {
       final req = await client.openUrl(method, Uri.parse(url));
       final headers = await _apiHeaders();
@@ -197,8 +200,11 @@ class _ImageBedScreenState extends State<ImageBedScreen>
         return jsonDecode(text);
       }
       throw Exception('GitHub $method ${res.statusCode}: $text');
-    } finally {
-      client.close(force: true);
+    } catch (e) {
+      // If the client is broken, reset it
+      _httpClient?.close(force: true);
+      _httpClient = null;
+      rethrow;
     }
   }
 
@@ -421,6 +427,7 @@ class _ImageBedScreenState extends State<ImageBedScreen>
     });
 
     final results = <_DeadLinkResult>[];
+    final client = _httpClient ??= HttpClient();
     for (var i = 0; i < allUrls.length; i++) {
       final url = allUrls[i];
       setState(() {
@@ -433,17 +440,12 @@ class _ImageBedScreenState extends State<ImageBedScreen>
       String error = '';
 
       try {
-        final client = HttpClient();
-        try {
-          final req = await client.openUrl('HEAD', Uri.parse(url));
-          req.headers.set('User-Agent', 'HexoBlogManager/1.0');
-          final res = await req.close();
-          statusCode = res.statusCode;
-          alive = res.statusCode >= 200 && res.statusCode < 400;
-          await res.drain();
-        } finally {
-          client.close(force: true);
-        }
+        final req = await client.openUrl('HEAD', Uri.parse(url));
+        req.headers.set('User-Agent', 'HexoBlogManager/1.0');
+        final res = await req.close();
+        statusCode = res.statusCode;
+        alive = res.statusCode >= 200 && res.statusCode < 400;
+        await res.drain();
       } catch (e) {
         error = e.toString();
         if (error.length > 100) error = '${error.substring(0, 100)}...';

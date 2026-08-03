@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  static Color seed = const Color(0xFF0EA5E9);
+  static const Color seed = Color(0xFF0EA5E9);
   static const bg = Color(0xFFF0F4F8);
   static const card = Colors.white;
   static const text = Color(0xFF0F172A);
@@ -14,9 +14,9 @@ class AppTheme {
   static const accentRed = Color(0xFFEF4444);
 
   static ThemeData light({int? seedColor}) {
-    seed = Color(seedColor ?? 0xFF0EA5E9);
+    final localSeed = Color(seedColor ?? 0xFF0EA5E9);
     final scheme = ColorScheme.fromSeed(
-      seedColor: seed,
+      seedColor: localSeed,
       brightness: Brightness.light,
       surface: bg,
     );
@@ -161,9 +161,9 @@ class AppTheme {
   }
 
   static ThemeData dark({int? seedColor}) {
-    seed = Color(seedColor ?? 0xFF0EA5E9);
+    final localSeed = Color(seedColor ?? 0xFF0EA5E9);
     final scheme = ColorScheme.fromSeed(
-      seedColor: seed,
+      seedColor: localSeed,
       brightness: Brightness.dark,
     );
     return ThemeData(

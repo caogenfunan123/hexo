@@ -18,7 +18,9 @@ import 'desktop_shell.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
-  await hotKeyManager.unregisterAll();
+  try {
+    await hotKeyManager.unregisterAll();
+  } catch (_) {}
   runApp(const DesktopApp());
 }
 
@@ -111,7 +113,7 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.show();
       await windowManager.focus();
-      if (!_windowPosition.equals(const Offset(100, 80))) {
+      if (!(_windowPosition == const Offset(100, 80))) {
         await windowManager.setPosition(_windowPosition);
       }
       if (_isMaximized) {

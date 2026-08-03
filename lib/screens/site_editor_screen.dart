@@ -106,7 +106,9 @@ class _SiteEditorScreenState extends State<SiteEditorScreen> {
       final indexRaw =
           await widget.github.getRawFile(widget.repo, 'source/index/index.md');
       if (indexRaw != null) _indexCtrl.text = indexRaw['content']!;
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Site editor load error: $e');
+    }
     if (mounted) setState(() => _loading = false);
   }
 

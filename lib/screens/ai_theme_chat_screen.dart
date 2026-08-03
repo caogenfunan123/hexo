@@ -52,7 +52,10 @@ class AiThemeChatScreen extends StatelessWidget {
             tooltip: '快照管理',
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('输入「创建主题备份快照」或「回滚主题」指令')),
+                const SnackBar(
+                  content: Text('请在下方对话框中输入「创建主题备份快照」或「回滚主题」指令，AI 将自动执行相应操作'),
+                  duration: Duration(seconds: 3),
+                ),
               );
             },
           ),

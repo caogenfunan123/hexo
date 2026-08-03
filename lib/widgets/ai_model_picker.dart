@@ -4,6 +4,8 @@ import '../core/ai/ai_model_entity.dart';
 /// 全局 AI 模型选择下拉组件
 /// 用于所有 AI 页面统一展示模型切换入口
 class AiModelPicker extends StatelessWidget {
+  static const _delimiter = '\x1F';
+
   final List<AiModelEntity> models;
   final AiModelEntity? selectedModel;
   final ValueChanged<AiModelEntity?> onChanged;
@@ -48,7 +50,7 @@ class AiModelPicker extends StatelessWidget {
 
     return DropdownButtonFormField<String>(
       value: selectedModel != null
-          ? '${selectedModel!.apiBase}|${selectedModel!.modelId}'
+          ? '${selectedModel!.apiBase}$_delimiter${selectedModel!.modelId}'
           : null,
       decoration: InputDecoration(
         labelText: label ?? 'AI 模型',
@@ -59,7 +61,7 @@ class AiModelPicker extends StatelessWidget {
       isExpanded: true,
       items: [
         ...enabled.map((m) => DropdownMenuItem<String>(
-              value: '${m.apiBase}|${m.modelId}',
+              value: '${m.apiBase}$_delimiter${m.modelId}',
               child: Row(
                 children: [
                   Icon(
@@ -101,9 +103,9 @@ class AiModelPicker extends StatelessWidget {
           onChanged(null);
           return;
         }
-        final parts = v.split('|');
+        final parts = v.split(_delimiter);
         if (parts.length >= 2) {
-          final apiBase = parts.sublist(0, parts.length - 1).join('|');
+          final apiBase = parts.sublist(0, parts.length - 1).join(_delimiter);
           final modelId = parts.last;
           final found = enabled.firstWhere(
             (m) => m.apiBase == apiBase && m.modelId == modelId,
@@ -118,6 +120,8 @@ class AiModelPicker extends StatelessWidget {
 
 /// 快捷模型选择底部栏（用于对话页面）
 class AiModelBottomBar extends StatelessWidget {
+  static const _delimiter = '\x1F';
+
   final List<AiModelEntity> models;
   final AiModelEntity? selectedModel;
   final ValueChanged<AiModelEntity?> onChanged;
@@ -152,15 +156,15 @@ class AiModelBottomBar extends StatelessWidget {
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 value: selectedModel != null
-                    ? '${selectedModel!.apiBase}|${selectedModel!.modelId}'
+                    ? '${selectedModel!.apiBase}$_delimiter${selectedModel!.modelId}'
                     : (enabled.isNotEmpty
-                        ? '${enabled.first.apiBase}|${enabled.first.modelId}'
+                        ? '${enabled.first.apiBase}$_delimiter${enabled.first.modelId}'
                         : null),
                 isExpanded: true,
                 isDense: true,
                 style: TextStyle(fontSize: 13, color: cs.onSurface),
                 items: enabled.map((m) => DropdownMenuItem<String>(
-                      value: '${m.apiBase}|${m.modelId}',
+                      value: '${m.apiBase}$_delimiter${m.modelId}',
                       child: Text(
                         m.displayLabel,
                         overflow: TextOverflow.ellipsis,
@@ -168,9 +172,9 @@ class AiModelBottomBar extends StatelessWidget {
                     )).toList(),
                 onChanged: (v) {
                   if (v == null) return;
-                  final parts = v.split('|');
+                  final parts = v.split(_delimiter);
                   if (parts.length >= 2) {
-                    final apiBase = parts.sublist(0, parts.length - 1).join('|');
+                    final apiBase = parts.sublist(0, parts.length - 1).join(_delimiter);
                     final modelId = parts.last;
                     final found = enabled.firstWhere(
                       (m) => m.apiBase == apiBase && m.modelId == modelId,

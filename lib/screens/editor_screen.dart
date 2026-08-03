@@ -476,7 +476,12 @@ class _EditorScreenState extends State<EditorScreen> {
           break;
         case 'rewrite':
           if (selected.isEmpty) {
-            throw Exception('请先选中要改写的文字');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('请先选中要改写的文字')),
+              );
+            }
+            return;
           }
 
 

@@ -44,6 +44,7 @@ class _BatchToolsScreenState extends State<BatchToolsScreen>
 
   bool _isProcessing = false;
   double _progress = 0.0;
+  int _progressTotal = 0;
 
   static const List<String> _fmFields = ['tags', 'categories', 'author', 'template'];
 
@@ -148,40 +149,37 @@ class _BatchToolsScreenState extends State<BatchToolsScreen>
     _fmUndoSnapshot = List<Article>.from(_articles);
     _startProgress(selected.length);
 
-    final updated = <Article>[];
-    for (int i = 0; i < _articles.length; i++) {
-      final article = _articles[i];
-      if (_fmSelectedArticleIds.contains(article.id)) {
-        var newArticle = article;
-        for (final field in _selectedFields) {
-          final val = _fieldControllers[field]?.text.trim() ?? '';
-          switch (field) {
-            case 'tags':
-              newArticle = newArticle.copyWith(
-                tags: val.isEmpty ? [] : val.split(',').map((t) => t.trim()).where((t) => t.isNotEmpty).toList(),
-              );
-              break;
-            case 'categories':
-              newArticle = newArticle.copyWith(
-                categories: val.isEmpty ? [] : val.split(',').map((c) => c.trim()).where((c) => c.isNotEmpty).toList(),
-              );
-              break;
-            case 'author':
-              newArticle = newArticle.copyWith(
-                content: _setFrontMatterField(newArticle.content, 'author', val),
-              );
-              break;
-            case 'template':
-              newArticle = newArticle.copyWith(templateId: val.isEmpty ? null : val);
-              break;
-          }
+    final updated = List<Article>.from(_articles);
+    for (int i = 0; i < selected.length; i++) {
+      final article = selected[i];
+      final idx = _articles.indexWhere((a) => a.id == article.id);
+      if (idx < 0) continue;
+      var newArticle = article;
+      for (final field in _selectedFields) {
+        final val = _fieldControllers[field]?.text.trim() ?? '';
+        switch (field) {
+          case 'tags':
+            newArticle = newArticle.copyWith(
+              tags: val.isEmpty ? [] : val.split(',').map((t) => t.trim()).where((t) => t.isNotEmpty).toList(),
+            );
+            break;
+          case 'categories':
+            newArticle = newArticle.copyWith(
+              categories: val.isEmpty ? [] : val.split(',').map((c) => c.trim()).where((c) => c.isNotEmpty).toList(),
+            );
+            break;
+          case 'author':
+            newArticle = newArticle.copyWith(
+              content: _setFrontMatterField(newArticle.content, 'author', val),
+            );
+            break;
+          case 'template':
+            newArticle = newArticle.copyWith(templateId: val.isEmpty ? null : val);
+            break;
         }
-        updated.add(newArticle);
-      } else {
-        updated.add(article);
       }
+      updated[idx] = newArticle;
       _updateProgress(i + 1);
-      await Future.delayed(const Duration(milliseconds: 30));
     }
 
     _articles = updated;
@@ -237,19 +235,16 @@ class _BatchToolsScreenState extends State<BatchToolsScreen>
 
   Future<void> _applyImagePathChanges(List<Article> selected) async {
     _imgUndoSnapshot = List<Article>.from(_articles);
-    _startProgress(_articles.length);
+    _startProgress(selected.length);
 
-    final updated = <Article>[];
-    for (int i = 0; i < _articles.length; i++) {
-      final article = _articles[i];
-      if (_imgSelectedArticleIds.contains(article.id)) {
-        final newContent = _convertImagePathsInContent(article.content);
-        updated.add(article.copyWith(content: newContent));
-      } else {
-        updated.add(article);
-      }
+    final updated = List<Article>.from(_articles);
+    for (int i = 0; i < selected.length; i++) {
+      final article = selected[i];
+      final idx = _articles.indexWhere((a) => a.id == article.id);
+      if (idx < 0) continue;
+      final newContent = _convertImagePathsInContent(article.content);
+      updated[idx] = article.copyWith(content: newContent);
       _updateProgress(i + 1);
-      await Future.delayed(const Duration(milliseconds: 30));
     }
 
     _articles = updated;
@@ -310,18 +305,15 @@ class _BatchToolsScreenState extends State<BatchToolsScreen>
 
   Future<void> _applyFormatChanges(List<Article> selected) async {
     _fmtUndoSnapshot = List<Article>.from(_articles);
-    _startProgress(_articles.length);
+    _startProgress(selected.length);
 
-    final updated = <Article>[];
-    for (int i = 0; i < _articles.length; i++) {
-      final article = _articles[i];
-      if (_fmtSelectedArticleIds.contains(article.id)) {
-        updated.add(article.copyWith(content: _formatMarkdown(article.content)));
-      } else {
-        updated.add(article);
-      }
+    final updated = List<Article>.from(_articles);
+    for (int i = 0; i < selected.length; i++) {
+      final article = selected[i];
+      final idx = _articles.indexWhere((a) => a.id == article.id);
+      if (idx < 0) continue;
+      updated[idx] = article.copyWith(content: _formatMarkdown(article.content));
       _updateProgress(i + 1);
-      await Future.delayed(const Duration(milliseconds: 30));
     }
 
     _articles = updated;
@@ -488,12 +480,13 @@ class _BatchToolsScreenState extends State<BatchToolsScreen>
     setState(() {
       _isProcessing = true;
       _progress = 0.0;
+      _progressTotal = total;
     });
   }
 
   void _updateProgress(int current) {
     setState(() {
-      _progress = current / _articles.length;
+      _progress = _progressTotal > 0 ? current / _progressTotal : 0.0;
     });
   }
 

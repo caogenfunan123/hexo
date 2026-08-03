@@ -28,11 +28,13 @@ enum LinkStatus { alive, dead, unknown, checking }
 class LinkCheckerScreen extends StatefulWidget {
   final List<Article> articles;
   final void Function(Article article) onOpenArticle;
+  final void Function(List<Article>)? onArticlesChanged;
 
   const LinkCheckerScreen({
     super.key,
     required this.articles,
     required this.onOpenArticle,
+    this.onArticlesChanged,
   });
 
   @override
@@ -293,17 +295,13 @@ class _LinkCheckerScreenState extends State<LinkCheckerScreen>
       }
     }
 
-    setState(() {
-      for (final entry in modifiedArticles.entries) {
-        final article = widget.articles.firstWhere((a) => a.id == entry.key);
-        final idx = widget.articles.indexOf(article);
-        if (idx != -1) {
-          widget.articles[idx] = article.copyWith(content: entry.value);
-        }
-      }
-    });
-
     if (modifiedArticles.isNotEmpty) {
+      final newArticles = widget.articles.map((a) {
+        final newContent = modifiedArticles[a.id];
+        return newContent != null ? a.copyWith(content: newContent) : a;
+      }).toList();
+      widget.onArticlesChanged?.call(newArticles);
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('已为 ${modifiedArticles.length} 篇文章的外部链接添加 target="_blank"')),
       );
@@ -354,15 +352,11 @@ class _LinkCheckerScreenState extends State<LinkCheckerScreen>
       }
     }
 
-    setState(() {
-      for (final entry in modifiedArticles.entries) {
-        final article = widget.articles.firstWhere((a) => a.id == entry.key);
-        final idx = widget.articles.indexOf(article);
-        if (idx != -1) {
-          widget.articles[idx] = article.copyWith(content: entry.value);
-        }
-      }
-    });
+    final newArticles = widget.articles.map((a) {
+      final newContent = modifiedArticles[a.id];
+      return newContent != null ? a.copyWith(content: newContent) : a;
+    }).toList();
+    widget.onArticlesChanged?.call(newArticles);
 
     // Re-scan
     _buildKnownPaths();

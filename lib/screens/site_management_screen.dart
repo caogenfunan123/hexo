@@ -36,6 +36,7 @@ class SiteManagementScreen extends StatefulWidget {
 class _SiteManagementScreenState extends State<SiteManagementScreen> {
   bool _testing = false;
   final Map<String, bool?> _testResults = {};
+  final GitHubService _githubService = GitHubService();
 
   @override
   Widget build(BuildContext context) {
@@ -227,7 +228,7 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => SiteEditorScreen(
         repo: repo,
-        github: GitHubService(),
+        github: _githubService,
         onSaved: () {
           widget.onChanged();
           setState(() {});
@@ -341,8 +342,7 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
         continue;
       }
       try {
-        final gs = GitHubService();
-        await gs.testToken(repo);
+        await _githubService.testToken(repo);
         _testResults[repo.id] = true;
       } catch (_) {
         _testResults[repo.id] = false;

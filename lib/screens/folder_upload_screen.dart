@@ -84,11 +84,11 @@ class _FolderUploadScreenState extends State<FolderUploadScreen> {
       final dir = Directory(result);
       final files = <_UploadFile>[];
       void scan(Directory d) {
-        for (final entity in d.listSync(recursive: true)) {
+        for (final entity in d.listSync()) {
           if (entity is File) {
             final relPath = entity.path.substring(result.length + 1);
             files.add(_UploadFile(
-              name: entity.path.split('/').last,
+              name: entity.path.split(Platform.pathSeparator).last,
               path: entity.path,
               size: entity.lengthSync(),
               relPath: relPath,

@@ -36,11 +36,28 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
   int _page = 1;
   bool _hasMore = true;
   String? _error;
+  late ScrollController _scrollController;
 
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController();
+    _scrollController.addListener(_onScroll);
     _loadPosts();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMore();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadPosts({bool refresh = false}) async {
@@ -221,14 +238,11 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
                   : RefreshIndicator(
                       onRefresh: () => _loadPosts(refresh: true),
                       child: ListView.builder(
+                        controller: _scrollController,
                         padding: const EdgeInsets.all(12),
                         itemCount: _posts.length + (_hasMore ? 1 : 0),
                         itemBuilder: (_, i) {
                           if (i >= _posts.length) {
-                            // 加载更多指示器
-                            if (!_loadingMore) {
-                              WidgetsBinding.instance.addPostFrameCallback((_) => _loadMore());
-                            }
                             return const Padding(
                               padding: EdgeInsets.all(16),
                               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),

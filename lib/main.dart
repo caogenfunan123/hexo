@@ -222,6 +222,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       activeSiteId: activeId.isNotEmpty ? activeId : (activeRepo?.id ?? ''),
     );
     // 将站点管理器注入到工具系统
+    // TODO: 这是临时方案，后续应改为依赖注入，避免设置全局静态字段
     RemoteCmsTools.siteManager = siteManager;
   }
 
@@ -365,19 +366,25 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       if (s.restoreSession) {
         await _restoreSession();
       }
-    } catch (_) {
-      if (mounted) setState(() => loading = false);
+    } catch (e) {
+      debugPrint('Bootstrap error: $e');
+      if (mounted) setState(() {
+        loading = false;
+        error = e.toString();
+      });
     }
     // 初始化工具系统
     try {
       await skillManager.init(await storage.root);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('SkillManager init error: $e');
+    }
     // 初始化云同步后端
     _initCloudSync();
   }
 
   /// 初始化云同步后端
-  void _initCloudSync() async {
+  Future<void> _initCloudSync() async {
     // 初始化设备密钥
     final deviceKey = await storage.loadDeviceKey();
     cloudSyncService.initDeviceKey(deviceKey);
@@ -441,7 +448,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     try {
       await cloudSyncService.pushDrafts(backend, drafts);
       await cloudSyncService.pushSyncMappings(backend, syncService);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Auto sync error: $e');
+    }
   }
 
   /// 自动从云端拉取（后台静默，不弹 toast）
@@ -459,7 +468,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         storage.saveDrafts(drafts);
       }
       await cloudSyncService.pullSyncMappings(backend, syncService);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Auto sync error: $e');
+    }
   }
 
   AppSettings _ensureGithubTokensFromLegacy(
@@ -496,7 +507,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     setState(() => _currentPage = page);
     // 仅在抽屉打开时才关闭抽屉，避免对根路由执行无意义的 pop
     if (_scaffoldKey.currentState?.isDrawerOpen == true) {
-      Navigator.pop(context);
+      _scaffoldKey.currentState?.closeDrawer();
     }
     // 进入编辑器时启动自动保存
     if (page == 0) {
@@ -757,7 +768,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       if (mounted) {
         _showToast('草稿已自动保存');
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Auto save snapshot error: $e');
+    }
   }
 
   // ============ 阅读页 / 编辑器切换 ============
@@ -1499,7 +1512,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     setState(() => busy = true);
     try {
       remotePosts = await github.listPosts(repo);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Refresh remote error: $e');
+    }
     if (mounted) setState(() => busy = false);
   }
 
@@ -1510,7 +1525,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     try {
       rssItems = await rssService.fetch(url);
       if (mounted) setState(() {});
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Refresh RSS error: $e');
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _refreshCommits() async {
@@ -1519,7 +1537,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     try {
       commits = await github.listCommits(repo);
       if (mounted) setState(() {});
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Refresh commits error: $e');
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _updateSettings(AppSettings s) async {

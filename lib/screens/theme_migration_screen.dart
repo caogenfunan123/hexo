@@ -395,7 +395,8 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
     });
 
     try {
-      final repo = widget.activeRepo ?? widget.repos.first;
+      final repo = widget.activeRepo ??
+            (widget.repos.isNotEmpty ? widget.repos.first : null);
       for (final file in selectedFiles) {
         await widget.githubService.putRawFile(
           repo,
@@ -558,7 +559,7 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
                       ),
                       const SizedBox(width: 8),
                       FilledButton(
-                        onPressed: _busy ? null : _startMigration,
+                        onPressed: _busy ? null : () => _startMigration(),
                         style: FilledButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         ),

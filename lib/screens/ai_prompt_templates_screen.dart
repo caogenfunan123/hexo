@@ -70,7 +70,7 @@ class AiPromptTemplate {
   }
 }
 
-const List<AiPromptTemplate> _builtinPresets = [
+final List<AiPromptTemplate> _builtinPresets = [
   AiPromptTemplate(
     id: 'builtin_polish',
     name: '润色优化',
@@ -121,7 +121,7 @@ const List<AiPromptTemplate> _builtinPresets = [
   ),
 ];
 
-const DateTime _epoch = DateTime(2024, 1, 1);
+final DateTime _epoch = DateTime.fromMillisecondsSinceEpoch(0);
 
 class AiPromptTemplatesScreen extends StatefulWidget {
   final void Function(String promptContent) onUseTemplate;
