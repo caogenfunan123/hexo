@@ -85,7 +85,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
             const SizedBox(width: 16),
 
             // 站点下拉
-            _siteDropdown(),
+            _siteDropdown(context),
             const Spacer(),
 
             // 快捷操作按钮
@@ -187,7 +187,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 
-  Widget _siteDropdown() {
+  Widget _siteDropdown(BuildContext context) {
     if (repos.isEmpty || onSiteChange == null) {
       return Container(
         height: 30,

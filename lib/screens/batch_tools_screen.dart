@@ -344,7 +344,11 @@ class _BatchToolsScreenState extends State<BatchToolsScreen>
     for (final line in fm.split('\n')) {
       final t = line.trim();
       if (t.startsWith('$field:')) {
-        return t.substring(field.length + 1).trim().replaceAll(RegExp(r'^["\']|["\']$'), '');
+        final v = t.substring(field.length + 1).trim();
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+          return v.substring(1, v.length - 1);
+        }
+        return v;
       }
     }
     return '';

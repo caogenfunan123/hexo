@@ -1586,7 +1586,14 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         pattern = RegExp(RegExp.escape(findText), caseSensitive: caseSensitive ? false : true);
       }
 
-      final match = pattern.firstMatch(text, startOffset > 0 ? startOffset : 0);
+      Match? match;
+      final matches = pattern.allMatches(text);
+      for (final m in matches) {
+        if (m.start >= (startOffset > 0 ? startOffset : 0)) {
+          match = m;
+          break;
+        }
+      }
       if (match != null) {
         _contentCtrl.selection = TextSelection(baseOffset: match.start, extentOffset: match.end);
         _contentFocus.requestFocus();
@@ -1598,7 +1605,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         return match.start;
       } else {
         // 从头开始搜索
-        final match2 = pattern.firstMatch(text, 0);
+        final match2 = pattern.firstMatch(text);
         if (match2 != null) {
           _contentCtrl.selection = TextSelection(baseOffset: match2.start, extentOffset: match2.end);
           _contentFocus.requestFocus();
@@ -2376,7 +2383,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         onDelete: (item) async {
           try {
             final repo = effectiveRepo;
-            if (repo != null) { await github.deleteFile(repo, item.path, item.sha); _refreshRemote(); _showToast('已删除'); }
+            if (repo != null) { await github.deleteRawFile(repo, item.path, item.sha); _refreshRemote(); _showToast('已删除'); }
           } catch (e) { _showToast('删除失败: $e'); }
         },
         onBatchDelete: (items) async {},
@@ -2614,7 +2621,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     if (adapter == null) return true;
 
     try {
-      final siteConfig = siteManager.currentSiteConfig;
+      final siteConfig = siteManager.currentAdapter?.config;
       if (siteConfig == null) return true;
       final entries = await syncService.compareSync(siteConfig, adapter, drafts);
       final conflicts = entries.where((e) => e.hasConflict).toList();
@@ -3161,7 +3168,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       try {
         final adapter = siteManager.currentAdapter;
         if (adapter != null) {
-          final mapping = syncService.findByLocalId(siteManager.currentSiteConfig?.id ?? '', _currentArticle.id);
+          final mapping = syncService.findByLocalId(siteManager.currentAdapter?.config?.id ?? '', _currentArticle.id);
           if (mapping != null) {
             final remotePost = await adapter.getPostById(mapping.remotePostId);
             if (remotePost != null) {
@@ -3215,7 +3222,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                   const SizedBox(width: 4),
                   const Text('删除内容', style: TextStyle(fontSize: 11)),
                   const SizedBox(width: 12),
-                  const Text('共 ${diffLines.where((l) => l.type != _DiffType.equal).length} 处变更', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  Text('共 ${diffLines.where((l) => l.type != _DiffType.equal).length} 处变更', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                 ],
               ),
               const Divider(height: 1),
@@ -3448,7 +3455,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final file = File(filePath);
       final html = await file.readAsString();
       final markdown = HtmlToMarkdown.convert(html);
-      final fileName = result.files.first.name.replaceAll(RegExp(r'\.html?$', ignoreCase: true), '');
+      final fileName = result.files.first.name.replaceAll(RegExp(r'\.html?$', caseSensitive: false), '');
       final article = Article(
         id: 'import_${DateTime.now().millisecondsSinceEpoch}',
         title: fileName,
@@ -4411,12 +4418,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       Uint8List? imgBytes;
       try {
         final imgData = await Clipboard.getData('image/png');
-        if (imgData != null) {
-          if (imgData is Uint8List) {
-            imgBytes = imgData;
-          } else if (imgData.text != null) {
-            imgBytes = Uint8List.fromList(imgData.text!.codeUnits);
-          }
+        if (imgData != null && imgData.text != null) {
+          imgBytes = Uint8List.fromList(imgData.text!.codeUnits);
         }
       } catch (_) {}
 
@@ -5656,8 +5659,8 @@ PLACEHOLDER
       _CommandItem('查找替换', 'Ctrl+F', Icons.find_replace, () => _showFindReplace()),
       _CommandItem('插入目录', '', Icons.toc, () => _insertToc()),
       _CommandItem('插入表格', '', Icons.table_chart, () => _insertTable()),
-      _CommandItem('添加表格行', '', Icons.add_row, () => _addTableRow()),
-      _CommandItem('添加表格列', '', Icons.add_column, () => _addTableCol()),
+      _CommandItem('添加表格行', '', Icons.playlist_add, () => _addTableRow()),
+      _CommandItem('添加表格列', '', Icons.view_column, () => _addTableCol()),
       _CommandItem('切换图片路径模式', '', Icons.swap_horiz, () => _toggleImagePathMode()),
       _CommandItem('图片尺寸-小', '', Icons.photo_size_select_small, () => _setImageSize('small')),
       _CommandItem('图片尺寸-中', '', Icons.photo_size_select_large, () => _setImageSize('medium')),
@@ -6557,7 +6560,7 @@ $htmlContent
                       dispatcher: aiDispatcher,
                       selfChecker: aiSelfChecker,
                       sessionType: AiSessionType.article,
-                      blogFramework: effectiveRepo?.framework,
+                      blogFramework: effectiveRepo?.frameworkId,
                       postsPath: effectiveRepo?.postsPath,
                       pagesPath: effectiveRepo?.pagesPath,
                       onSettingsChanged: _updateSettings,

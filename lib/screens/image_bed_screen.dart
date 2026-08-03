@@ -398,10 +398,7 @@ class _ImageBedScreenState extends State<ImageBedScreen>
 
     // 提取所有图片 URL
     final urlToArticles = <String, Set<String>>{};
-    final imgRegex = RegExp(
-      r'!\[.*?\]\((https?://[^\s)]+)\)|' // Markdown 图片
-      r'<img[^>]+src=["\'](https?://[^\s"\']+)["\']', // HTML img 标签
-    );
+    final imgRegex = RegExp(r"""!\[.*?\]\((https?://[^\s)]+)\)|<img[^>]+src=["'](https?://[^\s"']+)["']""");
 
     for (final article in widget.allArticles) {
       for (final match in imgRegex.allMatches(article.content)) {

@@ -206,79 +206,79 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
 
   void _registerHotkeys() async {
     await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyS, modifiers: [KeyModifier.ctrl]),
+      HotKey(key: PhysicalKeyboardKey.keyS, modifiers: [KeyModifier.control]),
       keyDownHandler: (_) => _invokeShell('save'),
     );
     await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyP, modifiers: [KeyModifier.ctrl]),
+      HotKey(key: PhysicalKeyboardKey.keyP, modifiers: [KeyModifier.control]),
       keyDownHandler: (_) => _invokeShell('publish'),
     );
     await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyN, modifiers: [KeyModifier.ctrl]),
+      HotKey(key: PhysicalKeyboardKey.keyN, modifiers: [KeyModifier.control]),
       keyDownHandler: (_) => _invokeShell('new'),
     );
     await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyO, modifiers: [KeyModifier.ctrl]),
+      HotKey(key: PhysicalKeyboardKey.keyO, modifiers: [KeyModifier.control]),
       keyDownHandler: (_) => _invokeShell('openFile'),
     );
     await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyB, modifiers: [KeyModifier.ctrl]),
+      HotKey(key: PhysicalKeyboardKey.keyB, modifiers: [KeyModifier.control]),
       keyDownHandler: (_) => _invokeShell('bold'),
     );
     await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyI, modifiers: [KeyModifier.ctrl]),
+      HotKey(key: PhysicalKeyboardKey.keyI, modifiers: [KeyModifier.control]),
       keyDownHandler: (_) => _invokeShell('italic'),
     );
     await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyD, modifiers: [KeyModifier.ctrl]),
+      HotKey(key: PhysicalKeyboardKey.keyD, modifiers: [KeyModifier.control]),
       keyDownHandler: (_) => _invokeShell('strikethrough'),
     );
     await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyK, modifiers: [KeyModifier.ctrl]),
+      HotKey(key: PhysicalKeyboardKey.keyK, modifiers: [KeyModifier.control]),
       keyDownHandler: (_) => _invokeShell('link'),
     );
     await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.digit1, modifiers: [KeyModifier.ctrl]),
+      HotKey(key: PhysicalKeyboardKey.digit1, modifiers: [KeyModifier.control]),
       keyDownHandler: (_) => _invokeShell('h1'),
     );
     await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.digit2, modifiers: [KeyModifier.ctrl]),
+      HotKey(key: PhysicalKeyboardKey.digit2, modifiers: [KeyModifier.control]),
       keyDownHandler: (_) => _invokeShell('h2'),
     );
     await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.digit3, modifiers: [KeyModifier.ctrl]),
+      HotKey(key: PhysicalKeyboardKey.digit3, modifiers: [KeyModifier.control]),
       keyDownHandler: (_) => _invokeShell('h3'),
     );
     await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyF, modifiers: [KeyModifier.ctrl]),
+      HotKey(key: PhysicalKeyboardKey.keyF, modifiers: [KeyModifier.control]),
       keyDownHandler: (_) => _invokeShell('focus'),
     );
     await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyL, modifiers: [KeyModifier.ctrl]),
+      HotKey(key: PhysicalKeyboardKey.keyL, modifiers: [KeyModifier.control]),
       keyDownHandler: (_) => _invokeShell('toggleLeft'),
     );
     await hotKeyManager.register(
-      HotKey(key: PhysicalKeyboardKey.keyE, modifiers: [KeyModifier.ctrl]),
+      HotKey(key: PhysicalKeyboardKey.keyE, modifiers: [KeyModifier.control]),
       keyDownHandler: (_) => _invokeShell('preview'),
     );
     await hotKeyManager.register(
       HotKey(
         key: PhysicalKeyboardKey.keyV,
-        modifiers: [KeyModifier.ctrl, KeyModifier.shift],
+        modifiers: [KeyModifier.control, KeyModifier.shift],
       ),
       keyDownHandler: (_) => _invokeShell('pasteImage'),
     );
     await hotKeyManager.register(
       HotKey(
         key: PhysicalKeyboardKey.keyP,
-        modifiers: [KeyModifier.ctrl, KeyModifier.shift],
+        modifiers: [KeyModifier.control, KeyModifier.shift],
       ),
       keyDownHandler: (_) => _invokeShell('commandPalette'),
     );
     await hotKeyManager.register(
       HotKey(
         key: PhysicalKeyboardKey.keyS,
-        modifiers: [KeyModifier.ctrl, KeyModifier.shift],
+        modifiers: [KeyModifier.control, KeyModifier.shift],
       ),
       keyDownHandler: (_) => _invokeShell('saveAs'),
     );

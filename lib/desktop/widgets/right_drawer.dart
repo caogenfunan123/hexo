@@ -73,10 +73,10 @@ class DesktopRightDrawer extends StatelessWidget {
             ),
             child: Row(
               children: [
-                _tabButton(RightDrawerTab.outline, Icons.list_alt, '大纲'),
-                _tabButton(RightDrawerTab.frontMatter, Icons.tune, '属性'),
-                _tabButton(RightDrawerTab.aiChat, Icons.auto_awesome, 'AI'),
-                _tabButton(RightDrawerTab.syncLog, Icons.sync, '日志'),
+                _tabButton(context, RightDrawerTab.outline, Icons.list_alt, '大纲'),
+                _tabButton(context, RightDrawerTab.frontMatter, Icons.tune, '属性'),
+                _tabButton(context, RightDrawerTab.aiChat, Icons.auto_awesome, 'AI'),
+                _tabButton(context, RightDrawerTab.syncLog, Icons.sync, '日志'),
                 const Spacer(),
                 GestureDetector(
                   onTap: onClose,
@@ -91,14 +91,14 @@ class DesktopRightDrawer extends StatelessWidget {
 
           // ── 内容区 ──
           Expanded(
-            child: _buildContent(),
+            child: _buildContent(context),
           ),
         ],
       ),
     );
   }
 
-  Widget _tabButton(RightDrawerTab tab, IconData icon, String label) {
+  Widget _tabButton(BuildContext context, RightDrawerTab tab, IconData icon, String label) {
     final isActive = activeTab == tab;
     final cs = Theme.of(context).colorScheme;
     return GestureDetector(
@@ -124,21 +124,21 @@ class DesktopRightDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContent(BuildContext context) {
     switch (activeTab) {
       case RightDrawerTab.outline:
-        return _buildOutline();
+        return _buildOutline(context);
       case RightDrawerTab.frontMatter:
-        return _buildFrontMatter();
+        return _buildFrontMatter(context);
       case RightDrawerTab.aiChat:
-        return _buildAiChat();
+        return _buildAiChat(context);
       case RightDrawerTab.syncLog:
-        return _buildSyncLog();
+        return _buildSyncLog(context);
     }
   }
 
   // ── 大纲视图 ──
-  Widget _buildOutline() {
+  Widget _buildOutline(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     if (outlineItems.isEmpty) {
       return Center(
@@ -175,27 +175,27 @@ class DesktopRightDrawer extends StatelessWidget {
   }
 
   // ── FrontMatter 编辑 ──
-  Widget _buildFrontMatter() {
+  Widget _buildFrontMatter(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _fmField('标题', titleCtrl),
+          _fmField(context, '标题', titleCtrl),
           const SizedBox(height: 10),
-          _fmField('标签', tagsCtrl, hint: '逗号分隔'),
+          _fmField(context, '标签', tagsCtrl, hint: '逗号分隔'),
           const SizedBox(height: 10),
-          _fmField('分类', categoriesCtrl, hint: '逗号分隔'),
+          _fmField(context, '分类', categoriesCtrl, hint: '逗号分隔'),
           const SizedBox(height: 10),
-          _fmField('封面图', coverCtrl, hint: '图片 URL'),
+          _fmField(context, '封面图', coverCtrl, hint: '图片 URL'),
           const SizedBox(height: 10),
-          _fmField('日期', dateCtrl, hint: 'YYYY-MM-DD'),
+          _fmField(context, '日期', dateCtrl, hint: 'YYYY-MM-DD'),
         ],
       ),
     );
   }
 
-  Widget _fmField(String label, TextEditingController? ctrl, {String? hint}) {
+  Widget _fmField(BuildContext context, String label, TextEditingController? ctrl, {String? hint}) {
     final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -220,7 +220,7 @@ class DesktopRightDrawer extends StatelessWidget {
   }
 
   // ── AI 聊天面板 ──
-  Widget _buildAiChat() {
+  Widget _buildAiChat(BuildContext context) {
     if (aiChatPanel != null) return aiChatPanel!;
     final cs = Theme.of(context).colorScheme;
     return Center(
@@ -238,7 +238,7 @@ class DesktopRightDrawer extends StatelessWidget {
   }
 
   // ── 同步日志 ──
-  Widget _buildSyncLog() {
+  Widget _buildSyncLog(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     if (syncLogs.isEmpty) {
       return Center(
