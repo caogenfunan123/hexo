@@ -10,12 +10,16 @@ on:
 permissions:
   contents: write
 
+env:
+  # Node.js 24 强制启用（2026-06-16 后默认，显式设置确保兼容）
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ── 代码静态分析 ──
   analyze:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: subosito/flutter-action@v2
         with:
@@ -33,9 +37,9 @@ jobs:
   build-android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -91,14 +95,14 @@ jobs:
         with:
           name: hexo-apk
           path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: ignore
+          if-no-files-found: warn
           retention-days: 30
 
   # ── Web 构建 ──
   build-web:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: subosito/flutter-action@v2
         with:
@@ -110,20 +114,23 @@ jobs:
         run: flutter create --platforms=web . 2>/dev/null || true
 
       - run: flutter pub get
-      - run: flutter build web --release 2>&1 | tee /tmp/build-web.log
+      - name: Build Web
+        run: flutter build web --release 2>&1 | tee /tmp/build-web.log
         continue-on-error: true
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Web build
+        uses: actions/upload-artifact@v4
         with:
           name: hexo-web
           path: build/web
+          if-no-files-found: warn
           retention-days: 30
 
   # ── Linux 桌面构建 ──
   build-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: subosito/flutter-action@v2
         with:
@@ -139,20 +146,23 @@ jobs:
         run: flutter create --platforms=linux . 2>/dev/null || true
 
       - run: flutter pub get
-      - run: flutter build linux --release --target=lib/desktop/desktop_main.dart 2>&1 | tee /tmp/build-linux.log
+      - name: Build Linux
+        run: flutter build linux --release --target=lib/desktop/desktop_main.dart 2>&1 | tee /tmp/build-linux.log
         continue-on-error: true
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Linux build
+        uses: actions/upload-artifact@v4
         with:
           name: hexo-linux
           path: build/linux/x64/release/bundle
+          if-no-files-found: warn
           retention-days: 30
 
   # ── Windows 桌面构建 ──
   build-windows:
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: subosito/flutter-action@v2
         with:
@@ -176,26 +186,29 @@ jobs:
         with:
           name: hexo-windows
           path: build/windows/x64/runner/Release
+          if-no-files-found: warn
           retention-days: 30
 
-  # ── 发布 APK 到 GitHub Release（仅 main 分支 push） ──
+  # ── 发布到 GitHub Release（仅 main 分支 push） ──
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: build-android
+    needs: [build-android, build-web, build-linux, build-windows]
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Download APK artifact
-        id: download
-        continue-on-error: true
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: hexo-apk
+          path: artifacts
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: List artifacts
+        run: find artifacts -type f | sort || echo "No artifacts found"
 
       - name: Create Release
-        if: steps.download.conclusion == 'success'
         uses: softprops/action-gh-release@v2
         with:
           name: Latest Build
@@ -209,8 +222,10 @@ jobs:
 
             | 平台 | 产物 |
             |------|------|
-            | Android | `hexo-apk` (本附件) |
+            | Android | `hexo-apk` |
             | Web | `hexo-web` |
-            | Linux | `hexo-linux` |
-          files: app-release.apk
+            | Linux 桌面 | `hexo-linux` |
+            | Windows 桌面 | `hexo-windows` |
+          files: |
+            artifacts/**
           prerelease: true
