@@ -150,6 +150,14 @@ jobs:
         run: flutter build linux --release --target=lib/desktop/desktop_main.dart 2>&1 | tee /tmp/build-linux.log
         continue-on-error: true
 
+      - name: Upload Linux build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build-log
+          path: /tmp/build-linux.log
+          retention-days: 7
+
       - name: Upload Linux build
         uses: actions/upload-artifact@v4
         with:
@@ -178,8 +186,16 @@ jobs:
 
       - run: flutter pub get
       - name: Build Windows
-        run: flutter build windows --release --target=lib/desktop/desktop_main.dart 2>&1
+        run: flutter build windows --release --target=lib/desktop/desktop_main.dart 2>&1 | Tee-Object -FilePath build-windows.log
         continue-on-error: true
+
+      - name: Upload Windows build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-log
+          path: build-windows.log
+          retention-days: 7
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4

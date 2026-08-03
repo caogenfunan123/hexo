@@ -11,7 +11,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:archive/archive.dart';
 
@@ -6446,8 +6445,7 @@ $htmlContent
       return const Center(child: CircularProgressIndicator());
     }
 
-    return DragToMoveArea(
-      child: Stack(
+    return Stack(
         children: [
           Column(
         children: [
