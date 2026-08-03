@@ -160,8 +160,11 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Generate windows platform
-        run: flutter create --platforms=windows . 2>$null
+      - name: Regenerate windows platform (fix CMake VS version)
+        run: |
+          Remove-Item -Recurse -Force windows -ErrorAction SilentlyContinue
+          flutter create --platforms=windows .
+          flutter config --enable-windows-desktop
 
       - run: flutter pub get
       - name: Build Windows
