@@ -411,3 +411,4 @@ class SpellCheckService {
     'than', 'till', 'times', 'underneath',
     'unlike', 'versus', 'worth',
   };
+}

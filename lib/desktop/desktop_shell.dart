@@ -73,7 +73,7 @@ import '../services/log_service.dart';
 import '../services/sync_service.dart' hide SyncStatus;
 import '../services/cloud_sync_service.dart';
 import '../services/html_to_markdown.dart';
-import '../services/spell_check_service.dart';
+import '../services/spell_check_service.dart' as spell_svc;
 import '../services/recycle_bin_service.dart';
 import '../services/version_snapshot_service.dart';
 import '../services/frontmatter_service.dart';
@@ -124,6 +124,7 @@ import 'widgets/markdown_formatter.dart';
 import 'widgets/markdown_syntax_highlighter.dart';
 import 'widgets/editor_drop_target.dart';
 import 'widgets/spell_check_panel.dart';
+import 'widgets/command_palette.dart';
 import 'shell_action_bus.dart';
 import '../core/shared_bootstrap.dart';
 
@@ -165,7 +166,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   late final VersionSnapshotService versionSnapshotService;
   late final FrontMatterService frontMatterService;
   late final P2PSyncService p2pSyncService;
-  late final SpellCheckService spellCheckService;
+  late final spell_svc.SpellCheckService spellCheckService;
   late final SiteIsolationService siteIsolation;
   late final TemplateSyncService? templateSync;
   late final FullTextSearchIsolate? searchIsolate;
@@ -303,7 +304,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     versionSnapshotService = VersionSnapshotService(logService);
     frontMatterService = FrontMatterService(logService);
     p2pSyncService = P2PSyncService(deviceName: 'Desktop-${Platform.localHostname}');
-    spellCheckService = SpellCheckService();
+    spellCheckService = spell_svc.SpellCheckService();
     spellCheckService.init();
     _typewriterCtrl = TypewriterScrollController(
       scrollController: _focusScrollCtrl,
@@ -4897,7 +4898,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       case 'toggleLeft': _toggleLeftPanel(); break;
       case 'preview':    _openRightDrawer(RightDrawerTab.outline); break;
       case 'pasteImage': _pasteImageFromClipboard(); break;
-      case 'commandPalette': _showCommandPalette(); break;
+      case 'commandPalette': _openCommandPalette(); break;
       case 'saveAs':     _saveAsToLocal(); break;
       case 'findReplace': _showFindReplace(); break;
       case 'insertToc':  _insertToc(); break;
@@ -6347,7 +6348,7 @@ PLACEHOLDER
   // 命令面板 (Ctrl+Shift+P)
   // ============================================================
 
-  void _showCommandPalette() {
+  void _openCommandPalette() {
     setState(() => _showCommandPalette = true);
   }
 

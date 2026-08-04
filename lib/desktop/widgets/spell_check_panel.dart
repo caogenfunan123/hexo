@@ -3,13 +3,13 @@
 library;
 
 import 'package:flutter/material.dart';
-import '../../services/spell_check_service.dart';
+import '../../services/spell_check_service.dart' as spell_svc;
 
 /// 拼写检查结果面板
 class SpellCheckPanel extends StatelessWidget {
-  final List<SpellCheckResult> results;
+  final List<spell_svc.SpellCheckResult> results;
   final ValueChanged<int>? onJumpToOffset;
-  final ValueChanged<SpellCheckResult>? onReplace;
+  final ValueChanged<spell_svc.SpellCheckResult>? onReplace;
   final bool isDark;
 
   const SpellCheckPanel({
@@ -57,8 +57,8 @@ class SpellCheckPanel extends StatelessWidget {
       );
     }
 
-    final errors = results.where((r) => r.severity == SpellCheckSeverity.error).length;
-    final warnings = results.where((r) => r.severity == SpellCheckSeverity.warning).length;
+    final errors = results.where((r) => r.severity == spell_svc.SpellCheckSeverity.error).length;
+    final warnings = results.where((r) => r.severity == spell_svc.SpellCheckSeverity.warning).length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -141,7 +141,7 @@ class SpellCheckPanel extends StatelessWidget {
 }
 
 class _SpellCheckItem extends StatelessWidget {
-  final SpellCheckResult result;
+  final spell_svc.SpellCheckResult result;
   final VoidCallback onTap;
   final ValueChanged<String> onReplace;
   final bool isDark;
@@ -157,7 +157,7 @@ class _SpellCheckItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isError = result.severity == SpellCheckSeverity.error;
+    final isError = result.severity == spell_svc.SpellCheckSeverity.error;
     final severityColor = isError ? Colors.red : Colors.amber;
 
     return Container(
