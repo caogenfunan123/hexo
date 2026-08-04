@@ -2203,7 +2203,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         : text.substring(lineStart);
 
     // 检测是否在表格中
-    if (!currentLine.trimStart().startsWith('|')) {
+    if (!currentLine.trimLeft().startsWith('|')) {
       if (mounted) _showToast('光标不在表格中');
       return;
     }
@@ -2245,7 +2245,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final actualLineEnd = lineEnd >= 0 ? pos + lineEnd : text.length;
     final currentLine = text.substring(lineStart, actualLineEnd);
 
-    if (!currentLine.trimStart().startsWith('|')) {
+    if (!currentLine.trimLeft().startsWith('|')) {
       if (mounted) _showToast('光标不在表格中');
       return;
     }
@@ -2256,7 +2256,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final prevLineEnd = tableStart - 1;
       final prevLineStart = text.lastIndexOf('\n', prevLineEnd - 1) + 1;
       final prevLine = text.substring(prevLineStart, prevLineEnd);
-      if (!prevLine.trimStart().startsWith('|')) break;
+      if (!prevLine.trimLeft().startsWith('|')) break;
       tableStart = prevLineStart;
     }
 
@@ -2268,7 +2268,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final nextLine = nextLineEnd >= 0
           ? text.substring(nextLineStart, nextLineEnd)
           : text.substring(nextLineStart);
-      if (!nextLine.trimStart().startsWith('|')) break;
+      if (!nextLine.trimLeft().startsWith('|')) break;
       tableEnd = nextLineEnd >= 0 ? nextLineEnd : text.length;
     }
 
@@ -2280,9 +2280,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final buf = StringBuffer();
     for (int i = 0; i < tableLines.length; i++) {
       final line = tableLines[i].trimRight();
-      if (line.trimStart().startsWith('|')) {
+      if (line.trimLeft().startsWith('|')) {
         // 判断是否是分隔行（如 |---|---| 或 |:---:|:---:|）
-        if (RegExp(r'^\|[\s\-:]*-[\s\-:]*\|').hasMatch(line.trimStart())) {
+        if (RegExp(r'^\|[\s\-:]*-[\s\-:]*\|').hasMatch(line.trimLeft())) {
           buf.writeln('${line} --- |');
         } else {
           buf.writeln('$line 内容 |');
@@ -4258,7 +4258,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                   if (name.isEmpty || baseUrl.isEmpty || apiKey.isEmpty) { _showToast('名称、Base URL 和 API Key 不能为空'); return; }
                   final profile = AiProfile(id: DateTime.now().millisecondsSinceEpoch.toString(), name: name, baseUrl: baseUrl, apiKey: apiKey, model: model);
                   profiles.add(profile);
-                  await _updateSettings(settings.copyWith(aiProfiles: profiles, activeAiProfileId: profile.id, aiBaseUrl: baseUrl, aiApiKey: apiKey, aiModel: model, aiProvider: name));
+                  await _updateSettings(settings.copyWith(ai: settings.ai.copyWith(aiProfiles: profiles, activeAiProfileId: profile.id, aiBaseUrl: baseUrl, aiApiKey: apiKey, aiModel: model, aiProvider: name)));
                   nameCtrl.clear(); baseUrlCtrl.clear(); apiKeyCtrl.clear(); modelCtrl.clear();
                   setDialogState(() {});
                   _showToast('已保存 AI 配置: $name');
@@ -4290,8 +4290,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 if (!isActive)
-                                  TextButton(onPressed: () async { await _updateSettings(settings.copyWith(activeAiProfileId: p.id, aiBaseUrl: p.baseUrl, aiApiKey: p.apiKey, aiModel: p.model, aiProvider: p.name)); setDialogState(() {}); }, child: const Text('启用', style: TextStyle(fontSize: 11))),
-                                IconButton(icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent), onPressed: () async { profiles.removeAt(i); await _updateSettings(settings.copyWith(aiProfiles: profiles)); setDialogState(() {}); }, constraints: const BoxConstraints(), padding: EdgeInsets.zero),
+                                  TextButton(onPressed: () async { await _updateSettings(settings.copyWith(ai: settings.ai.copyWith(activeAiProfileId: p.id, aiBaseUrl: p.baseUrl, aiApiKey: p.apiKey, aiModel: p.model, aiProvider: p.name))); setDialogState(() {}); }, child: const Text('启用', style: TextStyle(fontSize: 11))),
+                                IconButton(icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent), onPressed: () async { profiles.removeAt(i); await _updateSettings(settings.copyWith(ai: settings.ai.copyWith(aiProfiles: profiles))); setDialogState(() {}); }, constraints: const BoxConstraints(), padding: EdgeInsets.zero),
                               ],
                             ),
                           );
@@ -4373,7 +4373,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 if (name.isEmpty || token.isEmpty) { _showToast('名称和令牌不能为空'); return; }
                 final profile = GithubTokenProfile(id: DateTime.now().millisecondsSinceEpoch.toString(), name: name, token: token);
                 tokens.add(profile);
-                await _updateSettings(settings.copyWith(githubTokens: tokens, activeGithubTokenId: profile.id));
+                await _updateSettings(settings.copyWith(github: settings.github.copyWith(tokens: tokens, activeGithubTokenId: profile.id)));
                 nameCtrl.clear();
                 tokenCtrl.clear();
                 setDialogState(() {});
@@ -4406,8 +4406,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               if (!isActive)
-                                TextButton(onPressed: () async { await _updateSettings(settings.copyWith(activeGithubTokenId: t.id)); setDialogState(() {}); }, child: const Text('启用', style: TextStyle(fontSize: 11))),
-                              IconButton(icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent), onPressed: () async { tokens.removeAt(i); await _updateSettings(settings.copyWith(githubTokens: tokens)); setDialogState(() {}); }, constraints: const BoxConstraints(), padding: EdgeInsets.zero),
+                                TextButton(onPressed: () async { await _updateSettings(settings.copyWith(github: settings.github.copyWith(activeGithubTokenId: t.id))); setDialogState(() {}); }, child: const Text('启用', style: TextStyle(fontSize: 11))),
+                              IconButton(icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent), onPressed: () async { tokens.removeAt(i); await _updateSettings(settings.copyWith(github: settings.github.copyWith(tokens: tokens))); setDialogState(() {}); }, constraints: const BoxConstraints(), padding: EdgeInsets.zero),
                             ],
                           ),
                         );

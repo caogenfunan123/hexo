@@ -821,8 +821,10 @@ class AiChatPanelState extends State<AiChatPanel> {
             if (m != null) {
               widget.onSettingsChanged(
                 widget.settings.copyWith(
-                  defaultModelId: m.modelId,
-                  defaultModelBase: m.apiBase,
+                  ai: widget.settings.ai.copyWith(
+                    defaultModelId: m.modelId,
+                    defaultModelBase: m.apiBase,
+                  ),
                 ),
               );
             }

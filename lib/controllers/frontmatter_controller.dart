@@ -335,11 +335,11 @@ class FrontMatterController extends ChangeNotifier {
 
   /// 从 Markdown 文本解析 FrontMatter 和正文
   static (FrontMatterData, String) parseMarkdown(String markdown) {
-    if (markdown.trimStart().startsWith('---')) {
+    if (markdown.trimLeft().startsWith('---')) {
       final endIndex = markdown.indexOf('---', 3);
       if (endIndex > 0) {
         final yaml = markdown.substring(3, endIndex).trim();
-        final content = markdown.substring(endIndex + 3).trimStart();
+        final content = markdown.substring(endIndex + 3).trimLeft();
         return (FrontMatterData.fromYaml(yaml), content);
       }
     }

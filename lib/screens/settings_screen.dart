@@ -561,11 +561,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (v == null) return;
                 final p = s.aiProfiles.firstWhere((e) => e.id == v);
                 final ns = s.copyWith(
-                  activeAiProfileId: p.id,
-                  aiBaseUrl: p.baseUrl,
-                  aiApiKey: p.apiKey,
-                  aiModel: p.model,
-                  aiProvider: p.name,
+                  ai: s.ai.copyWith(
+                    activeAiProfileId: p.id,
+                    aiBaseUrl: p.baseUrl,
+                    aiApiKey: p.apiKey,
+                    aiModel: p.model,
+                    aiProvider: p.name,
+                  ),
                 );
                 await widget.onSettingsChanged(ns);
                 widget.onShowToast('已切换到 ${p.displayLabel}');
@@ -763,7 +765,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onChanged: (v) async {
                       final updated = List<String>.from(s.statusPresets);
                       updated[idx] = v.trim();
-                      await widget.onSettingsChanged(s.copyWith(statusPresets: updated));
+                      await widget.onSettingsChanged(s.copyWith(ui: s.ui.copyWith(statusPresets: updated)));
                     },
                   ),
                 ),
@@ -773,7 +775,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ? () async {
                           final updated = List<String>.from(s.statusPresets);
                           updated.removeAt(idx);
-                          await widget.onSettingsChanged(s.copyWith(statusPresets: updated));
+                          await widget.onSettingsChanged(s.copyWith(ui: s.ui.copyWith(statusPresets: updated)));
                         }
                       : null,
                 ),
@@ -784,7 +786,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         TextButton.icon(
           onPressed: () async {
             final updated = List<String>.from(s.statusPresets)..add('');
-            await widget.onSettingsChanged(s.copyWith(statusPresets: updated));
+            await widget.onSettingsChanged(s.copyWith(ui: s.ui.copyWith(statusPresets: updated)));
           },
           icon: const Icon(Icons.add, size: 18),
           label: const Text('添加状态'),

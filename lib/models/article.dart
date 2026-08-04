@@ -188,7 +188,7 @@ class Article {
     bool published = false;
     String body = md;
 
-    if (md.trimStart().startsWith('---')) {
+    if (md.trimLeft().startsWith('---')) {
       final endIndex = md.indexOf('\n---', 3);
       if (endIndex > 0) {
         final fm = md.substring(3, endIndex).trim();
