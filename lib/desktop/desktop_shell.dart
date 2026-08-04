@@ -121,6 +121,8 @@ import 'widgets/right_drawer.dart' hide RightDrawerTab;
 import 'widgets/status_bar.dart';
 import 'widgets/work_mode.dart' hide WorkMode;
 import 'widgets/editor_themes.dart';
+import 'shell_action_bus.dart';
+import '../core/shared_bootstrap.dart';
 
 // ============================================================
 // 桌面版 Shell — 完整功能复刻
@@ -338,81 +340,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   Future<void> _bootstrap() async {
     _ui.setLoading(true);
     try {
-      var s = await storage.loadSettings();
-      var r = await storage.loadRepos();
-      final d = await storage.loadDrafts();
-      final t = await storage.loadAllTemplates();
-      final sn = await storage.loadSnippets();
-      s = _ensureGithubTokensFromLegacy(s, r);
-      await storage.saveSettings(s);
-      if (r.isEmpty) {
-        r = [
-          RepoConfig(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            name: '小子的博客',
-            owner: 'caogenfunan123',
-            repo: 'xiamend',
-            branch: 'main',
-            postsPath: 'source/_posts',
-            siteUrl: 'https://caogenfunan.me/',
-            token: s.effectiveGithubToken,
-            isDefault: true,
-          )
-        ];
-        await storage.saveRepos(r);
-        s = s.copyWith(activeRepoId: r.first.id, imageBedOwner: 'caogenfunan123', imageBedRepo: 'xiamend');
-        await storage.saveSettings(s);
-      } else {
-        final eff = s.effectiveGithubToken;
-        if (eff.isNotEmpty) {
-          var changed = false;
-          r = r.map((repo) {
-            if (repo.token.isEmpty) {
-              changed = true;
-              return repo.copyWith(token: eff);
-            }
-            return repo;
-          }).toList();
-          if (changed) await storage.saveRepos(r);
-        }
-      }
-      _editorRepo = activeRepo ?? (r.isNotEmpty ? r.first : null);
-      String? autoTemplateId;
-      if (_editorRepo != null) {
-        autoTemplateId = TemplateResolver.resolvePostTemplateId(_editorRepo!, t);
-        _doc.setSelectedTemplateId(autoTemplateId);
-      }
-
-      // 同步到站点控制器
-      final staticSites = r.map((repo) => SiteConfig(
-        id: repo.id,
-        name: repo.name,
-        repoUrl: 'https://github.com/${repo.owner}/${repo.repo}',
-        branch: repo.branch,
-        isDefault: repo.isDefault,
-        isStatic: true,
-        tokenId: repo.token.isNotEmpty ? repo.id : null,
-      )).toList();
-      final dynamicSites = s.blogSiteConfigs.map((cfg) => SiteConfig(
-        id: cfg.id,
-        name: cfg.name,
-        repoUrl: cfg.siteUrl,
-        isStatic: false,
-      )).toList();
-      _site.setSites(staticSites, dynamicSites);
-
-      setState(() {
-        settings = s;
-        repos = r;
-        drafts = d..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-        templates = t;
-        snippets = sn;
-      });
-      _ui.setLoading(false);
-      _updateSiteManager();
-      if (s.restoreSession) {
-        await _restoreSession();
-      }
+      final (s, r, d, t, sn) = await _loadAppData();
+      await _bootstrapCore(s, r, d, t, sn);
     } catch (_) {
       if (mounted) _ui.setLoading(false);
     }
@@ -426,6 +355,81 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     _initVersionSnapshots();
     _initFrontMatter();
     _initNewServices();
+  }
+
+  /// 加载应用持久化数据
+  Future<(AppSettings, List<RepoConfig>, List<Article>, List<TemplateItem>, List<SnippetItem>)> _loadAppData() async {
+    var s = await storage.loadSettings();
+    var r = await storage.loadRepos();
+    final d = await storage.loadDrafts();
+    final t = await storage.loadAllTemplates();
+    final sn = await storage.loadSnippets();
+    return (s, r, d, t, sn);
+  }
+
+  /// 核心引导逻辑（Token 迁移、默认仓库、站点同步）
+  Future<void> _bootstrapCore(
+    AppSettings s, List<RepoConfig> r, List<Article> d, List<TemplateItem> t, List<SnippetItem> sn,
+  ) async {
+    s = _ensureGithubTokensFromLegacy(s, r);
+    await storage.saveSettings(s);
+    if (r.isEmpty) {
+      r = [
+        RepoConfig(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          name: '小子的博客',
+          owner: 'caogenfunan123',
+          repo: 'xiamend',
+          branch: 'main',
+          postsPath: 'source/_posts',
+          siteUrl: 'https://caogenfunan.me/',
+          token: s.effectiveGithubToken,
+          isDefault: true,
+        )
+      ];
+      await storage.saveRepos(r);
+      s = s.copyWith(
+        activeRepoId: r.first.id,
+        github: s.github.copyWith(imageBedOwner: 'caogenfunan123', imageBedRepo: 'xiamend'),
+      );
+      await storage.saveSettings(s);
+    } else {
+      r = backfillRepoTokens(r, s.effectiveGithubToken);
+      if (r.any((repo) => repo.token != s.effectiveGithubToken)) {
+        // no-op: backfillRepoTokens already returns the updated list
+      }
+      await storage.saveRepos(r);
+    }
+    _editorRepo = activeRepo ?? (r.isNotEmpty ? r.first : null);
+    String? autoTemplateId;
+    if (_editorRepo != null) {
+      autoTemplateId = TemplateResolver.resolvePostTemplateId(_editorRepo!, t);
+      _doc.setSelectedTemplateId(autoTemplateId);
+    }
+
+    final staticSites = r.map((repo) => SiteConfig(
+      id: repo.id, name: repo.name,
+      repoUrl: 'https://github.com/${repo.owner}/${repo.repo}',
+      branch: repo.branch, isDefault: repo.isDefault, isStatic: true,
+      tokenId: repo.token.isNotEmpty ? repo.id : null,
+    )).toList();
+    final dynamicSites = s.blogSiteConfigs.map((cfg) => SiteConfig(
+      id: cfg.id, name: cfg.name, repoUrl: cfg.siteUrl, isStatic: false,
+    )).toList();
+    _site.setSites(staticSites, dynamicSites);
+
+    setState(() {
+      settings = s;
+      repos = r;
+      drafts = d..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      templates = t;
+      snippets = sn;
+    });
+    _ui.setLoading(false);
+    _updateSiteManager();
+    if (s.restoreSession) {
+      await _restoreSession();
+    }
   }
 
   /// 初始化新功能服务（站点隔离、P2P、模板同步、全文检索）
@@ -483,24 +487,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   AppSettings _ensureGithubTokensFromLegacy(AppSettings s, List<RepoConfig> repos) {
-    var tokens = List<GithubTokenProfile>.from(s.githubTokens);
-    bool changed = false;
-    if (s.defaultToken.isNotEmpty && !tokens.any((t) => t.token == s.defaultToken)) {
-      tokens.add(GithubTokenProfile(id: 'legacy_token', name: '默认 Token', token: s.defaultToken));
-      changed = true;
-    }
-    for (final r in repos) {
-      if (r.token.isNotEmpty && !tokens.any((t) => t.token == r.token)) {
-        tokens.add(GithubTokenProfile(id: 'repo_${r.id}', name: r.name, token: r.token));
-        changed = true;
-      }
-    }
-    if (changed) {
-      final seen = <String>{};
-      tokens = tokens.where((t) => seen.add(t.token.trim())).toList();
-      return s.copyWith(githubTokens: tokens, activeGithubTokenId: tokens.first.id);
-    }
-    return s;
+    return ensureGithubTokensFromLegacy(s, repos);
   }
 
   // ============================================================
@@ -1867,15 +1854,79 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             );
           }
           break;
+        case 'code':
+          final ctrl = TextEditingController();
+          final ok = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('AI 生成代码'),
+              content: TextField(
+                controller: ctrl,
+                maxLines: 5,
+                decoration: const InputDecoration(hintText: '描述需要的代码'),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('生成')),
+              ],
+            ),
+          );
+          if (ok != true) { ctrl.dispose(); break; }
+          final result = await aiService.generateCode(
+            settings, ctrl.text.trim().isEmpty ? '生成一段实用的代码片段' : ctrl.text.trim());
+          ctrl.dispose();
+          _insertText('\n\n$result');
+          break;
+        case 'rewrite':
+          final sel = _doc.contentCtrl.selection;
+          if (!sel.isValid || sel.start == sel.end) {
+            _editor.setEditorStatus('请先选中要改写的文本');
+            break;
+          }
+          final selected = text.substring(sel.start, sel.end);
+          final instrCtrl = TextEditingController(text: '更简洁专业');
+          final ok2 = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('AI 改写'),
+              content: TextField(controller: instrCtrl),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('改写')),
+              ],
+            ),
+          );
+          if (ok2 != true) { instrCtrl.dispose(); break; }
+          final result2 = await aiService.rewriteSelection(settings, selected, instrCtrl.text.trim());
+          instrCtrl.dispose();
+          final txt = _doc.contentCtrl.text;
+          _doc.contentCtrl.value = TextEditingValue(
+            text: txt.replaceRange(sel.start, sel.end, result2),
+            selection: TextSelection.collapsed(offset: sel.start + result2.length),
+          );
+          _doc.contentFocus.requestFocus();
+          break;
+        case 'format':
+          final result3 = await aiService.polish(settings,
+            '请对以下 Markdown 内容进行排版优化：统一标题层级、规范空行、修正列表缩进、对齐表格格式。\n\n$text');
+          _doc.contentCtrl.text = result3;
+          break;
         case 'outline':
           final result = await aiService.generateOutline(settings, text);
           _insertText('\n$result');
           break;
+        default:
+          _editor.setEditorStatus('未知操作: $action');
+          debugPrint('_aiAction: unknown action "$action"');
+          break;
       }
-      _editor.setEditorStatus('AI 完成');} catch (e) {
+      _editor.setEditorStatus('AI 完成');
+    } catch (e) {
       _editor.setEditorStatus('AI 失败');
-      if (mounted) _showToast('AI 处理失败: $e');} finally {
-      if (mounted) _editor.setEditorBusy(false);}
+      if (mounted) _showToast('AI 处理失败: $e');
+    } finally {
+      if (mounted) _editor.setEditorBusy(false);
+    }
   }
 
   // ============================================================
@@ -6933,176 +6984,188 @@ $htmlContent
   // 构建
   // ============================================================
 
+  /// 统一回调总线（消除 37+ 参数的回调地狱）
+  ShellActionBus get _bus => ShellActionBus(
+    // 导航
+    onNewArticle: _newArticle,
+    onOpenDrafts: _openDrafts,
+    onOpenRemote: _openRemote,
+    onOpenBatchUpload: _openBatchUpload,
+    onOpenPreview: _openPreview,
+    onOpenSettings: _openSettings,
+    onOpenSyncSettings: _openSyncSettings,
+    onOpenLogs: _openLogs,
+    onOpenDashboard: _openDashboard,
+    onOpenHistory: _openHistory,
+    onOpenRss: _openRss,
+    onOpenSync: _openSyncStatus,
+    onOpenThemeMigration: _openThemeMigration,
+    onShowTemplateManager: _showTemplateManager,
+    onShowSnippetManager: _showSnippetManager,
+    onShowConfigEditor: _showConfigEditor,
+    onShowHelp: _showHelpDialog,
+    onOpenRecycleBin: _openRecycleBin,
+    onOpenP2PSync: _openP2PSync,
+    onOpenImageBedManager: _openImageBedManager,
+    onOpenProxySettings: _openProxySettings,
+    onOpenCacheCleanup: _openCacheCleanup,
+    onExportLogs: _exportLogs,
+    onOpenLinkChecker: _openLinkChecker,
+    onOpenBatchTools: _openBatchTools,
+    onOpenAiPromptTemplates: _openAiPromptTemplates,
+    onShowAiArticleChat: _showAiArticleChat,
+    onShowAiPageChat: _showAiPageChat,
+    onShowAiThemeChat: _showAiThemeChat,
+    onShowAiAudit: _showAiAudit,
+    onShowAiModelManager: _showAiModelManager,
+    onShowToolLibrary: _showToolLibrary,
+    onShowBlogSiteManager: _showBlogSiteManager,
+    onShowSiteEditor: _showSiteEditor,
+    onSiteChange: _switchSite,
+    // 布局
+    onToggleLeftPanel: _toggleLeftPanel,
+    onToggleRightDrawer: _toggleRightDrawer,
+    onThemeToggle: _toggleTheme,
+    onFocusOverlay: () => setState(() => _focusModeOverlayEnabled = !_focusModeOverlayEnabled),
+    focusOverlayEnabled: _focusModeOverlayEnabled,
+    // 同步 & 发布
+    onSync: _handleSync,
+    onPublish: _handlePublish,
+    // 文件操作
+    onOpenFile: _openFileDialog,
+  );
+
   @override
   Widget build(BuildContext context) {
     final ui = context.watch<UiStateController>();
-    if (ui.loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    if (ui.loading) return const Center(child: CircularProgressIndicator());
 
     final layout = context.watch<LayoutController>();
-    final editor = context.watch<EditorController>(); // 监听 EditorController 变化以触发 UI 刷新
-    final doc = context.watch<DocumentController>(); // 监听文档数据变更
+    context.watch<EditorController>();
+    context.watch<DocumentController>();
 
     final stackChildren = <Widget>[
-      Column(
-        children: [
-          // ── 顶部标题栏（专注模式下极简） ──
-          if (layout.workMode != WorkMode.focus)
-            DesktopTitleBar(
-              onToggleLeftPanel: _toggleLeftPanel,
-              onToggleRightDrawer: _toggleRightDrawer,
-              onThemeToggle: _toggleTheme,
-              onSync: _handleSync,
-              onPublish: _handlePublish,
-              onAi: () => _openRightDrawer(RightDrawerTab.aiChat),
-              onOpenFile: _openFileDialog,
-              onNewArticle: _newArticle,
-              onFocusOverlay: () => setState(() => _focusModeOverlayEnabled = !_focusModeOverlayEnabled),
-              focusOverlayEnabled: _focusModeOverlayEnabled,
-              siteName: activeRepo?.name ?? settings.siteName,
-              repos: repos,
-              onSiteChange: _switchSite,
-              hasUnsavedChanges: _doc.hasUnsavedChanges,
-            )
-          else
-            _focusModeTitleBar(),
+      Column(children: [
+        _buildTopBar(layout),
+        _buildMainArea(layout),
+        _buildBottomBar(layout),
+      ]),
+    ];
 
-          // ── 主体三栏 ──
-          Expanded(
-            child: FocusModeOverlay(
-              enabled: _focusModeOverlayEnabled,
-              onExit: () => setState(() => _focusModeOverlayEnabled = false),
-              child: layout.workMode == WorkMode.focus
-                  ? _buildFocusEditor()
-                  : layout.workMode == WorkMode.source
-                      ? _buildSourceEditor()
-                      : Row(
-              children: [
-                // 左侧导航面板（可折叠）
-                if (layout.leftPanelExpanded)
-                  DesktopLeftPanel(
-                    width: layout.leftPanelWidth,
-                    onResize: (w) => _layout.setLeftPanelWidth(w),
-                    onCollapse: _toggleLeftPanel,
-                    repos: repos,
-                    drafts: drafts,
-                    siteManager: siteManager,
-                    onNewArticle: _newArticle,
-                    onOpenDrafts: _openDrafts,
-                    onOpenRemote: _openRemote,
-                    onOpenSync: _openSyncStatus,
-                    onOpenDashboard: _openDashboard,
-                    onOpenHistory: _openHistory,
-                    onOpenRss: _openRss,
-                    onOpenBatchUpload: _openBatchUpload,
-                    onOpenPreview: _openPreview,
-                    onOpenSettings: _openSettings,
-                    onOpenSyncSettings: _openSyncSettings,
-                    onOpenLogs: _openLogs,
-                    onOpenThemeMigration: _openThemeMigration,
-                    onShowTemplateManager: _showTemplateManager,
-                    onShowSnippetManager: _showSnippetManager,
-                    onShowConfigEditor: _showConfigEditor,
-                    onShowAiArticleChat: _showAiArticleChat,
-                    onShowAiPageChat: _showAiPageChat,
-                    onShowAiThemeChat: _showAiThemeChat,
-                    onShowAiAudit: _showAiAudit,
-                    onShowAiModelManager: _showAiModelManager,
-                    onShowToolLibrary: _showToolLibrary,
-                    onShowBlogSiteManager: _showBlogSiteManager,
-                    onShowSiteEditor: _showSiteEditor,
-                    onSiteChange: _switchSite,
-                    onShowHelp: _showHelpDialog,
-                    onOpenRecycleBin: _openRecycleBin,
-                    onOpenP2PSync: _openP2PSync,
-                    onOpenImageBedManager: _openImageBedManager,
-                    onOpenProxySettings: _openProxySettings,
-                    onOpenCacheCleanup: _openCacheCleanup,
-                    onExportLogs: _exportLogs,
-                    onOpenLinkChecker: _openLinkChecker,
-                    onOpenBatchTools: _openBatchTools,
-                    onOpenAiPromptTemplates: _openAiPromptTemplates,
-                  ),
-
-                if (!layout.leftPanelExpanded) _collapseToggle(),
-
-                // 中央编辑区域
-                Expanded(
-                  child: DesktopEditorArea(
-                    tabs: _editor.openTabs,
-                    activeIndex: _editor.activeTabIndex,
-                    onTabChange: (i) => _editor.switchTab(i),
-                    onTabClose: _closeTab,
-                    onNewArticle: _newArticle,
-                    onSync: _handleSync,
-                    onSettings: _openSettings,
-                  ),
-                ),
-
-                // 右侧悬浮抽屉
-                if (layout.rightDrawerOpen)
-                  DesktopRightDrawer(
-                    activeTab: layout.activeDrawerTab,
-                    onTabChange: (t) => _layout.setDrawerTab(t),
-                    onClose: () => _layout.closeRightDrawer(),
-                    outlineItems: parseOutline(_doc.contentCtrl.text),
-                    titleCtrl: _doc.titleCtrl,
-                    tagsCtrl: _doc.tagsCtrl,
-                    categoriesCtrl: _doc.categoriesCtrl,
-                    coverCtrl: _doc.coverCtrl,
-                    syncLogs: _sync.logs.map((e) => '${e.timestamp.hour}:${e.timestamp.minute.toString().padLeft(2, '0')}:${e.timestamp.second.toString().padLeft(2, '0')} ${e.message}').toList(),
-                    aiChatPanel: AiChatPanel(
-                      key: _aiChatKey,
-                      settings: settings,
-                      aiService: aiService,
-                      modelManager: aiModelManager,
-                      dispatcher: aiDispatcher,
-                      selfChecker: aiSelfChecker,
-                      sessionType: AiSessionType.article,
-                      blogFramework: effectiveRepo?.frameworkId,
-                      postsPath: effectiveRepo?.postsPath,
-                      pagesPath: effectiveRepo?.pagesPath,
-                      onSettingsChanged: _updateSettings,
-                      gitHubService: github,
-                      activeRepo: effectiveRepo,
-                      storageService: storage,
-                    ),
-                  ),
-              ],
-            ),
-            ),
-          ),
-
-          // ── 底部状态栏（专注模式下隐藏） ──
-          if (layout.workMode != WorkMode.focus)
-            DesktopStatusBar(
-              workMode: layout.workMode,
-              onModeChange: _switchWorkMode,
-              editorStatus: _editor.editorStatus,
-              cursorPosition: (_editor.cursorPos.line, _editor.cursorPos.column),
-              wordCount: _editor.wordCount,
-              charCount: _editor.charCount,
-              siteName: activeRepo?.name ?? settings.siteName,
-              isSyncing: false,
-            ),
-        ],
-      ),
-      ];
-    // 夜间护眼滤镜
     if (settings.nightEyeProtection) {
-      stackChildren.add(
-        Positioned.fill(
-          child: IgnorePointer(
-            child: Container(
-              color: Color.fromRGBO(255, 200, 100, settings.nightEyeIntensity * 0.3),
-            ),
+      stackChildren.add(Positioned.fill(
+        child: IgnorePointer(
+          child: Container(
+            color: Color.fromRGBO(255, 200, 100, settings.nightEyeIntensity * 0.3),
           ),
         ),
-      );
+      ));
     }
-    return Stack(
-      children: stackChildren,
+    return Stack(children: stackChildren);
+  }
+
+  /// 顶部标题栏
+  Widget _buildTopBar(LayoutController layout) {
+    if (layout.workMode == WorkMode.focus) return _focusModeTitleBar();
+    return DesktopTitleBar(
+      onAi: () => _openRightDrawer(RightDrawerTab.aiChat),
+      bus: _bus,
+      siteName: activeRepo?.name ?? settings.siteName,
+      repos: repos,
+      hasUnsavedChanges: _doc.hasUnsavedChanges,
+    );
+  }
+
+  /// 主体三栏区域
+  Widget _buildMainArea(LayoutController layout) {
+    return Expanded(
+      child: FocusModeOverlay(
+        enabled: _focusModeOverlayEnabled,
+        onExit: () => setState(() => _focusModeOverlayEnabled = false),
+        child: switch (layout.workMode) {
+          WorkMode.focus => _buildFocusEditor(),
+          WorkMode.source => _buildSourceEditor(),
+          _ => _buildWorkspaceLayout(layout),
+        },
+      ),
+    );
+  }
+
+  /// 工作区三栏布局
+  Widget _buildWorkspaceLayout(LayoutController layout) {
+    return Row(children: [
+      if (layout.leftPanelExpanded)
+        DesktopLeftPanel(
+          width: layout.leftPanelWidth,
+          onResize: (w) => _layout.setLeftPanelWidth(w),
+          onCollapse: _toggleLeftPanel,
+          bus: _bus,
+          repos: repos,
+          drafts: drafts,
+          siteManager: siteManager,
+        ),
+
+      if (!layout.leftPanelExpanded) _collapseToggle(),
+
+      Expanded(
+        child: DesktopEditorArea(
+          tabs: _editor.openTabs,
+          activeIndex: _editor.activeTabIndex,
+          onTabChange: (i) => _editor.switchTab(i),
+          onTabClose: _closeTab,
+          onNewArticle: _newArticle,
+          onSync: _handleSync,
+          onSettings: _openSettings,
+        ),
+      ),
+
+      if (layout.rightDrawerOpen) _buildRightDrawer(layout),
+    ]);
+  }
+
+  /// 右侧抽屉
+  Widget _buildRightDrawer(LayoutController layout) {
+    return DesktopRightDrawer(
+      activeTab: layout.activeDrawerTab,
+      onTabChange: (t) => _layout.setDrawerTab(t),
+      onClose: () => _layout.closeRightDrawer(),
+      outlineItems: parseOutline(_doc.contentCtrl.text),
+      titleCtrl: _doc.titleCtrl,
+      tagsCtrl: _doc.tagsCtrl,
+      categoriesCtrl: _doc.categoriesCtrl,
+      coverCtrl: _doc.coverCtrl,
+      syncLogs: _sync.logs.map((e) => '${e.timestamp.hour}:${e.timestamp.minute.toString().padLeft(2, '0')}:${e.timestamp.second.toString().padLeft(2, '0')} ${e.message}').toList(),
+      aiChatPanel: AiChatPanel(
+        key: _aiChatKey,
+        settings: settings,
+        aiService: aiService,
+        modelManager: aiModelManager,
+        dispatcher: aiDispatcher,
+        selfChecker: aiSelfChecker,
+        sessionType: AiSessionType.article,
+        blogFramework: effectiveRepo?.frameworkId,
+        postsPath: effectiveRepo?.postsPath,
+        pagesPath: effectiveRepo?.pagesPath,
+        onSettingsChanged: _updateSettings,
+        gitHubService: github,
+        activeRepo: effectiveRepo,
+        storageService: storage,
+      ),
+    );
+  }
+
+  /// 底部状态栏
+  Widget _buildBottomBar(LayoutController layout) {
+    if (layout.workMode == WorkMode.focus) return const SizedBox.shrink();
+    return DesktopStatusBar(
+      workMode: layout.workMode,
+      onModeChange: _switchWorkMode,
+      editorStatus: _editor.editorStatus,
+      cursorPosition: (_editor.cursorPos.line, _editor.cursorPos.column),
+      wordCount: _editor.wordCount,
+      charCount: _editor.charCount,
+      siteName: activeRepo?.name ?? settings.siteName,
+      isSyncing: false,
     );
   }
 

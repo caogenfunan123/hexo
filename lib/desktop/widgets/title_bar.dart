@@ -5,38 +5,22 @@ library;
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import '../../models/repo_config.dart';
+import '../shell_action_bus.dart';
 
 class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
-  final VoidCallback onToggleLeftPanel;
-  final VoidCallback onToggleRightDrawer;
-  final VoidCallback onThemeToggle;
-  final VoidCallback onSync;
-  final VoidCallback onPublish;
   final VoidCallback onAi;
-  final VoidCallback? onOpenFile;
-  final VoidCallback? onNewArticle;
-  final VoidCallback? onFocusOverlay;
-  final bool focusOverlayEnabled;
   final String siteName;
   final List<RepoConfig> repos;
-  final ValueChanged<RepoConfig>? onSiteChange;
   final bool hasUnsavedChanges;
+
+  final ShellActionBus bus;
 
   const DesktopTitleBar({
     super.key,
-    required this.onToggleLeftPanel,
-    required this.onToggleRightDrawer,
-    required this.onThemeToggle,
-    required this.onSync,
-    required this.onPublish,
+    required this.bus,
     required this.onAi,
-    this.onOpenFile,
-    this.onNewArticle,
-    this.onFocusOverlay,
-    this.focusOverlayEnabled = false,
     this.siteName = '当前站点',
     this.repos = const [],
-    this.onSiteChange,
     this.hasUnsavedChanges = false,
   });
 
@@ -70,7 +54,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
             _titleBarButton(
               icon: Icons.menu,
               tooltip: '菜单 (Ctrl+L)',
-              onTap: onToggleLeftPanel,
+              onTap: bus.onToggleLeftPanel,
               cs: cs,
               isDark: isDark,
             ),
@@ -124,33 +108,33 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
             const SizedBox(width: 4),
 
             // 快捷操作按钮
-            if (onOpenFile != null)
+            if (bus.onOpenFile != null)
               _titleBarButton(
                 icon: Icons.folder_open,
                 tooltip: '打开文件 (Ctrl+O)',
-                onTap: onOpenFile!,
+                onTap: bus.onOpenFile!,
                 cs: cs,
                 isDark: isDark,
               ),
-            if (onNewArticle != null)
+            if (bus.onNewArticle != null)
               _titleBarButton(
                 icon: Icons.add,
                 tooltip: '新建文章 (Ctrl+N)',
-                onTap: onNewArticle!,
+                onTap: bus.onNewArticle!,
                 cs: cs,
                 isDark: isDark,
               ),
             _titleBarButton(
               icon: Icons.sync,
               tooltip: '同步 (Ctrl+S)',
-              onTap: onSync,
+              onTap: bus.onSync,
               cs: cs,
               isDark: isDark,
             ),
             _titleBarButton(
               icon: Icons.send,
               tooltip: '一键发布 (Ctrl+P)',
-              onTap: onPublish,
+              onTap: bus.onPublish,
               cs: cs,
               isDark: isDark,
             ),
@@ -164,22 +148,22 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
             _titleBarButton(
               icon: Icons.vertical_split,
               tooltip: '右侧面板',
-              onTap: onToggleRightDrawer,
+              onTap: bus.onToggleRightDrawer,
               cs: cs,
               isDark: isDark,
             ),
-            if (onFocusOverlay != null)
+            if (bus.onFocusOverlay != null)
               _titleBarButton(
-                icon: focusOverlayEnabled ? Icons.center_focus_strong : Icons.center_focus_weak,
-                tooltip: focusOverlayEnabled ? '退出专注覆盖层' : '专注覆盖层',
-                onTap: onFocusOverlay!,
+                icon: bus.focusOverlayEnabled ? Icons.center_focus_strong : Icons.center_focus_weak,
+                tooltip: bus.focusOverlayEnabled ? '退出专注覆盖层' : '专注覆盖层',
+                onTap: bus.onFocusOverlay!,
                 cs: cs,
                 isDark: isDark,
               ),
             _titleBarButton(
               icon: isDark ? Icons.light_mode : Icons.dark_mode_outlined,
               tooltip: '切换主题',
-              onTap: onThemeToggle,
+              onTap: bus.onThemeToggle,
               cs: cs,
               isDark: isDark,
             ),
@@ -277,7 +261,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   Widget _siteDropdown(BuildContext context, ColorScheme cs, bool isDark) {
-    if (repos.isEmpty || onSiteChange == null) {
+    if (repos.isEmpty || bus.onSiteChange == null) {
       return Container(
         height: 30,
         padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -400,7 +384,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
           ],
         ),
       )).toList(),
-      onSelected: onSiteChange,
+      onSelected: bus.onSiteChange,
     );
   }
 }

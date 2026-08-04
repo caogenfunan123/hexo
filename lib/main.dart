@@ -54,6 +54,7 @@ import 'screens/log_screen.dart';
 import 'core/tools/skill_manager.dart';
 import 'core/tools/remote_cms_tools.dart';
 import 'core/cancel_token.dart';
+import 'core/shared_bootstrap.dart';
 import 'core/site_manager.dart';
 import 'core/repository/blog_repository.dart';
 import 'services/ai_service.dart';
@@ -577,28 +578,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   AppSettings _ensureGithubTokensFromLegacy(
       AppSettings s, List<RepoConfig> repos) {
-    var tokens = List<GithubTokenProfile>.from(s.githubTokens);
-    bool changed = false;
-    if (s.defaultToken.isNotEmpty &&
-        !tokens.any((t) => t.token == s.defaultToken)) {
-      tokens.add(GithubTokenProfile(
-          id: 'legacy_token', name: '默认 Token', token: s.defaultToken));
-      changed = true;
-    }
-    for (final r in repos) {
-      if (r.token.isNotEmpty && !tokens.any((t) => t.token == r.token)) {
-        tokens.add(GithubTokenProfile(
-            id: 'repo_${r.id}', name: r.name, token: r.token));
-        changed = true;
-      }
-    }
-    if (changed) {
-      final seen = <String>{};
-      tokens = tokens.where((t) => seen.add(t.token.trim())).toList();
-      return s.copyWith(
-          githubTokens: tokens, activeGithubTokenId: tokens.first.id);
-    }
-    return s;
+    return ensureGithubTokensFromLegacy(s, repos);
   }
 
   void _navigateTo(int page) {
