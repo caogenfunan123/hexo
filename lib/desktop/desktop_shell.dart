@@ -103,9 +103,9 @@ import 'package:gbk_codec/gbk_codec.dart';
 import 'widgets/title_bar.dart';
 import 'widgets/left_panel.dart';
 import 'widgets/editor_area.dart';
-import 'widgets/right_drawer.dart';
+import 'widgets/right_drawer.dart' hide RightDrawerTab;
 import 'widgets/status_bar.dart';
-import 'widgets/work_mode.dart';
+import 'widgets/work_mode.dart' hide WorkMode;
 import 'widgets/editor_themes.dart';
 
 // ============================================================
@@ -355,7 +355,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final dynamicSites = s.blogSiteConfigs.map((cfg) => SiteConfig(
         id: cfg.id,
         name: cfg.name,
-        repoUrl: cfg.url,
+        repoUrl: cfg.siteUrl,
         isStatic: false,
       )).toList();
       _site.setSites(staticSites, dynamicSites);

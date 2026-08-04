@@ -158,7 +158,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
               isDark: isDark,
             ),
             _titleBarButton(
-              icon: Icons.sidebar_right,
+              icon: Icons.vertical_split,
               tooltip: '右侧面板',
               onTap: onToggleRightDrawer,
               cs: cs,

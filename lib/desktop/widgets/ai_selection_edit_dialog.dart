@@ -170,7 +170,7 @@ class _AiSelectionEditDialogState extends State<AiSelectionEditDialog>
       RegExp(r'^以下是[^：:]*[：:]\s*', multiLine: true),
       RegExp(r'^修改后的[^：:]*[：:]\s*', multiLine: true),
       RegExp(r'^优化后的[^：:]*[：:]\s*', multiLine: true),
-      RegExp(r'^Here[\'’]s? the[^:]*:\s*', multiLine: true, caseSensitive: false),
+      RegExp(r"^Here['\u2019]s? the[^:]*:\s*", multiLine: true, caseSensitive: false),
     ];
     for (final pattern in introPatterns) {
       final m = pattern.firstMatch(text);

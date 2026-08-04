@@ -382,7 +382,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       final dynamicSites = s.blogSiteConfigs.map((cfg) => SiteConfig(
         id: cfg.id,
         name: cfg.name,
-        repoUrl: cfg.url,
+        repoUrl: cfg.siteUrl,
         isStatic: false,
       )).toList();
       _site.setSites(staticSites, dynamicSites);
