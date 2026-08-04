@@ -15,6 +15,8 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback onAi;
   final VoidCallback? onOpenFile;
   final VoidCallback? onNewArticle;
+  final VoidCallback? onFocusOverlay;
+  final bool focusOverlayEnabled;
   final String siteName;
   final List<RepoConfig> repos;
   final ValueChanged<RepoConfig>? onSiteChange;
@@ -30,6 +32,8 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
     required this.onAi,
     this.onOpenFile,
     this.onNewArticle,
+    this.onFocusOverlay,
+    this.focusOverlayEnabled = false,
     this.siteName = '当前站点',
     this.repos = const [],
     this.onSiteChange,
@@ -164,6 +168,14 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
               cs: cs,
               isDark: isDark,
             ),
+            if (onFocusOverlay != null)
+              _titleBarButton(
+                icon: focusOverlayEnabled ? Icons.center_focus_strong : Icons.center_focus_weak,
+                tooltip: focusOverlayEnabled ? '退出专注覆盖层' : '专注覆盖层',
+                onTap: onFocusOverlay!,
+                cs: cs,
+                isDark: isDark,
+              ),
             _titleBarButton(
               icon: isDark ? Icons.light_mode : Icons.dark_mode_outlined,
               tooltip: '切换主题',

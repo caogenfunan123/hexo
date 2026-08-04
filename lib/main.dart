@@ -70,6 +70,22 @@ import 'services/cloud_sync_service.dart';
 import 'services/html_to_markdown.dart';
 import 'theme/app_theme.dart';
 
+// ── 移动端新功能集成 ──
+import 'widgets/typewriter_scroll.dart';
+import 'widgets/focus_mode_overlay.dart';
+import 'widgets/editor_animations.dart';
+import 'widgets/unified_markdown_styles.dart';
+import 'widgets/orientation_guard.dart';
+import 'widgets/ai_selection_edit_mobile.dart';
+import 'screens/mobile_diff_screen.dart';
+import 'screens/mobile_recycle_bin_screen.dart';
+import 'screens/mobile_snapshot_screen.dart';
+import 'services/site_isolation_service.dart';
+import 'services/p2p_mdns_service.dart';
+import 'services/p2p_incremental_sync.dart';
+import 'services/template_sync_service.dart';
+import 'services/full_text_search_isolate.dart';
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(HexoApp(initialSettings: loadInitialSettings()));
@@ -219,6 +235,23 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   final CancelToken _publishCancelToken = CancelToken();
   Uint8List? _failedImageBytes; // 缓存上传失败的图片字节
 
+  // ── 新功能：打字机滚动 ──
+  final _editorScrollCtrl = ScrollController();
+  late final TypewriterScrollController _typewriterCtrl;
+
+  // ── 新功能：专注模式 ──
+  bool _focusModeEnabled = false;
+
+  // ── 新功能：横竖屏状态保持 ──
+  late final EditorStateManager _orientationManager;
+
+  // ── 新功能：站点隔离 + P2P + 模板同步 + 全文检索 ──
+  SiteIsolationService? _siteIsolation;
+  P2PMdnsService? _p2pMdns;
+  P2PIncrementalSyncService? _p2pIncremental;
+  TemplateSyncService? _templateSync;
+  FullTextSearchIsolate? _searchIsolate;
+
   RepoConfig? get activeRepo {
     if (repos.isEmpty) return null;
     for (final r in repos) {
@@ -303,6 +336,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     syncService = SyncService(logService);
     cloudSyncService = CloudSyncService(logService);
+    _typewriterCtrl = TypewriterScrollController(
+      scrollController: _editorScrollCtrl,
+      lineHeight: 22.0,
+      visibleLines: 30,
+    );
+    _orientationManager = EditorStateManager(
+      scrollController: _editorScrollCtrl,
+      textController: _doc.contentCtrl,
+    );
     _bootstrap();
   }
 
@@ -311,6 +353,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _stopAutoSave();
     _stopAutoSync();
+    _typewriterCtrl.dispose();
+    _editorScrollCtrl.dispose();
+    _orientationManager.dispose();
+    _searchIsolate?.cancel();
+    _p2pMdns?.stopDiscovery();
     siteManager.disposeAll();
     cmsDraftService.close();
     super.dispose();
@@ -418,6 +465,24 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     }
     // 初始化云同步后端
     _initCloudSync();
+
+    // ── 初始化新功能服务 ──
+    _initNewServices();
+  }
+
+  /// 初始化新功能服务（站点隔离、P2P、模板同步、全文检索）
+  Future<void> _initNewServices() async {
+    try {
+      final root = await storage.root;
+      _siteIsolation = SiteIsolationService(root);
+      _templateSync = TemplateSyncService(
+        templateDir: Directory('${root.path}/templates'),
+        deviceId: 'mobile-${DateTime.now().millisecondsSinceEpoch}',
+      );
+      _searchIsolate = FullTextSearchIsolate(logService);
+    } catch (e) {
+      debugPrint('Init new services error: $e');
+    }
   }
 
   /// 初始化云同步后端
@@ -1505,6 +1570,84 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     } finally {
       if (mounted) setState(() => _editorBusy = false);
     }
+  }
+
+  /// 移动端 AI 选区编辑：选中文本后弹出 AI 编辑工具栏
+  void _showAiSelectionEdit() {
+    final sel = _doc.contentCtrl.selection;
+    if (!sel.isValid || sel.start == sel.end) {
+      _showToast('请先选中要编辑的文本');
+      return;
+    }
+    final selectedText = _doc.contentCtrl.text.substring(sel.start, sel.end);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => AiSelectionEditMobile(
+        selectedText: selectedText,
+        aiService: aiService,
+        settings: settings,
+        onAccept: (acceptedText) {
+          final txt = _doc.contentCtrl.text;
+          _doc.contentCtrl.value = TextEditingValue(
+            text: txt.replaceRange(sel.start, sel.end, acceptedText),
+            selection: TextSelection.collapsed(
+              offset: sel.start + acceptedText.length),
+          );
+          _doc.contentFocus.requestFocus();
+          _onContentChanged();
+        },
+      ),
+    );
+  }
+
+  /// 移动端 Diff 对比视图
+  void _showMobileDiff(String original, String modified, {String title = 'Diff 对比'}) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => MobileDiffScreen(
+        originalText: original,
+        modifiedText: modified,
+        title: title,
+        onAccept: (acceptedText) {
+          _doc.contentCtrl.text = acceptedText;
+          _onContentChanged();
+        },
+      ),
+    ));
+  }
+
+  /// 移动端回收站
+  void _showMobileRecycleBin() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => MobileRecycleBinScreen(
+        storage: storage,
+        onRestore: (article) {
+          setState(() {
+            drafts.add(article);
+            drafts.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+          });
+          _doc.setDrafts(drafts);
+          _showToast('已恢复: ${article.title.isNotEmpty ? article.title : "(无标题)"}');
+        },
+      ),
+    ));
+  }
+
+  /// 移动端版本快照
+  void _showMobileSnapshots() {
+    final article = _doc.currentArticle;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => MobileSnapshotScreen(
+        articleId: article.id,
+        storage: storage,
+        onRestoreSnapshot: (snapshotContent) {
+          _doc.contentCtrl.text = snapshotContent;
+          _onContentChanged();
+          _showToast('快照已恢复');
+        },
+      ),
+    ));
   }
 
   // --- Data methods ---
@@ -3894,6 +4037,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       actions: _currentPage == 0
           ? [
               _appBarAction(
+                  icon: _focusModeEnabled ? Icons.center_focus_strong : Icons.center_focus_weak,
+                  tooltip: _focusModeEnabled ? '退出专注模式' : '专注模式',
+                  onTap: () => setState(() => _focusModeEnabled = !_focusModeEnabled)),
+              _appBarAction(
                   icon: Icons.close,
                   tooltip: '关闭',
                   onTap: () => _onCloseEditor()),
@@ -3903,6 +4050,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   onTap: _editorBusy
                       ? null
                       : () {
+                          final mdStyle = createMobileMarkdownStyle(context: context);
                           Navigator.of(context).push(MaterialPageRoute(
                               builder: (_) => Scaffold(
                                     backgroundColor: AppTheme.bg,
@@ -3917,7 +4065,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                                           data: _doc.contentCtrl.text.isEmpty
                                               ? '*暂无内容*'
                                               : _doc.contentCtrl.text,
-                                          selectable: true),
+                                          selectable: true,
+                                          styleSheet: mdStyle),
                                     ),
                                   )));
                         }),
@@ -4406,6 +4555,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           ),
         Expanded(
           child: ListView(
+            controller: _editorScrollCtrl,
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 120),
             children: [
               // ── 站点切换器 + 类型指示器 ──
@@ -4683,30 +4833,53 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                       _toolChip(Icons.chat, 'AI对话',
                           () => _showAiArticleChat(),
                           color: Colors.deepPurple),
+                      _toolChip(Icons.touch_app, 'AI选区',
+                          _editorBusy ? null : _showAiSelectionEdit,
+                          color: Colors.deepPurple),
                     ]),
               ),
               const SizedBox(height: 10),
-              // ── 正文编辑区 ──
+              // ── 正文编辑区（集成新功能：专注模式 + 横竖屏防护 + 统一样式） ──
               _editorCard(
                 padding: const EdgeInsets.all(14),
-                child: TextField(
-                  controller: _doc.contentCtrl,
-                  focusNode: _doc.contentFocus,
-                  minLines: 20,
-                  maxLines: null,
-                  keyboardType: TextInputType.multiline,
-                  onChanged: (_) => _onContentChanged(),
-                  decoration: const InputDecoration(
-                    labelText: 'Markdown 正文',
-                    alignLabelWithHint: true,
-                    hintText: '支持 # 标题、**粗体**、代码块、列表...\n编辑完可存草稿或直接发布',
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
+                child: OrientationGuard(
+                  enabled: true,
+                  child: FocusModeOverlay(
+                    enabled: _focusModeEnabled,
+                    onExit: () => setState(() => _focusModeEnabled = false),
+                    child: TextField(
+                      controller: _doc.contentCtrl,
+                      focusNode: _doc.contentFocus,
+                      minLines: 20,
+                      maxLines: null,
+                      keyboardType: TextInputType.multiline,
+                      onChanged: (_) {
+                        _onContentChanged();
+                        // 更新打字机光标位置
+                        final text = _doc.contentCtrl.text;
+                        final cursorPos = _doc.contentCtrl.selection.baseOffset;
+                        final textBefore = text.substring(0, cursorPos.clamp(0, text.length));
+                        final currentLine = '\n'.allMatches(textBefore).length;
+                        final totalLines = '\n'.allMatches(text).length + 1;
+                        _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Markdown 正文',
+                        alignLabelWithHint: true,
+                        hintText: '支持 # 标题、**粗体**、代码块、列表...\n编辑完可存草稿或直接发布',
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                      ),
+                      style: createUnifiedMarkdownStyle(
+                        context: context,
+                        config: const UnifiedMarkdownStyleConfig(
+                          baseFontSize: 14.5,
+                          lineHeight: 1.6,
+                          fontFamily: 'monospace',
+                        ),
+                      ).p,
+                    ),
                   ),
-                  style: const TextStyle(
-                      fontFamily: 'monospace',
-                      height: 1.6,
-                      fontSize: 14.5),
                 ),
               ),
               if (_editorStatus != null)

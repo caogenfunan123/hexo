@@ -88,6 +88,19 @@ import '../screens/p2p_sync_screen.dart';
 import '../widgets/ai_chat_panel.dart';
 import 'widgets/ai_selection_edit_dialog.dart';
 import '../theme/app_theme.dart';
+
+// ── 新功能集成（桌面版） ──
+import '../widgets/typewriter_scroll.dart';
+import '../widgets/focus_mode_overlay.dart';
+import '../widgets/editor_animations.dart';
+import '../widgets/unified_markdown_styles.dart';
+import '../widgets/orientation_guard.dart';
+import '../services/site_isolation_service.dart';
+import '../services/p2p_mdns_service.dart';
+import '../services/p2p_incremental_sync.dart';
+import '../services/template_sync_service.dart';
+import '../services/full_text_search_isolate.dart';
+
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/github.dart' as highlight_github;
@@ -146,6 +159,11 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   late final VersionSnapshotService versionSnapshotService;
   late final FrontMatterService frontMatterService;
   late final P2PSyncService p2pSyncService;
+  late final SiteIsolationService siteIsolation;
+  late final P2PMdnsService? p2pMdns;
+  late final P2PIncrementalSyncService? p2pIncremental;
+  late final TemplateSyncService? templateSync;
+  late final FullTextSearchIsolate? searchIsolate;
   late SiteManager siteManager;
 
   // ──────────────────────────────────────────────
@@ -206,6 +224,15 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   final List<RecentFile> _recentFiles = [];
   static const int _maxRecentFiles = 10;
 
+  // ── 新功能：打字机滚动 ──
+  late final TypewriterScrollController _typewriterCtrl;
+
+  // ── 新功能：专注模式覆盖层 ──
+  bool _focusModeOverlayEnabled = false;
+
+  // ── 新功能：横竖屏状态保持 ──
+  late final EditorStateManager _orientationManager;
+
   // ──────────────────────────────────────────────
   // 同步日志（已迁移到 SyncController，此处保留兼容）
   // ──────────────────────────────────────────────
@@ -265,6 +292,15 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     versionSnapshotService = VersionSnapshotService(logService);
     frontMatterService = FrontMatterService(logService);
     p2pSyncService = P2PSyncService(deviceName: 'Desktop-${Platform.localHostname}');
+    _typewriterCtrl = TypewriterScrollController(
+      scrollController: _focusScrollCtrl,
+      lineHeight: 22.0,
+      visibleLines: 30,
+    );
+    _orientationManager = EditorStateManager(
+      scrollController: _focusScrollCtrl,
+      textController: _doc.contentCtrl,
+    );
     _bootstrap();
   }
 
@@ -273,7 +309,11 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     WidgetsBinding.instance.removeObserver(this);
     _stopAutoSave();
     _stopAutoSync();
+    _typewriterCtrl.dispose();
     _focusScrollCtrl.dispose();
+    _orientationManager.dispose();
+    searchIsolate?.cancel();
+    p2pMdns?.stopDiscovery();
     siteManager.disposeAll();
     cmsDraftService.close();
     p2pSyncService.dispose();
@@ -385,6 +425,22 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     _initRecycleBin();
     _initVersionSnapshots();
     _initFrontMatter();
+    _initNewServices();
+  }
+
+  /// 初始化新功能服务（站点隔离、P2P、模板同步、全文检索）
+  Future<void> _initNewServices() async {
+    try {
+      final root = await storage.root;
+      siteIsolation = SiteIsolationService(root);
+      templateSync = TemplateSyncService(
+        templateDir: Directory('${root.path}/templates'),
+        deviceId: 'desktop-${Platform.localHostname}',
+      );
+      searchIsolate = FullTextSearchIsolate(logService);
+    } catch (e) {
+      debugPrint('Init new services (desktop) error: $e');
+    }
   }
 
   void _initCloudSync() async {
@@ -492,6 +548,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     }
     _doc.markUnsaved();
     _trackStats();
+    // 更新打字机光标位置
+    final cursorPos = _doc.contentCtrl.selection.baseOffset;
+    final textBefore = current.substring(0, cursorPos.clamp(0, current.length));
+    final currentLine = '\n'.allMatches(textBefore).length;
+    final totalLines = '\n'.allMatches(current).length + 1;
+    _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
     // 每草稿独立防抖，杜绝多草稿相互阻塞
     final articleId = _doc.currentArticle.id;
     _debounceTimers[articleId]?.cancel();
@@ -1216,9 +1278,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                   label: '博文',
                   subtitle: _editorRepo != null ? '${_editorRepo!.postsPath}' : '文章目录',
                   active: _doc.articleType == ArticleType.post,
-                  onTap: () => _doc.setArticleType(ArticleType.post);
+                  onTap: () {
+                    _doc.setArticleType(ArticleType.post);
                     _autoSelectTemplate();
-                  ,
+                  },
                 ),
               ),
               const SizedBox(width: 8),
@@ -1228,9 +1291,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                   label: '页面',
                   subtitle: _editorRepo != null ? '${_editorRepo!.pagesPath}' : '页面目录',
                   active: _doc.articleType == ArticleType.page,
-                  onTap: () => _doc.setArticleType(ArticleType.page);
+                  onTap: () {
+                    _doc.setArticleType(ArticleType.page);
                     _autoSelectTemplate();
-                  ,
+                  },
                 ),
               ),
             ],
@@ -1328,7 +1392,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 enabledBorder: InputBorder.none,
               ),
               style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-              onChanged: (_) => _onContentChanged(),
+              onChanged: (_) {
+                                  _onContentChanged();
+                                  // 更新打字机光标位置
+                                  final text = _doc.contentCtrl.text;
+                                  final cursorPos = _doc.contentCtrl.selection.baseOffset;
+                                  final textBefore = text.substring(0, cursorPos.clamp(0, text.length));
+                                  final currentLine = '\n'.allMatches(textBefore).length;
+                                  final totalLines = '\n'.allMatches(text).length + 1;
+                                  _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
+                                },
             ),
           ),
           const SizedBox(height: 8),
@@ -1430,7 +1503,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                   maxLines: null,
                   keyboardType: TextInputType.multiline,
                   cursorColor: cs.primary,
-                  onChanged: (_) => _onContentChanged(),
+                  onChanged: (_) {
+                                      _onContentChanged();
+                                      // 更新打字机光标位置
+                                      final text = _doc.contentCtrl.text;
+                                      final cursorPos = _doc.contentCtrl.selection.baseOffset;
+                                      final textBefore = text.substring(0, cursorPos.clamp(0, text.length));
+                                      final currentLine = '\n'.allMatches(textBefore).length;
+                                      final totalLines = '\n'.allMatches(text).length + 1;
+                                      _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
+                                    },
                   decoration: InputDecoration(
                     labelText: 'Markdown 正文',
                     labelStyle: TextStyle(color: cs.onSurface.withOpacity(0.38), fontSize: 13),
@@ -6876,6 +6958,8 @@ $htmlContent
               onAi: () => _openRightDrawer(RightDrawerTab.aiChat),
               onOpenFile: _openFileDialog,
               onNewArticle: _newArticle,
+              onFocusOverlay: () => setState(() => _focusModeOverlayEnabled = !_focusModeOverlayEnabled),
+              focusOverlayEnabled: _focusModeOverlayEnabled,
               siteName: activeRepo?.name ?? settings.siteName,
               repos: repos,
               onSiteChange: _switchSite,
@@ -6886,11 +6970,14 @@ $htmlContent
 
           // ── 主体三栏 ──
           Expanded(
-            child: layout.workMode == WorkMode.focus
-                ? _buildFocusEditor()
-                : layout.workMode == WorkMode.source
-                    ? _buildSourceEditor()
-                    : Row(
+            child: FocusModeOverlay(
+              enabled: _focusModeOverlayEnabled,
+              onExit: () => setState(() => _focusModeOverlayEnabled = false),
+              child: layout.workMode == WorkMode.focus
+                  ? _buildFocusEditor()
+                  : layout.workMode == WorkMode.source
+                      ? _buildSourceEditor()
+                      : Row(
               children: [
                 // 左侧导航面板（可折叠）
                 if (layout.leftPanelExpanded)
@@ -6983,6 +7070,7 @@ $htmlContent
                     ),
                   ),
               ],
+            ),
             ),
           ),
 
