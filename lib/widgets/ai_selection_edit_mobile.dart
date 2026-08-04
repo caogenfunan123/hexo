@@ -165,7 +165,7 @@ class _AiSelectionEditMobileState extends State<AiSelectionEditMobile>
   void _acceptResult() {
     if (_aiResult != null) {
       widget.onAccept?.call(_aiResult!);
-      Navigator.pop(context);
+      Navigator.pop(context, _aiResult);
     }
   }
 
@@ -373,50 +373,50 @@ class _AiSelectionEditMobileState extends State<AiSelectionEditMobile>
   }
 
   Widget _buildResultView(bool isDark) {
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 操作标签
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFF7C4DFF).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    _selectedAction?.icon ?? Icons.auto_awesome,
-                    size: 14,
-                    color: const Color(0xFF7C4DFF),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    _selectedAction?.label ?? '',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF7C4DFF),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 操作标签
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFF7C4DFF).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(4),
             ),
-            const SizedBox(height: 12),
-            // 结果
-            Expanded(
-              child: SingleChildScrollView(
-                child: Text(
-                  _aiResult ?? '',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: isDark ? Colors.white : Colors.black87,
-                    height: 1.6,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _selectedAction?.icon ?? Icons.auto_awesome,
+                  size: 14,
+                  color: const Color(0xFF7C4DFF),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  _selectedAction?.label ?? '',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF7C4DFF),
+                    fontWeight: FontWeight.w500,
                   ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          // 结果
+          SizedBox(
+            height: 200,
+            child: SingleChildScrollView(
+              child: Text(
+                _aiResult ?? '',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isDark ? Colors.white : Colors.black87,
+                  height: 1.6,
+                ),
                 ),
               ),
             ),
@@ -443,18 +443,16 @@ class _AiSelectionEditMobileState extends State<AiSelectionEditMobile>
             const SizedBox(height: 8),
           ],
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildDiffView(bool isDark) {
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 图例
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 图例
             Row(
               children: [
                 _legendItem(Colors.green, '新增'),
@@ -552,8 +550,7 @@ class _AiSelectionEditMobileState extends State<AiSelectionEditMobile>
             const SizedBox(height: 8),
           ],
         ),
-      ),
-    );
+      );
   }
 
   Widget _legendItem(Color color, String label) {

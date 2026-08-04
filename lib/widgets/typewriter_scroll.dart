@@ -185,7 +185,7 @@ class TypewriterModeIndicator extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                isEnabled ? Icons.typewriter : Icons.typewriter_outlined,
+                isEnabled ? Icons.edit_note : Icons.edit_note,
                 size: 14,
                 color: isEnabled
                     ? Theme.of(context).colorScheme.primary

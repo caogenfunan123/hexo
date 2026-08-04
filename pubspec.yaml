@@ -39,6 +39,8 @@ dependencies:
   gbk_codec: ^0.4.0
   # ZIP 压缩/解压 (DOCX 导入导出)
   archive: ^3.6.1
+  # 加密（站点加密服务）
+  pointycastle: ^3.9.1
 
 flutter:
   uses-material-design: true

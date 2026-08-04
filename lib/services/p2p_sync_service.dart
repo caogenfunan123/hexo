@@ -115,7 +115,7 @@ class P2PSyncService {
       StreamController<String>.broadcast();
 
   /// 回调：当接收到文件时
-  void Function(P2PFileEntry entry)? onFileReceived;
+  void Function(P2PFileEntry entry)? onFileReceivedCallback;
 
   P2PSyncService({
     String? deviceId,
@@ -345,7 +345,7 @@ class P2PSyncService {
 
           for (final file in files) {
             _fileReceivedController.add(file);
-            onFileReceived?.call(file);
+            onFileReceivedCallback?.call(file);
           }
 
           _log('收到 ${files.length} 个文件');
