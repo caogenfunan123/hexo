@@ -196,7 +196,10 @@ jobs:
       - run: flutter pub cache repair
       - run: flutter pub get
       - name: Build Windows
-        run: flutter build windows --release --target=lib/desktop/desktop_main.dart 2>&1 | Tee-Object -FilePath build-windows.log
+        shell: pwsh
+        run: |
+          flutter build windows --release --target=lib/desktop/desktop_main.dart 2>&1 | Tee-Object -FilePath build-windows.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload Windows build log
         if: always()
