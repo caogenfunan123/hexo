@@ -152,14 +152,6 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
               cs: cs,
               isDark: isDark,
             ),
-            if (bus.onFocusOverlay != null)
-              _titleBarButton(
-                icon: bus.focusOverlayEnabled ? Icons.center_focus_strong : Icons.center_focus_weak,
-                tooltip: bus.focusOverlayEnabled ? '退出专注覆盖层' : '专注覆盖层',
-                onTap: bus.onFocusOverlay!,
-                cs: cs,
-                isDark: isDark,
-              ),
             _titleBarButton(
               icon: isDark ? Icons.light_mode : Icons.dark_mode_outlined,
               tooltip: '切换主题',

@@ -229,9 +229,6 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ── 新功能：打字机滚动 ──
   late final TypewriterScrollController _typewriterCtrl;
 
-  // ── 新功能：专注模式覆盖层 ──
-  bool _focusModeOverlayEnabled = false;
-
   // ── 新功能：横竖屏状态保持 ──
   late final EditorStateManager _orientationManager;
 
@@ -7027,8 +7024,6 @@ $htmlContent
     onToggleLeftPanel: _toggleLeftPanel,
     onToggleRightDrawer: _toggleRightDrawer,
     onThemeToggle: _toggleTheme,
-    onFocusOverlay: () => setState(() => _focusModeOverlayEnabled = !_focusModeOverlayEnabled),
-    focusOverlayEnabled: _focusModeOverlayEnabled,
     // 同步 & 发布
     onSync: _handleSync,
     onPublish: _handlePublish,
@@ -7080,15 +7075,11 @@ $htmlContent
   /// 主体三栏区域
   Widget _buildMainArea(LayoutController layout) {
     return Expanded(
-      child: FocusModeOverlay(
-        enabled: _focusModeOverlayEnabled,
-        onExit: () => setState(() => _focusModeOverlayEnabled = false),
-        child: switch (layout.workMode) {
-          WorkMode.focus => _buildFocusEditor(),
-          WorkMode.source => _buildSourceEditor(),
-          _ => _buildWorkspaceLayout(layout),
-        },
-      ),
+      child: switch (layout.workMode) {
+        WorkMode.focus => _buildFocusEditor(),
+        WorkMode.source => _buildSourceEditor(),
+        _ => _buildWorkspaceLayout(layout),
+      },
     );
   }
 

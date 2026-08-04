@@ -64,8 +64,6 @@ class ShellActionBus {
   final VoidCallback onToggleLeftPanel;
   final VoidCallback onToggleRightDrawer;
   final VoidCallback onThemeToggle;
-  final VoidCallback onFocusOverlay;
-  final bool focusOverlayEnabled;
 
   // ── 同步 & 发布 ──
   final VoidCallback onSync;
@@ -115,8 +113,6 @@ class ShellActionBus {
     required this.onToggleLeftPanel,
     required this.onToggleRightDrawer,
     required this.onThemeToggle,
-    required this.onFocusOverlay,
-    this.focusOverlayEnabled = false,
     // 同步 & 发布
     required this.onSync,
     required this.onPublish,
