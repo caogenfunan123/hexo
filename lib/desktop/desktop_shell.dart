@@ -6394,7 +6394,6 @@ PLACEHOLDER
       CommandItem(label: '帮助 / 快捷键速查', category: '帮助', shortcut: 'F1', icon: Icons.help_outline, onExecute: () => _showHelpDialog()),
     ];
   }
-  }
 
   // ============================================================
   // 另存为到本地目录
