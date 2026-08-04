@@ -66,6 +66,7 @@ jobs:
 
       - name: Build APK
         run: |
+          set -o pipefail
           flutter clean
           flutter pub get
           flutter build apk --release --no-android-gradle-daemon 2>&1 | tee /tmp/build.log

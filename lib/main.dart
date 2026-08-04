@@ -487,7 +487,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       _searchIsolate = FullTextSearchIsolate(logService);
       _recycleBin = RecycleBinService();
       await _recycleBin!.init(root);
-      _snapshotService = VersionSnapshotService(root);
+      _snapshotService = VersionSnapshotService(logService);
     } catch (e) {
       debugPrint('Init new services error: $e');
     }
@@ -1610,13 +1610,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => MobileRecycleBinScreen(
         recycleBinService: _recycleBin!,
-        onRestore: (article) {
-          setState(() {
-            drafts.add(article);
-            drafts.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-          });
-          _doc.setDrafts(drafts);
-          _showToast('已恢复: ${article.title.isNotEmpty ? article.title : "(无标题)"}');
+        onRestore: (entryId) {
+          _showToast('已恢复 #$entryId');
         },
       ),
     ));
@@ -1631,7 +1626,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         articleTitle: article.title,
         currentContent: _doc.contentCtrl.text,
         snapshotService: _snapshotService!,
-        onRestoreSnapshot: (snapshotContent) {
+        onRestore: (snapshotContent) {
           _doc.contentCtrl.text = snapshotContent;
           _onContentChanged();
           _showToast('快照已恢复');
