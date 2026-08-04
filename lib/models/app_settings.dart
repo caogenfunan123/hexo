@@ -139,10 +139,11 @@ class AppSettings {
   }
 
   // ============================================================
-  // copyWith
+  // copyWith — 同时支持子对象和扁平参数（向后兼容）
   // ============================================================
 
   AppSettings copyWith({
+    // ── 子对象（推荐） ──
     GitHubSettings? github,
     AiSettings? ai,
     ProxySettings? proxy,
@@ -151,13 +152,181 @@ class AppSettings {
     List<BlogSiteConfig>? blogSiteConfigs,
     String? activeSiteId,
     String? activeRepoId,
+    // ── 扁平参数（向后兼容旧代码） ──
+    // GitHubSettings
+    String? defaultToken,
+    List<GithubTokenProfile>? githubTokens,
+    String? activeGithubTokenId,
+    String? imageBedType,
+    String? imageBedToken,
+    String? imageBedOwner,
+    String? imageBedRepo,
+    String? imageBedBranch,
+    String? imageBedPath,
+    String? imageBedCdn,
+    bool? autoCompressImage,
+    int? compressQuality,
+    int? compressMaxWidth,
+    // AiSettings
+    String? aiProvider,
+    String? aiApiKey,
+    String? aiBaseUrl,
+    String? aiModel,
+    List<AiProfile>? aiProfiles,
+    String? activeAiProfileId,
+    String? defaultModelId,
+    String? defaultModelBase,
+    // ProxySettings
+    bool? proxyEnabled,
+    String? proxyHost,
+    int? proxyPort,
+    String? proxyUsername,
+    String? proxyPassword,
+    bool? proxyApplyToAi,
+    // SyncSettings
+    bool? autoSaveEnabled,
+    int? autoSaveIntervalSeconds,
+    String? autoSaveDir,
+    String? backupDir,
+    String? webdavUrl,
+    String? webdavUsername,
+    String? webdavPassword,
+    String? webdavFolder,
+    bool? webdavAutoSyncEnabled,
+    int? webdavAutoSyncIntervalSeconds,
+    bool? webdavSyncWifiOnly,
+    bool? restoreSession,
+    bool? offlineMode,
+    // UiSettings
+    String? siteAvatar,
+    String? siteName,
+    String? siteBio,
+    String? siteHome,
+    String? siteAbout,
+    String? siteGuestbook,
+    String? siteNow,
+    String? siteWorks,
+    int? themeColor,
+    bool? nightEyeProtection,
+    double? nightEyeIntensity,
+    int? httpTimeoutSeconds,
+    bool? allowInsecureHttps,
+    List<String>? statusPresets,
+    String? cloudflareDeployHook,
   }) {
+    // 如果有扁平参数传入，构建对应的子对象
+    final bool hasGitHubFlat = githubTokens != null || activeGithubTokenId != null ||
+        defaultToken != null || imageBedOwner != null || imageBedRepo != null ||
+        imageBedToken != null || imageBedBranch != null || imageBedPath != null ||
+        imageBedCdn != null || imageBedType != null || autoCompressImage != null ||
+        compressQuality != null || compressMaxWidth != null;
+    final bool hasAiFlat = aiProfiles != null || activeAiProfileId != null ||
+        defaultModelId != null || defaultModelBase != null ||
+        aiProvider != null || aiApiKey != null || aiBaseUrl != null || aiModel != null;
+    final bool hasProxyFlat = proxyEnabled != null || proxyHost != null ||
+        proxyPort != null || proxyUsername != null || proxyPassword != null ||
+        proxyApplyToAi != null;
+    final bool hasSyncFlat = autoSaveEnabled != null ||
+        autoSaveIntervalSeconds != null || autoSaveDir != null ||
+        backupDir != null || webdavUrl != null || webdavUsername != null ||
+        webdavPassword != null || webdavFolder != null ||
+        webdavAutoSyncEnabled != null || webdavAutoSyncIntervalSeconds != null ||
+        webdavSyncWifiOnly != null || restoreSession != null || offlineMode != null;
+    final bool hasUiFlat = siteName != null || siteBio != null ||
+        siteAvatar != null || siteHome != null || siteAbout != null ||
+        siteGuestbook != null || siteNow != null || siteWorks != null ||
+        themeColor != null || nightEyeProtection != null ||
+        nightEyeIntensity != null || httpTimeoutSeconds != null ||
+        allowInsecureHttps != null || statusPresets != null ||
+        cloudflareDeployHook != null;
+
+    final GitHubSettings effectiveGitHub = github ??
+        (hasGitHubFlat
+            ? this.github.copyWith(
+                defaultToken: defaultToken,
+                githubTokens: githubTokens,
+                activeGithubTokenId: activeGithubTokenId,
+                imageBedType: imageBedType,
+                imageBedToken: imageBedToken,
+                imageBedOwner: imageBedOwner,
+                imageBedRepo: imageBedRepo,
+                imageBedBranch: imageBedBranch,
+                imageBedPath: imageBedPath,
+                imageBedCdn: imageBedCdn,
+                autoCompressImage: autoCompressImage,
+                compressQuality: compressQuality,
+                compressMaxWidth: compressMaxWidth,
+              )
+            : this.github);
+    final AiSettings effectiveAi = ai ??
+        (hasAiFlat
+            ? this.ai.copyWith(
+                aiProvider: aiProvider,
+                aiApiKey: aiApiKey,
+                aiBaseUrl: aiBaseUrl,
+                aiModel: aiModel,
+                aiProfiles: aiProfiles,
+                activeAiProfileId: activeAiProfileId,
+                defaultModelId: defaultModelId,
+                defaultModelBase: defaultModelBase,
+              )
+            : this.ai);
+    final ProxySettings effectiveProxy = proxy ??
+        (hasProxyFlat
+            ? this.proxy.copyWith(
+                proxyEnabled: proxyEnabled,
+                proxyHost: proxyHost,
+                proxyPort: proxyPort,
+                proxyUsername: proxyUsername,
+                proxyPassword: proxyPassword,
+                proxyApplyToAi: proxyApplyToAi,
+              )
+            : this.proxy);
+    final SyncSettings effectiveSync = sync ??
+        (hasSyncFlat
+            ? this.sync.copyWith(
+                autoSaveEnabled: autoSaveEnabled,
+                autoSaveIntervalSeconds: autoSaveIntervalSeconds,
+                autoSaveDir: autoSaveDir,
+                backupDir: backupDir,
+                webdavUrl: webdavUrl,
+                webdavUsername: webdavUsername,
+                webdavPassword: webdavPassword,
+                webdavFolder: webdavFolder,
+                webdavAutoSyncEnabled: webdavAutoSyncEnabled,
+                webdavAutoSyncIntervalSeconds: webdavAutoSyncIntervalSeconds,
+                webdavSyncWifiOnly: webdavSyncWifiOnly,
+                restoreSession: restoreSession,
+                offlineMode: offlineMode,
+              )
+            : this.sync);
+    final UiSettings effectiveUi = ui ??
+        (hasUiFlat
+            ? this.ui.copyWith(
+                siteAvatar: siteAvatar,
+                siteName: siteName,
+                siteBio: siteBio,
+                siteHome: siteHome,
+                siteAbout: siteAbout,
+                siteGuestbook: siteGuestbook,
+                siteNow: siteNow,
+                siteWorks: siteWorks,
+                themeColor: themeColor,
+                nightEyeProtection: nightEyeProtection,
+                nightEyeIntensity: nightEyeIntensity,
+                httpTimeoutSeconds: httpTimeoutSeconds,
+                allowInsecureHttps: allowInsecureHttps,
+                statusPresets: statusPresets,
+                cloudflareDeployHook: cloudflareDeployHook,
+              )
+            : this.ui);
+
     return AppSettings(
-      github: github ?? this.github,
-      ai: ai ?? this.ai,
-      proxy: proxy ?? this.proxy,
-      sync: sync ?? this.sync,
-      ui: ui ?? this.ui,
+      github: effectiveGitHub,
+      ai: effectiveAi,
+      proxy: effectiveProxy,
+      sync: effectiveSync,
+      ui: effectiveUi,
       blogSiteConfigs: blogSiteConfigs ?? this.blogSiteConfigs,
       activeSiteId: activeSiteId ?? this.activeSiteId,
       activeRepoId: activeRepoId ?? this.activeRepoId,
