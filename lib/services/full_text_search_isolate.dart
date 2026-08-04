@@ -126,6 +126,9 @@ class FullTextSearchIsolate {
   /// 取消标志，用于超时或手动取消后的状态同步
   bool _cancelled = false;
 
+  /// 进度端口订阅
+  StreamSubscription<dynamic>? _progressSubscription;
+
   FullTextSearchIsolate(this._logService);
 
   /// 取消当前正在进行的搜索
@@ -133,6 +136,8 @@ class FullTextSearchIsolate {
   /// 立即终止 Isolate 并清理资源。已取消的搜索返回空结果列表。
   void cancel() {
     _cancelled = true;
+    _progressSubscription?.cancel();
+    _progressSubscription = null;
     _currentIsolate?.kill(priority: Isolate.immediate);
     _currentIsolate = null;
     _logService.add('全文检索(Isolate)', '搜索已取消', success: true);
@@ -177,7 +182,7 @@ class FullTextSearchIsolate {
     // 仅在调用方需要进度回调时创建进度端口
     if (onProgress != null) {
       progressPort = ReceivePort();
-      progressPort.listen((message) {
+      _progressSubscription = progressPort.listen((message) {
         if (message is SearchProgress) {
           onProgress(message);
         }

@@ -44,7 +44,7 @@ class SessionService {
     try {
       final f = await _sessionFile();
       await f.writeAsString(state.toJsonString());
-    } catch (_) {
+    } catch (e) { debugPrint('Session: saveSession failed: $e');
       // 静默失败
     }
   }
@@ -57,7 +57,7 @@ class SessionService {
       final content = await f.readAsString();
       _cached = SessionState.fromJsonString(content);
       return _cached;
-    } catch (_) {
+    } catch (e) { debugPrint('Session: loadSession failed: $e');
       return SessionState.empty;
     }
   }
@@ -68,7 +68,7 @@ class SessionService {
     try {
       final f = await _sessionFile();
       if (await f.exists()) await f.delete();
-    } catch (_) {}
+    } catch (e) { debugPrint('Session: clearSession failed: $e'); }
   }
 
   /// 保存自动保存草稿快照
@@ -139,7 +139,7 @@ class SessionService {
       try {
         final f = File(s.path);
         if (await f.exists()) await f.delete();
-      } catch (_) {}
+      } catch (e) { debugPrint('Session: cleanupSnapshots failed: $e'); }
     }
   }
 

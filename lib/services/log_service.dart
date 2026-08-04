@@ -107,7 +107,7 @@ class LogService extends ChangeNotifier {
       }
       final jsonList = merged.map((e) => e.toJson()).toList();
       await _logFile.writeAsString(const JsonEncoder.withIndent(null).convert(jsonList));
-    } catch (_) {
+    } catch (e) { debugPrint('LogService: write failed: $e');
       // 静默失败，不影响主流程
     }
   }
@@ -121,7 +121,7 @@ class LogService extends ChangeNotifier {
       if (content.isEmpty) return [];
       final list = jsonDecode(content) as List;
       return list.map((j) => LogEntry.fromJson(j as Map<String, dynamic>)).toList();
-    } catch (_) {
+    } catch (e) { debugPrint('LogService: rotate failed: $e');
       return [];
     }
   }
@@ -132,7 +132,7 @@ class LogService extends ChangeNotifier {
       for (final entry in fileLogs.take(_maxLogs)) {
         _logs.add(entry);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('LogService: cleanup failed: $e'); }
   }
 
   Future<void> _deleteLogFile() async {
@@ -141,6 +141,6 @@ class LogService extends ChangeNotifier {
       if (await _logFile.exists()) {
         await _logFile.delete();
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('LogService: init failed: $e'); }
   }
 }

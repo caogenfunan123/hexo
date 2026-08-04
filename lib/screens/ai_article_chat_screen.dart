@@ -60,30 +60,29 @@ class _AiArticleChatScreenState extends State<AiArticleChatScreen> {
             IconButton(
               icon: const Icon(Icons.delete_outline),
               tooltip: '清空对话',
-              onPressed: () {
-                showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('清空对话'),
-                    content: const Text('确定要清空当前对话历史吗？此操作不可撤销。'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('取消'),
+              onPressed: () async {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('清空聊天记录'),
+                        content: const Text('确认清空所有聊天记录？此操作不可撤销。'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('取消'),
+                          ),
+                          FilledButton(
+                            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('清空'),
+                          ),
+                        ],
                       ),
-                      FilledButton(
-                        style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text('清空'),
-                      ),
-                    ],
-                  ),
-                ).then((confirmed) {
-                  if (confirmed == true) {
-                    _chatKey.currentState?.clearHistory();
-                  }
-                });
-              },
+                    );
+                    if (confirmed == true) {
+                      _chatKey.currentState?.clearHistory();
+                    }
+                  },
             ),
           ],
         ),

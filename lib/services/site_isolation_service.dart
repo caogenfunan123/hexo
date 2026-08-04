@@ -276,7 +276,7 @@ class SiteIsolationService {
         await File(encryptedPath).writeAsString(encrypted);
         // 加密成功后删除原文
         await file.delete();
-      } catch (_) {
+      } catch (e) { debugPrint('SiteIsolation: save state failed: $e');
         // 加密失败，跳过此文件
       }
     }
@@ -310,7 +310,7 @@ class SiteIsolationService {
         await File(originalPath).writeAsString(decrypted);
         // 解密成功后删除加密文件
         await file.delete();
-      } catch (_) {
+      } catch (e) { debugPrint('SiteIsolation: load state failed: $e');
         // 解密失败，跳过此文件
       }
     }
@@ -343,7 +343,7 @@ class SiteIsolationService {
       try {
         SiteEncryptionService.decrypt(encrypted, password);
         return true;
-      } catch (_) {
+      } catch (e) { debugPrint('SiteIsolation: load index failed: $e');
         return false;
       }
     }
@@ -424,7 +424,7 @@ class SiteIsolationService {
         final config = IsolatedSiteConfig.fromJson(Map<String, dynamic>.from(item));
         _siteConfigs[config.id] = config;
       }
-    } catch (_) {
+    } catch (e) { debugPrint('SiteIsolation: save config failed: $e');
       // 索引文件损坏，从各站点目录恢复
       await _recoverIndex();
     }
@@ -455,7 +455,7 @@ class SiteIsolationService {
             final config =
                 IsolatedSiteConfig.fromJson(jsonDecode(json) as Map<String, dynamic>);
             _siteConfigs[config.id] = config;
-          } catch (_) {
+          } catch (e) { debugPrint('SiteIsolation: delete site failed: $e');
             // 跳过损坏的配置
           }
         }

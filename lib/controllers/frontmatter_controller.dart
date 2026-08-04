@@ -60,8 +60,9 @@ class FrontMatterData {
     buffer.writeln('---');
     buffer.writeln('title: ${_escapeYaml(title)}');
     if (date != null) {
+      final d = date!;
       buffer.writeln(
-          'date: ${date!.toIso8601String().split('T').first} ${date!.toIso8601String().split('T').last.substring(0, 8)}');
+          'date: ${d.toIso8601String().split('T').first} ${d.toIso8601String().split('T').last.substring(0, 8)}');
     }
     if (tags.isNotEmpty) {
       buffer.writeln('tags:');
@@ -76,10 +77,12 @@ class FrontMatterData {
       }
     }
     if (cover != null && cover!.isNotEmpty) {
-      buffer.writeln('cover: ${_escapeYaml(cover!)}');
+      final c = cover!;
+      buffer.writeln('cover: ${_escapeYaml(c)}');
     }
     if (template != null && template!.isNotEmpty) {
-      buffer.writeln('template: ${_escapeYaml(template!)}');
+      final t = template!;
+      buffer.writeln('template: ${_escapeYaml(t)}');
     }
     buffer.writeln('type: $articleType');
     buffer.writeln('draft: $isDraft');

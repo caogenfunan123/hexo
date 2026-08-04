@@ -301,7 +301,7 @@ class EditorController extends ChangeNotifier {
     for (final task in tasks) {
       try {
         // 实际保存逻辑由外部注入，这里只管理队列
-      } catch (_) {
+      } catch (e) { debugPrint('EditorController: flush save failed (retry ${task.retryCount}/$_maxRetries): $e');
         if (task.retryCount < _maxRetries) {
           task.retryCount++;
           _saveQueue.add(task);

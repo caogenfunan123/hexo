@@ -49,6 +49,7 @@ class _SyncScreenState extends State<SyncScreen> {
   }
 
   Future<void> _loadSync() async {
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -80,6 +81,7 @@ class _SyncScreenState extends State<SyncScreen> {
     final article = widget.localArticles.where((a) => a.id == entry.localArticleId).firstOrNull;
     if (article == null) return;
 
+    if (!mounted) return;
     setState(() => _loading = true);
     try {
       await widget.syncService.pushToRemote(
@@ -107,6 +109,7 @@ class _SyncScreenState extends State<SyncScreen> {
   Future<void> _pullToLocal(SyncEntry entry) async {
     if (entry.remotePostId == null) return;
 
+    if (!mounted) return;
     setState(() => _loading = true);
     try {
       // 生成新文章 ID

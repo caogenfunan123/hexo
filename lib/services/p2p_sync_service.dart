@@ -228,7 +228,8 @@ class P2PSyncService {
     Datagram? datagram;
     try {
       datagram = socket.receive();
-    } catch (_) {
+    } catch (e) {
+      _log('发现数据包接收失败: $e');
       return;
     }
     if (datagram == null) return;
@@ -269,7 +270,9 @@ class P2PSyncService {
           }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      _log('发现数据包处理失败: $e');
+    }
   }
 
   void _startBroadcast() {
@@ -292,7 +295,9 @@ class P2PSyncService {
         InternetAddress('255.255.255.255'),
         _discoveryPort,
       );
-    } catch (_) {}
+    } catch (e) {
+      _log('广播发送失败: $e');
+    }
   }
 
   void _startCleanup() {
@@ -377,7 +382,9 @@ class P2PSyncService {
         request.response.statusCode = 500;
         request.response.write(jsonEncode({'error': e.toString()}));
         await request.response.close();
-      } catch (_) {}
+      } catch (e) {
+        _log('HTTP 错误响应发送失败: $e');
+      }
     }
   }
 

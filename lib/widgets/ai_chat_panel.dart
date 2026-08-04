@@ -147,7 +147,7 @@ class AiChatPanelState extends State<AiChatPanel> {
     try {
       await _skillManager.init(await storage.root);
       _toolsInitialized = true;
-    } catch (_) {}
+    } catch (e) { debugPrint('AiChat: message send failed: $e'); }
   }
 
   String get _chatFileKey => 'ai_chat_${widget.sessionType.name}.json';
@@ -221,7 +221,7 @@ class AiChatPanelState extends State<AiChatPanel> {
           }
         }
       }
-    } catch (_) {
+    } catch (e) { debugPrint('AiChat: stream error: $e');
       if (widget.initialMessage != null && _messages.isEmpty) {
         _addSystemMessage(widget.initialMessage!);
       }
@@ -237,7 +237,7 @@ class AiChatPanelState extends State<AiChatPanel> {
       final context = widget.dispatcher.chatHistory;
       final json = jsonEncode({'context': context});
       await file.writeAsString(json);
-    } catch (_) {}
+    } catch (e) { debugPrint('AiChat: stream close failed: $e'); }
   }
 
   void _initSession() {
@@ -597,7 +597,7 @@ class AiChatPanelState extends State<AiChatPanel> {
     try {
       final file = File('${(await storage.root).path}/$_chatFileKey');
       if (await file.exists()) await file.delete();
-    } catch (_) {}
+    } catch (e) { debugPrint('AiChat: model load failed: $e'); }
   }
 
   /// 解析 AI 回复中的【文件路径】标记，提取文件操作
