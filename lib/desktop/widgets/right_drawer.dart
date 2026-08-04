@@ -4,6 +4,8 @@ library;
 
 import 'package:flutter/material.dart';
 import '../../controllers/layout_controller.dart' show RightDrawerTab;
+import '../../services/storage_service.dart' show SnippetItem;
+import 'snippet_panel.dart';
 export '../../controllers/layout_controller.dart' show RightDrawerTab;
 
 class DesktopRightDrawer extends StatelessWidget {
@@ -19,6 +21,10 @@ class DesktopRightDrawer extends StatelessWidget {
   final TextEditingController? dateCtrl;
   final Widget? aiChatPanel;
   final List<String> syncLogs;
+  final List<SnippetItem>? snippets;
+  final ValueChanged<String>? onSnippetInsert;
+  final ValueChanged<SnippetItem>? onSnippetDelete;
+  final VoidCallback? onSnippetAdd;
 
   const DesktopRightDrawer({
     super.key,
@@ -33,6 +39,10 @@ class DesktopRightDrawer extends StatelessWidget {
     this.dateCtrl,
     this.aiChatPanel,
     this.syncLogs = const [],
+    this.snippets,
+    this.onSnippetInsert,
+    this.onSnippetDelete,
+    this.onSnippetAdd,
   });
 
   @override
@@ -81,6 +91,7 @@ class DesktopRightDrawer extends StatelessWidget {
         children: [
           _tabButton(RightDrawerTab.outline, Icons.list_alt, '大纲', cs, isDark),
           _tabButton(RightDrawerTab.frontMatter, Icons.tune, '属性', cs, isDark),
+          _tabButton(RightDrawerTab.snippets, Icons.content_paste, '片段', cs, isDark),
           _tabButton(RightDrawerTab.aiChat, Icons.auto_awesome, 'AI', cs, isDark),
           _tabButton(RightDrawerTab.syncLog, Icons.sync, '日志', cs, isDark),
           const Spacer(),
@@ -151,6 +162,8 @@ class DesktopRightDrawer extends StatelessWidget {
         return _buildOutline(context, isDark);
       case RightDrawerTab.frontMatter:
         return _buildFrontMatter(context, isDark);
+      case RightDrawerTab.snippets:
+        return _buildSnippets(context, isDark);
       case RightDrawerTab.aiChat:
         return _buildAiChat(context, isDark);
       case RightDrawerTab.syncLog:
@@ -316,6 +329,46 @@ class DesktopRightDrawer extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSnippets(BuildContext context, bool isDark) {
+    if (snippets == null || snippets!.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.content_paste_off,
+              size: 36,
+              color: isDark ? Colors.white.withOpacity(0.1) : const Color(0xFFE5E7EB),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '暂无片段',
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '点击 + 添加常用 Markdown 片段',
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return SnippetPanel(
+      snippets: snippets!,
+      onInsert: (content) => onSnippetInsert?.call(content),
+      onDelete: onSnippetDelete,
+      onAddNew: onSnippetAdd,
+      isDark: isDark,
     );
   }
 

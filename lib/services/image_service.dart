@@ -200,6 +200,25 @@ class ImageService {
   }
 
   String markdownImage(String url, {String alt = 'image'}) => '![$alt]($url)';
+
+  /// 保存图片到本地项目目录（source/images/）
+  /// 返回相对路径，如 images/2024-01-01-abc123.png
+  Future<String> saveImageLocally(
+    Uint8List bytes, {
+    required String projectDir,
+    String subDir = 'images',
+    String? fileName,
+  }) async {
+    final dir = Directory('$projectDir/source/$subDir');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+
+    final name = fileName ?? '${DateTime.now().millisecondsSinceEpoch}.png';
+    final file = File('${dir.path}/$name');
+    await file.writeAsBytes(bytes);
+    return '$subDir/$name';
+  }
 }
 
 /// 批量预处理结果

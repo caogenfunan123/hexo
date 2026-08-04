@@ -35,6 +35,7 @@ enum MobilePage {
 enum RightDrawerTab {
   outline,
   frontMatter,
+  snippets,
   aiChat,
   syncLog,
 }

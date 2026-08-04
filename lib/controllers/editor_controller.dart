@@ -73,7 +73,8 @@ class SaveTask {
 class CursorPosition {
   final int line;
   final int column;
-  const CursorPosition({required this.line, required this.column});
+  final int totalLines;
+  const CursorPosition({required this.line, required this.column, this.totalLines = 0});
 
   @override
   String toString() => '行 $line 列 $column';
@@ -196,8 +197,8 @@ class EditorController extends ChangeNotifier {
   }
 
   // ── 光标 ──
-  void updateCursorPosition(int line, int column) {
-    _cursorPos = CursorPosition(line: line, column: column);
+  void updateCursorPosition(int line, int column, {int totalLines = 0}) {
+    _cursorPos = CursorPosition(line: line, column: column, totalLines: totalLines);
     notifyListeners();
   }
 

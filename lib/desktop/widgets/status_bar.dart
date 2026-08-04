@@ -1,5 +1,5 @@
 /// 桌面端底部状态栏
-/// 专业桌面端设计：简洁的信息展示
+/// 专业桌面端设计：简洁的信息展示 + 自动保存指示器
 library;
 
 import 'package:flutter/material.dart';
@@ -14,6 +14,9 @@ class DesktopStatusBar extends StatelessWidget {
   final int charCount;
   final String siteName;
   final bool isSyncing;
+  final bool isSaved; // 自动保存指示器
+  final int lineCount; // 总行数
+  final String readTime; // 阅读时间
 
   const DesktopStatusBar({
     super.key,
@@ -25,6 +28,9 @@ class DesktopStatusBar extends StatelessWidget {
     this.charCount = 0,
     this.siteName = '',
     this.isSyncing = false,
+    this.isSaved = true,
+    this.lineCount = 0,
+    this.readTime = '',
   });
 
   @override
@@ -48,6 +54,11 @@ class DesktopStatusBar extends StatelessWidget {
       ),
       child: Row(
         children: [
+          // 保存状态指示器
+          _buildSaveIndicator(isDark, cs),
+
+          const SizedBox(width: 8),
+
           // 工作模式切换
           _modeButton(
             label: '工作台',
@@ -92,6 +103,13 @@ class DesktopStatusBar extends StatelessWidget {
             ),
           ],
 
+          // 行数
+          const SizedBox(width: 12),
+          _statusLabel(
+            '$lineCount 行',
+            isDark: isDark,
+          ),
+
           // 字数统计
           const SizedBox(width: 12),
           _statusLabel(
@@ -103,6 +121,16 @@ class DesktopStatusBar extends StatelessWidget {
             '$charCount 字',
             isDark: isDark,
           ),
+
+          // 阅读时间
+          if (readTime.isNotEmpty) ...[
+            const SizedBox(width: 12),
+            _statusLabel(
+              readTime,
+              icon: Icons.timer_outlined,
+              isDark: isDark,
+            ),
+          ],
 
           // 同步状态
           const SizedBox(width: 12),
@@ -119,6 +147,46 @@ class DesktopStatusBar extends StatelessWidget {
               isDark: isDark,
             ),
           const SizedBox(width: 12),
+        ],
+      ),
+    );
+  }
+
+  /// 自动保存指示器圆点
+  Widget _buildSaveIndicator(bool isDark, ColorScheme cs) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isSaved
+                  ? (isDark ? const Color(0xFF4ADE80) : const Color(0xFF22C55E))
+                  : (isDark ? const Color(0xFFFBBF24) : const Color(0xFFF59E0B)),
+              boxShadow: isSaved ? null : [
+                BoxShadow(
+                  color: (isDark ? const Color(0xFFFBBF24) : const Color(0xFFF59E0B)).withOpacity(0.4),
+                  blurRadius: 4,
+                  spreadRadius: 0.5,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            isSaved ? '已保存' : '未保存',
+            style: TextStyle(
+              fontSize: 10,
+              color: isSaved
+                  ? (isDark ? const Color(0xFF4ADE80) : const Color(0xFF22C55E))
+                  : (isDark ? const Color(0xFFFBBF24) : const Color(0xFFF59E0B)),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ],
       ),
     );
