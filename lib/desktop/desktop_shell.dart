@@ -1507,7 +1507,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             child: LayoutBuilder(
               builder: (ctx, constraints) {
                 // 确保编辑器至少占满可用高度，避免光标从中间开始
-                final minLines = ((constraints.maxHeight - 80) / (14.5 * 1.6)).floor().clamp(1, 50);
+                // 处理无界约束（ScrollView 中 maxHeight 为 infinity）
+                final minLines = constraints.maxHeight.isFinite
+                    ? ((constraints.maxHeight - 80) / (14.5 * 1.6)).floor().clamp(1, 50)
+                    : 15;
                 return TextField(
                   controller: _doc.contentCtrl,
                   focusNode: _doc.contentFocus,

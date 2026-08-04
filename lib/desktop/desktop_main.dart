@@ -76,7 +76,6 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
   @override
   void dispose() {
     windowManager.removeListener(this);
-    _editorCtrl.removeListener(_onShortcutsChanged);
     // hotKeyManager.unregisterAll();
     _docCtrl.dispose();
     _layoutCtrl.dispose();
@@ -260,31 +259,9 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
   /// 使用 Flutter 内置 Shortcuts 系统替代 hotkey_manager
   /// 快捷键仅在应用窗口获得焦点时生效
   Map<ShortcutActivator, VoidCallback> _shortcuts = {};
-  Map<String, String> _lastCustomShortcuts = {};
 
   void _initShortcuts() {
-    // 监听编辑器快捷键变更
-    _editorCtrl.addListener(_onShortcutsChanged);
     _rebuildShortcuts();
-  }
-
-  void _onShortcutsChanged() {
-    final current = _editorCtrl.customShortcuts;
-    // 浅比较避免不必要的重建
-    bool changed = _lastCustomShortcuts.length != current.length;
-    if (!changed) {
-      for (final entry in current.entries) {
-        if (_lastCustomShortcuts[entry.key] != entry.value) {
-          changed = true;
-          break;
-        }
-      }
-    }
-    if (changed) {
-      _lastCustomShortcuts = Map<String, String>.from(current);
-      _rebuildShortcuts();
-      if (mounted) setState(() {});
-    }
   }
 
   /// 重建快捷键绑定（合并默认 + 自定义）
@@ -311,6 +288,7 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
     }
 
     _shortcuts = newShortcuts;
+    if (mounted) setState(() {});
   }
 
   /// 默认快捷键绑定（不可被覆盖的硬编码映射）
