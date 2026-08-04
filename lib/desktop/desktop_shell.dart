@@ -8159,4 +8159,4 @@ class _ConflictResolutionDialogState extends State<_ConflictResolutionDialog> {
       ),
     );
   }
-})
+}
