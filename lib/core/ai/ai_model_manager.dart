@@ -191,6 +191,44 @@ class AiModelManager {
         group: group,
       )).toList();
     }
-    throw Exception('需要提供模型拉取器');
+    // 默认：尝试从 /v1/models 端点拉取模型列表
+    try {
+      final uri = Uri.parse('$apiBase${apiPath ?? '/v1/models'}');
+      final client = HttpClient();
+      try {
+        final req = await client.getUrl(uri);
+        req.headers.set('Content-Type', 'application/json');
+        if (useBearer) {
+          req.headers.set('Authorization', 'Bearer $apiKey');
+        } else {
+          req.headers.set('Authorization', 'ApiKey $apiKey');
+        }
+        final res = await req.close();
+        if (res.statusCode == 200) {
+          final body = await res.transform(utf8.decoder).join();
+          final data = jsonDecode(body) as Map<String, dynamic>;
+          final models = data['data'] as List?;
+          if (models != null) {
+            return models.map((m) {
+              final id = (m as Map<String, dynamic>)['id']?.toString() ?? '';
+              return AiModelEntity(
+                modelId: id,
+                modelName: id,
+                apiBase: apiBase,
+                apiKey: apiKey,
+                apiPath: apiPath,
+                useBearer: useBearer,
+                group: group,
+              );
+            }).toList();
+          }
+        }
+      } finally {
+        client.close();
+      }
+    } catch (_) {
+      // 降级：返回空列表，不抛异常
+    }
+    return [];
   }
 }

@@ -73,7 +73,6 @@ import 'theme/app_theme.dart';
 
 // ── 移动端新功能集成 ──
 import 'widgets/typewriter_scroll.dart';
-import 'widgets/focus_mode_overlay.dart';
 import 'widgets/editor_animations.dart';
 import 'widgets/unified_markdown_styles.dart';
 import 'widgets/orientation_guard.dart';
@@ -82,8 +81,8 @@ import 'screens/mobile_diff_screen.dart';
 import 'screens/mobile_recycle_bin_screen.dart';
 import 'screens/mobile_snapshot_screen.dart';
 import 'services/site_isolation_service.dart';
-import 'services/p2p_mdns_service.dart';
-import 'services/p2p_incremental_sync.dart';
+import 'services/p2p_sync_service.dart';
+import 'screens/p2p_sync_screen.dart';
 import 'services/template_sync_service.dart';
 import 'services/full_text_search_isolate.dart';
 import 'services/recycle_bin_service.dart';
@@ -97,7 +96,8 @@ void main() {
 AppSettings loadInitialSettings() {
   try {
     return AppSettings.fromJson({});
-  } catch (_) {
+  } catch (e) {
+    debugPrint('Load initial settings error: $e');
     return AppSettings();
   }
 }
@@ -250,8 +250,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   // ── 新功能：站点隔离 + P2P + 模板同步 + 全文检索 ──
   SiteIsolationService? _siteIsolation;
-  P2PMdnsService? _p2pMdns;
-  P2PIncrementalSyncService? _p2pIncremental;
+  late final P2PSyncService _p2pSyncService;
   TemplateSyncService? _templateSync;
   FullTextSearchIsolate? _searchIsolate;
   RecycleBinService? _recycleBin;
@@ -341,6 +340,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     syncService = SyncService(logService);
     cloudSyncService = CloudSyncService(logService);
+    _p2pSyncService = P2PSyncService(deviceName: 'Mobile-${DateTime.now().millisecondsSinceEpoch}');
     _typewriterCtrl = TypewriterScrollController(
       scrollController: _editorScrollCtrl,
       lineHeight: 22.0,
@@ -362,8 +362,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     _editorScrollCtrl.dispose();
     _orientationManager.dispose();
     _searchIsolate?.cancel();
-    _p2pMdns?.stopDiscovery();
+    _p2pSyncService.dispose();
+    _templateSync?.dispose();
+    _siteIsolation?.dispose();
     siteManager.disposeAll();
+    cloudSyncService.dispose();
     cmsDraftService.close();
     super.dispose();
   }
@@ -480,14 +483,19 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     try {
       final root = await storage.root;
       _siteIsolation = SiteIsolationService(root);
+      await _siteIsolation!.init();
+      // 日志持久化
+      await logService.init(root);
       _templateSync = TemplateSyncService(
         templateDir: Directory('${root.path}/templates'),
         deviceId: 'mobile-${DateTime.now().millisecondsSinceEpoch}',
       );
+      await _templateSync!.init();
       _searchIsolate = FullTextSearchIsolate(logService);
       _recycleBin = RecycleBinService();
       await _recycleBin!.init(root);
       _snapshotService = VersionSnapshotService(logService);
+      await _snapshotService!.init(root);
     } catch (e) {
       debugPrint('Init new services error: $e');
     }
@@ -540,13 +548,46 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      // 三重落盘：APP 转入后台时强制冲刷所有等待中的保存任务
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive || state == AppLifecycleState.detached) {
+      // 三重落盘：APP 转入后台/被销毁时强制冲刷所有等待中的保存任务
       _flushAllPendingSaves();
       _autoSyncToCloud();
     } else if (state == AppLifecycleState.resumed) {
       _autoPullFromCloud();
     }
+  }
+
+  /// 打开 P2P 同步界面
+  void _openP2PSync() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => P2PSyncScreen(
+          p2pService: _p2pSyncService,
+          localArticles: drafts,
+          onFilesReceived: (files) {
+            for (final file in files) {
+              final existingIndex = drafts.indexWhere((d) => d.fileName() == file.path);
+              final article = Article(
+                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                title: file.path.replaceAll('.md', ''),
+                content: file.content,
+                createdAt: file.modifiedAt,
+                updatedAt: DateTime.now(),
+                isDraft: true,
+              );
+              if (existingIndex >= 0) {
+                drafts[existingIndex] = article;
+              } else {
+                drafts.add(article);
+              }
+            }
+            storage.saveDrafts(drafts);
+            if (mounted) setState(() {});
+            _showToast('已接收 ${files.length} 个文件');
+          },
+        ),
+      ),
+    );
   }
 
   /// 自动同步到云端（推送）
@@ -648,7 +689,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       } else if (session.pageType == SessionPageType.reader) {
         _openReader(article);
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Restore session error: $e');
+    }
   }
 
   Future<void> _saveSession(SessionPageType pageType) async {
@@ -4250,6 +4293,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   _drawerSection('管理'),
                   _drawerItem(2, Icons.cloud_outlined, '远程文章'),
                   _drawerItem(12, Icons.sync, '同步状态'),
+                  _drawerAction(Icons.wifi, 'P2P 同步', _openP2PSync),
                   _drawerItem(3, Icons.dashboard_outlined, '仪表盘'),
                   _drawerItem(5, Icons.history_outlined, '提交历史'),
                   const SizedBox(height: 8),
@@ -4920,46 +4964,42 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                     ]),
               ),
               const SizedBox(height: 10),
-              // ── 正文编辑区（集成新功能：专注模式 + 横竖屏防护 + 统一样式） ──
+              // ── 正文编辑区（集成新功能：横竖屏防护 + 统一样式） ──
               _editorCard(
                 padding: const EdgeInsets.all(14),
                 child: OrientationGuard(
                   enabled: true,
-                  child: FocusModeOverlay(
-                    enabled: _focusModeEnabled,
-                    onExit: () => setState(() => _focusModeEnabled = false),
-                    child: TextField(
-                      controller: _doc.contentCtrl,
-                      focusNode: _doc.contentFocus,
-                      minLines: 20,
-                      maxLines: null,
-                      keyboardType: TextInputType.multiline,
-                      onChanged: (_) {
-                        _onContentChanged();
-                        // 更新打字机光标位置
-                        final text = _doc.contentCtrl.text;
-                        final cursorPos = _doc.contentCtrl.selection.baseOffset;
-                        final textBefore = text.substring(0, cursorPos.clamp(0, text.length));
-                        final currentLine = '\n'.allMatches(textBefore).length;
-                        final totalLines = '\n'.allMatches(text).length + 1;
-                        _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
-                      },
-                      decoration: const InputDecoration(
-                        labelText: 'Markdown 正文',
-                        alignLabelWithHint: true,
-                        hintText: '支持 # 标题、**粗体**、代码块、列表...\n编辑完可存草稿或直接发布',
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                      ),
-                      style: createUnifiedMarkdownStyle(
-                        context: context,
-                        config: const UnifiedMarkdownStyleConfig(
-                          baseFontSize: 14.5,
-                          lineHeight: 1.6,
-                          fontFamily: 'monospace',
-                        ),
-                      ).p,
+                  child: TextField(
+                    controller: _doc.contentCtrl,
+                    focusNode: _doc.contentFocus,
+                    minLines: 20,
+                    maxLines: null,
+                    keyboardType: TextInputType.multiline,
+                    onChanged: (_) {
+                      _onContentChanged();
+                      // 更新打字机光标位置
+                      final text = _doc.contentCtrl.text;
+                      final cursorPos = _doc.contentCtrl.selection.baseOffset;
+                      final textBefore = text.substring(0, cursorPos.clamp(0, text.length));
+                      final currentLine = '\n'.allMatches(textBefore).length;
+                      final totalLines = '\n'.allMatches(text).length + 1;
+                      _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'Markdown 正文',
+                      alignLabelWithHint: true,
+                      hintText: '支持 # 标题、**粗体**、代码块、列表...\n编辑完可存草稿或直接发布',
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
                     ),
+                    style: createUnifiedMarkdownStyle(
+                      context: context,
+                      config: const UnifiedMarkdownStyleConfig(
+                        baseFontSize: 14.5,
+                        lineHeight: 1.6,
+                        fontFamily: 'monospace',
+                      ),
+                    ).p,
                   ),
                 ),
               ),

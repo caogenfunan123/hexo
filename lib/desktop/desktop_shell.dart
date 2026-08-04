@@ -96,8 +96,6 @@ import '../widgets/editor_animations.dart';
 import '../widgets/unified_markdown_styles.dart';
 import '../widgets/orientation_guard.dart';
 import '../services/site_isolation_service.dart';
-import '../services/p2p_mdns_service.dart';
-import '../services/p2p_incremental_sync.dart';
 import '../services/template_sync_service.dart';
 import '../services/full_text_search_isolate.dart';
 
@@ -130,8 +128,9 @@ import '../core/shared_bootstrap.dart';
 
 class DesktopShell extends StatefulWidget {
   final VoidCallback? onToggleAppTheme;
+  final VoidCallback? onShortcutsChanged;
 
-  const DesktopShell({super.key, this.onToggleAppTheme});
+  const DesktopShell({super.key, this.onToggleAppTheme, this.onShortcutsChanged});
 
   @override
   State<DesktopShell> createState() => DesktopShellState();
@@ -162,8 +161,6 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   late final FrontMatterService frontMatterService;
   late final P2PSyncService p2pSyncService;
   late final SiteIsolationService siteIsolation;
-  late final P2PMdnsService? p2pMdns;
-  late final P2PIncrementalSyncService? p2pIncremental;
   late final TemplateSyncService? templateSync;
   late final FullTextSearchIsolate? searchIsolate;
   late SiteManager siteManager;
@@ -312,10 +309,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     _focusScrollCtrl.dispose();
     _orientationManager.dispose();
     searchIsolate?.cancel();
-    p2pMdns?.stopDiscovery();
-    siteManager.disposeAll();
-    cmsDraftService.close();
     p2pSyncService.dispose();
+    templateSync?.dispose();
+    siteIsolation.dispose();
+    siteManager.disposeAll();
+    cloudSyncService.dispose();
+    cmsDraftService.close();
     super.dispose();
   }
 
@@ -339,12 +338,15 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     try {
       final (s, r, d, t, sn) = await _loadAppData();
       await _bootstrapCore(s, r, d, t, sn);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Bootstrap error: $e');
       if (mounted) _ui.setLoading(false);
     }
     try {
       await skillManager.init(await storage.root);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('SkillManager init error: $e');
+    }
     _loadRecentFiles();
     _loadEditorSettings();
     _initCloudSync();
@@ -434,10 +436,14 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     try {
       final root = await storage.root;
       siteIsolation = SiteIsolationService(root);
+      await siteIsolation.init();
+      // 日志持久化
+      await logService.init(root);
       templateSync = TemplateSyncService(
         templateDir: Directory('${root.path}/templates'),
         deviceId: 'desktop-${Platform.localHostname}',
       );
+      await templateSync!.init();
       searchIsolate = FullTextSearchIsolate(logService);
     } catch (e) {
       debugPrint('Init new services (desktop) error: $e');
@@ -466,7 +472,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       await recycleBinService.init(await storage.root);
       // 自动清理超过30天的回收站文件
       await recycleBinService.autoClean(30);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('RecycleBin init error: $e');
+    }
   }
 
   void _initVersionSnapshots() async {
@@ -474,13 +482,17 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       await versionSnapshotService.init(await storage.root);
       // 自动清理超过7天的快照
       await versionSnapshotService.autoClean(days: 7);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('VersionSnapshot init error: $e');
+    }
   }
 
   void _initFrontMatter() async {
     try {
       frontMatterService.refreshFromArticles(drafts);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('FrontMatter init error: $e');
+    }
   }
 
   AppSettings _ensureGithubTokensFromLegacy(AppSettings s, List<RepoConfig> repos) {
@@ -601,7 +613,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       await sessionService.cleanupSnapshots(articleId);
       await _saveDraft(_collect(draft: true));
       if (mounted) _showToast('草稿已自动保存');
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('AutoSave snapshot error: $e');
+    }
   }
 
   // ============================================================
@@ -629,7 +643,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     try {
       await cloudSyncService.pushDrafts(backend, drafts);
       await cloudSyncService.pushSyncMappings(backend, syncService);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Cloud push drafts error: $e');
+    }
   }
 
   Future<void> _autoPullFromCloud() async {
@@ -645,7 +661,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         storage.saveDrafts(drafts);
       }
       await cloudSyncService.pullSyncMappings(backend, syncService);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Cloud pull drafts error: $e');
+    }
   }
 
   Future<void> _pushAllToCloud() async {
@@ -728,7 +746,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       if (session.pageType == SessionPageType.editor) {
         _openExistingArticle(article);
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Restore session error: $e');
+    }
   }
 
   // ============================================================
@@ -1042,19 +1062,25 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final repo = effectiveRepo;
     if (repo == null || repo.token.isEmpty) return;
     setState(() => busy = true);
-    try { remotePosts = await github.listPosts(repo); } catch (_) {}
+    try { remotePosts = await github.listPosts(repo); } catch (e) {
+      debugPrint('List remote posts error: $e');
+    }
     if (mounted) setState(() => busy = false);
   }
 
   Future<void> _refreshRss() async {
     final url = activeRepo?.siteUrl.isNotEmpty == true ? activeRepo!.siteUrl : 'https://caogenfunan.me/';
-    try { rssItems = await rssService.fetch(url); } catch (_) {}
+    try { rssItems = await rssService.fetch(url); } catch (e) {
+      debugPrint('RSS fetch error: $e');
+    }
   }
 
   Future<void> _refreshCommits() async {
     final repo = effectiveRepo;
     if (repo == null || repo.token.isEmpty) return;
-    try { commits = await github.listCommits(repo); } catch (_) {}
+    try { commits = await github.listCommits(repo); } catch (e) {
+      debugPrint('List commits error: $e');
+    }
   }
 
   // ============================================================
@@ -1100,7 +1126,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           });
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Load editor settings error: $e');
+    }
   }
 
   /// 保存编辑器自定义设置
@@ -1116,7 +1144,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         'customCss': _editor.customCss,
         'customShortcuts': _editor.customShortcuts,
       }));
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Save editor settings error: $e');
+    }
   }
 
   // ============================================================
@@ -5777,7 +5807,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     'h1': 'Ctrl+1',
     'h2': 'Ctrl+2',
     'h3': 'Ctrl+3',
-    'focus': 'Ctrl+F',
+    'focus': 'Ctrl+Shift+F',
     'toggleLeft': 'Ctrl+L',
     'preview': 'Ctrl+E',
     'pasteImage': 'Ctrl+Shift+V',
@@ -5878,13 +5908,15 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                                 ),
                               ),
                               onSubmitted: (value) {
-                                _editor.customShortcuts[action] = value.trim();
+                                _editor.setCustomShortcut(action, value.trim());
                                 _saveEditorSettings();
+                                widget.onShortcutsChanged?.call();
                                 setDialogState(() {});
                               },
                               onTapOutside: (_) {
-                                _editor.customShortcuts[action] = ctrl.text.trim();
+                                _editor.setCustomShortcut(action, ctrl.text.trim());
                                 _saveEditorSettings();
+                                widget.onShortcutsChanged?.call();
                                 setDialogState(() {});
                               },
                             ),
@@ -5899,8 +5931,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             actions: [
               TextButton(
                 onPressed: () {
-                  _editor.customShortcuts.clear();
+                  _editor.setCustomShortcuts({});
                   _saveEditorSettings();
+                  widget.onShortcutsChanged?.call();
                   _showToast('快捷键已重置为默认值');
                   Navigator.pop(ctx);
                 },

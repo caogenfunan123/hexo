@@ -241,6 +241,18 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 更新单个快捷键绑定
+  void setCustomShortcut(String action, String shortcut) {
+    final updated = Map<String, String>.from(_customShortcuts);
+    if (shortcut.isEmpty) {
+      updated.remove(action);
+    } else {
+      updated[action] = shortcut;
+    }
+    _customShortcuts = updated;
+    notifyListeners();
+  }
+
   // ── 忙碌 ──
   void setEditorBusy(bool busy) {
     _editorBusy = busy;

@@ -99,6 +99,9 @@ class SiteManager {
   /// 缓存已创建的适配器，避免重复创建 HTTP 客户端
   final Map<String, BlogRepository> _adapterCache = {};
 
+  /// 站点切换并发互斥锁
+  bool _isSwitching = false;
+
   SiteManager({
     required this.staticRepos,
     required this.dynamicSites,
@@ -114,11 +117,16 @@ class SiteManager {
   /// 设置活跃站点
   /// 切换站点时自动清理旧适配器缓存
   void setActiveSite(String siteId) {
-    if (_activeSiteId == siteId) return;
-    // 清理旧适配器
-    _disposeAdapter(_activeSiteId);
-    _adapterCache.remove(_activeSiteId);
-    _activeSiteId = siteId;
+    if (_activeSiteId == siteId || _isSwitching) return;
+    _isSwitching = true;
+    try {
+      // 清理旧适配器
+      _disposeAdapter(_activeSiteId);
+      _adapterCache.remove(_activeSiteId);
+      _activeSiteId = siteId;
+    } finally {
+      _isSwitching = false;
+    }
   }
 
   /// 获取当前活跃站点的身份标识

@@ -24,7 +24,9 @@ Future<void> runDesktopApp() async {
   await windowManager.ensureInitialized();
   try {
     // await hotKeyManager.unregisterAll();
-  } catch (_) {}
+  } catch (e) {
+    debugPrint('HotKey unregister error: $e');
+  }
   runApp(const DesktopApp());
 }
 
@@ -74,6 +76,7 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
   @override
   void dispose() {
     windowManager.removeListener(this);
+    _editorCtrl.removeListener(_onShortcutsChanged);
     // hotKeyManager.unregisterAll();
     _docCtrl.dispose();
     _layoutCtrl.dispose();
@@ -109,7 +112,9 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
     if (await oldFile.exists() && !await newFile.exists()) {
       try {
         await oldFile.copy(newFile.path);
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('Layout file migration error: $e');
+      }
     }
     return newFile;
   }
@@ -129,7 +134,9 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
         );
         _isMaximized = json['maximized'] == true;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Restore layout error: $e');
+    }
   }
 
   Future<void> _saveLayout() async {
@@ -142,7 +149,9 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
         'h': _windowSize.height,
         'maximized': _isMaximized,
       }));
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Save layout error: $e');
+    }
   }
 
   Future<void> _initWindow() async {
@@ -238,7 +247,8 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
       ]);
       await _systemTray.setContextMenu(menu);
       _isTrayReady = true;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('System tray init error: $e');
       _isTrayReady = false;
     }
   }
@@ -249,32 +259,175 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
 
   /// 使用 Flutter 内置 Shortcuts 系统替代 hotkey_manager
   /// 快捷键仅在应用窗口获得焦点时生效
-  late final Map<ShortcutActivator, VoidCallback> _shortcuts;
+  Map<ShortcutActivator, VoidCallback> _shortcuts = {};
+  Map<String, String> _lastCustomShortcuts = {};
 
   void _initShortcuts() {
-    _shortcuts = {
+    // 监听编辑器快捷键变更
+    _editorCtrl.addListener(_onShortcutsChanged);
+    _rebuildShortcuts();
+  }
+
+  void _onShortcutsChanged() {
+    final current = _editorCtrl.customShortcuts;
+    // 浅比较避免不必要的重建
+    bool changed = _lastCustomShortcuts.length != current.length;
+    if (!changed) {
+      for (final entry in current.entries) {
+        if (_lastCustomShortcuts[entry.key] != entry.value) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (changed) {
+      _lastCustomShortcuts = Map<String, String>.from(current);
+      _rebuildShortcuts();
+      if (mounted) setState(() {});
+    }
+  }
+
+  /// 重建快捷键绑定（合并默认 + 自定义）
+  void _rebuildShortcuts() {
+    final newShortcuts = <ShortcutActivator, VoidCallback>{};
+
+    // 1. 添加硬编码默认绑定
+    _addDefaultBindings(newShortcuts);
+
+    // 2. 用自定义快捷键覆盖
+    final customShortcuts = _editorCtrl.customShortcuts;
+    for (final entry in customShortcuts.entries) {
+      final action = entry.key;
+      final shortcutStr = entry.value;
+      if (shortcutStr.isEmpty) continue;
+
+      final activator = _parseShortcut(shortcutStr);
+      if (activator == null) continue;
+
+      // 移除冲突的默认绑定
+      newShortcuts.remove(activator);
+      // 添加自定义绑定
+      newShortcuts[activator] = () => _invokeShell(action);
+    }
+
+    _shortcuts = newShortcuts;
+  }
+
+  /// 默认快捷键绑定（不可被覆盖的硬编码映射）
+  void _addDefaultBindings(Map<ShortcutActivator, VoidCallback> bindings) {
+    bindings.addAll({
       // 文件操作
       const SingleActivator(LogicalKeyboardKey.keyN, control: true): () => _invokeShell('newArticle'),
       const SingleActivator(LogicalKeyboardKey.keyO, control: true): () => openMarkdownFile(),
-      const SingleActivator(LogicalKeyboardKey.keyS, control: true): () => _invokeShell('sync'),
+      const SingleActivator(LogicalKeyboardKey.keyS, control: true): () => _invokeShell('saveLocal'),
       const SingleActivator(LogicalKeyboardKey.keyP, control: true): () => _invokeShell('publish'),
-      const SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true): () => _invokeShell('saveLocal'),
+      const SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true): () => _invokeShell('saveAs'),
       // 面板切换
-      const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _invokeShell('toggleLeftPanel'),
-      const SingleActivator(LogicalKeyboardKey.keyL, control: true, shift: true): () => _invokeShell('toggleRightDrawer'),
+      const SingleActivator(LogicalKeyboardKey.keyL, control: true): () => _invokeShell('toggleLeftPanel'),
+      const SingleActivator(LogicalKeyboardKey.keyE, control: true): () => _invokeShell('toggleRightDrawer'),
       // 工作模式
       const SingleActivator(LogicalKeyboardKey.keyF, control: true, shift: true): () => _invokeShell('focusMode'),
       const SingleActivator(LogicalKeyboardKey.keyE, control: true, shift: true): () => _invokeShell('sourceMode'),
       const SingleActivator(LogicalKeyboardKey.keyW, control: true, shift: true): () => _invokeShell('workspaceMode'),
-      // 编辑操作
-      const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _invokeShell('insertImage'),
+      // 编辑操作 — Ctrl+B/I 由 Flutter TextField 原生处理，不在全局注册
       const SingleActivator(LogicalKeyboardKey.keyF, control: true): () => _invokeShell('find'),
       const SingleActivator(LogicalKeyboardKey.keyH, control: true): () => _invokeShell('replace'),
-      // 搜索
+      // 命令面板
+      const SingleActivator(LogicalKeyboardKey.keyP, control: true, shift: true): () => _invokeShell('commandPalette'),
       const SingleActivator(LogicalKeyboardKey.keyK, control: true): () => _invokeShell('commandPalette'),
       // 窗口
       const SingleActivator(LogicalKeyboardKey.escape): () => _invokeShell('escape'),
-    };
+    });
+  }
+
+  /// 解析快捷键字符串 → SingleActivator
+  /// 支持格式: "Ctrl+X", "Ctrl+Shift+X", "Alt+X", "Ctrl+Alt+Shift+X", "F1", "Escape"
+  static SingleActivator? _parseShortcut(String shortcut) {
+    if (shortcut.isEmpty) return null;
+    final parts = shortcut.split('+').map((s) => s.trim()).toList();
+    if (parts.isEmpty) return null;
+
+    bool control = false, shift = false, alt = false, meta = false;
+    String? keyName;
+
+    for (final part in parts) {
+      switch (part.toLowerCase()) {
+        case 'ctrl':
+        case 'control':
+          control = true;
+          break;
+        case 'shift':
+          shift = true;
+          break;
+        case 'alt':
+          alt = true;
+          break;
+        case 'meta':
+        case 'cmd':
+        case 'win':
+          meta = true;
+          break;
+        default:
+          keyName = part;
+      }
+    }
+
+    if (keyName == null) return null;
+    final key = _keyFromName(keyName);
+    if (key == null) return null;
+
+    return SingleActivator(key, control: control, shift: shift, alt: alt, meta: meta);
+  }
+
+  /// 键名 → LogicalKeyboardKey
+  static LogicalKeyboardKey? _keyFromName(String name) {
+    final upper = name.toUpperCase();
+
+    // 单字母 A-Z
+    if (upper.length == 1 && upper.codeUnitAt(0) >= 65 && upper.codeUnitAt(0) <= 90) {
+      return LogicalKeyboardKey(0x60 + upper.codeUnitAt(0) - 64); // 'a'=0x61
+    }
+
+    // 数字 0-9
+    if (name.length == 1 && name.codeUnitAt(0) >= 48 && name.codeUnitAt(0) <= 57) {
+      return LogicalKeyboardKey(name.codeUnitAt(0));
+    }
+
+    // F1-F24
+    if (upper.startsWith('F')) {
+      final num = int.tryParse(name.substring(1));
+      if (num != null && num >= 1 && num <= 24) {
+        return LogicalKeyboardKey(0x80000000 + 0x70000 + num - 1);
+      }
+    }
+
+    // 特殊键
+    switch (upper) {
+      case 'ESCAPE': case 'ESC': return LogicalKeyboardKey.escape;
+      case 'SPACE': return LogicalKeyboardKey.space;
+      case 'ENTER': case 'RETURN': return LogicalKeyboardKey.enter;
+      case 'TAB': return LogicalKeyboardKey.tab;
+      case 'BACKSPACE': return LogicalKeyboardKey.backspace;
+      case 'DELETE': case 'DEL': return LogicalKeyboardKey.delete;
+      case 'HOME': return LogicalKeyboardKey.home;
+      case 'END': return LogicalKeyboardKey.end;
+      case 'PAGEUP': case 'PGUP': return LogicalKeyboardKey.pageUp;
+      case 'PAGEDOWN': case 'PGDN': return LogicalKeyboardKey.pageDown;
+      case 'UP': return LogicalKeyboardKey.arrowUp;
+      case 'DOWN': return LogicalKeyboardKey.arrowDown;
+      case 'LEFT': return LogicalKeyboardKey.arrowLeft;
+      case 'RIGHT': return LogicalKeyboardKey.arrowRight;
+      case 'INSERT': case 'INS': return LogicalKeyboardKey.insert;
+      case 'COMMA': case ',': return LogicalKeyboardKey.comma;
+      case 'PERIOD': case '.': return LogicalKeyboardKey.period;
+      case 'SLASH': case '/': return LogicalKeyboardKey.slash;
+      case 'BACKSLASH': case '\\': return LogicalKeyboardKey.backslash;
+      case 'SEMICOLON': case ';': return LogicalKeyboardKey.semicolon;
+      case 'QUOTE': case "'": return LogicalKeyboardKey.quote;
+      case 'MINUS': case '-': return LogicalKeyboardKey.minus;
+      case 'EQUAL': case '=': return LogicalKeyboardKey.equal;
+      default: return null;
+    }
   }
 
   void _invokeShell(String action) {
@@ -358,6 +511,7 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
             home: DesktopShell(
               key: DesktopApp.shellKey,
               onToggleAppTheme: _toggleAppTheme,
+              onShortcutsChanged: _rebuildShortcuts,
             ),
           ),
         ),
