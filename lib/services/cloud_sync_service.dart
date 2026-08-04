@@ -95,7 +95,7 @@ class GitHubSyncBackend implements SyncBackend {
     try {
       final existing = await _github.getRawFile(_repo!, fullPath);
       sha = existing?['sha'];
-    } catch (e) { debugPrint('CloudSync: get SHA for writeFile failed: $e'); }
+    } catch (e) { print('CloudSync: get SHA for writeFile failed: $e'); }
 
     await _github.putRawFile(
       _repo!,
@@ -121,7 +121,7 @@ class GitHubSyncBackend implements SyncBackend {
           commitMessage: 'sync: delete $path',
         );
       }
-    } catch (e) { debugPrint('CloudSync: get SHA for deleteFile failed: $e'); }
+    } catch (e) { print('CloudSync: get SHA for deleteFile failed: $e'); }
   }
 
   @override
@@ -145,7 +145,7 @@ class GitHubSyncBackend implements SyncBackend {
         }
       }
       return result;
-    } catch (e) { debugPrint('CloudSync: listFiles failed: $e');
+    } catch (e) { print('CloudSync: listFiles failed: $e');
       return [];
     }
   }
@@ -207,7 +207,7 @@ class WebDavSyncBackend implements SyncBackend {
         _url, _username, _password, _folder, path,
       );
       return utf8.decode(bytes);
-    } catch (e) { debugPrint('CloudSync: WebDAV readFile failed: $e');
+    } catch (e) { print('CloudSync: WebDAV readFile failed: $e');
       return null;
     }
   }
@@ -228,7 +228,7 @@ class WebDavSyncBackend implements SyncBackend {
 
     try {
       await _webdav.deleteFile(_url, _username, _password, _folder, path);
-    } catch (e) { debugPrint('CloudSync: WebDAV deleteFile failed: $e'); }
+    } catch (e) { print('CloudSync: WebDAV deleteFile failed: $e'); }
   }
 
   @override
@@ -248,7 +248,7 @@ class WebDavSyncBackend implements SyncBackend {
         }
       }
       return result;
-    } catch (e) { debugPrint('CloudSync: WebDAV listFiles failed: $e');
+    } catch (e) { print('CloudSync: WebDAV listFiles failed: $e');
       return [];
     }
   }
@@ -497,7 +497,7 @@ class CloudSyncService {
       if (json == null) return null;
       final list = jsonDecode(json) as List;
       return list.cast<Map<String, dynamic>>();
-    } catch (e) { debugPrint('CloudSync: pullTemplatesRaw failed: $e');
+    } catch (e) { print('CloudSync: pullTemplatesRaw failed: $e');
       return null;
     }
   }
@@ -516,7 +516,7 @@ class CloudSyncService {
       if (json == null) return null;
       final list = jsonDecode(json) as List;
       return list.cast<Map<String, dynamic>>();
-    } catch (e) { debugPrint('CloudSync: pullSnippetsRaw failed: $e');
+    } catch (e) { print('CloudSync: pullSnippetsRaw failed: $e');
       return null;
     }
   }
