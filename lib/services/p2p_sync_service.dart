@@ -101,7 +101,9 @@ class P2PSyncService {
   P2PDevice? _connectedDevice;
 
   RawDatagramSocket? _discoverySocket;
+  StreamSubscription<RawSocketEvent>? _discoverySubscription;
   HttpServer? _syncServer;
+  StreamSubscription<HttpRequest>? _syncServerSubscription;
   Timer? _broadcastTimer;
   Timer? _cleanupTimer;
 
@@ -177,9 +179,13 @@ class P2PSyncService {
     _cleanupTimer?.cancel();
     _cleanupTimer = null;
 
+    await _discoverySubscription?.cancel();
+    _discoverySubscription = null;
     _discoverySocket?.close();
     _discoverySocket = null;
 
+    await _syncServerSubscription?.cancel();
+    _syncServerSubscription = null;
     await _syncServer?.close(force: true);
     _syncServer = null;
 
@@ -202,7 +208,7 @@ class P2PSyncService {
       _discoverySocket!.broadcastEnabled = true;
       _discoverySocket!.readEventsEnabled = true;
 
-      _discoverySocket!.listen((event) {
+      _discoverySubscription = _discoverySocket!.listen((event) {
         if (event == RawSocketEvent.read) {
           _handleDiscoveryPacket();
         }
@@ -316,7 +322,7 @@ class P2PSyncService {
       );
       _log('同步服务器已启动 (端口: $_syncPort)');
 
-      _syncServer!.listen((HttpRequest request) {
+      _syncServerSubscription = _syncServer!.listen((HttpRequest request) {
         _handleHttpRequest(request);
       });
     } catch (e) {
@@ -489,7 +495,9 @@ class P2PSyncService {
   void dispose() {
     _broadcastTimer?.cancel();
     _cleanupTimer?.cancel();
+    _discoverySubscription?.cancel();
     _discoverySocket?.close();
+    _syncServerSubscription?.cancel();
     _syncServer?.close(force: true);
     _deviceDiscoveredController.close();
     _deviceLostController.close();

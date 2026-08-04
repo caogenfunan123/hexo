@@ -151,7 +151,9 @@ class GitHubSyncBackend implements SyncBackend {
   }
 
   @override
-  void dispose() {}
+  void dispose() {
+    // GitHub service is externally managed; nothing to clean up here
+  }
 }
 
 // ============================================================
@@ -252,7 +254,9 @@ class WebDavSyncBackend implements SyncBackend {
   }
 
   @override
-  void dispose() {}
+  void dispose() {
+    // WebDavService creates and closes its own HttpClient per request
+  }
 }
 
 // ============================================================
@@ -312,6 +316,14 @@ class CloudSyncService {
   /// 初始化设备密钥（必须在首次使用前调用）
   Future<void> initDeviceKey(String key) async {
     _deviceKey = key;
+  }
+
+  /// 释放所有后端资源（HttpClient 等）
+  void dispose() {
+    for (final backend in _backends.values) {
+      backend.dispose();
+    }
+    _backends.clear();
   }
 
   /// 注册同步后端

@@ -88,6 +88,9 @@ class SiteIsolationService {
   IsolatedSiteConfig? _currentSite;
   String? _currentSiteId;
 
+  /// 站点切换并发互斥锁
+  bool _isSwitching = false;
+
   static const String _configFileName = 'site_config.json';
   static const String _indexFileName = 'sites_index.json';
 
@@ -176,30 +179,34 @@ class SiteIsolationService {
   ///
   /// [siteId] 目标站点 ID
   Future<void> switchSite(String siteId) async {
-    if (_currentSiteId == siteId) return;
+    if (_currentSiteId == siteId || _isSwitching) return;
+    _isSwitching = true;
+    try {
+      // 保存当前站点状态
+      if (_currentSiteId != null) {
+        await _saveCurrentSiteState();
+      }
 
-    // 保存当前站点状态
-    if (_currentSiteId != null) {
-      await _saveCurrentSiteState();
+      // 加载目标站点
+      final config = _siteConfigs[siteId];
+      if (config == null) {
+        throw Exception('站点不存在: $siteId');
+      }
+
+      // 更新最后打开时间
+      final updatedConfig = config.copyWith(lastOpenedAt: DateTime.now());
+      _siteConfigs[siteId] = updatedConfig;
+      _currentSite = updatedConfig;
+      _currentSiteId = siteId;
+
+      // 确保目录存在
+      await getSiteDir(siteId);
+
+      // 保存索引
+      await _saveIndex();
+    } finally {
+      _isSwitching = false;
     }
-
-    // 加载目标站点
-    final config = _siteConfigs[siteId];
-    if (config == null) {
-      throw Exception('站点不存在: $siteId');
-    }
-
-    // 更新最后打开时间
-    final updatedConfig = config.copyWith(lastOpenedAt: DateTime.now());
-    _siteConfigs[siteId] = updatedConfig;
-    _currentSite = updatedConfig;
-    _currentSiteId = siteId;
-
-    // 确保目录存在
-    await getSiteDir(siteId);
-
-    // 保存索引
-    await _saveIndex();
   }
 
   /// 删除站点

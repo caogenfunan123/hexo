@@ -13,6 +13,7 @@ import '../models/repo_config.dart';
 import '../services/ai_service.dart';
 import '../services/github_service.dart';
 import '../services/storage_service.dart';
+import '../services/version_snapshot_service.dart';
 import '../widgets/ai_chat_panel.dart';
 
 /// AI 主题跨框架迁移页面 — 始终对话模式
@@ -28,6 +29,7 @@ class ThemeMigrationScreen extends StatefulWidget {
   final AiSelfChecker selfChecker;
   final Future<void> Function(AppSettings) onSettingsChanged;
   final StorageService? storageService;
+  final VersionSnapshotService? snapshotService;
 
   const ThemeMigrationScreen({
     super.key,
@@ -42,6 +44,7 @@ class ThemeMigrationScreen extends StatefulWidget {
     required this.selfChecker,
     required this.onSettingsChanged,
     this.storageService,
+    this.snapshotService,
   });
 
   @override
@@ -163,6 +166,20 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
             : entry.value;
         allSourceCode.writeln('\n=== ${entry.key} ===');
         allSourceCode.writeln(content);
+      }
+
+      // 迁移前创建快照，以便回滚
+      if (widget.snapshotService != null) {
+        try {
+          await widget.snapshotService!.createSnapshot(
+            'theme_migration_${DateTime.now().millisecondsSinceEpoch}',
+            '迁移前快照：${_analysis!.sourceFrameworkName} → ${repo.frameworkId}',
+            allSourceCode.toString(),
+          );
+        } catch (e) {
+          // 快照失败不阻断迁移主流程
+          debugPrint('Migration snapshot error: $e');
+        }
       }
 
       _migrationResult = await widget.migrationService.migrate(

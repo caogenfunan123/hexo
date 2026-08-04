@@ -63,7 +63,16 @@ abstract class AppFileOperator {
 
   /// 读取二进制文件（相对路径）
   Future<List<int>> readBinaryFile(String relativePath) async {
-    throw UnimplementedError('readBinaryFile 未实现');
+    try {
+      final root = await getRootPath();
+      final file = File('$root/$relativePath');
+      if (!await file.exists()) {
+        throw FileSystemException('File not found', relativePath);
+      }
+      return await file.readAsBytes();
+    } catch (e) {
+      rethrow;
+    }
   }
 
   /// 复制文件
