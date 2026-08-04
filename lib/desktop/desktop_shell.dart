@@ -20,6 +20,7 @@ import '../controllers/controllers.dart';
 import '../models/ai_profile.dart';
 import '../models/app_settings.dart';
 import '../models/article.dart';
+import '../models/article_type.dart';
 import '../models/blog_framework.dart';
 import '../models/blog_site_config.dart';
 import '../models/blog_post.dart';
@@ -1001,13 +1002,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   Future<void> _refreshRss() async {
     final url = activeRepo?.siteUrl.isNotEmpty == true ? activeRepo!.siteUrl : 'https://caogenfunan.me/';
-    try { rssItems = await rssService.fetch(url); if (mounted)  } catch (_) {}
+    try { rssItems = await rssService.fetch(url); } catch (_) {}
   }
 
   Future<void> _refreshCommits() async {
     final repo = effectiveRepo;
     if (repo == null || repo.token.isEmpty) return;
-    try { commits = await github.listCommits(repo); if (mounted)  } catch (_) {}
+    try { commits = await github.listCommits(repo); } catch (_) {}
   }
 
   // ============================================================
@@ -1734,7 +1735,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       });
       int uploaded = 0, failed = 0;
       final buf = StringBuffer();
-      for (var i = 0)= 0; i < total; i++) {
+      for (var i = 0; i < total; i++) {
         _editor.setEditorStatus('正在上传图片 ${i + 1}/$total...');
         try {
           final url = await imageService.uploadToImageBed(preResult.images[i], settings, skipCompress: true);
@@ -1743,12 +1744,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         } catch (_) {
           buf.writeln('> ⚠️ 第 ${i + 1} 张图片上传失败');
           failed++;
-        })}
+        }
+      }
       _insertText('\n\n${buf.toString()}');
-      _editor.setEditorStatus('完成: $uploaded/$total 张上传成功');} catch (e) {
+      _editor.setEditorStatus('完成: $uploaded/$total 张上传成功');
+    } catch (e) {
       _editor.setEditorStatus('批量上传失败');
-      if (mounted) _showToast('批量上传失败: $e');} finally {
-      if (mounted) _editor.setEditorBusy(false);}
+      if (mounted) _showToast('批量上传失败: $e');
+    } finally {
+      if (mounted) _editor.setEditorBusy(false);
+    }
   }
 
   Future<void> _aiAction(String action) async {
@@ -2924,7 +2929,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           _doc.contentCtrl.text = content;
           _doc.markUnsaved();
           _editor.setEditorStatus('已恢复历史版本');
-          _showToast('已恢复历史版本，请保存';},
+          _showToast('已恢复历史版本，请保存'); },
       ),
     );
   }
@@ -3406,6 +3411,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                         Navigator.pop(ctx);
                         _showToast('已全部接受AI修改');
                       },
+                    ),
                     TextButton.icon(
                       icon: const Icon(Icons.close, size: 16),
                       label: const Text('全部拒绝'),
@@ -5762,7 +5768,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             actions: [
               TextButton(
                 onPressed: () {
-                  _editor.customShortcuts.clear())s.clear());
+                  _editor.customShortcuts.clear();
                   _saveEditorSettings();
                   _showToast('快捷键已重置为默认值');
                   Navigator.pop(ctx);
