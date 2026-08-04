@@ -3974,6 +3974,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       return const Scaffold(
           body: Center(child: CircularProgressIndicator()));
 
+    // ── 专注模式：全屏沉浸式写作 ──
+    if (_focusModeEnabled && _currentPage == 0) {
+      return _buildFocusMode();
+    }
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -3991,6 +3996,97 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         appBar: _buildAppBar(),
         drawer: _buildDrawer(),
         body: _buildPage(),
+      ),
+    );
+  }
+
+  /// 全屏专注模式：隐藏所有 UI 元素，只保留编辑器
+  Widget _buildFocusMode() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF0D1117) : const Color(0xFFF8F6F0),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            // 主编辑区 — 居中、干净
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 60),
+              child: TextField(
+                controller: _doc.contentCtrl,
+                focusNode: _doc.contentFocus,
+                minLines: null,
+                maxLines: null,
+                expands: true,
+                keyboardType: TextInputType.multiline,
+                textAlignVertical: TextAlignVertical.top,
+                onChanged: (_) {
+                  _onContentChanged();
+                  final text = _doc.contentCtrl.text;
+                  final cursorPos = _doc.contentCtrl.selection.baseOffset;
+                  final textBefore = text.substring(0, cursorPos.clamp(0, text.length));
+                  final currentLine = '\n'.allMatches(textBefore).length;
+                  final totalLines = '\n'.allMatches(text).length + 1;
+                  _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
+                },
+                decoration: InputDecoration(
+                  hintText: '专注写作...',
+                  hintStyle: TextStyle(
+                    fontSize: 16,
+                    color: isDark ? Colors.white24 : Colors.black26,
+                    fontWeight: FontWeight.w300,
+                  ),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                ),
+                style: TextStyle(
+                  fontSize: 17,
+                  height: 1.8,
+                  fontFamily: 'monospace',
+                  color: isDark ? const Color(0xFFE6EDF3) : const Color(0xFF1A1A2E),
+                  fontWeight: FontWeight.w400,
+                ),
+                cursorColor: isDark ? const Color(0xFF58A6FF) : const Color(0xFF1A6DB5),
+                cursorWidth: 2.5,
+              ),
+            ),
+
+            // 底部状态栏：字数
+            Positioned(
+              bottom: 8,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Text(
+                  '${_editor.wordCount} 字',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark ? Colors.white24 : Colors.black26,
+                    fontWeight: FontWeight.w300,
+                  ),
+                ),
+              ),
+            ),
+
+            // 顶部退出按钮
+            Positioned(
+              top: 4,
+              right: 8,
+              child: Material(
+                color: Colors.transparent,
+                child: IconButton(
+                  icon: Icon(
+                    Icons.fullscreen_exit,
+                    color: isDark ? Colors.white38 : Colors.black38,
+                    size: 22,
+                  ),
+                  tooltip: '退出专注模式',
+                  onPressed: () => setState(() => _focusModeEnabled = false),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
