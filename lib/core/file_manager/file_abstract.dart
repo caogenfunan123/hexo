@@ -77,3 +77,13 @@ abstract class AppFileOperator {
     await copyFile(sourcePath, destPath);
     await deleteFile(sourcePath);
   }
+
+  /// 获取当前平台的 Android SDK 版本号
+  ///
+  /// 返回 0 表示非 Android 平台或无法获取。
+  /// Android 各版本对应关系：
+  /// - SDK 29 = Android 10 (分区存储可选，支持 requestLegacyExternalStorage)
+  /// - SDK 30 = Android 11 (强制分区存储)
+  /// - SDK 31 = Android 12
+  /// - SDK 33 = Android 13
+  Future<int> getSdkVersion() async => 0;

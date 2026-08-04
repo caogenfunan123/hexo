@@ -95,6 +95,7 @@ class _HexoAppState extends State<HexoApp> {
   late AppSettings _settings;
 
   // ── 控制器（全局单例，注入到 Provider 树） ──
+  final DocumentController _docCtrl = DocumentController();
   final LayoutController _layoutCtrl = LayoutController();
   final EditorController _editorCtrl = EditorController();
   final SyncController _syncCtrl = SyncController();
@@ -110,6 +111,7 @@ class _HexoAppState extends State<HexoApp> {
 
   @override
   void dispose() {
+    _docCtrl.dispose();
     _layoutCtrl.dispose();
     _editorCtrl.dispose();
     _syncCtrl.dispose();
@@ -127,6 +129,7 @@ class _HexoAppState extends State<HexoApp> {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider.value(value: _docCtrl),
         ChangeNotifierProvider.value(value: _layoutCtrl),
         ChangeNotifierProvider.value(value: _editorCtrl),
         ChangeNotifierProvider.value(value: _syncCtrl),
@@ -208,25 +211,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   final Map<String, Timer> _debounceTimers = {};
   /// 每草稿独立上次保存内容，切换草稿不丢失
   final Map<String, String> _lastSavedContentMap = {};
-  String _lastSavedContent = '';
-  bool _hasUnsavedChanges = false;
 
   // Editor state
-  late TextEditingController _titleCtrl;
-  late TextEditingController _contentCtrl;
-  late TextEditingController _tagsCtrl;
-  late TextEditingController _categoriesCtrl;
-  late TextEditingController _coverCtrl;
-  late Article _currentArticle;
-  ArticleType _articleType = ArticleType.post;
-  String? _selectedTemplateId;
   RepoConfig? _editorRepo;
   bool _editorBusy = false;
   String? _editorStatus;
   final CancelToken _publishCancelToken = CancelToken();
   Uint8List? _failedImageBytes; // 缓存上传失败的图片字节
-
-  final FocusNode _contentFocus = FocusNode();
 
   RepoConfig? get activeRepo {
     if (repos.isEmpty) return null;
@@ -304,28 +295,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   SiteController get _site => context.read<SiteController>();
   FrontMatterController get _frontMatter => context.read<FrontMatterController>();
   UiStateController get _ui => context.read<UiStateController>();
+  DocumentController get _doc => context.read<DocumentController>();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _titleCtrl = TextEditingController();
-    _contentCtrl = TextEditingController();
-    _tagsCtrl = TextEditingController();
-    _categoriesCtrl = TextEditingController();
-    _coverCtrl = TextEditingController();
     syncService = SyncService(logService);
     cloudSyncService = CloudSyncService(logService);
-    _currentArticle = Article(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      title: '',
-      content: '',
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-      isDraft: true,
-      repoId: activeRepo?.id,
-      articleType: ArticleType.post,
-    );
     _bootstrap();
   }
 
@@ -334,12 +311,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _stopAutoSave();
     _stopAutoSync();
-    _titleCtrl.dispose();
-    _contentCtrl.dispose();
-    _tagsCtrl.dispose();
-    _categoriesCtrl.dispose();
-    _coverCtrl.dispose();
-    _contentFocus.dispose();
     siteManager.disposeAll();
     cmsDraftService.close();
     super.dispose();
@@ -390,11 +361,12 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         }
       }
       _editorRepo = activeRepo ?? (r.isNotEmpty ? r.first : null);
+      _doc.setEditorRepoId(_editorRepo?.id);
       // 自动解析编辑器默认模板
       String? autoTemplateId;
       if (_editorRepo != null) {
         autoTemplateId = TemplateResolver.resolvePostTemplateId(_editorRepo!, t);
-        _selectedTemplateId = autoTemplateId;
+        _doc.setSelectedTemplateId(autoTemplateId);
       }
 
       // 同步到站点控制器
@@ -423,6 +395,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         snippets = sn;
         loading = false;
       });
+      _doc.setDrafts(drafts);
+      _doc.setTemplates(templates);
       // 初始化站点管理器（统一管理静态仓库和动态 CMS 站点）
       _updateSiteManager();
       // 会话恢复
@@ -525,7 +499,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     try {
       final pulled = await cloudSyncService.pullDrafts(backend, existingDrafts: drafts);
       if (pulled.isNotEmpty) {
-        setState(() {
+        if (mounted) setState(() {
           drafts = pulled..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
         });
         storage.saveDrafts(drafts);
@@ -629,16 +603,16 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     if (!settings.restoreSession) return;
     final state = SessionState(
       pageType: pageType,
-      articleId: _currentArticle.id,
+      articleId: _doc.currentArticle.id,
       articleSource: ArticleSource.local,
-      articleTitle: _titleCtrl.text,
-      articleContent: _contentCtrl.text,
-      articleTags: _tagsCtrl.text,
-      articleCategories: _categoriesCtrl.text,
-      articleCover: _coverCtrl.text,
-      articleRepoId: _currentArticle.repoId ?? '',
-      articleRemotePath: _currentArticle.remotePath ?? '',
-      articleRemoteSha: _currentArticle.remoteSha ?? '',
+      articleTitle: _doc.titleCtrl.text,
+      articleContent: _doc.contentCtrl.text,
+      articleTags: _doc.tagsCtrl.text,
+      articleCategories: _doc.categoriesCtrl.text,
+      articleCover: _doc.coverCtrl.text,
+      articleRepoId: _doc.currentArticle.repoId ?? '',
+      articleRemotePath: _doc.currentArticle.remotePath ?? '',
+      articleRemoteSha: _doc.currentArticle.remoteSha ?? '',
     );
     _lastSession = state;
     await sessionService.saveSession(state);
@@ -652,7 +626,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   // ============ 退出弹窗 ============
 
   Future<bool> _showExitDialog() async {
-    final hasChanges = _hasUnsavedChanges;
+    final hasChanges = _doc.hasUnsavedChanges;
     if (!hasChanges) {
       final ok = await showDialog<bool>(
         context: context,
@@ -742,12 +716,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   void _resetEditor() {
     final repo = activeRepo;
     _editorRepo = repo;
-    _articleType = ArticleType.post;
     String? autoTemplateId;
     if (repo != null) {
       autoTemplateId = TemplateResolver.resolvePostTemplateId(repo, templates);
     }
-    _currentArticle = Article(
+    final article = Article(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: '',
       content: '',
@@ -755,26 +728,22 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       updatedAt: DateTime.now(),
       isDraft: true,
       repoId: repo?.id,
-      articleType: _articleType,
+      articleType: ArticleType.post,
       templateId: autoTemplateId,
     );
-    _titleCtrl.text = '';
-    _contentCtrl.text = '';
-    _tagsCtrl.text = '';
-    _categoriesCtrl.text = '';
-    _coverCtrl.text = '';
-    _lastSavedContent = '';
-    _hasUnsavedChanges = false;
-    _selectedTemplateId = autoTemplateId;
+    _doc.setCurrentArticle(article);
+    _doc.setArticleType(ArticleType.post);
+    _doc.setSelectedTemplateId(autoTemplateId);
+    _doc.setEditorRepoId(repo?.id);
   }
 
   /// 根据当前文章类型和仓库配置自动选择模板
   void _autoSelectTemplate() {
     final repo = _editorRepo;
     if (repo == null) return;
-    _selectedTemplateId = _articleType == ArticleType.post
+    _doc.setSelectedTemplateId(_doc.articleType == ArticleType.post
         ? TemplateResolver.resolvePostTemplateId(repo, templates)
-        : TemplateResolver.resolvePageTemplateId(repo, templates);
+        : TemplateResolver.resolvePageTemplateId(repo, templates));
   }
 
   // ============ 自动保存 ============
@@ -803,8 +772,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     for (final entry in _debounceTimers.entries) {
       entry.value.cancel();
       final articleId = entry.key;
-      final content = _contentCtrl.text;
-      final title = _titleCtrl.text;
+      final content = _doc.contentCtrl.text;
+      final title = _doc.titleCtrl.text;
       if (content.isNotEmpty && content != _lastSavedContentMap[articleId]) {
         _autoSaveSnapshot();
       }
@@ -813,14 +782,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   }
 
   void _onContentChanged() {
-    final current = _contentCtrl.text;
-    if (current == _lastSavedContent) {
-      _hasUnsavedChanges = false;
+    final current = _doc.contentCtrl.text;
+    if (current == _doc.lastSavedContent) {
+      _doc.markSaved();
       return;
     }
-    _hasUnsavedChanges = true;
+    _doc.markUnsaved();
     // 每草稿独立防抖，杜绝多草稿相互阻塞
-    final articleId = _currentArticle.id;
+    final articleId = _doc.currentArticle.id;
     _debounceTimers[articleId]?.cancel();
     _debounceTimers[articleId] = Timer(const Duration(seconds: 2), () {
       _autoSaveSnapshot();
@@ -829,22 +798,21 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   }
 
   Future<void> _autoSaveSnapshot() async {
-    final content = _contentCtrl.text;
-    final articleId = _currentArticle.id;
+    final content = _doc.contentCtrl.text;
+    final articleId = _doc.currentArticle.id;
     if (content.isEmpty || content == _lastSavedContentMap[articleId]) return;
-    final title = _titleCtrl.text;
+    final title = _doc.titleCtrl.text;
     try {
       await sessionService.saveAutoSnapshot(
         articleId: articleId,
         content: content,
         title: title.isEmpty ? '未命名' : title,
-        tags: _tagsCtrl.text,
-        categories: _categoriesCtrl.text,
-        cover: _coverCtrl.text,
+        tags: _doc.tagsCtrl.text,
+        categories: _doc.categoriesCtrl.text,
+        cover: _doc.coverCtrl.text,
       );
-      _lastSavedContent = content;
       _lastSavedContentMap[articleId] = content;
-      _hasUnsavedChanges = false;
+      _doc.markSaved();
       await sessionService.cleanupSnapshots(articleId);
       // 同时保存草稿到 storage
       await _saveDraft(_collect(draft: true));
@@ -859,31 +827,18 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   // ============ 阅读页 / 编辑器切换 ============
 
   void _openReader(Article article) {
-    _currentArticle = article;
-    _titleCtrl.text = article.title;
-    _contentCtrl.text = article.content;
-    _tagsCtrl.text = article.tags.join(', ');
-    _categoriesCtrl.text = article.categories.join(', ');
-    _coverCtrl.text = article.cover ?? '';
-    _lastSavedContent = article.content;
-    _hasUnsavedChanges = false;
+    _doc.setCurrentArticle(article);
     _saveSession(SessionPageType.reader);
     setState(() => _currentPage = 9); // 阅读页
   }
 
   void _enterEditorFromReader(Article article) {
-    _currentArticle = article;
-    _titleCtrl.text = article.title;
-    _contentCtrl.text = article.content;
-    _tagsCtrl.text = article.tags.join(', ');
-    _categoriesCtrl.text = article.categories.join(', ');
-    _coverCtrl.text = article.cover ?? '';
+    _doc.setCurrentArticle(article);
     _editorRepo = repos
             .where((r) => r.id == article.repoId)
             .firstOrNull ??
         activeRepo;
-    _lastSavedContent = article.content;
-    _hasUnsavedChanges = false;
+    _doc.setEditorRepoId(_editorRepo?.id);
     _startAutoSave();
     _saveSession(SessionPageType.editor);
     setState(() => _currentPage = 0); // 回到编辑器
@@ -891,29 +846,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   // --- Editor methods ---
   Article _collect({bool draft = true}) {
-    final cover = _coverCtrl.text.trim();
-    final title = _titleCtrl.text.trim();
-    return _currentArticle.copyWith(
-      title: title.isEmpty ? '未命名' : title,
-      content: _contentCtrl.text,
-      tags: _tagsCtrl.text
-          .split(RegExp(r'[,，]'))
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toList(),
-      categories: _categoriesCtrl.text
-          .split(RegExp(r'[,，]'))
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toList(),
-      cover: cover.isEmpty ? null : cover,
-      updatedAt: DateTime.now(),
-      isDraft: draft,
-      published: draft ? false : true,
-      repoId: _editorRepo?.id ?? _currentArticle.repoId,
-      articleType: _articleType,
-      templateId: _selectedTemplateId,
-    );
+    _doc.setEditorRepoId(_editorRepo?.id);
+    return _doc.collectArticle(draft: draft);
   }
 
   RepoConfig? get _resolvedRepo {
@@ -928,7 +862,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   Future<void> _saveLocal() async {
     final a = _collect(draft: true);
     setState(() {
-      _currentArticle = a;
+      _doc.setCurrentArticle(a);
       _editorStatus = '本地已保存';
     });
     await _saveDraft(a);
@@ -950,8 +884,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         await cmsDraftService.saveDraft(post);
       }
     }
-    _lastSavedContent = a.content;
-    _hasUnsavedChanges = false;
     logService.add('保存草稿', '标题: ${a.title.isNotEmpty ? a.title : "(无标题)"}');
     if (mounted) _showToast('草稿已保存到本地');
   }
@@ -983,7 +915,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
               const SizedBox(height: 8),
               Text(
-                '标题: ${_titleCtrl.text.isNotEmpty ? _titleCtrl.text : "(无标题)"}',
+                '标题: ${_doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : "(无标题)"}',
                 style: TextStyle(fontSize: 13, color: Colors.grey[700]),
               ),
               const SizedBox(height: 16),
@@ -1043,18 +975,16 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     try {
       final a = _collect(draft: false);
       final pub = await github.upsertArticle(repo, a);
-      setState(() {
-        _currentArticle = pub;
+      if (mounted) setState(() {
+        _doc.setCurrentArticle(pub);
         _editorStatus = '已发布';
       });
-      _lastSavedContent = pub.content;
-      _hasUnsavedChanges = false;
       await _saveDraft(pub.copyWith(isDraft: false, published: true));
       await _refreshRemote();
       logService.add('发布成功', '已发布到 ${repo.fullName}: ${pub.title}');
       if (mounted) _showToast('已发布到 ${repo.fullName}');
     } catch (e) {
-      setState(() => _editorStatus = '发布失败');
+      if (mounted) setState(() => _editorStatus = '发布失败');
       logService.add('发布失败', '$e', success: false);
       if (mounted) _showToast('发布失败: $e');
     } finally {
@@ -1133,15 +1063,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
     setState(() {
       _editorBusy = true;
-      final isUpdate = _currentArticle.remoteSha != null;
+      final isUpdate = _doc.currentArticle.remoteSha != null;
       _editorStatus = isUpdate
           ? '正在更新到 ${adapter.config.type.displayName}...'
           : '正在发布到 ${adapter.config.type.displayName}...';
     });
     try {
       // 从 remoteSha 中提取远程文章 ID（加载远程文章时记录）
-      final remoteId = _currentArticle.remoteSha != null
-          ? int.tryParse(_currentArticle.remoteSha!)
+      final remoteId = _doc.currentArticle.remoteSha != null
+          ? int.tryParse(_doc.currentArticle.remoteSha!)
           : null;
       final post = BlogPost(
         id: remoteId,
@@ -1167,7 +1097,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         try {
           if (attempts > 1) {
             final action = remoteId != null ? '更新' : '发布';
-            setState(() => _editorStatus = '正在重试$action (第 $attempts 次)...');
+            if (mounted) setState(() => _editorStatus = '正在重试$action (第 $attempts 次)...');
           }
           result = remoteId != null
               ? await adapter.updatePost(post)
@@ -1179,14 +1109,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           }
           // 5xx 服务端错误，尝试重试
           if (attempts >= maxRetries) rethrow;
-          setState(() => _editorStatus = '发布失败，${2 * attempts}s 后重试...');
+          if (mounted) setState(() => _editorStatus = '发布失败，${2 * attempts}s 后重试...');
           await Future.delayed(Duration(seconds: 2 * attempts));
           _publishCancelToken.throwIfCancelled();
         } catch (e) {
           if (e is CancelledException) rethrow;
           // 网络错误等其他异常，也尝试重试
           if (attempts >= maxRetries) rethrow;
-          setState(() => _editorStatus = '网络异常，${2 * attempts}s 后重试...');
+          if (mounted) setState(() => _editorStatus = '网络异常，${2 * attempts}s 后重试...');
           await Future.delayed(Duration(seconds: 2 * attempts));
           _publishCancelToken.throwIfCancelled();
         }
@@ -1200,14 +1130,12 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         remotePath: finalResult.link,
         remoteSha: finalResult.id?.toString(),
       );
-      setState(() {
-        _currentArticle = pub;
+      if (mounted) setState(() {
+        _doc.setCurrentArticle(pub);
         _editorStatus = isUpdate
             ? '已更新到 ${adapter.config.type.displayName}'
             : '已发布到 ${adapter.config.type.displayName}';
       });
-      _lastSavedContent = a.content;
-      _hasUnsavedChanges = false;
       await _saveDraft(pub);
       // 保存到 CMS SQLite 草稿表
       await cmsDraftService.saveDraft(finalResult);
@@ -1228,15 +1156,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         _showToast('已${actionLabel}到 ${adapter.config.type.displayName}: ${finalResult.link ?? finalResult.title}');
       }
     } on BlogRepositoryException catch (e) {
-      setState(() => _editorStatus = '发布失败');
+      if (mounted) setState(() => _editorStatus = '发布失败');
       logService.add('CMS发布失败', e.message, success: false);
       if (mounted) _showToast('发布失败: ${e.message}');
     } on CancelledException {
-      setState(() => _editorStatus = '已取消发布');
+      if (mounted) setState(() => _editorStatus = '已取消发布');
       logService.add('发布已取消', '用户取消了发布操作');
       if (mounted) _showToast('发布已取消');
     } catch (e) {
-      setState(() => _editorStatus = '发布失败');
+      if (mounted) setState(() => _editorStatus = '发布失败');
       logService.add('CMS发布失败', '$e', success: false);
       if (mounted) _showToast('发布失败: $e');
     } finally {
@@ -1256,82 +1184,82 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   }
 
   void _insertText(String t) {
-    final sel = _contentCtrl.selection;
-    final txt = _contentCtrl.text;
+    final sel = _doc.contentCtrl.selection;
+    final txt = _doc.contentCtrl.text;
     final s = sel.isValid ? sel.start : txt.length;
     final e = sel.isValid ? sel.end : txt.length;
-    _contentCtrl.value = TextEditingValue(
+    _doc.contentCtrl.value = TextEditingValue(
         text: txt.replaceRange(s, e, t),
         selection: TextSelection.collapsed(offset: s + t.length));
-    _contentFocus.requestFocus();
+    _doc.contentFocus.requestFocus();
   }
 
   void _wrap(String l, String r, {String p = ''}) {
-    final sel = _contentCtrl.selection;
-    final txt = _contentCtrl.text;
+    final sel = _doc.contentCtrl.selection;
+    final txt = _doc.contentCtrl.text;
     if (!sel.isValid || sel.start == sel.end) {
       final body = p.isEmpty ? '' : p;
       final ins = '$l$body$r';
       final s = sel.isValid ? sel.start : txt.length;
-      _contentCtrl.value = TextEditingValue(
+      _doc.contentCtrl.value = TextEditingValue(
           text: txt.replaceRange(s, s, ins),
           selection:
               TextSelection.collapsed(offset: s + l.length + body.length));
-      _contentFocus.requestFocus();
+      _doc.contentFocus.requestFocus();
       return;
     }
     final sel2 = txt.substring(sel.start, sel.end);
-    _contentCtrl.value = TextEditingValue(
+    _doc.contentCtrl.value = TextEditingValue(
         text: txt.replaceRange(sel.start, sel.end, '$l$sel2$r'),
         selection: TextSelection.collapsed(
             offset: sel.start + l.length + sel2.length));
-    _contentFocus.requestFocus();
+    _doc.contentFocus.requestFocus();
   }
 
   void _insertHeading(int level) {
     final prefix = '${'#' * level} ';
-    final txt = _contentCtrl.text;
-    final s = _contentCtrl.selection.isValid
-        ? _contentCtrl.selection.start
+    final txt = _doc.contentCtrl.text;
+    final s = _doc.contentCtrl.selection.isValid
+        ? _doc.contentCtrl.selection.start
         : txt.length;
     final lineStart = txt.lastIndexOf('\n', s - 1) + 1;
-    _contentCtrl.value = TextEditingValue(
+    _doc.contentCtrl.value = TextEditingValue(
         text: txt.replaceRange(lineStart, lineStart, prefix),
         selection: TextSelection.collapsed(offset: s + prefix.length));
-    _contentFocus.requestFocus();
+    _doc.contentFocus.requestFocus();
   }
 
   void _insertList(String marker) {
-    final sel = _contentCtrl.selection;
+    final sel = _doc.contentCtrl.selection;
     if (sel.isValid && sel.start != sel.end) {
-      final selected = _contentCtrl.text.substring(sel.start, sel.end);
+      final selected = _doc.contentCtrl.text.substring(sel.start, sel.end);
       final lines = selected
           .split('\n')
           .map((l) => l.isEmpty ? l : '$marker$l')
           .join('\n');
-      final txt = _contentCtrl.text;
-      _contentCtrl.value = TextEditingValue(
+      final txt = _doc.contentCtrl.text;
+      _doc.contentCtrl.value = TextEditingValue(
           text: txt.replaceRange(sel.start, sel.end, lines),
           selection: TextSelection.collapsed(offset: sel.start + lines.length));
-      _contentFocus.requestFocus();
+      _doc.contentFocus.requestFocus();
       return;
     }
     _insertText('\n$marker');
   }
 
   void _insertCodeBlock() {
-    final sel = _contentCtrl.selection;
-    final txt = _contentCtrl.text;
+    final sel = _doc.contentCtrl.selection;
+    final txt = _doc.contentCtrl.text;
     final selected = (sel.isValid && sel.start != sel.end)
         ? txt.substring(sel.start, sel.end)
         : '';
     final fence = '```\n$selected\n```\n';
     final s = sel.isValid ? sel.start : txt.length;
     final e = sel.isValid ? sel.end : txt.length;
-    _contentCtrl.value = TextEditingValue(
+    _doc.contentCtrl.value = TextEditingValue(
         text: txt.replaceRange(s, e, fence),
         selection: TextSelection.collapsed(offset: s + 4));
-    _contentFocus.requestFocus();
+    _doc.contentFocus.requestFocus();
   }
 
   Future<void> _insertImage() async {
@@ -1342,21 +1270,21 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     try {
       final bytes = await imageService.pickImageBytes();
       if (bytes == null) {
-        setState(() => _editorStatus = '已取消');
+        if (mounted) setState(() => _editorStatus = '已取消');
         return;
       }
       _failedImageBytes = bytes; // 缓存以备重试
       final sizeKB = (bytes.length / 1024).toStringAsFixed(1);
-      setState(() => _editorStatus = '正在上传图片 ($sizeKB KB)...');
+      if (mounted) setState(() => _editorStatus = '正在上传图片 ($sizeKB KB)...');
       final url = await imageService.uploadToImageBed(bytes, settings);
       _insertText(imageService.markdownImage(url));
       _failedImageBytes = null; // 清除失败缓存
-      setState(() => _editorStatus = '图片已插入');
+      if (mounted) setState(() => _editorStatus = '图片已插入');
     } catch (e) {
       // 缓存失败图片字节，插入重试标记
       final retryMark = '\n> ⚠️ 图片上传失败，[点击重试](#retry-upload)\n';
       _insertText(retryMark);
-      setState(() => _editorStatus = '上传失败（可点击重试）');
+      if (mounted) setState(() => _editorStatus = '上传失败（可点击重试）');
       if (mounted) _showToast('上传失败，点击文中标记可重试');
     } finally {
       if (mounted) setState(() => _editorBusy = false);
@@ -1372,13 +1300,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     try {
       final bytesList = await imageService.pickMultipleImageBytes();
       if (bytesList == null || bytesList.isEmpty) {
-        setState(() => _editorStatus = '已取消');
+        if (mounted) setState(() => _editorStatus = '已取消');
         return;
       }
       final total = bytesList.length;
 
       // ── 预处理阶段：批量压缩 ──
-      setState(() => _editorStatus = '正在预处理 $total 张图片...');
+      if (mounted) setState(() => _editorStatus = '正在预处理 $total 张图片...');
       final preResult = await imageService.preprocessImages(
         bytesList,
         settings,
@@ -1396,7 +1324,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       int failed = 0;
       final buf = StringBuffer();
       for (var i = 0; i < total; i++) {
-        setState(() => _editorStatus = '正在上传图片 ${i + 1}/$total...');
+        if (mounted) setState(() => _editorStatus = '正在上传图片 ${i + 1}/$total...');
         try {
           final url = await imageService.uploadToImageBed(
             preResult.images[i],
@@ -1412,9 +1340,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       }
       _insertText('\n\n${buf.toString()}');
       logService.add('批量上传图片', '成功: $uploaded, 失败: $failed');
-      setState(() => _editorStatus = '完成: $uploaded/$total 张上传成功');
+      if (mounted) setState(() => _editorStatus = '完成: $uploaded/$total 张上传成功');
     } catch (e) {
-      setState(() => _editorStatus = '批量上传失败');
+      if (mounted) setState(() => _editorStatus = '批量上传失败');
       if (mounted) _showToast('批量上传失败: $e');
     } finally {
       if (mounted) setState(() => _editorBusy = false);
@@ -1429,12 +1357,12 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       return;
     }
     // 移除重试标记文本
-    final txt = _contentCtrl.text;
+    final txt = _doc.contentCtrl.text;
     final retryIdx = txt.indexOf('> ⚠️ 图片上传失败');
     if (retryIdx >= 0) {
       final endIdx = txt.indexOf('\n', txt.indexOf('#retry-upload', retryIdx));
       final removeEnd = endIdx >= 0 ? endIdx + 1 : txt.length;
-      _contentCtrl.text = txt.replaceRange(retryIdx, removeEnd, '');
+      _doc.contentCtrl.text = txt.replaceRange(retryIdx, removeEnd, '');
     }
 
     setState(() {
@@ -1445,9 +1373,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       final url = await imageService.uploadToImageBed(bytes, settings);
       _insertText(imageService.markdownImage(url));
       _failedImageBytes = null;
-      setState(() => _editorStatus = '图片已插入');
+      if (mounted) setState(() => _editorStatus = '图片已插入');
     } catch (e) {
-      setState(() => _editorStatus = '重试失败');
+      if (mounted) setState(() => _editorStatus = '重试失败');
       if (mounted) _showToast('重试上传失败: $e');
     } finally {
       if (mounted) setState(() => _editorBusy = false);
@@ -1461,11 +1389,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     });
     try {
       String result;
-      final text = _contentCtrl.text;
+      final text = _doc.contentCtrl.text;
       switch (action) {
         case 'polish':
           result = await aiService.polish(settings, text);
-          _contentCtrl.text = result;
+          _doc.contentCtrl.text = result;
           break;
         case 'continue':
           result = await aiService.continueWrite(settings, text);
@@ -1495,8 +1423,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         case 'outline':
           result = await aiService.generateOutline(
               settings,
-              _titleCtrl.text.isEmpty ? text : _titleCtrl.text);
-          _contentCtrl.text = result;
+              _doc.titleCtrl.text.isEmpty ? text : _doc.titleCtrl.text);
+          _doc.contentCtrl.text = result;
           break;
         case 'code':
           final ctrl = TextEditingController();
@@ -1517,16 +1445,20 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                         onPressed: () => Navigator.pop(ctx, true),
                         child: const Text('生成')),
                   ]));
-          if (ok != true) break;
+          if (ok != true) {
+            ctrl.dispose();
+            break;
+          }
           result = await aiService.generateCode(
               settings,
               ctrl.text.trim().isEmpty
                   ? '写一段示例代码'
                   : ctrl.text.trim());
+          ctrl.dispose();
           _insertText('\n\n$result\n');
           break;
         case 'rewrite':
-          final sel = _contentCtrl.selection;
+          final sel = _doc.contentCtrl.selection;
           if (!sel.isValid || sel.start == sel.end) {
             throw Exception('请先选中要改写的文字');
           }
@@ -1546,24 +1478,28 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                         onPressed: () => Navigator.pop(ctx, true),
                         child: const Text('改写')),
                   ]));
-          if (ok2 != true) break;
+          if (ok2 != true) {
+            instrCtrl.dispose();
+            break;
+          }
           result = await aiService.rewriteSelection(
               settings, selected, instrCtrl.text.trim());
-          final txt = _contentCtrl.text;
-          _contentCtrl.value = TextEditingValue(
+          instrCtrl.dispose();
+          final txt = _doc.contentCtrl.text;
+          _doc.contentCtrl.value = TextEditingValue(
               text: txt.replaceRange(
                   sel.start, sel.end, result),
               selection: TextSelection.collapsed(
                   offset: sel.start + result.length));
-          _contentFocus.requestFocus();
+          _doc.contentFocus.requestFocus();
           break;
         case 'format':
           result = await aiService.polish(settings,
               '请对以下 Markdown 内容进行排版优化：统一标题层级、规范空行、修正列表缩进、对齐表格格式。\n\n$text');
-          _contentCtrl.text = result;
+          _doc.contentCtrl.text = result;
           break;
       }
-      setState(() => _editorStatus = 'AI 完成');
+      if (mounted) setState(() => _editorStatus = 'AI 完成');
     } catch (e) {
       if (mounted) _showToast('AI 失败: $e');
     } finally {
@@ -1762,6 +1698,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         );
       },
     );
+    c.dispose();
+    u.dispose();
+    pw.dispose();
+    f.dispose();
     if (mounted) setState(() {});
   }
 
@@ -3664,7 +3604,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       Navigator.pop(context);
     }
     // 将 BlogPost 转为 Article 加载到编辑器
-    _currentArticle = Article(
+    final article = Article(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: post.title,
       content: post.contentMd,
@@ -3678,14 +3618,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       remotePath: post.link,
       remoteSha: post.id?.toString(),
     );
-    _titleCtrl.text = post.title;
-    _contentCtrl.text = post.contentMd;
-    _tagsCtrl.text = post.tags.join(', ');
-    _categoriesCtrl.text = post.categories.join(', ');
-    _coverCtrl.text = '';
+    _doc.setCurrentArticle(article);
     _editorRepo = null; // CMS 文章不使用 Git 仓库
-    _lastSavedContent = post.contentMd;
-    _hasUnsavedChanges = false;
+    _doc.setEditorRepoId(null);
     _startAutoSave();
     _saveSession(SessionPageType.editor);
     setState(() => _currentPage = 0);
@@ -3972,16 +3907,16 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                               builder: (_) => Scaffold(
                                     backgroundColor: AppTheme.bg,
                                     appBar: AppBar(
-                                        title: Text(_titleCtrl
+                                        title: Text(_doc.titleCtrl
                                                 .text.isEmpty
                                             ? '预览'
-                                            : _titleCtrl.text)),
+                                            : _doc.titleCtrl.text)),
                                     body: Padding(
                                       padding: const EdgeInsets.all(16),
                                       child: Markdown(
-                                          data: _contentCtrl.text.isEmpty
+                                          data: _doc.contentCtrl.text.isEmpty
                                               ? '*暂无内容*'
-                                              : _contentCtrl.text,
+                                              : _doc.contentCtrl.text,
                                           selectable: true),
                                     ),
                                   )));
@@ -4354,8 +4289,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             onShowBlogSiteManager: _showBlogSiteManager);
       case 9:
         return ArticleReaderScreen(
-          article: _currentArticle,
-          onEnterEdit: () => _enterEditorFromReader(_currentArticle),
+          article: _doc.currentArticle,
+          onEnterEdit: () => _enterEditorFromReader(_doc.currentArticle),
           onClose: () => _onCloseReader(),
         );
       case 10:
@@ -4495,9 +4430,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                             child: Text('${r.name} (${r.fullName})',
                                 style: const TextStyle(fontSize: 13))))
                         .toList(),
-                    onChanged: (v) => setState(() =>
+                    onChanged: (v) => setState(() {
                         _editorRepo =
-                            repos.firstWhere((e) => e.id == v)),
+                            repos.firstWhere((e) => e.id == v);
+                        _doc.setEditorRepoId(v);
+                      }),
                   ),
                 ),
               const SizedBox(height: 8),
@@ -4511,9 +4448,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                       subtitle: _editorRepo != null
                           ? '${_editorRepo!.postsPath}'
                           : '文章目录',
-                      active: _articleType == ArticleType.post,
+                      active: _doc.articleType == ArticleType.post,
                       onTap: () => setState(() {
-                        _articleType = ArticleType.post;
+                        _doc.setArticleType(ArticleType.post);
                         _autoSelectTemplate();
                       }),
                     ),
@@ -4526,9 +4463,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                       subtitle: _editorRepo != null
                           ? '${_editorRepo!.pagesPath}'
                           : '页面目录',
-                      active: _articleType == ArticleType.page,
+                      active: _doc.articleType == ArticleType.page,
                       onTap: () => setState(() {
-                        _articleType = ArticleType.page;
+                        _doc.setArticleType(ArticleType.page);
                         _autoSelectTemplate();
                       }),
                     ),
@@ -4543,9 +4480,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: _selectedTemplateId,
+                          value: _doc.selectedTemplateId,
                           decoration: InputDecoration(
-                            labelText: '模板 (${_articleType == ArticleType.post ? '博文' : '页面'})',
+                            labelText: '模板 (${_doc.articleType == ArticleType.post ? '博文' : '页面'})',
                             prefixIcon: const Icon(Icons.view_quilt_outlined, size: 18),
                             border: InputBorder.none,
                             enabledBorder: InputBorder.none,
@@ -4558,7 +4495,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                               child: Text('无模板', style: TextStyle(fontSize: 13)),
                             ),
                             ...templates
-                                .where((t) => t.isPost == (_articleType == ArticleType.post))
+                                .where((t) => t.isPost == (_doc.articleType == ArticleType.post))
                                 .map((t) => DropdownMenuItem<String>(
                                       value: t.id,
                                       child: Text(
@@ -4568,13 +4505,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                                       ),
                                     )),
                           ],
-                          onChanged: (v) => setState(() => _selectedTemplateId = v),
+                          onChanged: (v) => setState(() => _doc.setSelectedTemplateId(v)),
                         ),
                       ),
                       IconButton(
                         tooltip: '设为本仓库默认模板',
-                        onPressed: _editorRepo != null && _selectedTemplateId != null
-                            ? () => _setAsRepoDefault(_selectedTemplateId!)
+                        onPressed: _editorRepo != null && _doc.selectedTemplateId != null
+                            ? () => _setAsRepoDefault(_doc.selectedTemplateId!)
                             : null,
                         icon: const Icon(Icons.bookmark_add_outlined, size: 18),
                         constraints: const BoxConstraints(),
@@ -4608,7 +4545,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                         Expanded(
                           child: Text(
                             '框架: ${BlogFramework.byId(_editorRepo!.frameworkId)?.name ?? _editorRepo!.frameworkId} | '
-                            '文件名: ${_articleType == ArticleType.page ? '无日期前缀' : (_editorRepo!.fileNameRule.postDatePrefix ? '自动加日期' : '纯标题')}',
+                            '文件名: ${_doc.articleType == ArticleType.page ? '无日期前缀' : (_editorRepo!.fileNameRule.postDatePrefix ? '自动加日期' : '纯标题')}',
                             style: const TextStyle(fontSize: 11, color: Color(0xFF0369A1)),
                           ),
                         ),
@@ -4620,7 +4557,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               // ── 标题 ──
               _editorCard(
                 child: TextField(
-                  controller: _titleCtrl,
+                  controller: _doc.titleCtrl,
                   decoration: const InputDecoration(
                     labelText: '文章标题',
                     prefixIcon:
@@ -4638,7 +4575,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                 Expanded(
                   child: _editorCard(
                     child: TextField(
-                      controller: _tagsCtrl,
+                      controller: _doc.tagsCtrl,
                       decoration: const InputDecoration(
                         labelText: '标签',
                         prefixIcon:
@@ -4655,7 +4592,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                 Expanded(
                   child: _editorCard(
                     child: TextField(
-                      controller: _categoriesCtrl,
+                      controller: _doc.categoriesCtrl,
                       decoration: const InputDecoration(
                         labelText: '分类',
                         prefixIcon: Icon(Icons.folder_outlined,
@@ -4673,7 +4610,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               // ── 封面图 ──
               _editorCard(
                 child: TextField(
-                  controller: _coverCtrl,
+                  controller: _doc.coverCtrl,
                   decoration: const InputDecoration(
                     labelText: '封面图 URL（可选）',
                     prefixIcon:
@@ -4753,8 +4690,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               _editorCard(
                 padding: const EdgeInsets.all(14),
                 child: TextField(
-                  controller: _contentCtrl,
-                  focusNode: _contentFocus,
+                  controller: _doc.contentCtrl,
+                  focusNode: _doc.contentFocus,
                   minLines: 20,
                   maxLines: null,
                   keyboardType: TextInputType.multiline,
@@ -4988,6 +4925,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           orElse: () => repos.first,
         );
         _editorRepo = repo;
+        _doc.setEditorRepoId(repo.id);
       }
       _editorStatus = '已切换到: ${identity.name}';
     });
@@ -5144,6 +5082,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     if (idx >= 0) {
       repos[idx] = updated;
       _editorRepo = updated;
+      _doc.setEditorRepoId(updated.id);
       await _persistRepos();
       if (mounted) {
         _showToast('已将「${template.name}」设为仓库默认${isPost ? "文章" : "页面"}模板');

@@ -72,17 +72,76 @@ class AndroidFileOperator implements AppFileOperator {
     }
   }
 
+  // ── SDK 版本检测 ──
+
+  /// 同步获取当前 Android SDK 版本号
+  ///
+  /// 解析 `Platform.operatingSystemVersion`（格式如 "Android 13 (API 33)"）
+  /// 提取其中的 API 版本号。非 Android 平台返回 0。
+  ///
+  /// Android 各版本 SDK 对照：
+  /// - SDK 29 = Android 10 (Q): 引入分区存储，应用可通过
+  ///   `android:requestLegacyExternalStorage="true"` 豁免
+  /// - SDK 30 = Android 11 (R): 强制分区存储，不再支持
+  ///   `requestLegacyExternalStorage`（文件管理器类应用除外）
+  /// - SDK 31 = Android 12 (S)
+  /// - SDK 33 = Android 13 (T)
+  int getSdkVersionSync() {
+    if (!Platform.isAndroid) return 0;
+    try {
+      final version = Platform.operatingSystemVersion;
+      // 匹配 "API 33" 或 "API 30" 等格式
+      final match = RegExp(r'API\s*(\d+)').firstMatch(version);
+      if (match != null) {
+        return int.parse(match.group(1)!);
+      }
+    } catch (_) {
+      // 解析失败，返回 0
+    }
+    return 0;
+  }
+
+  /// 检测是否为 Android 10 (API 29) 及以上
+  ///
+  /// Android 10 引入了分区存储（Scoped Storage），
+  /// 但应用可以通过 `requestLegacyExternalStorage` 选择退出。
+  bool isAndroid10OrAbove() {
+    return getSdkVersionSync() >= 29;
+  }
+
+  /// 检测是否为 Android 11 (API 30) 及以上
+  ///
+  /// Android 11 开始强制分区存储，不再支持 `requestLegacyExternalStorage`
+  /// （除非应用被认定为文件管理器类应用）。
+  /// 此版本及以上必须使用 SAF / MediaStore 访问共享存储。
+  bool isAndroid11OrAbove() {
+    return getSdkVersionSync() >= 30;
+  }
+
+  @override
+  Future<int> getSdkVersion() async {
+    return getSdkVersionSync();
+  }
+
   // ── 分区存储检测 ──
 
+  /// 判断当前是否需要使用分区存储（Scoped Storage）策略
+  ///
+  /// 策略说明：
+  /// - Android 10 (SDK 29): 分区存储可用但非强制，应用可通过
+  ///   `requestLegacyExternalStorage` 豁免。此处返回 false，
+  ///   实际行为由 AndroidManifest 中的配置决定。
+  /// - Android 11+ (SDK 30+): 强制分区存储，返回 true。
+  ///   所有文件导出必须通过 SAF / MediaStore 进行。
+  /// - 非 Android 平台: 返回 false。
   @override
   bool isScopedStorageRequired() {
     if (_scopedStorage != null) return _scopedStorage!;
-    // Android 11 = API 30
-    // 通过 Platform.operatingSystemVersion 检测
     try {
-      _scopedStorage = Platform.isAndroid;
+      // Android 11 (SDK 30) 及以上强制分区存储
+      _scopedStorage = isAndroid11OrAbove();
     } catch (_) {
-      _scopedStorage = true; // 默认使用分区存储策略
+      _scopedStorage = true; // 默认使用分区存储策略（安全回退）
     }
     return _scopedStorage!;
   }
