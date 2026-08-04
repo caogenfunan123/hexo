@@ -73,6 +73,7 @@ import '../services/log_service.dart';
 import '../services/sync_service.dart' hide SyncStatus;
 import '../services/cloud_sync_service.dart';
 import '../services/html_to_markdown.dart';
+import '../services/spell_check_service.dart';
 import '../services/recycle_bin_service.dart';
 import '../services/version_snapshot_service.dart';
 import '../services/frontmatter_service.dart';
@@ -117,6 +118,12 @@ import 'widgets/right_drawer.dart';
 import 'widgets/status_bar.dart';
 import 'widgets/work_mode.dart';
 import 'widgets/editor_themes.dart';
+import 'widgets/desktop_split_editor.dart';
+import 'widgets/frontmatter_card.dart';
+import 'widgets/markdown_formatter.dart';
+import 'widgets/markdown_syntax_highlighter.dart';
+import 'widgets/editor_drop_target.dart';
+import 'widgets/spell_check_panel.dart';
 import 'shell_action_bus.dart';
 import '../core/shared_bootstrap.dart';
 
@@ -158,6 +165,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   late final VersionSnapshotService versionSnapshotService;
   late final FrontMatterService frontMatterService;
   late final P2PSyncService p2pSyncService;
+  late final SpellCheckService spellCheckService;
   late final SiteIsolationService siteIsolation;
   late final TemplateSyncService? templateSync;
   late final FullTextSearchIsolate? searchIsolate;
@@ -224,6 +232,15 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ── 新功能：打字机滚动 ──
   late final TypewriterScrollController _typewriterCtrl;
 
+  // ── 新功能：分栏编辑器 ──
+  SplitEditorMode _splitEditorMode = SplitEditorMode.sourceOnly;
+
+  // ── 新功能：命令面板 ──
+  bool _showCommandPalette = false;
+
+  // ── 新功能：源码语法高亮 ──
+  BridgedSyntaxController? _sourceSyntaxCtrl;
+
   // ── 新功能：横竖屏状态保持 ──
   late final EditorStateManager _orientationManager;
 
@@ -286,6 +303,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     versionSnapshotService = VersionSnapshotService(logService);
     frontMatterService = FrontMatterService(logService);
     p2pSyncService = P2PSyncService(deviceName: 'Desktop-${Platform.localHostname}');
+    spellCheckService = SpellCheckService();
+    spellCheckService.init();
     _typewriterCtrl = TypewriterScrollController(
       scrollController: _focusScrollCtrl,
       lineHeight: 22.0,
@@ -316,6 +335,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     _scheduledPublishTimer?.cancel();
     _scheduledPublishTimer = null;
     _publishCancelToken.cancel();
+    _sourceSyntaxCtrl?.dispose();
     super.dispose();
   }
 
@@ -563,12 +583,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final text = _doc.contentCtrl.text;
     _editor.updateStats(text);
     final sel = _doc.contentCtrl.selection;
+    final totalLines = '\n'.allMatches(text).length + 1;
     if (sel.isValid) {
       final before = text.substring(0, sel.start);
       final line = '\n'.allMatches(before).length + 1;
       final lastNewline = before.lastIndexOf('\n');
       final col = lastNewline < 0 ? sel.start + 1 : sel.start - lastNewline;
-      _editor.updateCursorPosition(line, col);
+      _editor.updateCursorPosition(line, col, totalLines: totalLines);
 
       // 打字机滚动：专注模式下光标始终在屏幕中间
       if (_layout.workMode == WorkMode.focus && line != _lastCursorLine) {
@@ -1253,11 +1274,19 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   Widget _buildEmbeddedEditor() {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Front-matter 结构化编辑面板 ──
+          FrontMatterCard(
+            contentController: _doc.contentCtrl,
+            onChanged: _onContentChanged,
+            isDark: isDark,
+          ),
+          const SizedBox(height: 8),
           // ── 仓库选择器 ──
           if (repos.isNotEmpty)
             _editorCard(
@@ -1501,50 +1530,34 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             ),
           ),
           const SizedBox(height: 10),
-          // ── 正文编辑区 ──
+          // ── 正文编辑区（双栏 Markdown 编辑器） ──
           _editorCard(
-            padding: const EdgeInsets.all(14),
-            child: LayoutBuilder(
-              builder: (ctx, constraints) {
-                // 确保编辑器至少占满可用高度，避免光标从中间开始
-                // 处理无界约束（ScrollView 中 maxHeight 为 infinity）
-                final minLines = constraints.maxHeight.isFinite
-                    ? ((constraints.maxHeight - 80) / (14.5 * 1.6)).floor().clamp(1, 50)
-                    : 15;
-                return TextField(
-                  controller: _doc.contentCtrl,
-                  focusNode: _doc.contentFocus,
-                  minLines: minLines,
-                  maxLines: null,
-                  keyboardType: TextInputType.multiline,
-                  cursorColor: cs.primary,
-                  onChanged: (_) {
-                                      _onContentChanged();
-                                      // 更新打字机光标位置
-                                      final text = _doc.contentCtrl.text;
-                                      final cursorPos = _doc.contentCtrl.selection.baseOffset;
-                                      final textBefore = text.substring(0, cursorPos.clamp(0, text.length));
-                                      final currentLine = '\n'.allMatches(textBefore).length;
-                                      final totalLines = '\n'.allMatches(text).length + 1;
-                                      _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
-                                    },
-                  decoration: InputDecoration(
-                    labelText: 'Markdown 正文',
-                    labelStyle: TextStyle(color: cs.onSurface.withOpacity(0.38), fontSize: 13),
-                    alignLabelWithHint: true,
-                    hintText: '支持 # 标题、**粗体**、代码块、列表...\n编辑完可存草稿或直接发布',
-                    hintStyle: TextStyle(color: cs.onSurface.withOpacity(0.38), fontSize: 13),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                  ),
-                  style: TextStyle(
-                    fontFamily: 'monospace',
-                    height: 1.6,
-                    fontSize: 14.5,
-                    color: cs.onSurface,
-                  ),
-                );
-              },
+            padding: EdgeInsets.zero,
+            child: SizedBox(
+              height: 600, // 给编辑器一个固定高度
+              child: DesktopSplitEditor(
+                contentController: _doc.contentCtrl,
+                focusNode: _doc.contentFocus,
+                onChanged: () {
+                  _onContentChanged();
+                  // 更新打字机光标位置
+                  final text = _doc.contentCtrl.text;
+                  final cursorPos = _doc.contentCtrl.selection.baseOffset;
+                  final textBefore = text.substring(0, cursorPos.clamp(0, text.length));
+                  final currentLine = '\n'.allMatches(textBefore).length;
+                  final totalLines = '\n'.allMatches(text).length + 1;
+                  _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
+                },
+                fontSize: _editor.editorFontSize,
+                lineHeight: _editor.editorLineHeight,
+                fontFamily: 'monospace',
+                isDark: isDark,
+                colorScheme: cs,
+                initialMode: _splitEditorMode,
+                onModeChanged: (mode) {
+                  setState(() => _splitEditorMode = mode);
+                },
+              ),
             ),
           ),
           if (_editor.editorStatus != null)
@@ -1819,6 +1832,22 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       _editor.setEditorStatus('上传失败（可点击重试）');
       if (mounted) _showToast('上传失败，点击文中标记可重试');} finally {
       if (mounted) _editor.setEditorBusy(false);}
+  }
+
+  /// 处理拖拽放入的图片文件
+  Future<String?> _handleDroppedImage(File file) async {
+    try {
+      final bytes = await file.readAsBytes();
+      final sizeKB = (bytes.length / 1024).toStringAsFixed(1);
+      _editor.setEditorStatus('正在上传拖拽图片 ($sizeKB KB)...');
+      final url = await imageService.uploadToImageBed(bytes, settings);
+      _editor.setEditorStatus('图片已插入');
+      return imageService.markdownImage(url);
+    } catch (e) {
+      _editor.setEditorStatus('拖拽图片上传失败');
+      if (mounted) _showToast('拖拽图片上传失败: $e');
+      return '\n> ⚠️ 拖拽图片上传失败\n';
+    }
   }
 
   Future<void> _batchInsertImages() async {
@@ -4267,6 +4296,90 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     }
   }
 
+  /// 拼写检查面板
+  void _showSpellCheck() {
+    final results = spellCheckService.check(_doc.contentCtrl.text);
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.spellcheck, size: 20),
+              const SizedBox(width: 8),
+              const Text('拼写检查', style: TextStyle(fontSize: 16)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () {
+                  spellCheckService.toggle();
+                  Navigator.pop(ctx);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: spellCheckService.enabled
+                        ? Colors.green.withOpacity(0.15)
+                        : Colors.grey.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    spellCheckService.enabled ? '已启用' : '已禁用',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: spellCheckService.enabled ? Colors.green : Colors.grey,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 500,
+            height: 400,
+            child: SpellCheckPanel(
+              results: results,
+              isDark: isDark,
+              onJumpToOffset: (offset) {
+                Navigator.pop(ctx);
+                _doc.contentCtrl.selection = TextSelection.collapsed(offset: offset);
+                _doc.contentFocus.requestFocus();
+              },
+              onReplace: (result) {
+                // 替换单词
+                if (result.suggestions.isNotEmpty) {
+                  final text = _doc.contentCtrl.text;
+                  final newText = text.substring(0, result.offset) +
+                      result.suggestions.first +
+                      text.substring(result.offset + result.length);
+                  _doc.contentCtrl.text = newText;
+                  _doc.contentCtrl.selection = TextSelection.collapsed(
+                    offset: result.offset + result.suggestions.first.length,
+                  );
+                  _onContentChanged();
+                }
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('关闭'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final newResults = spellCheckService.check(_doc.contentCtrl.text);
+                Navigator.pop(ctx);
+                _showSpellCheck();
+              },
+              child: const Text('重新检查'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showSnippetManager() {
     final nameCtrl = TextEditingController();
     final contentCtrl = TextEditingController();
@@ -4963,10 +5076,40 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         if (imgData != null && imgData.text != null) {
           imgBytes = Uint8List.fromList(imgData.text!.codeUnits);
         }
-      } catch (e) { debugPrint('Shell: git diff failed: $e'); }
+      } catch (e) { debugPrint('Shell: clipboard image read failed: $e'); }
 
-      if (imgBytes != null && imgBytes.isNotEmpty) {
-        _editor.setEditorBusy(true); _editor.setEditorStatus('正在上传剪贴板图片...');
+      if (imgBytes != null && imgBytes.isNotEmpty && _editorRepo != null && _workspaceFolder != null) {
+        _editor.setEditorBusy(true);
+        _editor.setEditorStatus('正在保存剪贴板图片...');
+        try {
+          // 自动压缩图片
+          final compressed = await imageService.compressIfNeeded(imgBytes, settings);
+
+          // 生成文件名：时间戳.png
+          final timestamp = DateTime.now().millisecondsSinceEpoch;
+          final fileName = '$timestamp.png';
+
+          // 保存到本地项目
+          final relativePath = await imageService.saveImageLocally(
+            compressed,
+            projectDir: _workspaceFolder!,
+            subDir: 'images',
+            fileName: fileName,
+          );
+
+          // 插入相对路径
+          _insertText(imageService.markdownImage('/$relativePath', alt: 'image'));
+          _showToast('图片已保存到本地: $relativePath');
+        } catch (e) {
+          _showToast('图片保存失败: $e');
+        } finally {
+          if (mounted) _editor.setEditorBusy(false);
+        }
+        return;
+      } else if (imgBytes != null && imgBytes.isNotEmpty) {
+        // 没有本地项目，仍使用图床上传
+        _editor.setEditorBusy(true);
+        _editor.setEditorStatus('正在上传剪贴板图片...');
         try {
           final url = await imageService.uploadToImageBed(imgBytes, settings);
           _insertText(imageService.markdownImage(url));
@@ -4974,7 +5117,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         } catch (e) {
           _showToast('图片上传失败: $e');
         } finally {
-          if (mounted) _editor.setEditorBusy(false);}
+          if (mounted) _editor.setEditorBusy(false);
+        }
         return;
       }
 
@@ -6204,152 +6348,51 @@ PLACEHOLDER
   // ============================================================
 
   void _showCommandPalette() {
-    final commands = <_CommandItem>[
-      _CommandItem('保存草稿', 'Ctrl+S', Icons.save, () => _saveLocal()),
-      _CommandItem('一键发布', 'Ctrl+P', Icons.send, () => _handlePublish()),
-      _CommandItem('新建文章', 'Ctrl+N', Icons.add, () => _newArticle()),
-      _CommandItem('打开文件', 'Ctrl+O', Icons.folder_open, () => _openFileDialog()),
-      _CommandItem('另存为...', 'Ctrl+Shift+S', Icons.save_as, () => _saveAsToLocal()),
-      _CommandItem('查找替换', 'Ctrl+F', Icons.find_replace, () => _showFindReplace()),
-      _CommandItem('插入目录', '', Icons.toc, () => _insertToc()),
-      _CommandItem('插入表格', '', Icons.table_chart, () => _insertTable()),
-      _CommandItem('添加表格行', '', Icons.playlist_add, () => _addTableRow()),
-      _CommandItem('添加表格列', '', Icons.view_column, () => _addTableCol()),
-      _CommandItem('切换图片路径模式', '', Icons.swap_horiz, () => _toggleImagePathMode()),
-      _CommandItem('图片尺寸-小', '', Icons.photo_size_select_small, () => _setImageSize('small')),
-      _CommandItem('图片尺寸-中', '', Icons.photo_size_select_large, () => _setImageSize('medium')),
-      _CommandItem('图片尺寸-大', '', Icons.photo_library, () => _setImageSize('large')),
-      _CommandItem('图片尺寸-全宽', '', Icons.photo, () => _setImageSize('full')),
-      _CommandItem('文档格式化', '', Icons.cleaning_services, () => _formatDocument()),
-      _CommandItem('修复发布路径', '', Icons.healing, () => _repairPublishPaths()),
-      _CommandItem('批量操作', '', Icons.playlist_add_check, () => _showBatchOperations()),
-      _CommandItem('专注模式', 'Ctrl+Shift+F', Icons.auto_awesome, () => _switchWorkMode(WorkMode.focus)),
-      _CommandItem('工作台模式', '', Icons.dashboard, () => _switchWorkMode(WorkMode.workspace)),
-      _CommandItem('源码模式', '', Icons.code, () => _switchWorkMode(WorkMode.source)),
-      _CommandItem('切换左侧面板', 'Ctrl+L', Icons.menu_open, () => _toggleLeftPanel()),
-      _CommandItem('打开大纲', 'Ctrl+E', Icons.list_alt, () => _openRightDrawer(RightDrawerTab.outline)),
-      _CommandItem('粘贴图片', 'Ctrl+Shift+V', Icons.image, () => _pasteImageFromClipboard()),
-      _CommandItem('云同步', '', Icons.cloud_sync, () => _openSyncSettings()),
-      _CommandItem('P2P 同步', '', Icons.wifi, () => _openP2PSync()),
-      _CommandItem('设置', '', Icons.settings_outlined, () => _openSettings()),
-      _CommandItem('草稿箱', '', Icons.drafts_outlined, () => _openDrafts()),
-      _CommandItem('远程文章', '', Icons.cloud_outlined, () => _openRemote()),
-      _CommandItem('仪表盘', '', Icons.dashboard_outlined, () => _openDashboard()),
-      _CommandItem('AI 博文创作', '', Icons.article_outlined, () => _showAiArticleChat()),
-      _CommandItem('AI 站点巡检', '', Icons.fact_check_outlined, () => _showAiAudit()),
-      _CommandItem('模板管理', '', Icons.view_quilt_outlined, () => _showTemplateManager()),
-      _CommandItem('操作日志', '', Icons.history, () => _openLogs()),
-      // 导出功能
-      _CommandItem('导出 HTML', '', Icons.html, () => _exportHtml()),
-      _CommandItem('导出 PDF', '', Icons.picture_as_pdf, () => _exportPdf()),
-      _CommandItem('导出 DOCX', '', Icons.description, () => _exportDocx()),
-      _CommandItem('导出 EPUB', '', Icons.book, () => _exportEpub()),
-      // 文件管理
-      _CommandItem('打开文件夹工作区', '', Icons.folder_copy, () => _openFolderWorkspace()),
-      _CommandItem('重命名当前文件', '', Icons.drive_file_rename_outline, () => _renameCurrentFile()),
-      _CommandItem('移动当前文件', '', Icons.drive_file_move, () => _moveCurrentFile()),
-      // 编辑器自定义功能
-      _CommandItem('字体设置', '', Icons.text_fields, () => _showFontSettings()),
-      _CommandItem('编辑器主题', '', Icons.palette_outlined, () => _showThemePicker()),
-      _CommandItem('自定义 CSS', '', Icons.css, () => _showCustomCssEditor()),
-      _CommandItem('快捷键设置', '', Icons.keyboard, () => _showShortcutEditor()),
-      _CommandItem('帮助 / 快捷键速查', 'F1', Icons.help_outline, () => _showHelpDialog()),
-      _CommandItem('回收站', '', Icons.delete_outline, () => _openRecycleBin()),
-      _CommandItem('图床管理', '', Icons.photo_library_outlined, () => _openImageBedManager()),
-      _CommandItem('版本历史', '', Icons.history, () => _openVersionHistory()),
-      _CommandItem('代理设置', '', Icons.vpn_lock_outlined, () => _openProxySettings()),
-      _CommandItem('全局搜索', '', Icons.manage_search, () => _openGlobalSearch()),
-      _CommandItem('缓存清理', '', Icons.cleaning_services_outlined, () => _openCacheCleanup()),
-      _CommandItem('导出日志', '', Icons.bug_report_outlined, () => _exportLogs()),
-      _CommandItem('编码修复', '', Icons.text_fields, () => _fixEncoding()),
-      _CommandItem('离线模式', '', Icons.airplane_ticket_outlined, () => _toggleOfflineMode()),
-      _CommandItem('护眼滤镜', '', Icons.nightlight_round, () => _toggleNightEyeProtection()),
-      _CommandItem('链接检测', '', Icons.link_off, () => _openLinkChecker()),
-      _CommandItem('批量工具箱', '', Icons.build_circle, () => _openBatchTools()),
-      _CommandItem('AI 提示词模板', '', Icons.text_snippet_outlined, () => _openAiPromptTemplates()),
-      _CommandItem('导入 HTML', '', Icons.html, () => _importHtmlFile()),
-      _CommandItem('导入 DOCX', '', Icons.description, () => _importDocxFile()),
-      _CommandItem('AI 选区改写', '', Icons.short_text, () => _sendSelectionToAi()),
-      _CommandItem('AI 全文润色', '', Icons.auto_awesome, () => _sendFullToAi()),
-      _CommandItem('同步冲突解决', '', Icons.compare_arrows, () => _checkAndResolveConflicts()),
-      _CommandItem('定时发布', '', Icons.schedule_send, () => _schedulePublish()),
-      _CommandItem('发布变更日志', '', Icons.change_circle_outlined, () => _showPublishChangeLog('')),
-      _CommandItem('AI 输出对比', '', Icons.compare_arrows, () => _showAiDiffPreview()),
+    setState(() => _showCommandPalette = true);
+  }
+
+  void _closeCommandPalette() {
+    setState(() => _showCommandPalette = false);
+  }
+
+  List<CommandItem> _buildCommandItems() {
+    return [
+      CommandItem(label: '保存草稿', category: '文件', shortcut: 'Ctrl+S', icon: Icons.save, onExecute: () => _saveLocal()),
+      CommandItem(label: '一键发布', category: '文件', shortcut: 'Ctrl+P', icon: Icons.send, onExecute: () => _handlePublish()),
+      CommandItem(label: '新建文章', category: '文件', shortcut: 'Ctrl+N', icon: Icons.add, onExecute: () => _newArticle()),
+      CommandItem(label: '打开文件', category: '文件', shortcut: 'Ctrl+O', icon: Icons.folder_open, onExecute: () => _openFileDialog()),
+      CommandItem(label: '另存为...', category: '文件', shortcut: 'Ctrl+Shift+S', icon: Icons.save_as, onExecute: () => _saveAsToLocal()),
+      CommandItem(label: '导出 HTML', category: '导出', shortcut: '', icon: Icons.html, onExecute: () => _exportHtml()),
+      CommandItem(label: '导出 PDF', category: '导出', shortcut: '', icon: Icons.picture_as_pdf, onExecute: () => _exportPdf()),
+      CommandItem(label: '导出 DOCX', category: '导出', shortcut: '', icon: Icons.description, onExecute: () => _exportDocx()),
+      CommandItem(label: '导出 EPUB', category: '导出', shortcut: '', icon: Icons.book, onExecute: () => _exportEpub()),
+      CommandItem(label: '专注模式', category: '视图', shortcut: 'Ctrl+Shift+F', icon: Icons.auto_awesome, onExecute: () => _switchWorkMode(WorkMode.focus)),
+      CommandItem(label: '工作台模式', category: '视图', shortcut: '', icon: Icons.dashboard, onExecute: () => _switchWorkMode(WorkMode.workspace)),
+      CommandItem(label: '源码模式', category: '视图', shortcut: '', icon: Icons.code, onExecute: () => _switchWorkMode(WorkMode.source)),
+      CommandItem(label: '切换左侧面板', category: '视图', shortcut: 'Ctrl+L', icon: Icons.menu_open, onExecute: () => _toggleLeftPanel()),
+      CommandItem(label: '打开大纲', category: '视图', shortcut: 'Ctrl+E', icon: Icons.list_alt, onExecute: () => _openRightDrawer(RightDrawerTab.outline)),
+      CommandItem(label: '查找替换', category: '编辑', shortcut: 'Ctrl+F', icon: Icons.find_replace, onExecute: () => _showFindReplace()),
+      CommandItem(label: '插入目录', category: '编辑', shortcut: '', icon: Icons.toc, onExecute: () => _insertToc()),
+      CommandItem(label: '插入表格', category: '编辑', shortcut: '', icon: Icons.table_chart, onExecute: () => _insertTable()),
+      CommandItem(label: '文档格式化', category: '编辑', shortcut: '', icon: Icons.cleaning_services, onExecute: () => _formatDocument()),
+      CommandItem(label: '粘贴图片', category: '编辑', shortcut: 'Ctrl+Shift+V', icon: Icons.image, onExecute: () => _pasteImageFromClipboard()),
+      CommandItem(label: 'AI 博文创作', category: 'AI', shortcut: '', icon: Icons.article_outlined, onExecute: () => _showAiArticleChat()),
+      CommandItem(label: 'AI 站点巡检', category: 'AI', shortcut: '', icon: Icons.fact_check_outlined, onExecute: () => _showAiAudit()),
+      CommandItem(label: 'AI 选区改写', category: 'AI', shortcut: '', icon: Icons.short_text, onExecute: () => _sendSelectionToAi()),
+      CommandItem(label: 'AI 全文润色', category: 'AI', shortcut: '', icon: Icons.auto_awesome, onExecute: () => _sendFullToAi()),
+      CommandItem(label: '草稿箱', category: '导航', shortcut: '', icon: Icons.drafts_outlined, onExecute: () => _openDrafts()),
+      CommandItem(label: '远程文章', category: '导航', shortcut: '', icon: Icons.cloud_outlined, onExecute: () => _openRemote()),
+      CommandItem(label: '仪表盘', category: '导航', shortcut: '', icon: Icons.dashboard_outlined, onExecute: () => _openDashboard()),
+      CommandItem(label: '回收站', category: '导航', shortcut: '', icon: Icons.delete_outline, onExecute: () => _openRecycleBin()),
+      CommandItem(label: '模板管理', category: '工具', shortcut: '', icon: Icons.view_quilt_outlined, onExecute: () => _showTemplateManager()),
+      CommandItem(label: '图床管理', category: '工具', shortcut: '', icon: Icons.photo_library_outlined, onExecute: () => _openImageBedManager()),
+      CommandItem(label: '版本历史', category: '工具', shortcut: '', icon: Icons.history, onExecute: () => _openVersionHistory()),
+      CommandItem(label: '链接检测', category: '工具', shortcut: '', icon: Icons.link_off, onExecute: () => _openLinkChecker()),
+      CommandItem(label: '设置', category: '工具', shortcut: '', icon: Icons.settings_outlined, onExecute: () => _openSettings()),
+      CommandItem(label: '快捷键设置', category: '工具', shortcut: '', icon: Icons.keyboard, onExecute: () => _showShortcutEditor()),
+      CommandItem(label: '帮助 / 快捷键速查', category: '帮助', shortcut: 'F1', icon: Icons.help_outline, onExecute: () => _showHelpDialog()),
     ];
-
-    final searchCtrl = TextEditingController();
-    String filter = '';
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          final filtered = filter.isEmpty
-              ? commands
-              : commands.where((c) => c.label.contains(filter) || c.shortcut.contains(filter)).toList();
-          return AlertDialog(
-            title: const Text('命令面板', style: TextStyle(fontSize: 16)),
-            titlePadding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            contentPadding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
-            content: SizedBox(
-              width: 480,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: TextField(
-                      controller: searchCtrl,
-                      autofocus: true,
-                      decoration: const InputDecoration(
-                        hintText: '搜索命令...',
-                        prefixIcon: Icon(Icons.search, size: 18),
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (v) => setDialogState(() => filter = v.toLowerCase()),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 400),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: filtered.length,
-                      itemBuilder: (_, i) {
-                        final cmd = filtered[i];
-                        return ListTile(
-                          dense: true,
-                          leading: Icon(cmd.icon, size: 18),
-                          title: Text(cmd.label, style: const TextStyle(fontSize: 13)),
-                          trailing: cmd.shortcut.isNotEmpty
-                              ? Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade200,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(cmd.shortcut, style: TextStyle(fontSize: 10, fontFamily: 'monospace', color: Colors.grey.shade700)),
-                                )
-                              : null,
-                          onTap: () {
-                            Navigator.pop(ctx);
-                            cmd.action();
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
-            ],
-          );
-        },
-      ),
-    );
+  }
   }
 
   // ============================================================
@@ -7080,6 +7123,15 @@ $htmlContent
         ),
       ));
     }
+    // 命令面板覆盖层
+    if (_showCommandPalette) {
+      stackChildren.add(Positioned.fill(
+        child: CommandPalette(
+          commands: _buildCommandItems(),
+          onClose: _closeCommandPalette,
+        ),
+      ));
+    }
     return Stack(children: stackChildren);
   }
 
@@ -7097,12 +7149,24 @@ $htmlContent
 
   /// 主体三栏区域
   Widget _buildMainArea(LayoutController layout) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final mainContent = switch (layout.workMode) {
+      WorkMode.focus => _buildFocusEditor(),
+      WorkMode.source => _buildSourceEditor(),
+      _ => _buildWorkspaceLayout(layout),
+    };
+
     return Expanded(
-      child: switch (layout.workMode) {
-        WorkMode.focus => _buildFocusEditor(),
-        WorkMode.source => _buildSourceEditor(),
-        _ => _buildWorkspaceLayout(layout),
-      },
+      child: EditorDropTarget(
+        isDark: isDark,
+        onImageDropped: (file) async {
+          return await _handleDroppedImage(file);
+        },
+        onMarkdownInserted: (content) {
+          _insertText(content);
+        },
+        child: mainContent,
+      ),
     );
   }
 
@@ -7150,6 +7214,14 @@ $htmlContent
       categoriesCtrl: _doc.categoriesCtrl,
       coverCtrl: _doc.coverCtrl,
       syncLogs: _sync.logs.map((e) => '${e.timestamp.hour}:${e.timestamp.minute.toString().padLeft(2, '0')}:${e.timestamp.second.toString().padLeft(2, '0')} ${e.message}').toList(),
+      snippets: snippets,
+      onSnippetInsert: (content) => _insertText(content),
+      onSnippetDelete: (snippet) async {
+        snippets.removeWhere((s) => s.id == snippet.id);
+        await storage.saveSnippets(snippets);
+        if (mounted) setState(() => snippets = List.from(snippets));
+      },
+      onSnippetAdd: _showSnippetManager,
       aiChatPanel: AiChatPanel(
         key: _aiChatKey,
         settings: settings,
@@ -7172,15 +7244,21 @@ $htmlContent
   /// 底部状态栏
   Widget _buildBottomBar(LayoutController layout) {
     if (layout.workMode == WorkMode.focus) return const SizedBox.shrink();
+    // 计算阅读时间
+    final charCount = _editor.charCount;
+    final readMin = charCount > 0 ? (charCount / 400).ceil().clamp(1, 120) : 0;
     return DesktopStatusBar(
       workMode: layout.workMode,
       onModeChange: _switchWorkMode,
       editorStatus: _editor.editorStatus,
       cursorPosition: (_editor.cursorPos.line, _editor.cursorPos.column),
       wordCount: _editor.wordCount,
-      charCount: _editor.charCount,
+      charCount: charCount,
       siteName: activeRepo?.name ?? settings.siteName,
       isSyncing: false,
+      isSaved: !_doc.hasUnsavedChanges,
+      lineCount: _editor.cursorPos.totalLines,
+      readTime: readMin > 0 ? '约${readMin}分钟' : '',
     );
   }
 
@@ -7357,30 +7435,44 @@ $htmlContent
                                 ),
                                 const SizedBox(height: 24),
                                 // 内容编辑区（带当前行高亮效果）
-                                SizedBox(
-                                  height: _doc.contentCtrl.text.split('\n').length * (_editor.editorFontSize * _editor.editorLineHeight) + 600,
-                                  child: TextField(
-                                    controller: _doc.contentCtrl,
-                                    maxLines: null,
-                                    expands: true,
-                                    focusNode: _doc.contentFocus,
-                                    cursorColor: cs.primary,
-                                    style: TextStyle(
-                                      fontSize: _editor.editorFontSize,
-                                      height: _editor.editorLineHeight,
-                                      color: isDark ? Colors.white.withOpacity(0.9) : const Color(0xFF374151),
-                                      fontFamily: _resolveFontFamily(_editor.editorFontFamily),
-                                    ),
-                                    decoration: InputDecoration(
-                                      border: InputBorder.none,
-                                      hintText: '开始写作...',
-                                      hintStyle: TextStyle(
-                                        fontSize: _editor.editorFontSize,
-                                        color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+                                Stack(
+                                  children: [
+                                    // 当前行高亮背景
+                                    Positioned(
+                                      top: (_lastCursorLine - 1) * (_editor.editorFontSize * _editor.editorLineHeight),
+                                      left: 0,
+                                      right: 0,
+                                      height: _editor.editorFontSize * _editor.editorLineHeight,
+                                      child: Container(
+                                        color: cs.primary.withOpacity(isDark ? 0.08 : 0.05),
                                       ),
                                     ),
-                                    onChanged: (_) => _onContentChanged(),
-                                  ),
+                                    SizedBox(
+                                      height: _doc.contentCtrl.text.split('\n').length * (_editor.editorFontSize * _editor.editorLineHeight) + 600,
+                                      child: TextField(
+                                        controller: _doc.contentCtrl,
+                                        maxLines: null,
+                                        expands: true,
+                                        focusNode: _doc.contentFocus,
+                                        cursorColor: cs.primary,
+                                        style: TextStyle(
+                                          fontSize: _editor.editorFontSize,
+                                          height: _editor.editorLineHeight,
+                                          color: isDark ? Colors.white.withOpacity(0.9) : const Color(0xFF374151),
+                                          fontFamily: _resolveFontFamily(_editor.editorFontFamily),
+                                        ),
+                                        decoration: InputDecoration(
+                                          border: InputBorder.none,
+                                          hintText: '开始写作...',
+                                          hintStyle: TextStyle(
+                                            fontSize: _editor.editorFontSize,
+                                            color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+                                          ),
+                                        ),
+                                        onChanged: (_) => _onContentChanged(),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -7476,6 +7568,20 @@ $htmlContent
   Widget _buildSourceEditor() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cs = Theme.of(context).colorScheme;
+
+    // 初始化或重建语法高亮桥接控制器
+    final syntaxColors = isDark ? MarkdownSyntaxColors.dark : MarkdownSyntaxColors.light;
+    if (_sourceSyntaxCtrl == null) {
+      _sourceSyntaxCtrl = BridgedSyntaxController(
+        delegate: _doc.contentCtrl,
+        colors: syntaxColors,
+        fontSize: 14,
+        fontFamily: 'monospace',
+      );
+    } else {
+      _sourceSyntaxCtrl!.updateColors(syntaxColors);
+    }
+
     return Container(
       color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
       child: Column(
@@ -7522,6 +7628,7 @@ $htmlContent
                   Clipboard.setData(ClipboardData(text: _doc.contentCtrl.text));
                   _showToast('已复制到剪贴板');
                 }, isDark),
+                _sourceToolbarButton(Icons.spellcheck, '拼写检查', () => _showSpellCheck(), isDark),
                 Container(
                   width: 1,
                   height: 18,
@@ -7531,20 +7638,19 @@ $htmlContent
               ],
             ),
           ),
-          // 源码编辑区
+          // 源码编辑区（带语法高亮）
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: TextField(
-                controller: _doc.contentCtrl,
+                controller: _sourceSyntaxCtrl,
                 maxLines: null,
                 focusNode: _doc.contentFocus,
                 cursorColor: cs.primary,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 14,
                   height: 1.7,
                   fontFamily: 'monospace',
-                  color: isDark ? const Color(0xFFE0E0E0) : const Color(0xFF24292E),
                 ),
                 decoration: InputDecoration(
                   border: InputBorder.none,
@@ -7669,16 +7775,6 @@ $htmlContent
 // ============================================================
 // 辅助数据类
 // ============================================================
-
-/// 命令面板条目
-class _CommandItem {
-  final String label;
-  final String shortcut;
-  final IconData icon;
-  final VoidCallback action;
-
-  const _CommandItem(this.label, this.shortcut, this.icon, this.action);
-}
 
 /// 最近打开文件记录
 class RecentFile {
