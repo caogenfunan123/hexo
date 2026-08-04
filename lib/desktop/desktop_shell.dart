@@ -7162,7 +7162,7 @@ $htmlContent
         onImageDropped: (file) async {
           return await _handleDroppedImage(file);
         },
-        onMarkdownInserted: (content) {
+        onMarkdownInserted: (content) async {
           _insertText(content);
         },
         child: mainContent,

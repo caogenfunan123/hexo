@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// 命令面板中的单个命令项
 class CommandItem {
@@ -83,8 +84,8 @@ class _CommandPaletteState extends State<CommandPalette> {
     _filtered[index].onExecute();
   }
 
-  void _handleKey(RawKeyEvent event) {
-    if (event is! RawKeyDownEvent) return;
+  void _handleKey(KeyEvent event) {
+    if (event is! KeyDownEvent) return;
     if (event.logicalKey == LogicalKeyboardKey.escape) {
       widget.onClose();
       return;
