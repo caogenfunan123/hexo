@@ -65,7 +65,6 @@ jobs:
           flutter doctor --verbose 2>&1 | head -50
 
       - name: Build APK
-        continue-on-error: true
         run: |
           flutter clean
           flutter pub get
@@ -117,7 +116,6 @@ jobs:
       - run: flutter pub get
       - name: Build Web
         run: flutter build web --release 2>&1 | tee /tmp/build-web.log
-        continue-on-error: true
 
       - name: Upload Web build
         uses: actions/upload-artifact@v4
@@ -149,7 +147,6 @@ jobs:
       - run: flutter pub get
       - name: Build Linux
         run: flutter build linux --release --target=lib/desktop/desktop_main.dart 2>&1 | tee /tmp/build-linux.log
-        continue-on-error: true
 
       - name: Pack Linux release
         run: |
@@ -199,7 +196,6 @@ jobs:
       - run: flutter pub get
       - name: Build Windows
         run: flutter build windows --release --target=lib/desktop/desktop_main.dart 2>&1 | Tee-Object -FilePath build-windows.log
-        continue-on-error: true
 
       - name: Upload Windows build log
         if: always()

@@ -86,6 +86,8 @@ import 'services/p2p_mdns_service.dart';
 import 'services/p2p_incremental_sync.dart';
 import 'services/template_sync_service.dart';
 import 'services/full_text_search_isolate.dart';
+import 'services/recycle_bin_service.dart';
+import 'services/version_snapshot_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -252,6 +254,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   P2PIncrementalSyncService? _p2pIncremental;
   TemplateSyncService? _templateSync;
   FullTextSearchIsolate? _searchIsolate;
+  RecycleBinService? _recycleBin;
+  VersionSnapshotService? _snapshotService;
 
   RepoConfig? get activeRepo {
     if (repos.isEmpty) return null;
@@ -481,6 +485,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         deviceId: 'mobile-${DateTime.now().millisecondsSinceEpoch}',
       );
       _searchIsolate = FullTextSearchIsolate(logService);
+      _recycleBin = RecycleBinService();
+      await _recycleBin!.init(root);
+      _snapshotService = VersionSnapshotService(root);
     } catch (e) {
       debugPrint('Init new services error: $e');
     }
@@ -1586,9 +1593,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   void _showMobileDiff(String original, String modified, {String title = 'Diff 对比'}) {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => MobileDiffScreen(
-        originalText: original,
-        modifiedText: modified,
-        title: title,
+        oldText: original,
+        newText: modified,
+        oldLabel: '原始版本',
+        newLabel: '修改版本',
         onAccept: (acceptedText) {
           _doc.contentCtrl.text = acceptedText;
           _onContentChanged();
@@ -1601,7 +1609,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   void _showMobileRecycleBin() {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => MobileRecycleBinScreen(
-        storage: storage,
+        recycleBinService: _recycleBin!,
         onRestore: (article) {
           setState(() {
             drafts.add(article);
@@ -1620,7 +1628,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => MobileSnapshotScreen(
         articleId: article.id,
-        storage: storage,
+        articleTitle: article.title,
+        currentContent: _doc.contentCtrl.text,
+        snapshotService: _snapshotService!,
         onRestoreSnapshot: (snapshotContent) {
           _doc.contentCtrl.text = snapshotContent;
           _onContentChanged();

@@ -178,7 +178,7 @@ MarkdownStyleSheet createUnifiedMarkdownStyle({
       ),
       color: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFFAFAFA),
     ),
-    blockquotePadding: const EdgeInsets.only(
+    blockquotePadding: EdgeInsets.only(
       left: cfg.blockQuoteIndent,
       top: 4,
       bottom: 4,

@@ -72,7 +72,7 @@ import '../services/storage_service.dart';
 import '../services/cms_draft_service.dart';
 import '../services/webdav_service.dart';
 import '../services/log_service.dart';
-import '../services/sync_service.dart';
+import '../services/sync_service.dart' hide SyncStatus;
 import '../services/cloud_sync_service.dart';
 import '../services/html_to_markdown.dart';
 import '../services/recycle_bin_service.dart';
@@ -117,9 +117,9 @@ import 'package:gbk_codec/gbk_codec.dart';
 import 'widgets/title_bar.dart';
 import 'widgets/left_panel.dart';
 import 'widgets/editor_area.dart';
-import 'widgets/right_drawer.dart' hide RightDrawerTab;
+import 'widgets/right_drawer.dart';
 import 'widgets/status_bar.dart';
-import 'widgets/work_mode.dart' hide WorkMode;
+import 'widgets/work_mode.dart';
 import 'widgets/editor_themes.dart';
 import 'shell_action_bus.dart';
 import '../core/shared_bootstrap.dart';
@@ -1608,7 +1608,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           ]),
         ],
       ),
-    ;}
+    );
+  }
 
   // ── 编辑器辅助组件 ──
 
@@ -4512,7 +4513,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 if (name.isEmpty || token.isEmpty) { _showToast('名称和令牌不能为空'); return; }
                 final profile = GithubTokenProfile(id: DateTime.now().millisecondsSinceEpoch.toString(), name: name, token: token);
                 tokens.add(profile);
-                await _updateSettings(settings.copyWith(github: settings.github.copyWith(tokens: tokens, activeGithubTokenId: profile.id)));
+                await _updateSettings(settings.copyWith(github: settings.github.copyWith(githubTokens: tokens, activeGithubTokenId: profile.id)));
                 nameCtrl.clear();
                 tokenCtrl.clear();
                 setDialogState(() {});
@@ -4546,7 +4547,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                             children: [
                               if (!isActive)
                                 TextButton(onPressed: () async { await _updateSettings(settings.copyWith(github: settings.github.copyWith(activeGithubTokenId: t.id))); setDialogState(() {}); }, child: const Text('启用', style: TextStyle(fontSize: 11))),
-                              IconButton(icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent), onPressed: () async { tokens.removeAt(i); await _updateSettings(settings.copyWith(github: settings.github.copyWith(tokens: tokens))); setDialogState(() {}); }, constraints: const BoxConstraints(), padding: EdgeInsets.zero),
+                              IconButton(icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent), onPressed: () async { tokens.removeAt(i); await _updateSettings(settings.copyWith(github: settings.github.copyWith(githubTokens: tokens))); setDialogState(() {}); }, constraints: const BoxConstraints(), padding: EdgeInsets.zero),
                             ],
                           ),
                         );

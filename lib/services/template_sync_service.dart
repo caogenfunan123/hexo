@@ -12,7 +12,7 @@ import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
+import 'package:crypto/crypto.dart' as crypto;
 
 /// 模板类型
 enum TemplateType {
@@ -89,7 +89,7 @@ class TemplateEntry {
 
   /// 计算内容哈希
   static String computeHash(String content) {
-    return sha256.convert(utf8.encode(content)).toString();
+    return crypto.sha256.convert(utf8.encode(content)).toString();
   }
 }
 

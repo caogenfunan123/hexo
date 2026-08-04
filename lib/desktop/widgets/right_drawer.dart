@@ -3,14 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
-
-/// 右侧抽屉标签
-enum RightDrawerTab {
-  outline,
-  frontMatter,
-  aiChat,
-  syncLog,
-}
+import '../../controllers/layout_controller.dart' show RightDrawerTab;
 
 class DesktopRightDrawer extends StatelessWidget {
   final RightDrawerTab activeTab;
