@@ -31,6 +31,7 @@ import '../models/template_item.dart';
 import '../core/ai/ai_model_manager.dart';
 import '../core/ai/ai_request_dispatcher.dart';
 import '../core/ai/ai_self_checker.dart';
+import '../core/ai/ai_session_manager.dart';
 import '../core/ai/theme_migration_service.dart';
 import '../core/template_engine/template_resolver.dart';
 import '../screens/ai_article_chat_screen.dart';
@@ -443,7 +444,6 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         templateDir: Directory('${root.path}/templates'),
         deviceId: 'desktop-${Platform.localHostname}',
       );
-      await templateSync!.init();
       searchIsolate = FullTextSearchIsolate(logService);
     } catch (e) {
       debugPrint('Init new services (desktop) error: $e');

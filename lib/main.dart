@@ -25,6 +25,7 @@ import 'models/template_item.dart';
 import 'core/ai/ai_model_manager.dart';
 import 'core/ai/ai_request_dispatcher.dart';
 import 'core/ai/ai_self_checker.dart';
+import 'core/ai/ai_session_manager.dart';
 import 'core/ai/theme_migration_service.dart';
 import 'core/template_engine/template_resolver.dart';
 import 'screens/ai_article_chat_screen.dart';
@@ -489,7 +490,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         templateDir: Directory('${root.path}/templates'),
         deviceId: 'mobile-${DateTime.now().millisecondsSinceEpoch}',
       );
-      await _templateSync!.init();
       _searchIsolate = FullTextSearchIsolate(logService);
       _recycleBin = RecycleBinService();
       await _recycleBin!.init(root);
