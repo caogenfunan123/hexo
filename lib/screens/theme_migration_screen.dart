@@ -451,7 +451,7 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
       try {
         final dir = Directory(_tempDir!);
         if (dir.existsSync()) dir.deleteSync(recursive: true);
-      } catch (_) {}
+      } catch (e) { debugPrint('ThemeMigration: write files failed: $e'); }
       _tempDir = null;
     }
   }

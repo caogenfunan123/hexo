@@ -37,10 +37,7 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
         _entries = entries;
         _loading = false;
       });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-    }
+    } catch (e) { debugPrint('RecycleBin: load failed: $e'); if (!mounted) return; setState(() => _loading = false); }
   }
 
   void _toggleSelection(String id) {

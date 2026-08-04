@@ -271,9 +271,7 @@ class P2PMdnsService {
         InternetAddress(targetAddress),
         _multicastPort,
       );
-    } catch (_) {
-      // 发送失败
-    }
+    } catch (e) { debugPrint('P2PMdns: response parse failed: $e'); }
   }
 
   void _handleServiceResponse(Map<String, dynamic> json, String sourceAddress) {
@@ -347,9 +345,7 @@ class P2PMdnsService {
         InternetAddress(_multicastAddress),
         _multicastPort,
       );
-    } catch (_) {
-      // 发送失败
-    }
+    } catch (e) { debugPrint('P2PMdns: goodbye send failed: $e'); }
   }
 
   void _startCleanupTimer() {
@@ -391,9 +387,7 @@ class P2PMdnsService {
         InternetAddress(_multicastAddress),
         _multicastPort,
       );
-    } catch (_) {
-      // 发送失败
-    }
+    } catch (e) { debugPrint('P2PMdns: state update failed: $e'); }
   }
 
   void _setState(MdnsDiscoveryState newState) {

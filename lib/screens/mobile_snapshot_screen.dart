@@ -57,9 +57,7 @@ class _MobileSnapshotScreenState extends State<MobileSnapshotScreen> {
     try {
       _snapshots = await widget.snapshotService.getSnapshots(widget.articleId);
       _snapshots?.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    } catch (_) {
-      _snapshots = [];
-    }
+    } catch (e) { debugPrint('Snapshot: load snapshots failed: $e'); _snapshots = []; }
     if (mounted) setState(() => _loading = false);
   }
 

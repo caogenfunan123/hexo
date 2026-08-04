@@ -137,7 +137,7 @@ class FrontMatterData {
         case 'date':
           try {
             date = DateTime.parse(value);
-          } catch (_) {}
+          } catch (e) { debugPrint('FrontMatter: parse draft failed: $e'); }
           break;
         case 'tags':
           currentList = 'tags';

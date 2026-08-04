@@ -330,9 +330,7 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
       try {
         final result = await adapter.testConnection();
         _testResults[site.id] = result.success;
-      } catch (_) {
-        _testResults[site.id] = false;
-      }
+      } catch (e) { debugPrint('SiteMgmt: load sites failed: $e'); _testResults[site.id] = false; }
     }
 
     // 静态站点：尝试读取仓库信息验证
@@ -344,9 +342,7 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
       try {
         await _githubService.testToken(repo);
         _testResults[repo.id] = true;
-      } catch (_) {
-        _testResults[repo.id] = false;
-      }
+      } catch (e) { debugPrint('SiteMgmt: save sites failed: $e'); _testResults[repo.id] = false; }
     }
 
     if (mounted) {

@@ -45,10 +45,7 @@ class _MobileRecycleBinScreenState extends State<MobileRecycleBinScreen> {
         _entries = entries;
         _loading = false;
       });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-    }
+    } catch (e) { debugPrint('RecycleBin: load items failed: $e'); if (!mounted) return; setState(() => _loading = false); }
   }
 
   Future<void> _restoreEntry(String entryId) async {
