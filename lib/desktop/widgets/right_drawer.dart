@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../controllers/layout_controller.dart' show RightDrawerTab;
 export '../../controllers/layout_controller.dart' show RightDrawerTab;
 
 class DesktopRightDrawer extends StatelessWidget {
