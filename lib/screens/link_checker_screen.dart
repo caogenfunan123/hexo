@@ -59,7 +59,7 @@ class _LinkCheckerScreenState extends State<LinkCheckerScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _buildKnownPaths();
-    _runFullScan();
+    Future.microtask(() => _runFullScan());
   }
 
   @override
@@ -175,11 +175,13 @@ class _LinkCheckerScreenState extends State<LinkCheckerScreen>
       });
 
       await _checkExternalLink(link, httpClient);
+      if (!mounted) return;
       setState(() {});
     }
 
     httpClient.close();
 
+    if (!mounted) return;
     setState(() {
       _isScanning = false;
       _scanStatus = '扫描完成：内部 ${_internalResults.where((l) => l.status == LinkStatus.dead).length}/${_internalResults.length} 个死链，外部 ${_externalResults.where((l) => l.status == LinkStatus.dead).length}/${_externalResults.length} 个死链';

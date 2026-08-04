@@ -90,6 +90,7 @@ class P2PMdnsService {
 
   final List<MdnsDevice> _discoveredDevices = [];
   RawDatagramSocket? _multicastSocket;
+  StreamSubscription<RawSocketEvent>? _multicastSubscription;
   Timer? _broadcastTimer;
   Timer? _cleanupTimer;
 
@@ -146,6 +147,8 @@ class P2PMdnsService {
     _cleanupTimer?.cancel();
     _cleanupTimer = null;
 
+    await _multicastSubscription?.cancel();
+    _multicastSubscription = null;
     _multicastSocket?.close();
     _multicastSocket = null;
 
@@ -193,7 +196,7 @@ class P2PMdnsService {
     _multicastSocket!.broadcastEnabled = true;
     _multicastSocket!.readEventsEnabled = true;
 
-    _multicastSocket!.listen((event) {
+    _multicastSubscription = _multicastSocket!.listen((event) {
       if (event == RawSocketEvent.read) {
         _handleMulticastPacket();
       }
@@ -207,7 +210,7 @@ class P2PMdnsService {
     Datagram? datagram;
     try {
       datagram = socket.receive();
-    } catch (_) {
+    } catch (e) { debugPrint('P2PMdns: packet handle failed: $e');
       return;
     }
     if (datagram == null) return;
@@ -215,7 +218,7 @@ class P2PMdnsService {
     try {
       final data = utf8.decode(datagram.data);
       _processMessage(data, datagram.address.address);
-    } catch (_) {
+    } catch (e) { debugPrint('P2PMdns: broadcast send failed: $e');
       // 忽略无效消息
     }
   }
@@ -239,7 +242,7 @@ class P2PMdnsService {
           _handleGoodbye(json);
           break;
       }
-    } catch (_) {
+    } catch (e) { debugPrint('P2PMdns: cleanup failed: $e');
       // 忽略无法解析的消息
     }
   }
@@ -409,6 +412,8 @@ class P2PMdnsService {
     await _sendGoodbye();
     _broadcastTimer?.cancel();
     _cleanupTimer?.cancel();
+    await _multicastSubscription?.cancel();
+    _multicastSubscription = null;
     _multicastSocket?.close();
     _deviceDiscoveredController.close();
     _deviceLostController.close();

@@ -28,11 +28,9 @@ import '../models/github_token_profile.dart';
 import '../models/repo_config.dart';
 import '../models/session_state.dart';
 import '../models/template_item.dart';
-import '../core/ai/ai_model_entity.dart';
 import '../core/ai/ai_model_manager.dart';
 import '../core/ai/ai_request_dispatcher.dart';
 import '../core/ai/ai_self_checker.dart';
-import '../core/ai/ai_session_manager.dart';
 import '../core/ai/theme_migration_service.dart';
 import '../core/template_engine/template_resolver.dart';
 import '../screens/ai_article_chat_screen.dart';
@@ -62,7 +60,6 @@ import '../core/tools/skill_manager.dart';
 import '../core/tools/remote_cms_tools.dart';
 import '../core/cancel_token.dart';
 import '../core/site_manager.dart';
-import '../core/repository/blog_repository.dart';
 import '../services/ai_service.dart';
 import '../services/github_service.dart';
 import '../services/image_service.dart';
@@ -315,6 +312,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     siteManager.disposeAll();
     cloudSyncService.dispose();
     cmsDraftService.close();
+    _scheduledPublishTimer?.cancel();
+    _scheduledPublishTimer = null;
+    _publishCancelToken.cancel();
     super.dispose();
   }
 
@@ -1177,9 +1177,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     try {
       final filePath = '${(await storage.root).path}/drafts/${a.fileName()}';
       await recycleBinService.moveToTrash(filePath, a);
-    } catch (_) {
-      // 如果移入回收站失败，仍然从列表移除
-    }
+    } catch (e) { debugPrint('Shell: export failed: $e'); }
     drafts.removeWhere((e) => e.id == a.id);
     await storage.saveDrafts(drafts);
     logService.add('删除草稿', '标题: ${a.title.isNotEmpty ? a.title : "(无标题)"}');
@@ -1385,8 +1383,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        '框架: ${BlogFramework.byId(_editorRepo!.frameworkId)?.name ?? _editorRepo!.frameworkId} | '
-                        '文件名: ${_doc.articleType == ArticleType.page ? '无日期前缀' : (_editorRepo!.fileNameRule.postDatePrefix ? '自动加日期' : '纯标题')}',
+                        '框架: ${BlogFramework.byId(_editorRepo?.frameworkId ?? '')?.name ?? _editorRepo?.frameworkId ?? '未知'} | '
+                        '文件名: ${_doc.articleType == ArticleType.page ? '无日期前缀' : ((_editorRepo?.fileNameRule.postDatePrefix ?? true) ? '自动加日期' : '纯标题')}',
                         style: const TextStyle(fontSize: 11, color: Color(0xFF0369A1)),
                       ),
                     ),
@@ -1838,10 +1836,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           final url = await imageService.uploadToImageBed(preResult.images[i], settings, skipCompress: true);
           buf.writeln(imageService.markdownImage(url));
           uploaded++;
-        } catch (_) {
-          buf.writeln('> ⚠️ 第 ${i + 1} 张图片上传失败');
-          failed++;
-        }
+        } catch (e) { debugPrint('Shell: load template failed: $e'); }
       }
       _insertText('\n\n${buf.toString()}');
       _editor.setEditorStatus('完成: $uploaded/$total 张上传成功');
@@ -2799,9 +2794,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           final idx = drafts.indexWhere((a) => a.id == id);
           if (idx >= 0) drafts[idx] = pub.copyWith(isDraft: false, published: true);
           published++;
-        } catch (_) {
-          failed++;
-        }
+        } catch (e) { debugPrint('Shell: site config load failed: $e'); }
       }
       await storage.saveDrafts(drafts);
       if (mounted) {
@@ -3148,9 +3141,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         _showConflictResolution(conflicts);
         return false;
       }
-    } catch (_) {
-      // 无法检测冲突，允许继续
-    }
+    } catch (e) { debugPrint('Shell: AI diff failed: $e'); }
     return true;
   }
 
@@ -3382,11 +3373,11 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       try {
         // 尝试 UTF-8
         decoded = utf8.decode(rawBytes);
-      } catch (_) {
+      } catch (e) { debugPrint('Shell: diff preview load failed: $e');
         try {
           // 尝试 GBK
           decoded = gbk.decode(rawBytes);
-        } catch (_) {
+        } catch (e) { debugPrint('Shell: diff preview parse failed: $e');
           // 尝试 Latin-1
           decoded = latin1.decode(rawBytes);
         }
@@ -3714,9 +3705,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             }
           }
         }
-      } catch (_) {
-        // 无法获取远程内容
-      }
+      } catch (e) { debugPrint('Shell: publish changelog failed: $e'); }
     }
 
     if (remoteContent.isEmpty) {
@@ -4889,7 +4878,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       await file.writeAsString(jsonEncode(
         _recentFiles.map((f) => {'path': f.path, 'name': f.name, 'openedAt': f.openedAt.toIso8601String()}).toList(),
       ));
-    } catch (_) {}
+    } catch (e) { debugPrint('Shell: git status failed: $e'); }
   }
 
   Future<void> _loadRecentFiles() async {
@@ -4907,7 +4896,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           ));
         }
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('Shell: git log failed: $e'); }
   }
 
   /// 从最近文件中打开
@@ -4971,7 +4960,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         if (imgData != null && imgData.text != null) {
           imgBytes = Uint8List.fromList(imgData.text!.codeUnits);
         }
-      } catch (_) {}
+      } catch (e) { debugPrint('Shell: git diff failed: $e'); }
 
       if (imgBytes != null && imgBytes.isNotEmpty) {
         _editor.setEditorBusy(true); _editor.setEditorStatus('正在上传剪贴板图片...');
@@ -5271,8 +5260,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           height: _editor.editorLineHeight * 0.85,
         ),
       );
-    } catch (_) {
-      // 如果高亮失败，使用普通样式显示
+    } catch (e) { debugPrint('Shell: site switch failed: $e');
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(12),
@@ -5460,7 +5448,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         if (cssMap.containsKey('code-bg')) codeBg = _parseColor(cssMap['code-bg']!);
         if (cssMap.containsKey('code-color')) codeText = _parseColor(cssMap['code-color']!);
         if (cssMap.containsKey('link-color')) linkColor = _parseColor(cssMap['link-color']!);
-      } catch (_) {}
+      } catch (e) { debugPrint('Shell: markdown export failed: $e'); }
     }
 
     return MarkdownStyleSheet(
@@ -5545,7 +5533,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       if (colorNames.containsKey(colorStr.toLowerCase())) {
         return Color(colorNames[colorStr.toLowerCase()]!);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('Shell: image upload failed: $e'); }
     return null;
   }
 
@@ -6491,8 +6479,7 @@ $body
         final file = File(result);
         await file.writeAsBytes(pdfBytes);
         if (mounted) _showToast('PDF 已导出到: $result');
-      } catch (_) {
-        // printing 包不可用时，回退到保存 HTML
+      } catch (e) { debugPrint('Shell: settings load failed: $e');
         final result = await FilePicker.platform.saveFile(
           dialogTitle: '导出 PDF 文件（回退 HTML）',
           fileName: '$safeTitle.html',

@@ -49,7 +49,7 @@ class _SiteEditorScreenState extends State<SiteEditorScreen> {
     _nowCtrl = TextEditingController();
     _worksCtrl = TextEditingController();
     _indexCtrl = TextEditingController();
-    _loadSiteData();
+    Future.microtask(() => _loadSiteData());
   }
 
   Future<void> _loadSiteData() async {
@@ -130,6 +130,7 @@ class _SiteEditorScreenState extends State<SiteEditorScreen> {
   }
 
   Future<void> _save() async {
+    if (!mounted) return;
     setState(() => _saving = true);
     try {
       // 1. Update _config.yml

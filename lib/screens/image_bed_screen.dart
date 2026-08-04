@@ -135,6 +135,7 @@ class _ImageBedScreenState extends State<ImageBedScreen>
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
+        if (!mounted) return;
         setState(() {});
       }
     });
@@ -227,6 +228,7 @@ class _ImageBedScreenState extends State<ImageBedScreen>
       setState(() => _loadError = '请先配置图床仓库 owner/repo');
       return;
     }
+    if (!mounted) return;
     setState(() {
       _isLoadingImages = true;
       _loadError = null;
@@ -308,9 +310,9 @@ class _ImageBedScreenState extends State<ImageBedScreen>
             }
           }
         }
-      } catch (_) {}
-      if (mounted) setState(() {});
+      } catch (e) { debugPrint('ImageBed: fetch date failed: $e'); }
     }
+    if (mounted) setState(() {});
   }
 
   Future<void> _deleteSelectedImages() async {
@@ -335,6 +337,7 @@ class _ImageBedScreenState extends State<ImageBedScreen>
     );
     if (confirmed != true) return;
 
+    if (!mounted) return;
     setState(() => _isDeleting = true);
     int deleted = 0;
     int failed = 0;
@@ -354,7 +357,7 @@ class _ImageBedScreenState extends State<ImageBedScreen>
           'branch': _branch,
         });
         deleted++;
-      } catch (_) {
+      } catch (e) { debugPrint('ImageBed: delete failed: $e');
         failed++;
       }
     }
@@ -545,7 +548,7 @@ class _ImageBedScreenState extends State<ImageBedScreen>
     try {
       widget.onUrlReplaced(oldUrl, newUrl);
       replaced = _replacePreviews.length;
-    } catch (_) {
+    } catch (e) { debugPrint('ImageBed: scan failed: $e');
       replaced = 0;
     }
 

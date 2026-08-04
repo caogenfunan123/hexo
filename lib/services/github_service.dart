@@ -122,7 +122,7 @@ class GitHubService {
     try {
       final user = await getUser(token.trim());
       return user['login']?.toString().isNotEmpty == true;
-    } catch (_) {
+    } catch (e) { debugPrint('GitHub: listRepos failed: $e');
       return false;
     }
   }
@@ -149,7 +149,7 @@ class GitHubService {
               item.lastModified = DateTime.tryParse(au['date']?.toString() ?? '');
             }
           }
-        } catch (_) {}
+        } catch (e) { debugPrint('GitHub: get commit history failed: $e'); }
       }));
       items.sort((a, b) {
         final ad = a.lastModified;
@@ -242,7 +242,7 @@ class GitHubService {
       final content = utf8.decode(base64Decode(contentB64));
       final sha = data['sha']?.toString();
       return {'content': content, 'sha': sha ?? ''};
-    } catch (_) {
+    } catch (e) { debugPrint('GitHub: getRawFile failed: $e');
       return null;
     }
   }
@@ -307,7 +307,7 @@ class GitHubService {
         repo.token,
       );
       if (cur is Map) currentSha = cur['sha']?.toString();
-    } catch (_) {}
+    } catch (e) { debugPrint('GitHub: rollback get SHA failed: $e'); }
 
     final body = <String, dynamic>{
       'message': 'revert: restore $path to ${commitSha.substring(0, 7)}',
@@ -352,7 +352,7 @@ class GitHubService {
         token,
       );
       if (existing is Map) sha = existing['sha']?.toString();
-    } catch (_) {}
+    } catch (e) { debugPrint('GitHub: uploadBinary get SHA failed: $e'); }
 
     final body = <String, dynamic>{
       'message': message,

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -21,11 +22,9 @@ import 'models/github_token_profile.dart';
 import 'models/repo_config.dart';
 import 'models/session_state.dart';
 import 'models/template_item.dart';
-import 'core/ai/ai_model_entity.dart';
 import 'core/ai/ai_model_manager.dart';
 import 'core/ai/ai_request_dispatcher.dart';
 import 'core/ai/ai_self_checker.dart';
-import 'core/ai/ai_session_manager.dart';
 import 'core/ai/theme_migration_service.dart';
 import 'core/template_engine/template_resolver.dart';
 import 'screens/ai_article_chat_screen.dart';
@@ -68,7 +67,6 @@ import 'services/webdav_service.dart';
 import 'services/log_service.dart';
 import 'services/sync_service.dart';
 import 'services/cloud_sync_service.dart';
-import 'services/html_to_markdown.dart';
 import 'theme/app_theme.dart';
 
 // ── 移动端新功能集成 ──
@@ -368,6 +366,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     siteManager.disposeAll();
     cloudSyncService.dispose();
     cmsDraftService.close();
+    _publishCancelToken.cancel();
     super.dispose();
   }
 
@@ -1428,7 +1427,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           );
           buf.writeln(imageService.markdownImage(url));
           uploaded++;
-        } catch (_) {
+        } catch (e) { debugPrint('App: image pick failed: $e');
           buf.writeln('> ⚠️ 第 ${i + 1} 张图片上传失败');
           failed++;
         }
@@ -3864,7 +3863,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             await github.getArticle(repo, item);
         await github.deleteArticle(repo, article);
         success++;
-      } catch (_) {
+      } catch (e) { debugPrint('App: site data load failed: $e');
         fail++;
       }
     }

@@ -43,7 +43,7 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
     super.initState();
     _scrollController = ScrollController();
     _scrollController.addListener(_onScroll);
-    _loadPosts();
+    Future.microtask(() => _loadPosts());
   }
 
   void _onScroll() {
@@ -62,6 +62,7 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
 
   Future<void> _loadPosts({bool refresh = false}) async {
     if (refresh) {
+      if (!mounted) return;
       setState(() {
         _page = 1;
         _posts = [];
@@ -99,6 +100,7 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
 
   Future<void> _loadMore() async {
     if (_loadingMore || !_hasMore) return;
+    if (!mounted) return;
     setState(() {
       _loadingMore = true;
       _page++;

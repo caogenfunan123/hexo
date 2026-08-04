@@ -145,6 +145,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _saveLocal() async {
     final a = _collect(draft: true);
+    if (!mounted) return;
     setState(() {
       _article = a;
       _status = '本地已保存';
@@ -198,7 +199,7 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
-
+    if (!mounted) return;
     setState(() {
       _busy = true;
       _status = '正在上传...';
@@ -319,6 +320,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
 
   Future<void> _insertImage() async {
+    if (!mounted) return;
     setState(() {
       _busy = true;
       _status = '选择/压缩/上传图片...';
@@ -368,7 +370,7 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
-
+    if (!mounted) return;
     setState(() => _status = 'AI 正在续写...');
     try {
       final reply = await widget.aiService.complete(
@@ -389,6 +391,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
 
   Future<void> _ai(String action) async {
+    if (!mounted) return;
     setState(() {
       _busy = true;
       _status = 'AI 处理中...';
