@@ -266,7 +266,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
                 focusNode: widget.focusNode,
                 minLines: minLines,
                 maxLines: null,
-                expands: !constraints.maxHeight.isFinite ? null : false,
+                expands: constraints.maxHeight.isFinite != true,
                 keyboardType: TextInputType.multiline,
                 cursorColor: cs.primary,
                 onChanged: (_) => widget.onChanged?.call(),

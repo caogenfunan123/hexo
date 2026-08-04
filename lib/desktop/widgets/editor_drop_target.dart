@@ -7,6 +7,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:desktop_drop/desktop_drop.dart';
+import 'package:cross_file/cross_file.dart';
 
 /// 拖拽目标区域包装器
 /// 包裹编辑器内容区域，使整个编辑器支持拖拽文件
@@ -34,7 +35,7 @@ class _EditorDropTargetState extends State<EditorDropTarget> {
   bool _dragging = false;
   String _dragMessage = '';
 
-  bool get _isImageFile(String path) {
+  bool _isImageFile(String path) {
     final ext = path.toLowerCase();
     return ext.endsWith('.png') ||
         ext.endsWith('.jpg') ||
@@ -48,7 +49,7 @@ class _EditorDropTargetState extends State<EditorDropTarget> {
         ext.endsWith('.heif');
   }
 
-  bool get _isMarkdownFile(String path) {
+  bool _isMarkdownFile(String path) {
     final ext = path.toLowerCase();
     return ext.endsWith('.md') ||
         ext.endsWith('.markdown') ||
@@ -56,7 +57,7 @@ class _EditorDropTargetState extends State<EditorDropTarget> {
         ext.endsWith('.mkd');
   }
 
-  bool get _isTextFile(String path) {
+  bool _isTextFile(String path) {
     final ext = path.toLowerCase();
     return ext.endsWith('.txt') ||
         ext.endsWith('.csv') ||
@@ -88,7 +89,7 @@ class _EditorDropTargetState extends State<EditorDropTarget> {
         ext.endsWith('.conf');
   }
 
-  Future<void> _handleDroppedFiles(List<DropFile> files) async {
+  Future<void> _handleDroppedFiles(List<XFile> files) async {
     setState(() => _dragging = false);
 
     if (files.isEmpty) return;

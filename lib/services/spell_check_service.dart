@@ -150,7 +150,7 @@ class SpellCheckService {
   }
 
   /// 技术术语（不视为拼写错误）
-  static const _techTerms = {
+  static final _techTerms = {
     // 编程相关
     'api', 'sdk', 'url', 'uri', 'http', 'https', 'json', 'xml', 'html', 'css',
     'js', 'ts', 'npm', 'yarn', 'git', 'github', 'gitlab', 'docker', 'kubernetes',
@@ -188,7 +188,7 @@ class SpellCheckService {
   };
 
   /// 常见英文单词（精选高频词 + 写作常用词）
-  static const _commonWords = {
+  static final _commonWords = {
     // 冠词/代词/介词/连词
     'a', 'an', 'the', 'i', 'you', 'he', 'she', 'it', 'we', 'they',
     'me', 'him', 'her', 'us', 'them', 'my', 'your', 'his', 'its',

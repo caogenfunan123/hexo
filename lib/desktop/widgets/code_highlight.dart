@@ -7,6 +7,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/github.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
+import 'package:markdown/markdown.dart' as md;
 
 const String _codeFont = 'monospace';
 
@@ -28,7 +29,7 @@ class _HighlightedCodeBuilder extends MarkdownElementBuilder {
     // 从 code 子元素中提取语言
     String? language;
     final codeChild = element.children?.firstOrNull;
-    if (codeChild != null && codeChild.attributes['class'] != null) {
+    if (codeChild is md.Element && codeChild.attributes['class'] != null) {
       final classes = codeChild.attributes['class']!.toString();
       if (classes.startsWith('language-')) {
         language = classes.substring(9);
