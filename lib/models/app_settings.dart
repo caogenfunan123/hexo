@@ -1,207 +1,134 @@
 import 'ai_profile.dart';
+import 'ai_settings.dart';
 import 'blog_site_config.dart';
+import 'github_settings.dart';
 import 'github_token_profile.dart';
+import 'proxy_settings.dart';
+import 'sync_settings.dart';
+import 'ui_settings.dart';
 
+/// 应用全局设置（重构版 V2）
+///
+/// 拆分为 5 个子配置，每个负责独立领域：
+/// - GitHubSettings：GitHub 令牌、图床、图片压缩
+/// - AiSettings：AI 模型、API、Profile
+/// - ProxySettings：网络代理
+/// - SyncSettings：自动保存、备份、WebDAV、离线模式
+/// - UiSettings：主题、护眼、站点信息、状态预设
+///
+/// 保留原 AppSettings 完整兼容层，所有旧字段通过 getter 代理到子配置
 class AppSettings {
-  final String defaultToken;
-  final List<GithubTokenProfile> githubTokens;
-  final String activeGithubTokenId;
-  final String imageBedType;
-  final String imageBedToken;
-  final String imageBedOwner;
-  final String imageBedRepo;
-  final String imageBedBranch;
-  final String imageBedPath;
-  final String imageBedCdn;
-  final String aiProvider;
-  final String aiApiKey;
-  final String aiBaseUrl;
-  final String aiModel;
-  final List<AiProfile> aiProfiles;
-  final String activeAiProfileId;
-  final bool autoCompressImage;
-  final int compressQuality;
-  final int compressMaxWidth;
+  // ── 子配置 ──
+  final GitHubSettings github;
+  final AiSettings ai;
+  final ProxySettings proxy;
+  final SyncSettings sync;
+  final UiSettings ui;
+
+  // ── 动态 CMS 站点配置（不拆分，独立领域） ──
+  final List<BlogSiteConfig> blogSiteConfigs;
+  final String activeSiteId;
   final String activeRepoId;
 
-  // ── 动态 CMS 站点配置 ──
-  final List<BlogSiteConfig> blogSiteConfigs;
-  /// 当前活跃站点 ID（统一标识，可以是 RepoConfig.id 或 BlogSiteConfig.id）
-  /// 为空时回退到 activeRepoId 或第一个可用站点
-  final String activeSiteId;
-
-  final String webdavUrl;
-  final String webdavUsername;
-  final String webdavPassword;
-  final String webdavFolder;
-  final String siteAvatar;
-  final String siteName;
-  final String siteBio;
-  final String siteHome;
-  final String siteAbout;
-  final String siteGuestbook;
-  final String siteNow;
-  final String siteWorks;
-  final String cloudflareDeployHook;
-  final int themeColor;
-
-  // ── 草稿自动保存 ──
-  final bool autoSaveEnabled;
-  final int autoSaveIntervalSeconds;
-  final String autoSaveDir;
-
-  // ── 备份目录 ──
-  final String backupDir;
-
-  // ── 网盘自动同步 ──
-  final bool webdavAutoSyncEnabled;
-  final int webdavAutoSyncIntervalSeconds;
-  final bool webdavSyncWifiOnly;
-
-  // ── 全局默认 AI 模型 ──
-  final String defaultModelId;   // modelId
-  final String defaultModelBase; // apiBase
-
-  // ── 会话恢复 ──
-  final bool restoreSession;
-
-  // ── 网络代理 ──
-  final bool proxyEnabled;
-  final String proxyHost;
-  final int proxyPort;
-  final String proxyUsername;
-  final String proxyPassword;
-  final bool proxyApplyToAi; // 是否对 AI 接口也启用代理
-
-  // ── 离线模式 ──
-  final bool offlineMode;
-
-  // ── 夜间护眼 ──
-  final bool nightEyeProtection; // 暖色滤镜
-  final double nightEyeIntensity; // 0.0-1.0 暖色强度
-
-  // ── 网络超时 ──
-  final int httpTimeoutSeconds;
-  final bool allowInsecureHttps;
-
-  // ── 发布状态预设 ──
-  final List<String> statusPresets;
-
   const AppSettings({
-    this.defaultToken = '',
-    this.githubTokens = const [],
-    this.activeGithubTokenId = '',
-    this.imageBedType = 'github',
-    this.imageBedToken = '',
-    this.imageBedOwner = '',
-    this.imageBedRepo = '',
-    this.imageBedBranch = 'main',
-    this.imageBedPath = 'images',
-    this.imageBedCdn = '',
-    this.aiProvider = 'openai',
-    this.aiApiKey = '',
-    this.aiBaseUrl = 'https://api.openai.com/v1',
-    this.aiModel = 'gpt-4o-mini',
-    this.aiProfiles = const [],
-    this.activeAiProfileId = '',
-    this.autoCompressImage = true,
-    this.compressQuality = 80,
-    this.compressMaxWidth = 1600,
-    this.activeRepoId = '',
+    this.github = const GitHubSettings(),
+    this.ai = const AiSettings(),
+    this.proxy = const ProxySettings(),
+    this.sync = const SyncSettings(),
+    this.ui = const UiSettings(),
     this.blogSiteConfigs = const [],
     this.activeSiteId = '',
-    this.webdavUrl = '',
-    this.webdavUsername = '',
-    this.webdavPassword = '',
-    this.webdavFolder = 'hexo-backup',
-    this.siteAvatar = '',
-    this.siteName = '小子的博客',
-    this.siteBio = '分享技术、生活和思考',
-    this.siteHome = '',
-    this.siteAbout = '',
-    this.siteGuestbook = '',
-    this.siteNow = '',
-    this.siteWorks = '',
-    this.cloudflareDeployHook = '',
-    this.themeColor = 0xFF0EA5E9,
-    this.autoSaveEnabled = true,
-    this.autoSaveIntervalSeconds = 30,
-    this.autoSaveDir = '',
-    this.backupDir = '',
-    this.webdavAutoSyncEnabled = false,
-    this.webdavAutoSyncIntervalSeconds = 300,
-    this.webdavSyncWifiOnly = true,
-    this.defaultModelId = '',
-    this.defaultModelBase = '',
-    this.restoreSession = true,
-    this.proxyEnabled = false,
-    this.proxyHost = '',
-    this.proxyPort = 1080,
-    this.proxyUsername = '',
-    this.proxyPassword = '',
-    this.proxyApplyToAi = false,
-    this.offlineMode = false,
-    this.nightEyeProtection = false,
-    this.nightEyeIntensity = 0.5,
-    this.httpTimeoutSeconds = 30,
-    this.allowInsecureHttps = false,
-    this.statusPresets = const ['publish', 'draft', 'pending', 'private'],
+    this.activeRepoId = '',
   });
 
-  GithubTokenProfile? get activeGithubToken {
-    if (githubTokens.isEmpty) return null;
-    for (final t in githubTokens) {
-      if (t.id == activeGithubTokenId) return t;
-    }
-    return githubTokens.first;
-  }
+  // ============================================================
+  // 兼容层 — 旧字段通过 getter 代理到子配置
+  // ============================================================
 
-  /// 优先当前已保存令牌，其次旧版 defaultToken 字段。
-  String get effectiveGithubToken {
-    final active = activeGithubToken;
-    if (active != null && active.token.isNotEmpty) return active.token;
-    if (defaultToken.isNotEmpty) return defaultToken;
-    for (final t in githubTokens) {
-      if (t.token.isNotEmpty) return t.token;
-    }
-    return '';
-  }
+  // ── GitHubSettings 代理 ──
+  String get defaultToken => github.defaultToken;
+  List<GithubTokenProfile> get githubTokens => github.githubTokens;
+  String get activeGithubTokenId => github.activeGithubTokenId;
+  String get imageBedType => github.imageBedType;
+  String get imageBedToken => github.imageBedToken;
+  String get imageBedOwner => github.imageBedOwner;
+  String get imageBedRepo => github.imageBedRepo;
+  String get imageBedBranch => github.imageBedBranch;
+  String get imageBedPath => github.imageBedPath;
+  String get imageBedCdn => github.imageBedCdn;
+  bool get autoCompressImage => github.autoCompressImage;
+  int get compressQuality => github.compressQuality;
+  int get compressMaxWidth => github.compressMaxWidth;
 
-  AiProfile? get activeAiProfile {
-    if (aiProfiles.isEmpty) return null;
-    for (final p in aiProfiles) {
-      if (p.id == activeAiProfileId) return p;
-    }
-    return aiProfiles.first;
-  }
+  GithubTokenProfile? get activeGithubToken => github.activeGithubToken;
+  String get effectiveGithubToken => github.effectiveGithubToken;
 
-  /// 兼容旧字段：优先使用多配置里的当前模型
-  String get effectiveAiBaseUrl =>
-      activeAiProfile?.baseUrl.isNotEmpty == true
-          ? activeAiProfile!.baseUrl
-          : aiBaseUrl;
+  // ── AiSettings 代理 ──
+  String get aiProvider => ai.aiProvider;
+  String get aiApiKey => ai.aiApiKey;
+  String get aiBaseUrl => ai.aiBaseUrl;
+  String get aiModel => ai.aiModel;
+  List<AiProfile> get aiProfiles => ai.aiProfiles;
+  String get activeAiProfileId => ai.activeAiProfileId;
+  String get defaultModelId => ai.defaultModelId;
+  String get defaultModelBase => ai.defaultModelBase;
 
-  String get effectiveAiApiKey =>
-      activeAiProfile?.apiKey.isNotEmpty == true
-          ? activeAiProfile!.apiKey
-          : aiApiKey;
+  AiProfile? get activeAiProfile => ai.activeAiProfile;
+  String get effectiveAiBaseUrl => ai.effectiveAiBaseUrl;
+  String get effectiveAiApiKey => ai.effectiveAiApiKey;
+  String get effectiveAiModel => ai.effectiveAiModel;
 
-  String get effectiveAiModel =>
-      activeAiProfile?.model.isNotEmpty == true
-          ? activeAiProfile!.model
-          : aiModel;
+  // ── ProxySettings 代理 ──
+  bool get proxyEnabled => proxy.proxyEnabled;
+  String get proxyHost => proxy.proxyHost;
+  int get proxyPort => proxy.proxyPort;
+  String get proxyUsername => proxy.proxyUsername;
+  String get proxyPassword => proxy.proxyPassword;
+  bool get proxyApplyToAi => proxy.proxyApplyToAi;
 
-  /// 获取当前活跃站点 ID（统一标识）
-  /// 优先使用 activeSiteId，为空时回退到 activeRepoId
+  // ── SyncSettings 代理 ──
+  bool get autoSaveEnabled => sync.autoSaveEnabled;
+  int get autoSaveIntervalSeconds => sync.autoSaveIntervalSeconds;
+  String get autoSaveDir => sync.autoSaveDir;
+  String get backupDir => sync.backupDir;
+  String get webdavUrl => sync.webdavUrl;
+  String get webdavUsername => sync.webdavUsername;
+  String get webdavPassword => sync.webdavPassword;
+  String get webdavFolder => sync.webdavFolder;
+  bool get webdavAutoSyncEnabled => sync.webdavAutoSyncEnabled;
+  int get webdavAutoSyncIntervalSeconds => sync.webdavAutoSyncIntervalSeconds;
+  bool get webdavSyncWifiOnly => sync.webdavSyncWifiOnly;
+  bool get restoreSession => sync.restoreSession;
+  bool get offlineMode => sync.offlineMode;
+
+  // ── UiSettings 代理 ──
+  String get siteAvatar => ui.siteAvatar;
+  String get siteName => ui.siteName;
+  String get siteBio => ui.siteBio;
+  String get siteHome => ui.siteHome;
+  String get siteAbout => ui.siteAbout;
+  String get siteGuestbook => ui.siteGuestbook;
+  String get siteNow => ui.siteNow;
+  String get siteWorks => ui.siteWorks;
+  int get themeColor => ui.themeColor;
+  bool get nightEyeProtection => ui.nightEyeProtection;
+  double get nightEyeIntensity => ui.nightEyeIntensity;
+  int get httpTimeoutSeconds => ui.httpTimeoutSeconds;
+  bool get allowInsecureHttps => ui.allowInsecureHttps;
+  List<String> get statusPresets => ui.statusPresets;
+  String get cloudflareDeployHook => ui.cloudflareDeployHook;
+
+  // ============================================================
+  // 活跃站点
+  // ============================================================
+
   String get effectiveActiveSiteId {
     if (activeSiteId.isNotEmpty) return activeSiteId;
     if (activeRepoId.isNotEmpty) return activeRepoId;
-    // 都没有时，取第一个动态站点
     if (blogSiteConfigs.isNotEmpty) return blogSiteConfigs.first.id;
     return '';
   }
 
-  /// 获取当前活跃的动态 CMS 站点配置
   BlogSiteConfig? get activeBlogSiteConfig {
     final siteId = effectiveActiveSiteId;
     if (siteId.isEmpty) return null;
@@ -211,331 +138,60 @@ class AppSettings {
     return null;
   }
 
+  // ============================================================
+  // copyWith
+  // ============================================================
+
   AppSettings copyWith({
-    String? defaultToken,
-    List<GithubTokenProfile>? githubTokens,
-    String? activeGithubTokenId,
-    String? imageBedType,
-    String? imageBedToken,
-    String? imageBedOwner,
-    String? imageBedRepo,
-    String? imageBedBranch,
-    String? imageBedPath,
-    String? imageBedCdn,
-    String? aiProvider,
-    String? aiApiKey,
-    String? aiBaseUrl,
-    String? aiModel,
-    List<AiProfile>? aiProfiles,
-    String? activeAiProfileId,
-    bool? autoCompressImage,
-    int? compressQuality,
-    int? compressMaxWidth,
-    String? activeRepoId,
+    GitHubSettings? github,
+    AiSettings? ai,
+    ProxySettings? proxy,
+    SyncSettings? sync,
+    UiSettings? ui,
     List<BlogSiteConfig>? blogSiteConfigs,
     String? activeSiteId,
-    String? webdavUrl,
-    String? webdavUsername,
-    String? webdavPassword,
-    String? webdavFolder,
-    String? siteAvatar,
-    String? siteName,
-    String? siteBio,
-    String? siteHome,
-    String? siteAbout,
-    String? siteGuestbook,
-    String? siteNow,
-    String? siteWorks,
-    String? cloudflareDeployHook,
-    int? themeColor,
-    bool? autoSaveEnabled,
-    int? autoSaveIntervalSeconds,
-    String? autoSaveDir,
-    String? backupDir,
-    bool? webdavAutoSyncEnabled,
-    int? webdavAutoSyncIntervalSeconds,
-    bool? webdavSyncWifiOnly,
-    String? defaultModelId,
-    String? defaultModelBase,
-    bool? restoreSession,
-    bool? proxyEnabled,
-    String? proxyHost,
-    int? proxyPort,
-    String? proxyUsername,
-    String? proxyPassword,
-    bool? proxyApplyToAi,
-    bool? offlineMode,
-    bool? nightEyeProtection,
-    double? nightEyeIntensity,
-    int? httpTimeoutSeconds,
-    bool? allowInsecureHttps,
-    List<String>? statusPresets,
+    String? activeRepoId,
   }) {
     return AppSettings(
-      defaultToken: defaultToken ?? this.defaultToken,
-      githubTokens: githubTokens ?? this.githubTokens,
-      activeGithubTokenId: activeGithubTokenId ?? this.activeGithubTokenId,
-      imageBedType: imageBedType ?? this.imageBedType,
-      imageBedToken: imageBedToken ?? this.imageBedToken,
-      imageBedOwner: imageBedOwner ?? this.imageBedOwner,
-      imageBedRepo: imageBedRepo ?? this.imageBedRepo,
-      imageBedBranch: imageBedBranch ?? this.imageBedBranch,
-      imageBedPath: imageBedPath ?? this.imageBedPath,
-      imageBedCdn: imageBedCdn ?? this.imageBedCdn,
-      aiProvider: aiProvider ?? this.aiProvider,
-      aiApiKey: aiApiKey ?? this.aiApiKey,
-      aiBaseUrl: aiBaseUrl ?? this.aiBaseUrl,
-      aiModel: aiModel ?? this.aiModel,
-      aiProfiles: aiProfiles ?? this.aiProfiles,
-      activeAiProfileId: activeAiProfileId ?? this.activeAiProfileId,
-      autoCompressImage: autoCompressImage ?? this.autoCompressImage,
-      compressQuality: compressQuality ?? this.compressQuality,
-      compressMaxWidth: compressMaxWidth ?? this.compressMaxWidth,
-      activeRepoId: activeRepoId ?? this.activeRepoId,
+      github: github ?? this.github,
+      ai: ai ?? this.ai,
+      proxy: proxy ?? this.proxy,
+      sync: sync ?? this.sync,
+      ui: ui ?? this.ui,
       blogSiteConfigs: blogSiteConfigs ?? this.blogSiteConfigs,
       activeSiteId: activeSiteId ?? this.activeSiteId,
-      webdavUrl: webdavUrl ?? this.webdavUrl,
-      webdavUsername: webdavUsername ?? this.webdavUsername,
-      webdavPassword: webdavPassword ?? this.webdavPassword,
-      webdavFolder: webdavFolder ?? this.webdavFolder,
-      siteAvatar: siteAvatar ?? this.siteAvatar,
-      siteName: siteName ?? this.siteName,
-      siteBio: siteBio ?? this.siteBio,
-      siteHome: siteHome ?? this.siteHome,
-      siteAbout: siteAbout ?? this.siteAbout,
-      siteGuestbook: siteGuestbook ?? this.siteGuestbook,
-      siteNow: siteNow ?? this.siteNow,
-      siteWorks: siteWorks ?? this.siteWorks,
-      cloudflareDeployHook: cloudflareDeployHook ?? this.cloudflareDeployHook,
-      themeColor: themeColor ?? this.themeColor,
-      autoSaveEnabled: autoSaveEnabled ?? this.autoSaveEnabled,
-      autoSaveIntervalSeconds: autoSaveIntervalSeconds ?? this.autoSaveIntervalSeconds,
-      autoSaveDir: autoSaveDir ?? this.autoSaveDir,
-      backupDir: backupDir ?? this.backupDir,
-      webdavAutoSyncEnabled: webdavAutoSyncEnabled ?? this.webdavAutoSyncEnabled,
-      webdavAutoSyncIntervalSeconds: webdavAutoSyncIntervalSeconds ?? this.webdavAutoSyncIntervalSeconds,
-      webdavSyncWifiOnly: webdavSyncWifiOnly ?? this.webdavSyncWifiOnly,
-      defaultModelId: defaultModelId ?? this.defaultModelId,
-      defaultModelBase: defaultModelBase ?? this.defaultModelBase,
-      restoreSession: restoreSession ?? this.restoreSession,
-      proxyEnabled: proxyEnabled ?? this.proxyEnabled,
-      proxyHost: proxyHost ?? this.proxyHost,
-      proxyPort: proxyPort ?? this.proxyPort,
-      proxyUsername: proxyUsername ?? this.proxyUsername,
-      proxyPassword: proxyPassword ?? this.proxyPassword,
-      proxyApplyToAi: proxyApplyToAi ?? this.proxyApplyToAi,
-      offlineMode: offlineMode ?? this.offlineMode,
-      nightEyeProtection: nightEyeProtection ?? this.nightEyeProtection,
-      nightEyeIntensity: nightEyeIntensity ?? this.nightEyeIntensity,
-      httpTimeoutSeconds: httpTimeoutSeconds ?? this.httpTimeoutSeconds,
-      allowInsecureHttps: allowInsecureHttps ?? this.allowInsecureHttps,
-      statusPresets: statusPresets ?? this.statusPresets,
+      activeRepoId: activeRepoId ?? this.activeRepoId,
     );
   }
 
+  // ============================================================
+  // 序列化
+  // ============================================================
+
   Map<String, dynamic> toJson() => {
-        'defaultToken': defaultToken,
-        'githubTokens': githubTokens.map((e) => e.toJson()).toList(),
-        'activeGithubTokenId': activeGithubTokenId,
-        'imageBedType': imageBedType,
-        'imageBedToken': imageBedToken,
-        'imageBedOwner': imageBedOwner,
-        'imageBedRepo': imageBedRepo,
-        'imageBedBranch': imageBedBranch,
-        'imageBedPath': imageBedPath,
-        'imageBedCdn': imageBedCdn,
-        'aiProvider': aiProvider,
-        'aiApiKey': aiApiKey,
-        'aiBaseUrl': aiBaseUrl,
-        'aiModel': aiModel,
-        'aiProfiles': aiProfiles.map((e) => e.toJson()).toList(),
-        'activeAiProfileId': activeAiProfileId,
-        'autoCompressImage': autoCompressImage,
-        'compressQuality': compressQuality,
-        'compressMaxWidth': compressMaxWidth,
-        'activeRepoId': activeRepoId,
+        ...github.toJson(),
+        ...ai.toJson(),
+        ...proxy.toJson(),
+        ...sync.toJson(),
+        ...ui.toJson(),
         'blogSiteConfigs': blogSiteConfigs.map((e) => e.toJson()).toList(),
         'activeSiteId': activeSiteId,
-        'webdavUrl': webdavUrl,
-        'webdavUsername': webdavUsername,
-        'webdavPassword': webdavPassword,
-        'webdavFolder': webdavFolder,
-        'siteAvatar': siteAvatar,
-        'siteName': siteName,
-        'siteBio': siteBio,
-        'siteHome': siteHome,
-        'siteAbout': siteAbout,
-        'siteGuestbook': siteGuestbook,
-        'siteNow': siteNow,
-        'siteWorks': siteWorks,
-        'cloudflareDeployHook': cloudflareDeployHook,
-        'themeColor': themeColor,
-        'autoSaveEnabled': autoSaveEnabled,
-        'autoSaveIntervalSeconds': autoSaveIntervalSeconds,
-        'autoSaveDir': autoSaveDir,
-        'backupDir': backupDir,
-        'webdavAutoSyncEnabled': webdavAutoSyncEnabled,
-        'webdavAutoSyncIntervalSeconds': webdavAutoSyncIntervalSeconds,
-        'webdavSyncWifiOnly': webdavSyncWifiOnly,
-        'defaultModelId': defaultModelId,
-        'defaultModelBase': defaultModelBase,
-        'restoreSession': restoreSession,
-        'proxyEnabled': proxyEnabled,
-        'proxyHost': proxyHost,
-        'proxyPort': proxyPort,
-        'proxyUsername': proxyUsername,
-        'proxyPassword': proxyPassword,
-        'proxyApplyToAi': proxyApplyToAi,
-        'offlineMode': offlineMode,
-        'nightEyeProtection': nightEyeProtection,
-        'nightEyeIntensity': nightEyeIntensity,
-        'httpTimeoutSeconds': httpTimeoutSeconds,
-        'allowInsecureHttps': allowInsecureHttps,
-        'statusPresets': statusPresets,
+        'activeRepoId': activeRepoId,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) {
-    final profilesRaw = j['aiProfiles'];
-    final profiles = <AiProfile>[];
-    if (profilesRaw is List) {
-      for (final e in profilesRaw) {
-        if (e is Map) {
-          profiles.add(AiProfile.fromJson(Map<String, dynamic>.from(e)));
-        }
-      }
-    }
-
-    // 兼容旧版单配置：自动迁移成一个 profile
-    final legacyKey = j['aiApiKey']?.toString() ?? '';
-    final legacyUrl = j['aiBaseUrl']?.toString() ?? 'https://api.openai.com/v1';
-    final legacyModel = j['aiModel']?.toString() ?? 'gpt-4o-mini';
-    if (profiles.isEmpty && (legacyKey.isNotEmpty || legacyUrl.isNotEmpty)) {
-      profiles.add(
-        AiProfile(
-          id: 'legacy',
-          name: j['aiProvider']?.toString().isNotEmpty == true
-              ? j['aiProvider'].toString()
-              : '默认中转站',
-          baseUrl: legacyUrl,
-          apiKey: legacyKey,
-          model: legacyModel,
-        ),
-      );
-    }
-
-    final activeId = j['activeAiProfileId']?.toString() ??
-        (profiles.isNotEmpty ? profiles.first.id : '');
-
-    final tokensRaw = j['githubTokens'];
-    final tokens = <GithubTokenProfile>[];
-    if (tokensRaw is List) {
-      for (final e in tokensRaw) {
-        if (e is Map) {
-          tokens.add(GithubTokenProfile.fromJson(Map<String, dynamic>.from(e)));
-        }
-      }
-    }
-
-    final legacyToken = j['defaultToken']?.toString() ?? '';
-    if (tokens.isEmpty && legacyToken.isNotEmpty) {
-      tokens.add(
-        GithubTokenProfile(
-          id: 'legacy_token',
-          name: '默认 Token',
-          token: legacyToken,
-        ),
-      );
-    }
-
-    // 去重：同 token 只保留一份
-    final dedup = <GithubTokenProfile>[];
-    final seen = <String>{};
-    for (final t in tokens) {
-      final key = t.token.trim();
-      if (key.isEmpty) continue;
-      if (seen.contains(key)) continue;
-      seen.add(key);
-      dedup.add(t);
-    }
-
-    final activeTokenId = j['activeGithubTokenId']?.toString() ??
-        (dedup.isNotEmpty ? dedup.first.id : '');
-
-    String resolvedDefault = legacyToken;
-    if (dedup.isNotEmpty) {
-      GithubTokenProfile? active;
-      for (final t in dedup) {
-        if (t.id == activeTokenId) {
-          active = t;
-          break;
-        }
-      }
-      resolvedDefault = (active ?? dedup.first).token;
-    }
-
     return AppSettings(
-      defaultToken: resolvedDefault.isNotEmpty ? resolvedDefault : legacyToken,
-      githubTokens: dedup,
-      activeGithubTokenId: activeTokenId,
-      imageBedType: j['imageBedType']?.toString() ?? 'github',
-      imageBedToken: j['imageBedToken']?.toString() ?? '',
-      imageBedOwner: j['imageBedOwner']?.toString() ?? '',
-      imageBedRepo: j['imageBedRepo']?.toString() ?? '',
-      imageBedBranch: j['imageBedBranch']?.toString() ?? 'main',
-      imageBedPath: j['imageBedPath']?.toString() ?? 'images',
-      imageBedCdn: j['imageBedCdn']?.toString() ?? '',
-      aiProvider: j['aiProvider']?.toString() ?? 'openai',
-      aiApiKey: legacyKey,
-      aiBaseUrl: legacyUrl,
-      aiModel: legacyModel,
-      aiProfiles: profiles,
-      activeAiProfileId: activeId,
-      autoCompressImage: j['autoCompressImage'] != false,
-      compressQuality: (j['compressQuality'] as num?)?.toInt() ?? 80,
-      compressMaxWidth: (j['compressMaxWidth'] as num?)?.toInt() ?? 1600,
-      activeRepoId: j['activeRepoId']?.toString() ?? '',
+      github: GitHubSettings.fromJson(j),
+      ai: AiSettings.fromJson(j),
+      proxy: ProxySettings.fromJson(j),
+      sync: SyncSettings.fromJson(j),
+      ui: UiSettings.fromJson(j),
       blogSiteConfigs: _parseBlogSiteConfigs(j['blogSiteConfigs']),
       activeSiteId: j['activeSiteId']?.toString() ?? '',
-      webdavUrl: j['webdavUrl']?.toString() ?? '',
-      webdavUsername: j['webdavUsername']?.toString() ?? '',
-      webdavPassword: j['webdavPassword']?.toString() ?? '',
-      webdavFolder: j['webdavFolder']?.toString() ?? 'hexo-backup',
-      siteAvatar: j['siteAvatar']?.toString() ?? '',
-      siteName: j['siteName']?.toString() ?? '小子的博客',
-      siteBio: j['siteBio']?.toString() ?? '分享技术、生活和思考',
-      siteHome: j['siteHome']?.toString() ?? '',
-      siteAbout: j['siteAbout']?.toString() ?? '',
-      siteGuestbook: j['siteGuestbook']?.toString() ?? '',
-      siteNow: j['siteNow']?.toString() ?? '',
-      siteWorks: j['siteWorks']?.toString() ?? '',
-      cloudflareDeployHook: j['cloudflareDeployHook']?.toString() ?? '',
-      themeColor: (j['themeColor'] as num?)?.toInt() ?? 0xFF0EA5E9,
-      autoSaveEnabled: j['autoSaveEnabled'] != false,
-      autoSaveIntervalSeconds: (j['autoSaveIntervalSeconds'] as num?)?.toInt() ?? 30,
-      autoSaveDir: j['autoSaveDir']?.toString() ?? '',
-      backupDir: j['backupDir']?.toString() ?? '',
-      webdavAutoSyncEnabled: j['webdavAutoSyncEnabled'] == true,
-      webdavAutoSyncIntervalSeconds: (j['webdavAutoSyncIntervalSeconds'] as num?)?.toInt() ?? 300,
-      webdavSyncWifiOnly: j['webdavSyncWifiOnly'] != false,
-      defaultModelId: j['defaultModelId']?.toString() ?? '',
-      defaultModelBase: j['defaultModelBase']?.toString() ?? '',
-      restoreSession: j['restoreSession'] != false,
-      proxyEnabled: j['proxyEnabled'] == true,
-      proxyHost: j['proxyHost']?.toString() ?? '',
-      proxyPort: (j['proxyPort'] as num?)?.toInt() ?? 1080,
-      proxyUsername: j['proxyUsername']?.toString() ?? '',
-      proxyPassword: j['proxyPassword']?.toString() ?? '',
-      proxyApplyToAi: j['proxyApplyToAi'] == true,
-      offlineMode: j['offlineMode'] == true,
-      nightEyeProtection: j['nightEyeProtection'] == true,
-      nightEyeIntensity: (j['nightEyeIntensity'] as num?)?.toDouble() ?? 0.5,
-      httpTimeoutSeconds: (j['httpTimeoutSeconds'] as num?)?.toInt() ?? 30,
-      allowInsecureHttps: j['allowInsecureHttps'] == true,
-      statusPresets: _parseStringList(j['statusPresets'], const ['publish', 'draft', 'pending', 'private']),
+      activeRepoId: j['activeRepoId']?.toString() ?? '',
     );
   }
 
-  /// 解析动态 CMS 站点配置列表
   static List<BlogSiteConfig> _parseBlogSiteConfigs(dynamic raw) {
     if (raw is! List) return [];
     final configs = <BlogSiteConfig>[];
@@ -543,19 +199,9 @@ class AppSettings {
       if (e is Map) {
         try {
           configs.add(BlogSiteConfig.fromJson(Map<String, dynamic>.from(e)));
-        } catch (_) {
-          // 忽略无法解析的配置
-        }
+        } catch (_) {}
       }
     }
     return configs;
-  }
-
-  /// 解析字符串列表
-  static List<String> _parseStringList(dynamic raw, List<String> fallback) {
-    if (raw is List) {
-      return raw.map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
-    }
-    return fallback;
   }
 }

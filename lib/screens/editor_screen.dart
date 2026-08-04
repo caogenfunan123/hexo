@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../models/app_settings.dart';
 import '../models/article.dart';
+import '../models/article_type.dart';
 import '../models/blog_framework.dart';
 import '../models/repo_config.dart';
 import '../models/template_item.dart';
@@ -62,7 +63,7 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _busy = false;
   String? _status;
   final FocusNode _contentFocus = FocusNode();
-  String _articleType = 'post'; // post 或 page
+  ArticleType _articleType = ArticleType.post; // post 或 page
   String? _selectedTemplateId;
   bool _showPreview = false;
 
@@ -827,8 +828,8 @@ class _EditorScreenState extends State<EditorScreen> {
                         subtitle: _repo != null
                             ? '目录: ${_repo!.postsPath}'
                             : '文章目录',
-                        active: _articleType == 'post',
-                        onTap: () => setState(() => _articleType = 'post'),
+                        active: _articleType == ArticleType.post,
+                        onTap: () => setState(() => _articleType = ArticleType.post),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -839,8 +840,8 @@ class _EditorScreenState extends State<EditorScreen> {
                         subtitle: _repo != null
                             ? '目录: ${_repo!.pagesPath}'
                             : '页面目录',
-                        active: _articleType == 'page',
-                        onTap: () => setState(() => _articleType = 'page'),
+                        active: _articleType == ArticleType.page,
+                        onTap: () => setState(() => _articleType = ArticleType.page),
                       ),
                     ),
                   ],
@@ -854,7 +855,7 @@ class _EditorScreenState extends State<EditorScreen> {
                         child: DropdownButtonFormField<String>(
                           value: _selectedTemplateId,
                           decoration: InputDecoration(
-                            labelText: '模板 (${_articleType == 'post' ? '博文' : '页面'})',
+                            labelText: '模板 (${_articleType == ArticleType.post ? '博文' : '页面'})',
                             prefixIcon: const Icon(Icons.view_quilt_outlined),
                             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           ),
@@ -864,7 +865,7 @@ class _EditorScreenState extends State<EditorScreen> {
                               child: Text('无模板（手动编写）'),
                             ),
                             ...widget.templates
-                                .where((t) => t.isPost == (_articleType == 'post'))
+                                .where((t) => t.isPost == (_articleType == ArticleType.post))
                                 .map((t) => DropdownMenuItem<String>(
                                       value: t.id,
                                       child: Row(
@@ -894,7 +895,7 @@ class _EditorScreenState extends State<EditorScreen> {
                               );
                               // 应用模板到标题/标签占位
                               if (_title.text.isEmpty) {
-                                _title.text = _articleType == 'page' ? '新页面' : '新文章';
+                                _title.text = _articleType == ArticleType.page ? '新页面' : '新文章';
                               }
                             }
                           },
@@ -928,7 +929,7 @@ class _EditorScreenState extends State<EditorScreen> {
                         Expanded(
                           child: Text(
                             '框架: ${BlogFramework.byId(_repo!.frameworkId)?.name ?? _repo!.frameworkId} | '
-                            '文件名: ${_articleType == 'page' ? '无日期' : (_repo!.fileNameRule.postDatePrefix ? '自动加日期' : '纯标题')}',
+                            '文件名: ${_articleType == ArticleType.page ? '无日期' : (_repo!.fileNameRule.postDatePrefix ? '自动加日期' : '纯标题')}',
                             style: const TextStyle(fontSize: 12, color: Color(0xFF0369A1)),
                           ),
                         ),

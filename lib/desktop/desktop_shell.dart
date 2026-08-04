@@ -10,9 +10,12 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:archive/archive.dart';
+
+import '../controllers/controllers.dart';
 
 import '../models/ai_profile.dart';
 import '../models/app_settings.dart';
@@ -74,12 +77,15 @@ import '../services/html_to_markdown.dart';
 import '../services/recycle_bin_service.dart';
 import '../services/version_snapshot_service.dart';
 import '../services/frontmatter_service.dart';
+import '../services/p2p_sync_service.dart';
 import '../screens/recycle_bin_screen.dart';
 import '../screens/image_bed_screen.dart';
 import '../screens/link_checker_screen.dart';
 import '../screens/batch_tools_screen.dart';
 import '../screens/ai_prompt_templates_screen.dart';
+import '../screens/p2p_sync_screen.dart';
 import '../widgets/ai_chat_panel.dart';
+import 'widgets/ai_selection_edit_dialog.dart';
 import '../theme/app_theme.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
@@ -138,6 +144,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   late final RecycleBinService recycleBinService;
   late final VersionSnapshotService versionSnapshotService;
   late final FrontMatterService frontMatterService;
+  late final P2PSyncService p2pSyncService;
   late SiteManager siteManager;
 
   // ──────────────────────────────────────────────
@@ -156,54 +163,35 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   String? error;
 
   // ──────────────────────────────────────────────
-  // 布局状态
+  // 布局状态 — 已迁移至 LayoutController，通过 _layout getter 访问
   // ──────────────────────────────────────────────
-  bool _leftPanelExpanded = true;
-  double _leftPanelWidth = 260;
-  bool _rightDrawerOpen = false;
-  RightDrawerTab _activeDrawerTab = RightDrawerTab.outline;
-  WorkMode _workMode = WorkMode.workspace;
 
   // ──────────────────────────────────────────────
-  // 编辑器标签页
+  // 编辑器标签页 & 状态 — 已迁移至 EditorController，通过 _editor getter 访问
   // ──────────────────────────────────────────────
-  final List<EditorTab> _openTabs = [];
-  int _activeTabIndex = -1;
 
   // ──────────────────────────────────────────────
-  // 编辑器状态
+  // 编辑器中保留的 Shell 级状态
+  // （这些涉及服务交互，不适合放入纯状态 Controller）
   // ──────────────────────────────────────────────
-  late TextEditingController _titleCtrl;
-  late TextEditingController _contentCtrl;
-  late TextEditingController _tagsCtrl;
-  late TextEditingController _categoriesCtrl;
-  late TextEditingController _coverCtrl;
-  late Article _currentArticle;
-  String _articleType = 'post';
-  String? _selectedTemplateId;
   RepoConfig? _editorRepo;
-  bool _editorBusy = false;
-  String? _editorStatus;
   final CancelToken _publishCancelToken = CancelToken();
-  Uint8List? _failedImageBytes;
-  final FocusNode _contentFocus = FocusNode();
 
   // ──────────────────────────────────────────────
   // 工作区文件夹
   // ──────────────────────────────────────────────
   String? _workspaceFolder;
   final ScrollController _focusScrollCtrl = ScrollController();
-  // 打字机滚动：记录上次光标行号，用于判断是否需要滚动
   int _lastCursorLine = 0;
 
   // ──────────────────────────────────────────────
-  // 自动保存
+  // 自动保存 Timer（涉及 Storage 操作，保留在 Shell 层）
   // ──────────────────────────────────────────────
   Timer? _autoSaveTimer;
-  Timer? _debounceTimer;
   Timer? _autoSyncTimer;
+  final Map<String, Timer> _debounceTimers = {};
+  final Map<String, String> _lastSavedContentMap = {};
   String _lastSavedContent = '';
-  bool _hasUnsavedChanges = false;
 
   // ──────────────────────────────────────────────
   // 会话
@@ -218,38 +206,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   static const int _maxRecentFiles = 10;
 
   // ──────────────────────────────────────────────
-  // 编辑器统计
+  // 同步日志（已迁移到 SyncController，此处保留兼容）
   // ──────────────────────────────────────────────
-  int _wordCount = 0;
-  int _charCount = 0;
-  (int, int) _cursorPos = (1, 1);
 
-  // ──────────────────────────────────────────────
-  // 编辑器自定义设置
-  // ──────────────────────────────────────────────
-  /// 字体设置
-  double _editorFontSize = 16.0;
-  double _editorLineHeight = 1.6;
-  String _editorFontFamily = 'System';
-
-  /// 编辑器主题
-  String _editorTheme = 'default';
-
-  /// 自定义 CSS
-  String _customCss = '';
-
-  /// 自定义快捷键
-  Map<String, String> _customShortcuts = {};
-
-  // ──────────────────────────────────────────────
-  // 图片路径模式
-  // ──────────────────────────────────────────────
-  bool _useRelativeImagePath = false;
-
-  // ──────────────────────────────────────────────
-  // 同步日志
-  // ──────────────────────────────────────────────
-  final List<String> _syncLogs = [];
+  // ── 控制器访问器（从 Provider 获取） ──
+  LayoutController get _layout => context.read<LayoutController>();
+  EditorController get _editor => context.read<EditorController>();
+  DocumentController get _doc => context.read<DocumentController>();
+  SyncController get _sync => context.read<SyncController>();
+  SiteController get _site => context.read<SiteController>();
+  UiStateController get _ui => context.read<UiStateController>();
 
   // ── 辅助属性 ──
 
@@ -292,26 +258,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _titleCtrl = TextEditingController();
-    _contentCtrl = TextEditingController();
-    _tagsCtrl = TextEditingController();
-    _categoriesCtrl = TextEditingController();
-    _coverCtrl = TextEditingController();
     syncService = SyncService(logService);
     cloudSyncService = CloudSyncService(logService);
     recycleBinService = RecycleBinService();
     versionSnapshotService = VersionSnapshotService(logService);
     frontMatterService = FrontMatterService(logService);
-    _currentArticle = Article(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      title: '',
-      content: '',
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-      isDraft: true,
-      repoId: activeRepo?.id,
-      articleType: 'post',
-    );
+    p2pSyncService = P2PSyncService(deviceName: 'Desktop-${Platform.localHostname}');
     _bootstrap();
   }
 
@@ -320,21 +272,18 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     WidgetsBinding.instance.removeObserver(this);
     _stopAutoSave();
     _stopAutoSync();
-    _titleCtrl.dispose();
-    _contentCtrl.dispose();
-    _tagsCtrl.dispose();
-    _categoriesCtrl.dispose();
-    _coverCtrl.dispose();
-    _contentFocus.dispose();
     _focusScrollCtrl.dispose();
     siteManager.disposeAll();
     cmsDraftService.close();
+    p2pSyncService.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      // 三重落盘：APP 转入后台时强制冲刷所有等待中的保存任务
+      _flushAllPendingSaves();
       _autoSyncToCloud();
     } else if (state == AppLifecycleState.resumed) {
       _autoPullFromCloud();
@@ -346,7 +295,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ============================================================
 
   Future<void> _bootstrap() async {
-    setState(() => loading = true);
+    _ui.setLoading(true);
     try {
       var s = await storage.loadSettings();
       var r = await storage.loadRepos();
@@ -390,22 +339,41 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       String? autoTemplateId;
       if (_editorRepo != null) {
         autoTemplateId = TemplateResolver.resolvePostTemplateId(_editorRepo!, t);
-        _selectedTemplateId = autoTemplateId;
+        _doc.setSelectedTemplateId(autoTemplateId);
       }
+
+      // 同步到站点控制器
+      final staticSites = r.map((repo) => SiteConfig(
+        id: repo.id,
+        name: repo.name,
+        repoUrl: 'https://github.com/${repo.owner}/${repo.repo}',
+        branch: repo.branch,
+        isDefault: repo.isDefault,
+        isStatic: true,
+        tokenId: repo.token.isNotEmpty ? repo.id : null,
+      )).toList();
+      final dynamicSites = s.blogSiteConfigs.map((cfg) => SiteConfig(
+        id: cfg.id,
+        name: cfg.name,
+        repoUrl: cfg.url,
+        isStatic: false,
+      )).toList();
+      _site.setSites(staticSites, dynamicSites);
+
       setState(() {
         settings = s;
         repos = r;
         drafts = d..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
         templates = t;
         snippets = sn;
-        loading = false;
       });
+      _ui.setLoading(false);
       _updateSiteManager();
       if (s.restoreSession) {
         await _restoreSession();
       }
     } catch (_) {
-      if (mounted) setState(() => loading = false);
+      if (mounted) _ui.setLoading(false);
     }
     try {
       await skillManager.init(await storage.root);
@@ -494,36 +462,57 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   void _stopAutoSave() {
     _autoSaveTimer?.cancel();
     _autoSaveTimer = null;
-    _debounceTimer?.cancel();
-    _debounceTimer = null;
+    _flushAllPendingSaves();
+    for (final t in _debounceTimers.values) {
+      t.cancel();
+    }
+    _debounceTimers.clear();
+  }
+
+  /// 冲刷所有等待中的保存任务（三重落盘：文本变更 / 页面切换 / APP 转入后台）
+  void _flushAllPendingSaves() {
+    for (final entry in _debounceTimers.entries) {
+      entry.value.cancel();
+      final articleId = entry.key;
+      final content = _doc.contentCtrl.text;
+      final title = _doc.titleCtrl.text;
+      if (content.isNotEmpty && content != _lastSavedContentMap[articleId]) {
+        _autoSaveSnapshot();
+      }
+    }
+    _debounceTimers.clear();
   }
 
   void _onContentChanged() {
-    final current = _contentCtrl.text;
+    final current = _doc.contentCtrl.text;
     if (current == _lastSavedContent) {
-      _hasUnsavedChanges = false;
+      _doc.markSaved();
       return;
     }
-    _hasUnsavedChanges = true;
+    _doc.markUnsaved();
     _trackStats();
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(seconds: 2), _autoSaveSnapshot);
+    // 每草稿独立防抖，杜绝多草稿相互阻塞
+    final articleId = _doc.currentArticle.id;
+    _debounceTimers[articleId]?.cancel();
+    _debounceTimers[articleId] = Timer(const Duration(seconds: 2), () {
+      _autoSaveSnapshot();
+      _debounceTimers.remove(articleId);
+    });
   }
 
   void _trackStats() {
-    final text = _contentCtrl.text;
-    _charCount = text.length;
-    _wordCount = text.isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).length;
-    final sel = _contentCtrl.selection;
+    final text = _doc.contentCtrl.text;
+    _editor.updateStats(text);
+    final sel = _doc.contentCtrl.selection;
     if (sel.isValid) {
       final before = text.substring(0, sel.start);
       final line = '\n'.allMatches(before).length + 1;
       final lastNewline = before.lastIndexOf('\n');
       final col = lastNewline < 0 ? sel.start + 1 : sel.start - lastNewline;
-      _cursorPos = (line, col);
+      _editor.updateCursorPosition(line, col);
 
       // 打字机滚动：专注模式下光标始终在屏幕中间
-      if (_workMode == WorkMode.focus && line != _lastCursorLine) {
+      if (_layout.workMode == WorkMode.focus && line != _lastCursorLine) {
         _lastCursorLine = line;
         _centerCursorInFocusMode(line);
       }
@@ -534,7 +523,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   /// 专注模式下将光标所在行滚动到屏幕中央
   void _centerCursorInFocusMode(int line) {
     if (!_focusScrollCtrl.hasClients) return;
-    final lineHeight = _editorFontSize * _editorLineHeight;
+    final lineHeight = _editor.editorFontSize * _editor.editorLineHeight;
     final viewportHeight = _focusScrollCtrl.position.viewportDimension;
     final targetY = (line - 1) * lineHeight - viewportHeight / 2 + lineHeight;
     if (targetY < 0) return;
@@ -546,21 +535,23 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   Future<void> _autoSaveSnapshot() async {
-    final content = _contentCtrl.text;
-    if (content.isEmpty || content == _lastSavedContent) return;
-    final title = _titleCtrl.text;
+    final content = _doc.contentCtrl.text;
+    final articleId = _doc.currentArticle.id;
+    if (content.isEmpty || content == _lastSavedContentMap[articleId]) return;
+    final title = _doc.titleCtrl.text;
     try {
       await sessionService.saveAutoSnapshot(
-        articleId: _currentArticle.id,
+        articleId: articleId,
         content: content,
         title: title.isEmpty ? '未命名' : title,
-        tags: _tagsCtrl.text,
-        categories: _categoriesCtrl.text,
-        cover: _coverCtrl.text,
+        tags: _doc.tagsCtrl.text,
+        categories: _doc.categoriesCtrl.text,
+        cover: _doc.coverCtrl.text,
       );
       _lastSavedContent = content;
-      _hasUnsavedChanges = false;
-      await sessionService.cleanupSnapshots(_currentArticle.id);
+      _lastSavedContentMap[articleId] = content;
+      _doc.markSaved();
+      await sessionService.cleanupSnapshots(articleId);
       await _saveDraft(_collect(draft: true));
       if (mounted) _showToast('草稿已自动保存');
     } catch (_) {}
@@ -698,20 +689,20 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ============================================================
 
   Article _collect({bool draft = true}) {
-    final cover = _coverCtrl.text.trim();
-    final title = _titleCtrl.text.trim();
-    return _currentArticle.copyWith(
+    final cover = _doc.coverCtrl.text.trim();
+    final title = _doc.titleCtrl.text.trim();
+    return _doc.currentArticle.copyWith(
       title: title.isEmpty ? '未命名' : title,
-      content: _contentCtrl.text,
-      tags: _tagsCtrl.text.split(RegExp(r'[,，]')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
-      categories: _categoriesCtrl.text.split(RegExp(r'[,，]')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
+      content: _doc.contentCtrl.text,
+      tags: _doc.tagsCtrl.text.split(RegExp(r'[,，]')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
+      categories: _doc.categoriesCtrl.text.split(RegExp(r'[,，]')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
       cover: cover.isEmpty ? null : cover,
       updatedAt: DateTime.now(),
       isDraft: draft,
       published: draft ? false : true,
-      repoId: _editorRepo?.id ?? _currentArticle.repoId,
-      articleType: _articleType,
-      templateId: _selectedTemplateId,
+      repoId: _editorRepo?.id ?? _doc.currentArticle.repoId,
+      articleType: _doc.articleType,
+      templateId: _doc.selectedTemplateId,
     );
   }
 
@@ -748,10 +739,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   Future<void> _saveLocal() async {
     final a = _collect(draft: true);
-    setState(() {
-      _currentArticle = a;
-      _editorStatus = '本地已保存';
-    });
+    _doc.setCurrentArticle(a); _editor.setEditorStatus('本地已保存');
     await _saveDraft(a);
     if (siteManager.isDynamicSite) {
       final adapter = siteManager.currentAdapter;
@@ -765,7 +753,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       }
     }
     _lastSavedContent = a.content;
-    _hasUnsavedChanges = false;
+    _doc.markSaved();
     // 创建版本快照
     versionSnapshotService.createSnapshot(a.id, a.title, a.content);
     logService.add('保存草稿', '标题: ${a.title.isNotEmpty ? a.title : "(无标题)"}');
@@ -823,7 +811,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             children: [
               Text('即将发布到: $publishTarget', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
               const SizedBox(height: 8),
-              Text('标题: ${_titleCtrl.text.isNotEmpty ? _titleCtrl.text : "(无标题)"}', style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+              Text('标题: ${_doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : "(无标题)"}', style: TextStyle(fontSize: 13, color: Colors.grey[700])),
               const SizedBox(height: 16),
               CheckboxListTile(
                 value: saveMdBackup,
@@ -944,24 +932,22 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       _showToast('请先配置仓库与 Token');
       return;
     }
-    setState(() { _editorBusy = true; _editorStatus = '正在发布...'; });
+    _editor.setEditorBusy(true); _editor.setEditorStatus('正在发布...');
     try {
       final a = _collect(draft: false);
       final pub = await github.upsertArticle(repo, a);
-      setState(() { _currentArticle = pub; _editorStatus = '已发布'; });
+      _doc.setCurrentArticle(pub); _editor.setEditorStatus('已发布');
       _lastSavedContent = pub.content;
-      _hasUnsavedChanges = false;
+      _doc.markSaved();
       await _saveDraft(pub.copyWith(isDraft: false, published: true));
       await _refreshRemote();
       logService.add('发布成功', '已发布到 ${repo.fullName}: ${pub.title}');
       if (mounted) _showToast('已发布到 ${repo.fullName}');
     } catch (e) {
-      setState(() => _editorStatus = '发布失败');
+      _editor.setEditorStatus('发布失败');
       logService.add('发布失败', '$e', success: false);
-      if (mounted) _showToast('发布失败: $e');
-    } finally {
-      if (mounted) setState(() => _editorBusy = false);
-    }
+      if (mounted) _showToast('发布失败: $e');} finally {
+      if (mounted) _editor.setEditorBusy(false);}
   }
 
   Future<void> _publishToCms() async {
@@ -971,9 +957,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       return;
     }
     final a = _collect(draft: false);
-    setState(() { _editorBusy = true; _editorStatus = '正在发布到 ${adapter.config.type.displayName}...'; });
+    _editor.setEditorBusy(true); _editor.setEditorStatus('正在发布到 ${adapter.config.type.displayName}...');
     try {
-      final remoteId = _currentArticle.remoteSha != null ? int.tryParse(_currentArticle.remoteSha!) : null;
+      final remoteId = _doc.currentArticle.remoteSha != null ? int.tryParse(_doc.currentArticle.remoteSha!) : null;
       final post = BlogPost(
         id: remoteId, title: a.title, contentMd: a.content, status: 'publish',
         slug: _generateSlug(a.title), tags: a.tags, categories: a.categories,
@@ -981,9 +967,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       );
       final result = remoteId != null ? await adapter.updatePost(post) : await adapter.createPost(post);
       final pub = a.copyWith(isDraft: false, published: true, remotePath: result.link, remoteSha: result.id?.toString());
-      setState(() { _currentArticle = pub; _editorStatus = '已发布到 ${adapter.config.type.displayName}'; });
+      _doc.setCurrentArticle(pub); _editor.setEditorStatus('已发布到 ${adapter.config.type.displayName}');
       _lastSavedContent = a.content;
-      _hasUnsavedChanges = false;
+      _doc.markSaved();
       await _saveDraft(pub);
       await cmsDraftService.saveDraft(result);
       if (result.id != null) {
@@ -995,12 +981,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       logService.add('CMS发布成功', '已发布到 ${adapter.config.type.displayName}: ${result.title}');
       if (mounted) _showToast('已发布到 ${adapter.config.type.displayName}: ${result.link ?? result.title}');
     } catch (e) {
-      setState(() => _editorStatus = '发布失败');
+      _editor.setEditorStatus('发布失败');
       logService.add('CMS发布失败', '$e', success: false);
-      if (mounted) _showToast('发布失败: $e');
-    } finally {
-      if (mounted) setState(() => _editorBusy = false);
-    }
+      if (mounted) _showToast('发布失败: $e');} finally {
+      if (mounted) _editor.setEditorBusy(false);}
   }
 
   // ============================================================
@@ -1017,13 +1001,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   Future<void> _refreshRss() async {
     final url = activeRepo?.siteUrl.isNotEmpty == true ? activeRepo!.siteUrl : 'https://caogenfunan.me/';
-    try { rssItems = await rssService.fetch(url); if (mounted) setState(() {}); } catch (_) {}
+    try { rssItems = await rssService.fetch(url); if (mounted)  } catch (_) {}
   }
 
   Future<void> _refreshCommits() async {
     final repo = effectiveRepo;
     if (repo == null || repo.token.isEmpty) return;
-    try { commits = await github.listCommits(repo); if (mounted) setState(() {}); } catch (_) {}
+    try { commits = await github.listCommits(repo); if (mounted)  } catch (_) {}
   }
 
   // ============================================================
@@ -1059,13 +1043,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         final data = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
         if (mounted) {
           setState(() {
-            _editorFontSize = (data['fontSize'] as num?)?.toDouble() ?? 16.0;
-            _editorLineHeight = (data['lineHeight'] as num?)?.toDouble() ?? 1.6;
-            _editorFontFamily = data['fontFamily'] as String? ?? 'System';
-            _editorTheme = data['editorTheme'] as String? ?? 'default';
-            _customCss = data['customCss'] as String? ?? '';
-            _customShortcuts = (data['customShortcuts'] as Map<String, dynamic>?)
-                ?.map((k, v) => MapEntry(k, v.toString())) ?? {};
+            _editor.setEditorFontSize((data['fontSize'] as num?)?.toDouble() ?? 16.0);
+            _editor.setEditorLineHeight((data['lineHeight'] as num?)?.toDouble() ?? 1.6);
+            _editor.setEditorFontFamily(data['fontFamily'] as String? ?? 'System');
+            _editor.setEditorTheme(data['editorTheme'] as String? ?? 'default');
+            _editor.setCustomCss(data['customCss'] as String? ?? '');
+            _editor.setCustomShortcuts((data['customShortcuts'] as Map<String, dynamic>?)
+                ?.map((k, v) => MapEntry(k, v.toString())) ?? {});
           });
         }
       }
@@ -1078,12 +1062,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final rootDir = await storage.root;
       final file = File('${rootDir.path}/editor_settings.json');
       await file.writeAsString(jsonEncode({
-        'fontSize': _editorFontSize,
-        'lineHeight': _editorLineHeight,
-        'fontFamily': _editorFontFamily,
-        'editorTheme': _editorTheme,
-        'customCss': _customCss,
-        'customShortcuts': _customShortcuts,
+        'fontSize': _editor.editorFontSize,
+        'lineHeight': _editor.editorLineHeight,
+        'fontFamily': _editor.editorFontFamily,
+        'editorTheme': _editor.editorTheme,
+        'customCss': _editor.customCss,
+        'customShortcuts': _editor.customShortcuts,
       }));
     } catch (_) {}
   }
@@ -1093,56 +1077,71 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ============================================================
 
   void _openExistingArticle(Article a) {
-    _currentArticle = a;
-    _titleCtrl.text = a.title;
-    _contentCtrl.text = a.content;
-    _tagsCtrl.text = a.tags.join(', ');
-    _categoriesCtrl.text = a.categories.join(', ');
-    _coverCtrl.text = a.cover ?? '';
+    _doc.setCurrentArticle(a);
+    _doc.titleCtrl.text = a.title;
+    _doc.contentCtrl.text = a.content;
+    _doc.tagsCtrl.text = a.tags.join(', ');
+    _doc.categoriesCtrl.text = a.categories.join(', ');
+    _doc.coverCtrl.text = a.cover ?? '';
     _editorRepo = repos.where((r) => r.id == a.repoId).firstOrNull ?? activeRepo;
     _lastSavedContent = a.content;
-    _hasUnsavedChanges = false;
+    _doc.markSaved();
     _startAutoSave();
     _addEditorTab(a);
-    setState(() {});
+    
     // 自动聚焦到正文编辑区
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _contentFocus.requestFocus();
+      _doc.contentFocus.requestFocus();
     });
   }
 
   Future<void> _deleteDraft(Article a) async {
+    // 先移入回收站
+    try {
+      final filePath = '${(await storage.root).path}/drafts/${a.fileName()}';
+      await recycleBinService.moveToTrash(filePath, a);
+    } catch (_) {
+      // 如果移入回收站失败，仍然从列表移除
+    }
     drafts.removeWhere((e) => e.id == a.id);
     await storage.saveDrafts(drafts);
     logService.add('删除草稿', '标题: ${a.title.isNotEmpty ? a.title : "(无标题)"}');
     if (mounted) setState(() {});
   }
 
+  Future<void> _refreshDraftsFromStorage() async {
+    final d = await storage.loadDrafts();
+    d.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    if (mounted) {
+      setState(() => drafts = d);
+    }
+  }
+
   void _newArticle() {
     final repo = activeRepo;
     _editorRepo = repo;
-    _articleType = 'post';
+    _doc.setArticleType(ArticleType.post);
     String? autoTemplateId;
     if (repo != null) autoTemplateId = TemplateResolver.resolvePostTemplateId(repo, templates);
-    _currentArticle = Article(
+    _doc.setCurrentArticle(Article(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: '', content: '', createdAt: DateTime.now(), updatedAt: DateTime.now(),
-      isDraft: true, repoId: repo?.id, articleType: _articleType, templateId: autoTemplateId,
-    );
-    _titleCtrl.text = '';
-    _contentCtrl.text = '';
-    _tagsCtrl.text = '';
-    _categoriesCtrl.text = '';
-    _coverCtrl.text = '';
+      isDraft: true, repoId: repo?.id, articleType: _doc.articleType, templateId: autoTemplateId,
+    ));
+    _doc.titleCtrl.text = '';
+    _doc.contentCtrl.text = '';
+    _doc.tagsCtrl.text = '';
+    _doc.categoriesCtrl.text = '';
+    _doc.coverCtrl.text = '';
     _lastSavedContent = '';
-    _hasUnsavedChanges = false;
-    _selectedTemplateId = autoTemplateId;
+    _doc.markSaved();
+    _doc.setSelectedTemplateId(autoTemplateId);
     _startAutoSave();
-    _addEditorTab(_currentArticle);
-    setState(() {});
+    _addEditorTab(_doc.currentArticle);
+    
     // 自动聚焦到正文编辑区（光标定位到开头）
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _contentFocus.requestFocus();
+      _doc.contentFocus.requestFocus();
     });
   }
 
@@ -1152,44 +1151,25 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   void _addEditorTab(Article article) {
     final tabId = 'editor_${article.id}';
-    final existingIdx = _openTabs.indexWhere((t) => t.id == tabId);
-    if (existingIdx >= 0) {
-      _activeTabIndex = existingIdx;
-      return;
-    }
-    _openTabs.add(EditorTab(
+    _editor.addTab(EditorTab(
       id: tabId,
       title: article.title.isNotEmpty ? article.title : '未命名',
       icon: Icons.edit_note,
       content: _buildEmbeddedEditor(),
       canClose: true,
     ));
-    _activeTabIndex = _openTabs.length - 1;
   }
 
   void _openTab(String id, String title, IconData icon, Widget content) {
-    final existingIdx = _openTabs.indexWhere((t) => t.id == id);
-    if (existingIdx >= 0) {
-      _activeTabIndex = existingIdx;
-      setState(() {});
-      return;
-    }
-    _openTabs.add(EditorTab(id: id, title: title, icon: icon, content: content, canClose: true));
-    _activeTabIndex = _openTabs.length - 1;
-    setState(() {});
+    _editor.addTab(EditorTab(id: id, title: title, icon: icon, content: content, canClose: true));
   }
 
   void _closeTab(int index) {
-    setState(() {
-      if (_openTabs.length <= 1) {
-        _openTabs.clear();
-        _activeTabIndex = -1;
-        return;
-      }
-      _openTabs.removeAt(index);
-      if (_activeTabIndex >= _openTabs.length) _activeTabIndex = _openTabs.length - 1;
-      if (_activeTabIndex < 0) _activeTabIndex = 0;
-    });
+    if (_editor.openTabs.length <= 1) {
+      _editor.closeAllTabs();
+      return;
+    }
+    _editor.closeTab(index);
   }
 
   // ============================================================
@@ -1234,11 +1214,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                   icon: Icons.article_outlined,
                   label: '博文',
                   subtitle: _editorRepo != null ? '${_editorRepo!.postsPath}' : '文章目录',
-                  active: _articleType == 'post',
-                  onTap: () => setState(() {
-                    _articleType = 'post';
+                  active: _doc.articleType == ArticleType.post,
+                  onTap: () => _doc.setArticleType(ArticleType.post);
                     _autoSelectTemplate();
-                  }),
+                  ,
                 ),
               ),
               const SizedBox(width: 8),
@@ -1247,11 +1226,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                   icon: Icons.web_outlined,
                   label: '页面',
                   subtitle: _editorRepo != null ? '${_editorRepo!.pagesPath}' : '页面目录',
-                  active: _articleType == 'page',
-                  onTap: () => setState(() {
-                    _articleType = 'page';
+                  active: _doc.articleType == ArticleType.page,
+                  onTap: () => _doc.setArticleType(ArticleType.page);
                     _autoSelectTemplate();
-                  }),
+                  ,
                 ),
               ),
             ],
@@ -1264,9 +1242,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _selectedTemplateId,
+                      value: _doc.selectedTemplateId,
                       decoration: InputDecoration(
-                        labelText: '模板 (${_articleType == 'post' ? '博文' : '页面'})',
+                        labelText: '模板 (${_doc.articleType == ArticleType.post ? '博文' : '页面'})',
                         prefixIcon: const Icon(Icons.view_quilt_outlined, size: 18),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
@@ -1279,7 +1257,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                           child: Text('无模板', style: TextStyle(fontSize: 13)),
                         ),
                         ...templates
-                            .where((t) => t.isPost == (_articleType == 'post'))
+                            .where((t) => t.isPost == (_doc.articleType == ArticleType.post))
                             .map((t) => DropdownMenuItem<String>(
                                   value: t.id,
                                   child: Text(
@@ -1289,13 +1267,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                                   ),
                                 )),
                       ],
-                      onChanged: (v) => setState(() => _selectedTemplateId = v),
+                      onChanged: (v) => _doc.setSelectedTemplateId(v),
                     ),
                   ),
                   IconButton(
                     tooltip: '设为本仓库默认模板',
-                    onPressed: _editorRepo != null && _selectedTemplateId != null
-                        ? () => _setAsRepoDefault(_selectedTemplateId!)
+                    onPressed: _editorRepo != null && _doc.selectedTemplateId != null
+                        ? () => _setAsRepoDefault(_doc.selectedTemplateId!)
                         : null,
                     icon: const Icon(Icons.bookmark_add_outlined, size: 18),
                     constraints: const BoxConstraints(),
@@ -1329,7 +1307,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                     Expanded(
                       child: Text(
                         '框架: ${BlogFramework.byId(_editorRepo!.frameworkId)?.name ?? _editorRepo!.frameworkId} | '
-                        '文件名: ${_articleType == 'page' ? '无日期前缀' : (_editorRepo!.fileNameRule.postDatePrefix ? '自动加日期' : '纯标题')}',
+                        '文件名: ${_doc.articleType == ArticleType.page ? '无日期前缀' : (_editorRepo!.fileNameRule.postDatePrefix ? '自动加日期' : '纯标题')}',
                         style: const TextStyle(fontSize: 11, color: Color(0xFF0369A1)),
                       ),
                     ),
@@ -1341,7 +1319,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           // ── 标题 ──
           _editorCard(
             child: TextField(
-              controller: _titleCtrl,
+              controller: _doc.titleCtrl,
               decoration: const InputDecoration(
                 labelText: '文章标题',
                 prefixIcon: Icon(Icons.title, size: 19),
@@ -1358,7 +1336,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             Expanded(
               child: _editorCard(
                 child: TextField(
-                  controller: _tagsCtrl,
+                  controller: _doc.tagsCtrl,
                   decoration: const InputDecoration(
                     labelText: '标签',
                     prefixIcon: Icon(Icons.tag, size: 18),
@@ -1374,7 +1352,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             Expanded(
               child: _editorCard(
                 child: TextField(
-                  controller: _categoriesCtrl,
+                  controller: _doc.categoriesCtrl,
                   decoration: const InputDecoration(
                     labelText: '分类',
                     prefixIcon: Icon(Icons.folder_outlined, size: 18),
@@ -1391,7 +1369,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           // ── 封面图 ──
           _editorCard(
             child: TextField(
-              controller: _coverCtrl,
+              controller: _doc.coverCtrl,
               decoration: const InputDecoration(
                 labelText: '封面图 URL（可选）',
                 prefixIcon: Icon(Icons.image_outlined, size: 19),
@@ -1424,14 +1402,14 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 _toolChip(Icons.format_strikethrough, '删除线', () => _wrap('~~', '~~', p: '删除文字')),
                 _toolChip(Icons.checklist, '任务', () => _insertList('- [ ] ')),
                 _toolChip(Icons.more_horiz, 'more', () => _insertText('\n<!--more-->\n')),
-                _toolChip(Icons.image_outlined, '图床', _editorBusy ? null : _insertImage),
-                _toolChip(Icons.collections_outlined, '批量图床', _editorBusy ? null : _batchInsertImages),
-                _toolChip(Icons.auto_awesome, 'AI润色', _editorBusy ? null : () => _aiAction('polish'), color: Colors.purple),
-                _toolChip(Icons.edit_note, 'AI续写', _editorBusy ? null : () => _aiAction('continue'), color: Colors.purple),
-                _toolChip(Icons.summarize_outlined, 'AI摘要', _editorBusy ? null : () => _aiAction('summary'), color: Colors.purple),
-                _toolChip(Icons.developer_mode, 'AI代码', _editorBusy ? null : () => _aiAction('code'), color: Colors.purple),
-                _toolChip(Icons.sync_alt, 'AI改写', _editorBusy ? null : () => _aiAction('rewrite'), color: Colors.purple),
-                _toolChip(Icons.auto_fix_high, 'AI排版', _editorBusy ? null : () => _aiAction('format'), color: Colors.deepPurple),
+                _toolChip(Icons.image_outlined, '图床', _editor.editorBusy ? null : _insertImage),
+                _toolChip(Icons.collections_outlined, '批量图床', _editor.editorBusy ? null : _batchInsertImages),
+                _toolChip(Icons.auto_awesome, 'AI润色', _editor.editorBusy ? null : () => _aiAction('polish'), color: Colors.purple),
+                _toolChip(Icons.edit_note, 'AI续写', _editor.editorBusy ? null : () => _aiAction('continue'), color: Colors.purple),
+                _toolChip(Icons.summarize_outlined, 'AI摘要', _editor.editorBusy ? null : () => _aiAction('summary'), color: Colors.purple),
+                _toolChip(Icons.developer_mode, 'AI代码', _editor.editorBusy ? null : () => _aiAction('code'), color: Colors.purple),
+                _toolChip(Icons.sync_alt, 'AI改写', _editor.editorBusy ? null : () => _aiAction('rewrite'), color: Colors.purple),
+                _toolChip(Icons.auto_fix_high, 'AI排版', _editor.editorBusy ? null : () => _aiAction('format'), color: Colors.deepPurple),
                 _toolChip(Icons.chat, 'AI对话', () => _showAiArticleChat(), color: Colors.deepPurple),
               ],
             ),
@@ -1445,8 +1423,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 // 确保编辑器至少占满可用高度，避免光标从中间开始
                 final minLines = ((constraints.maxHeight - 80) / (14.5 * 1.6)).floor().clamp(1, 50);
                 return TextField(
-                  controller: _contentCtrl,
-                  focusNode: _contentFocus,
+                  controller: _doc.contentCtrl,
+                  focusNode: _doc.contentFocus,
                   minLines: minLines,
                   maxLines: null,
                   keyboardType: TextInputType.multiline,
@@ -1471,12 +1449,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
               },
             ),
           ),
-          if (_editorStatus != null)
+          if (_editor.editorStatus != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Row(
                 children: [
-                  if (_editorBusy)
+                  if (_editor.editorBusy)
                     Padding(
                       padding: const EdgeInsets.only(right: 6),
                       child: SizedBox(
@@ -1484,8 +1462,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                         child: CircularProgressIndicator(strokeWidth: 2, color: cs.primary),
                       ),
                     ),
-                  Text(_editorStatus!, style: TextStyle(
-                    color: _editorBusy ? cs.primary : cs.outline,
+                  Text(_editor.editorStatus!, style: TextStyle(
+                    color: _editor.editorBusy ? cs.primary : cs.outline,
                     fontSize: 12,
                   )),
                 ],
@@ -1498,7 +1476,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             PopupMenuButton<String>(
               tooltip: '导出',
               offset: const Offset(0, -200),
-              enabled: !_editorBusy,
+              enabled: !_editor.editorBusy,
               icon: const Icon(Icons.file_download_outlined, size: 18),
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 12),
@@ -1518,10 +1496,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
               },
             ),
             const SizedBox(width: 8),
-            if (_failedImageBytes != null) ...[
+            if (_editor.failedImageBytes != null) ...[
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: _editorBusy ? null : _retryUploadImage,
+                  onPressed: _editor.editorBusy ? null : _retryUploadImage,
                   icon: const Icon(Icons.refresh, size: 18, color: Colors.orange),
                   label: const Text('重试上传', style: TextStyle(color: Colors.orange)),
                   style: OutlinedButton.styleFrom(
@@ -1535,7 +1513,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             ],
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _editorBusy ? null : _saveLocal,
+                onPressed: _editor.editorBusy ? null : _saveLocal,
                 icon: const Icon(Icons.save_outlined, size: 18),
                 label: const Text('存草稿'),
                 style: OutlinedButton.styleFrom(
@@ -1548,7 +1526,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             Expanded(
               flex: 2,
               child: ElevatedButton.icon(
-                onPressed: _editorBusy ? null : _handlePublish,
+                onPressed: _editor.editorBusy ? null : _handlePublish,
                 icon: const Icon(Icons.cloud_upload_outlined, size: 18),
                 label: const Text('发布'),
                 style: ElevatedButton.styleFrom(
@@ -1560,8 +1538,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           ]),
         ],
       ),
-    );
-  }
+    ;}
 
   // ── 编辑器辅助组件 ──
 
@@ -1667,7 +1644,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   void _autoSelectTemplate() {
     if (_editorRepo == null) return;
     final id = TemplateResolver.resolvePostTemplateId(_editorRepo!, templates);
-    if (id != null) _selectedTemplateId = id;
+    if (id != null) _doc.setSelectedTemplateId(id);
   }
 
   void _setAsRepoDefault(String templateId) {
@@ -1678,26 +1655,23 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       repos[idx] = updated;
       storage.saveRepos(repos);
       _editorRepo = updated;
-      setState(() {});
+      
       _showToast('已设为仓库默认模板');
     }
   }
 
   Future<void> _retryUploadImage() async {
-    if (_failedImageBytes == null) return;
-    final bytes = _failedImageBytes!;
-    setState(() { _editorBusy = true; _editorStatus = '正在重试上传...'; });
+    if (_editor.failedImageBytes == null) return;
+    final bytes = _editor.failedImageBytes!;
+    _editor.setEditorBusy(true); _editor.setEditorStatus('正在重试上传...');
     try {
       final url = await imageService.uploadToImageBed(bytes, settings);
       _insertText(imageService.markdownImage(url));
-      _failedImageBytes = null;
-      setState(() => _editorStatus = '图片已插入');
-    } catch (e) {
-      setState(() => _editorStatus = '重试上传失败');
-      if (mounted) _showToast('重试上传失败: $e');
-    } finally {
-      if (mounted) setState(() => _editorBusy = false);
-    }
+      _editor.setFailedImageBytes(null);
+      _editor.setEditorStatus('图片已插入');} catch (e) {
+      _editor.setEditorStatus('重试上传失败');
+      if (mounted) _showToast('重试上传失败: $e');} finally {
+      if (mounted) _editor.setEditorBusy(false);}
   }
 
   // ============================================================
@@ -1705,66 +1679,63 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ============================================================
 
   void _insertText(String t) {
-    final sel = _contentCtrl.selection;
-    final txt = _contentCtrl.text;
+    final sel = _doc.contentCtrl.selection;
+    final txt = _doc.contentCtrl.text;
     final s = sel.isValid ? sel.start : txt.length;
     final e = sel.isValid ? sel.end : txt.length;
-    _contentCtrl.value = TextEditingValue(
+    _doc.contentCtrl.value = TextEditingValue(
       text: txt.replaceRange(s, e, t),
       selection: TextSelection.collapsed(offset: s + t.length),
     );
-    _contentFocus.requestFocus();
+    _doc.contentFocus.requestFocus();
   }
 
   void _insertCodeBlock() {
-    final sel = _contentCtrl.selection;
-    final txt = _contentCtrl.text;
+    final sel = _doc.contentCtrl.selection;
+    final txt = _doc.contentCtrl.text;
     final selected = (sel.isValid && sel.start != sel.end) ? txt.substring(sel.start, sel.end) : '';
     final fence = '```\n$selected\n```\n';
     final s = sel.isValid ? sel.start : txt.length;
     final e = sel.isValid ? sel.end : txt.length;
-    _contentCtrl.value = TextEditingValue(
+    _doc.contentCtrl.value = TextEditingValue(
       text: txt.replaceRange(s, e, fence),
       selection: TextSelection.collapsed(offset: s + 4),
     );
-    _contentFocus.requestFocus();
+    _doc.contentFocus.requestFocus();
   }
 
   Future<void> _insertImage() async {
-    setState(() { _editorBusy = true; _editorStatus = '正在选择图片...'; });
+    _editor.setEditorBusy(true); _editor.setEditorStatus('正在选择图片...');
     try {
       final bytes = await imageService.pickImageBytes();
-      if (bytes == null) { setState(() => _editorStatus = '已取消'); return; }
-      _failedImageBytes = bytes;
+      if (bytes == null) { _editor.setEditorStatus('已取消'); return;}
+      _editor.setFailedImageBytes(bytes);
       final sizeKB = (bytes.length / 1024).toStringAsFixed(1);
-      setState(() => _editorStatus = '正在上传图片 ($sizeKB KB)...');
+      _editor.setEditorStatus('正在上传图片 ($sizeKB KB)...');
       final url = await imageService.uploadToImageBed(bytes, settings);
       _insertText(imageService.markdownImage(url));
-      _failedImageBytes = null;
-      setState(() => _editorStatus = '图片已插入');
-    } catch (e) {
+      _editor.setFailedImageBytes(null);
+      _editor.setEditorStatus('图片已插入');} catch (e) {
       _insertText('\n> ⚠️ 图片上传失败，[点击重试](#retry-upload)\n');
-      setState(() => _editorStatus = '上传失败（可点击重试）');
-      if (mounted) _showToast('上传失败，点击文中标记可重试');
-    } finally {
-      if (mounted) setState(() => _editorBusy = false);
-    }
+      _editor.setEditorStatus('上传失败（可点击重试）');
+      if (mounted) _showToast('上传失败，点击文中标记可重试');} finally {
+      if (mounted) _editor.setEditorBusy(false);}
   }
 
   Future<void> _batchInsertImages() async {
-    setState(() { _editorBusy = true; _editorStatus = '正在选择图片...'; });
+    _editor.setEditorBusy(true); _editor.setEditorStatus('正在选择图片...');
     try {
       final bytesList = await imageService.pickMultipleImageBytes();
-      if (bytesList == null || bytesList.isEmpty) { setState(() => _editorStatus = '已取消'); return; }
+      if (bytesList == null || bytesList.isEmpty) { _editor.setEditorStatus('已取消'); return;}
       final total = bytesList.length;
-      setState(() => _editorStatus = '正在预处理 $total 张图片...');
+      _editor.setEditorStatus('正在预处理 $total 张图片...');
       final preResult = await imageService.preprocessImages(bytesList, settings, onProgress: (current, total, beforeKB, afterKB) {
-        if (mounted) setState(() => _editorStatus = '预处理 $current/$total: ${beforeKB}KB → ${afterKB}KB');
+        if (mounted) _editor.setEditorStatus('预处理 $current/$total: ${beforeKB}KB → ${afterKB}KB');
       });
       int uploaded = 0, failed = 0;
       final buf = StringBuffer();
-      for (var i = 0; i < total; i++) {
-        setState(() => _editorStatus = '正在上传图片 ${i + 1}/$total...');
+      for (var i = 0)= 0; i < total; i++) {
+        _editor.setEditorStatus('正在上传图片 ${i + 1}/$total...');
         try {
           final url = await imageService.uploadToImageBed(preResult.images[i], settings, skipCompress: true);
           buf.writeln(imageService.markdownImage(url));
@@ -1772,26 +1743,22 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         } catch (_) {
           buf.writeln('> ⚠️ 第 ${i + 1} 张图片上传失败');
           failed++;
-        }
-      }
+        })}
       _insertText('\n\n${buf.toString()}');
-      setState(() => _editorStatus = '完成: $uploaded/$total 张上传成功');
-    } catch (e) {
-      setState(() => _editorStatus = '批量上传失败');
-      if (mounted) _showToast('批量上传失败: $e');
-    } finally {
-      if (mounted) setState(() => _editorBusy = false);
-    }
+      _editor.setEditorStatus('完成: $uploaded/$total 张上传成功');} catch (e) {
+      _editor.setEditorStatus('批量上传失败');
+      if (mounted) _showToast('批量上传失败: $e');} finally {
+      if (mounted) _editor.setEditorBusy(false);}
   }
 
   Future<void> _aiAction(String action) async {
-    setState(() { _editorBusy = true; _editorStatus = 'AI 处理中...'; });
+    _editor.setEditorBusy(true); _editor.setEditorStatus('AI 处理中...');
     try {
-      final text = _contentCtrl.text;
+      final text = _doc.contentCtrl.text;
       switch (action) {
         case 'polish':
           final result = await aiService.polish(settings, text);
-          _contentCtrl.text = result;
+          _doc.contentCtrl.text = result;
           break;
         case 'continue':
           final result = await aiService.continueWrite(settings, text);
@@ -1818,13 +1785,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           _insertText('\n$result');
           break;
       }
-      setState(() => _editorStatus = 'AI 完成');
-    } catch (e) {
-      setState(() => _editorStatus = 'AI 失败');
-      if (mounted) _showToast('AI 处理失败: $e');
-    } finally {
-      if (mounted) setState(() => _editorBusy = false);
-    }
+      _editor.setEditorStatus('AI 完成');} catch (e) {
+      _editor.setEditorStatus('AI 失败');
+      if (mounted) _showToast('AI 处理失败: $e');} finally {
+      if (mounted) _editor.setEditorBusy(false);}
   }
 
   // ============================================================
@@ -1933,8 +1897,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   int _findNext(String findText, {bool caseSensitive = false, bool useRegex = false}) {
-    final text = _contentCtrl.text;
-    final sel = _contentCtrl.selection;
+    final text = _doc.contentCtrl.text;
+    final sel = _doc.contentCtrl.selection;
     int startOffset = sel.isValid ? sel.end : 0;
 
     try {
@@ -1954,10 +1918,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         }
       }
       if (match != null) {
-        _contentCtrl.selection = TextSelection(baseOffset: match.start, extentOffset: match.end);
-        _contentFocus.requestFocus();
+        _doc.contentCtrl.selection = TextSelection(baseOffset: match.start, extentOffset: match.end);
+        _doc.contentFocus.requestFocus();
         if (mounted) {
-          _contentCtrl.value = _contentCtrl.value.copyWith(
+          _doc.contentCtrl.value = _doc.contentCtrl.value.copyWith(
             selection: TextSelection(baseOffset: match.start, extentOffset: match.end),
           );
         }
@@ -1966,10 +1930,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         // 从头开始搜索
         final match2 = pattern.firstMatch(text);
         if (match2 != null) {
-          _contentCtrl.selection = TextSelection(baseOffset: match2.start, extentOffset: match2.end);
-          _contentFocus.requestFocus();
+          _doc.contentCtrl.selection = TextSelection(baseOffset: match2.start, extentOffset: match2.end);
+          _doc.contentFocus.requestFocus();
           if (mounted) {
-            _contentCtrl.value = _contentCtrl.value.copyWith(
+            _doc.contentCtrl.value = _doc.contentCtrl.value.copyWith(
               selection: TextSelection(baseOffset: match2.start, extentOffset: match2.end),
             );
           }
@@ -1984,8 +1948,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   void _replaceCurrent(String findText, String replaceText, {bool caseSensitive = false, bool useRegex = false}) {
-    final text = _contentCtrl.text;
-    final sel = _contentCtrl.selection;
+    final text = _doc.contentCtrl.text;
+    final sel = _doc.contentCtrl.selection;
     if (!sel.isValid || sel.start == sel.end) {
       _findNext(findText, caseSensitive: caseSensitive, useRegex: useRegex);
       return;
@@ -2002,11 +1966,11 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
       if (pattern.hasMatch(selected)) {
         final replaced = selected.replaceAll(pattern, replaceText);
-        _contentCtrl.value = TextEditingValue(
+        _doc.contentCtrl.value = TextEditingValue(
           text: text.replaceRange(sel.start, sel.end, replaced),
           selection: TextSelection.collapsed(offset: sel.start + replaced.length),
         );
-        _contentFocus.requestFocus();
+        _doc.contentFocus.requestFocus();
         _onContentChanged();
       } else {
         _findNext(findText, caseSensitive: caseSensitive, useRegex: useRegex);
@@ -2017,7 +1981,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   int _replaceAll(String findText, String replaceText, {bool caseSensitive = false, bool useRegex = false}) {
-    final text = _contentCtrl.text;
+    final text = _doc.contentCtrl.text;
     try {
       RegExp pattern;
       if (useRegex) {
@@ -2031,8 +1995,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         count++;
         return replaceText;
       });
-      _contentCtrl.text = replaced;
-      _contentCtrl.selection = TextSelection.collapsed(offset: 0);
+      _doc.contentCtrl.text = replaced;
+      _doc.contentCtrl.selection = TextSelection.collapsed(offset: 0);
       _onContentChanged();
       return count;
     } catch (e) {
@@ -2046,7 +2010,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ============================================================
 
   void _insertToc() {
-    final text = _contentCtrl.text;
+    final text = _doc.contentCtrl.text;
     final lines = text.split('\n');
     final tocBuf = StringBuffer();
     tocBuf.writeln('<!-- TOC -->');
@@ -2078,20 +2042,20 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final tocPlaceholder = RegExp(r'\[toc\]', caseSensitive: false);
     final placeholderMatch = tocPlaceholder.firstMatch(text);
     if (placeholderMatch != null) {
-      _contentCtrl.value = TextEditingValue(
+      _doc.contentCtrl.value = TextEditingValue(
         text: text.replaceRange(placeholderMatch.start, placeholderMatch.end, toc),
         selection: TextSelection.collapsed(offset: placeholderMatch.start + toc.length),
       );
     } else {
       // 插入到光标位置
-      final sel = _contentCtrl.selection;
+      final sel = _doc.contentCtrl.selection;
       final pos = sel.isValid ? sel.start : text.length;
-      _contentCtrl.value = TextEditingValue(
+      _doc.contentCtrl.value = TextEditingValue(
         text: text.replaceRange(pos, pos, '\n$toc\n'),
         selection: TextSelection.collapsed(offset: pos + toc.length + 2),
       );
     }
-    _contentFocus.requestFocus();
+    _doc.contentFocus.requestFocus();
     _onContentChanged();
     if (mounted) _showToast('TOC 已生成');
   }
@@ -2107,12 +2071,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       return;
     }
 
-    final text = _contentCtrl.text;
+    final text = _doc.contentCtrl.text;
     // 规范化 siteUrl（去掉末尾斜杠）
     final baseUrl = siteUrl.endsWith('/') ? siteUrl.substring(0, siteUrl.length - 1) : siteUrl;
     final imagePattern = RegExp(r'!\[([^\]]*)\]\(([^)]+)\)');
 
-    if (!_useRelativeImagePath) {
+    if (!_editor.useRelativeImagePath) {
       // 转换为相对路径：https://site.com/images/photo.png → images/photo.png
       final escapedBase = RegExp.escape(baseUrl);
       final replaced = text.replaceAllMapped(imagePattern, (m) {
@@ -2124,9 +2088,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         }
         return '![$alt]($url)';
       });
-      _contentCtrl.text = replaced;
+      _doc.contentCtrl.text = replaced;
       if (mounted) {
-        setState(() => _useRelativeImagePath = true);
+        _editor.setImagePathMode(true);
         _showToast('已切换为相对路径模式');
       }
     } else {
@@ -2144,9 +2108,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         }
         return m.group(0)!;
       });
-      _contentCtrl.text = replaced;
+      _doc.contentCtrl.text = replaced;
       if (mounted) {
-        setState(() => _useRelativeImagePath = false);
+        _editor.setImagePathMode(false);
         _showToast('已切换为绝对路径模式');
       }
     }
@@ -2158,8 +2122,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ============================================================
 
   void _setImageSize(String size) {
-    final text = _contentCtrl.text;
-    final sel = _contentCtrl.selection;
+    final text = _doc.contentCtrl.text;
+    final sel = _doc.contentCtrl.selection;
     final pos = sel.isValid ? sel.start : text.length;
 
     // 检查光标是否在图片语法附近
@@ -2197,7 +2161,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       if (mdLastMatch != null) {
         final alt = mdLastMatch.group(1) ?? '';
         final url = mdLastMatch.group(2) ?? '';
-        _contentCtrl.value = TextEditingValue(
+        _doc.contentCtrl.value = TextEditingValue(
           text: text.replaceRange(mdLastMatch.start, mdLastMatch.end, '<img src="$url" alt="$alt" width="$width"/>'),
           selection: TextSelection.collapsed(offset: mdLastMatch.start + '<img src="$url" alt="$alt" width="$width"/>'.length),
         );
@@ -2206,7 +2170,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       // 没有找到图片，直接插入 HTML 模板
       _insertText('<img src="url" width="$width" alt=""/>');
     }
-    _contentFocus.requestFocus();
+    _doc.contentFocus.requestFocus();
     _onContentChanged();
   }
 
@@ -2225,8 +2189,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   void _addTableRow() {
-    final text = _contentCtrl.text;
-    final sel = _contentCtrl.selection;
+    final text = _doc.contentCtrl.text;
+    final sel = _doc.contentCtrl.selection;
     final pos = sel.isValid ? sel.start : text.length;
 
     // 找到光标所在行
@@ -2239,7 +2203,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         : text.substring(lineStart);
 
     // 检测是否在表格中
-    if (!currentLine.trimLeft().startsWith('|')) {
+    if (!currentLine.trimStart().startsWith('|')) {
       if (mounted) _showToast('光标不在表格中');
       return;
     }
@@ -2259,18 +2223,18 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     // 找到下一行开始
     final nextLineStart = rowEnd < text.length ? rowEnd + 1 : text.length;
 
-    _contentCtrl.value = TextEditingValue(
+    _doc.contentCtrl.value = TextEditingValue(
       text: text.replaceRange(nextLineStart, nextLineStart, newRow),
       selection: TextSelection.collapsed(offset: nextLineStart + newRow.length),
     );
-    _contentFocus.requestFocus();
+    _doc.contentFocus.requestFocus();
     _onContentChanged();
     if (mounted) _showToast('已添加表格行');
   }
 
   void _addTableCol() {
-    final text = _contentCtrl.text;
-    final sel = _contentCtrl.selection;
+    final text = _doc.contentCtrl.text;
+    final sel = _doc.contentCtrl.selection;
     final pos = sel.isValid ? sel.start : text.length;
 
     // 找到光标所在行
@@ -2281,7 +2245,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final actualLineEnd = lineEnd >= 0 ? pos + lineEnd : text.length;
     final currentLine = text.substring(lineStart, actualLineEnd);
 
-    if (!currentLine.trimLeft().startsWith('|')) {
+    if (!currentLine.trimStart().startsWith('|')) {
       if (mounted) _showToast('光标不在表格中');
       return;
     }
@@ -2292,7 +2256,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final prevLineEnd = tableStart - 1;
       final prevLineStart = text.lastIndexOf('\n', prevLineEnd - 1) + 1;
       final prevLine = text.substring(prevLineStart, prevLineEnd);
-      if (!prevLine.trimLeft().startsWith('|')) break;
+      if (!prevLine.trimStart().startsWith('|')) break;
       tableStart = prevLineStart;
     }
 
@@ -2304,7 +2268,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final nextLine = nextLineEnd >= 0
           ? text.substring(nextLineStart, nextLineEnd)
           : text.substring(nextLineStart);
-      if (!nextLine.trimLeft().startsWith('|')) break;
+      if (!nextLine.trimStart().startsWith('|')) break;
       tableEnd = nextLineEnd >= 0 ? nextLineEnd : text.length;
     }
 
@@ -2316,9 +2280,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final buf = StringBuffer();
     for (int i = 0; i < tableLines.length; i++) {
       final line = tableLines[i].trimRight();
-      if (line.trimLeft().startsWith('|')) {
+      if (line.trimStart().startsWith('|')) {
         // 判断是否是分隔行（如 |---|---| 或 |:---:|:---:|）
-        if (RegExp(r'^\|[\s\-:]*-[\s\-:]*\|').hasMatch(line.trimLeft())) {
+        if (RegExp(r'^\|[\s\-:]*-[\s\-:]*\|').hasMatch(line.trimStart())) {
           buf.writeln('${line} --- |');
         } else {
           buf.writeln('$line 内容 |');
@@ -2330,11 +2294,11 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
     final newTable = buf.toString();
     final end = tableEnd < text.length ? tableEnd + 1 : text.length;
-    _contentCtrl.value = TextEditingValue(
+    _doc.contentCtrl.value = TextEditingValue(
       text: text.replaceRange(tableStart, end > text.length ? text.length : end, newTable),
       selection: TextSelection.collapsed(offset: tableStart + newTable.length),
     );
-    _contentFocus.requestFocus();
+    _doc.contentFocus.requestFocus();
     _onContentChanged();
     if (mounted) _showToast('已添加表格列');
   }
@@ -2345,7 +2309,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   void _formatDocument() {
     try {
-      final lines = _contentCtrl.text.split('\n');
+      final lines = _doc.contentCtrl.text.split('\n');
       final result = <String>[];
       int emptyLineCount = 0;
       int prevHeadingLevel = 0;
@@ -2401,7 +2365,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         result.removeLast();
       }
 
-      _contentCtrl.text = '${result.join('\n')}\n';
+      _doc.contentCtrl.text = '${result.join('\n')}\n';
       _onContentChanged();
       if (mounted) _showToast('文档格式化完成');
     } catch (e) {
@@ -2421,7 +2385,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     }
 
     final baseUrl = siteUrl.endsWith('/') ? siteUrl.substring(0, siteUrl.length - 1) : siteUrl;
-    final text = _contentCtrl.text;
+    final text = _doc.contentCtrl.text;
     int fixedCount = 0;
 
     // 匹配图片语法
@@ -2445,7 +2409,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     });
 
     if (fixedCount > 0) {
-      _contentCtrl.text = replaced;
+      _doc.contentCtrl.text = replaced;
       _onContentChanged();
       if (mounted) _showToast('已修复 $fixedCount 个图片路径');
     } else {
@@ -2637,7 +2601,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       }
       await storage.saveDrafts(drafts);
       if (mounted) {
-        setState(() {});
+        
         _showToast('已格式化 $formatted 篇草稿');
       }
     } catch (e) {
@@ -2652,7 +2616,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       return;
     }
 
-    setState(() { _editorBusy = true; _editorStatus = '正在批量发布...'; });
+    _editor.setEditorBusy(true); _editor.setEditorStatus('正在批量发布...');
     int published = 0;
     int failed = 0;
 
@@ -2675,12 +2639,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       }
       await storage.saveDrafts(drafts);
       if (mounted) {
-        setState(() { _editorBusy = false; _editorStatus = null; });
+        _editor.setEditorBusy(false); _editor.setEditorStatus(null);
         _showToast('批量发布完成: $published 成功, $failed 失败');
       }
     } catch (e) {
       if (mounted) {
-        setState(() { _editorBusy = false; _editorStatus = null; });
+        _editor.setEditorBusy(false); _editor.setEditorStatus(null);
         _showToast('批量发布出错: $e');
       }
     }
@@ -2768,7 +2732,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             title: post.title, content: post.contentMd,
             tags: post.tags, categories: post.categories,
             createdAt: post.date, updatedAt: post.modifiedDate,
-            isDraft: false, published: true, articleType: 'post',
+            isDraft: false, published: true, articleType: ArticleType.post,
             remotePath: post.link, remoteSha: post.id?.toString(),
           ));
         },
@@ -2887,6 +2851,37 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       recycleBinService: recycleBinService,
       onRestored: (path) {
         _showToast('已恢复: $path');
+        // 恢复后刷新草稿列表
+        _refreshDraftsFromStorage();
+      },
+    ));
+  }
+
+  void _openP2PSync() {
+    _openTab('p2p_sync', 'P2P 同步', Icons.wifi, P2PSyncScreen(
+      p2pService: p2pSyncService,
+      localArticles: drafts,
+      onFilesReceived: (files) {
+        for (final file in files) {
+          // 接收到的文件添加到草稿
+          final existingIndex = drafts.indexWhere((d) => d.fileName() == file.path);
+          final article = Article(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            title: file.path.replaceAll('.md', ''),
+            content: file.content,
+            createdAt: file.modifiedAt,
+            updatedAt: DateTime.now(),
+            isDraft: true,
+          );
+          if (existingIndex >= 0) {
+            drafts[existingIndex] = article;
+          } else {
+            drafts.add(article);
+          }
+        }
+        storage.saveDrafts(drafts);
+        if (mounted) setState(() {});
+        _showToast('已接收 ${files.length} 个文件');
       },
     ));
   }
@@ -2907,9 +2902,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         }
         storage.saveDrafts(drafts);
         // 如果当前文章也受影响，更新编辑器
-        if (_currentArticle.content.contains(oldUrl)) {
-          _contentCtrl.text = _currentArticle.content.replaceAll(oldUrl, newUrl);
-          setState(() {});
+        if (_doc.currentArticle.content.contains(oldUrl)) {
+          _doc.contentCtrl.text = _doc.currentArticle.content.replaceAll(oldUrl, newUrl);
+          
         }
         _showToast('图片URL批量替换完成');
       },
@@ -2917,8 +2912,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   void _openVersionHistory() {
-    final articleId = _currentArticle.id;
-    final articleTitle = _currentArticle.title;
+    final articleId = _doc.currentArticle.id;
+    final articleTitle = _doc.currentArticle.title;
     showDialog(
       context: context,
       builder: (ctx) => _VersionHistoryDialog(
@@ -2926,11 +2921,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         articleTitle: articleTitle,
         versionSnapshotService: versionSnapshotService,
         onRestore: (content) {
-          _contentCtrl.text = content;
-          _hasUnsavedChanges = true;
-          setState(() => _editorStatus = '已恢复历史版本');
-          _showToast('已恢复历史版本，请保存');
-        },
+          _doc.contentCtrl.text = content;
+          _doc.markUnsaved();
+          _editor.setEditorStatus('已恢复历史版本');
+          _showToast('已恢复历史版本，请保存';},
       ),
     );
   }
@@ -2963,7 +2957,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final strategy = entry.value;
       if (strategy == 'local') {
         // 保留本地版本，标记为需要推送
-        _showToast('已保留本地版本: ${drafts.firstWhere((a) => a.id == articleId, orElse: () => _currentArticle).title}');
+        _showToast('已保留本地版本: ${drafts.firstWhere((a) => a.id == articleId, orElse: () => _doc.currentArticle).title}');
       } else if (strategy == 'remote') {
         // 使用远程版本覆盖本地
         _showToast('已使用远程版本覆盖本地');
@@ -3269,12 +3263,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           drafts = updated;
           // 更新当前文章如果被修改
           for (final a in updated) {
-            if (a.id == _currentArticle.id) {
-              _currentArticle = a;
-              _contentCtrl.text = a.content;
-              _titleCtrl.text = a.title;
-              _tagsCtrl.text = a.tags.join(', ');
-              _categoriesCtrl.text = a.categories.join(', ');
+            if (a.id == _doc.currentArticle.id) {
+              _doc.setCurrentArticle(a);
+              _doc.contentCtrl.text = a.content;
+              _doc.titleCtrl.text = a.title;
+              _doc.tagsCtrl.text = a.tags.join(', ');
+              _doc.categoriesCtrl.text = a.categories.join(', ');
               break;
             }
           }
@@ -3311,28 +3305,43 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   // ── AI 选区处理 ──
 
-  /// 将编辑器选中文本发送到 AI 聊天
+  /// 将编辑器选中文本发送到 AI 选区编辑对话框（含 Diff 对比）
   void _sendSelectionToAi() {
-    final selection = _contentCtrl.selection;
+    final selection = _doc.contentCtrl.selection;
     if (!selection.isValid || selection.start == selection.end) {
       _showToast('请先选中一段文字');
       return;
     }
-    final selectedText = selection.textInside(_contentCtrl.text);
+    final selectedText = selection.textInside(_doc.contentCtrl.text);
     if (selectedText.isEmpty) {
       _showToast('选中的文字为空');
       return;
     }
-    _openRightDrawer(RightDrawerTab.aiChat);
-    Future.delayed(const Duration(milliseconds: 300), () {
-      _aiChatKey.currentState?.sendMessage('请对以下文字进行润色优化：\n\n$selectedText');
-    });
-    _showToast('已发送选中文字(${selectedText.length}字符)到 AI');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AiSelectionEditDialog(
+        selectedText: selectedText,
+        aiService: aiService,
+        settings: settings,
+        onAccept: (acceptedText) {
+          // 将选中的原文替换为 AI 处理后的结果
+          final fullText = _doc.contentCtrl.text;
+          final start = selection.start;
+          final end = selection.end;
+          final newText = fullText.substring(0, start) + acceptedText + fullText.substring(end);
+          _doc.contentCtrl.text = newText;
+          _doc.markUnsaved();
+          _editor.setEditorStatus('已接受AI选区编辑');
+          _showToast('已应用AI选区编辑');
+        },
+      ),
+    );
   }
 
   /// 将编辑器全文发送到 AI 聊天
   void _sendFullToAi() {
-    final text = _contentCtrl.text;
+    final text = _doc.contentCtrl.text;
     if (text.trim().isEmpty) {
       _showToast('文章内容为空');
       return;
@@ -3348,13 +3357,17 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   /// 显示 AI 修改内容 diff 预览，选择性接受改动
   void _showAiDiffPreview() {
-    final original = _contentCtrl.text;
+    final original = _doc.contentCtrl.text;
     // 从 AI 聊天面板获取最新的 AI 回复
     final aiMessages = _aiChatKey.currentState?.messages ?? [];
-    final lastAiResponse = aiMessages
-        .where((m) => m.role == 'assistant')
-        .lastOrNull
-        ?.content ?? '';
+    ChatMessage? lastAi;
+    for (final m in aiMessages.reversed) {
+      if (m.role == 'assistant') {
+        lastAi = m;
+        break;
+      }
+    }
+    final lastAiResponse = lastAi?.content ?? '';
     
     if (lastAiResponse.isEmpty) {
       _showToast('暂无 AI 回复内容，请先在 AI 面板中发起对话');
@@ -3387,13 +3400,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                       icon: const Icon(Icons.done_all, size: 16),
                       label: const Text('全部接受'),
                       onPressed: () {
-                        _contentCtrl.text = modified;
-                        _hasUnsavedChanges = true;
-                        setState(() => _editorStatus = '已接受AI修改');
+                        _doc.contentCtrl.text = modified;
+                        _doc.markUnsaved();
+                        _editor.setEditorStatus('已接受AI修改');
                         Navigator.pop(ctx);
                         _showToast('已全部接受AI修改');
                       },
-                    ),
                     TextButton.icon(
                       icon: const Icon(Icons.close, size: 16),
                       label: const Text('全部拒绝'),
@@ -3469,9 +3481,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                         icon: const Icon(Icons.check, size: 16),
                         label: const Text('接受修改'),
                         onPressed: () {
-                          _contentCtrl.text = modified;
-                          _hasUnsavedChanges = true;
-                          setState(() => _editorStatus = '已接受AI修改');
+                          _doc.contentCtrl.text = modified;
+                          _doc.markUnsaved();
+                          _editor.setEditorStatus('已接受AI修改');
                           Navigator.pop(ctx);
                           _showToast('已接受AI修改，请保存');
                         },
@@ -3519,7 +3531,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   /// 发布变更日志：对比本地与线上版本，展示改动内容
   void _showPublishChangeLog(String remoteContentParam) async {
-    final localContent = _contentCtrl.text;
+    final localContent = _doc.contentCtrl.text;
     var remoteContent = remoteContentParam;
 
     // 如果未提供远程内容，尝试从当前发布目标获取
@@ -3527,7 +3539,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       try {
         final adapter = siteManager.currentAdapter;
         if (adapter != null) {
-          final mapping = syncService.findByLocalId(siteManager.currentAdapter?.config?.id ?? '', _currentArticle.id);
+          final mapping = syncService.findByLocalId(siteManager.currentAdapter?.config?.id ?? '', _doc.currentArticle.id);
           if (mapping != null) {
             final remotePost = await adapter.getPostById(mapping.remotePostId);
             if (remotePost != null) {
@@ -3781,24 +3793,22 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         _showToast('请先配置仓库与 Token');
         return;
       }
-      setState(() { _editorBusy = true; _editorStatus = '正在发布...'; });
+      _editor.setEditorBusy(true); _editor.setEditorStatus('正在发布...');
       try {
         final a = _collect(draft: false);
         final pub = await github.upsertArticle(repo, a);
-        setState(() { _currentArticle = pub; _editorStatus = '已发布'; });
+        _doc.setCurrentArticle(pub); _editor.setEditorStatus('已发布');
         _lastSavedContent = pub.content;
-        _hasUnsavedChanges = false;
+        _doc.markSaved();
         await _saveDraft(pub.copyWith(isDraft: false, published: true));
         await _refreshRemote();
         logService.add('发布成功', '已发布到 ${repo.fullName}: ${pub.title}');
         if (mounted) _showToast('已发布到 ${repo.fullName}');
       } catch (e) {
-        setState(() => _editorStatus = '发布失败');
+        _editor.setEditorStatus('发布失败');
         logService.add('发布失败', '$e', success: false);
-        if (mounted) _showToast('发布失败: $e');
-      } finally {
-        if (mounted) setState(() => _editorBusy = false);
-      }
+        if (mounted) _showToast('发布失败: $e');} finally {
+        if (mounted) _editor.setEditorBusy(false);}
     }
   }
 
@@ -4064,7 +4074,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                           ),
                           onTap: () {
                             Navigator.pop(ctx);
-                            final article = drafts.firstWhere((a) => a.id == r.articleId, orElse: () => _currentArticle);
+                            final article = drafts.firstWhere((a) => a.id == r.articleId, orElse: () => _doc.currentArticle);
                             _openExistingArticle(article);
                           },
                         );
@@ -4425,7 +4435,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         repos: repos,
         onChanged: () async {
           await _updateSettings(settings);
-          setState(() {});
+          
         },
       ),
     ));
@@ -4662,6 +4672,20 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       case 'schedulePublish': _schedulePublish(); break;
       case 'publishChangeLog': _showPublishChangeLog(''); break;
       case 'aiDiffPreview': _showAiDiffPreview(); break;
+      case 'p2pSync':     _openP2PSync(); break;
+      // 快捷键新增
+      case 'newArticle':     _newArticle(); break;
+      case 'sync':           _handleSync(); break;
+      case 'saveLocal':      _saveLocal(); break;
+      case 'toggleLeftPanel':    _toggleLeftPanel(); break;
+      case 'toggleRightDrawer':  _toggleRightDrawer(); break;
+      case 'focusMode':      _switchWorkMode(WorkMode.focus); break;
+      case 'sourceMode':     _switchWorkMode(WorkMode.source); break;
+      case 'workspaceMode':  _switchWorkMode(WorkMode.workspace); break;
+      case 'insertImage':    _insertImage(); break;
+      case 'find':
+      case 'replace':        _showFindReplace(); break;
+      case 'escape':         _handleEscape(); break;
     }
   }
 
@@ -4783,7 +4807,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       } catch (_) {}
 
       if (imgBytes != null && imgBytes.isNotEmpty) {
-        setState(() { _editorBusy = true; _editorStatus = '正在上传剪贴板图片...'; });
+        _editor.setEditorBusy(true); _editor.setEditorStatus('正在上传剪贴板图片...');
         try {
           final url = await imageService.uploadToImageBed(imgBytes, settings);
           _insertText(imageService.markdownImage(url));
@@ -4791,8 +4815,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         } catch (e) {
           _showToast('图片上传失败: $e');
         } finally {
-          if (mounted) setState(() => _editorBusy = false);
-        }
+          if (mounted) _editor.setEditorBusy(false);}
         return;
       }
 
@@ -4810,52 +4833,52 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   /// 用前后缀包裹选中文本（对应手机版 _wrap 方法）
   void _wrap(String l, String r, {String p = ''}) {
-    final sel = _contentCtrl.selection;
-    final txt = _contentCtrl.text;
+    final sel = _doc.contentCtrl.selection;
+    final txt = _doc.contentCtrl.text;
     if (!sel.isValid || sel.start == sel.end) {
       final body = p.isEmpty ? '' : p;
       final ins = '$l$body$r';
       final s = sel.isValid ? sel.start : txt.length;
-      _contentCtrl.value = TextEditingValue(
+      _doc.contentCtrl.value = TextEditingValue(
         text: txt.replaceRange(s, s, ins),
         selection: TextSelection.collapsed(offset: s + l.length + body.length),
       );
-      _contentFocus.requestFocus();
+      _doc.contentFocus.requestFocus();
       return;
     }
     final sel2 = txt.substring(sel.start, sel.end);
-    _contentCtrl.value = TextEditingValue(
+    _doc.contentCtrl.value = TextEditingValue(
       text: txt.replaceRange(sel.start, sel.end, '$l$sel2$r'),
       selection: TextSelection.collapsed(offset: sel.start + l.length + sel2.length),
     );
-    _contentFocus.requestFocus();
+    _doc.contentFocus.requestFocus();
   }
 
   /// 插入 Markdown 标题（对应手机版 _insertHeading）
   void _insertHeading(int level) {
     final prefix = '${'#' * level} ';
-    final txt = _contentCtrl.text;
-    final s = _contentCtrl.selection.isValid ? _contentCtrl.selection.start : txt.length;
+    final txt = _doc.contentCtrl.text;
+    final s = _doc.contentCtrl.selection.isValid ? _doc.contentCtrl.selection.start : txt.length;
     final lineStart = txt.lastIndexOf('\n', s - 1) + 1;
-    _contentCtrl.value = TextEditingValue(
+    _doc.contentCtrl.value = TextEditingValue(
       text: txt.replaceRange(lineStart, lineStart, prefix),
       selection: TextSelection.collapsed(offset: s + prefix.length),
     );
-    _contentFocus.requestFocus();
+    _doc.contentFocus.requestFocus();
   }
 
   /// 插入列表标记（对应手机版 _insertList）
   void _insertList(String marker) {
-    final sel = _contentCtrl.selection;
+    final sel = _doc.contentCtrl.selection;
     if (sel.isValid && sel.start != sel.end) {
-      final selected = _contentCtrl.text.substring(sel.start, sel.end);
+      final selected = _doc.contentCtrl.text.substring(sel.start, sel.end);
       final lines = selected.split('\n').map((l) => l.isEmpty ? l : '$marker$l').join('\n');
-      final txt = _contentCtrl.text;
-      _contentCtrl.value = TextEditingValue(
+      final txt = _doc.contentCtrl.text;
+      _doc.contentCtrl.value = TextEditingValue(
         text: txt.replaceRange(sel.start, sel.end, lines),
         selection: TextSelection.collapsed(offset: sel.start + lines.length),
       );
-      _contentFocus.requestFocus();
+      _doc.contentFocus.requestFocus();
       return;
     }
     _insertText('\n$marker');
@@ -4868,30 +4891,30 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   /// 在当前行首添加前缀
   void _prefixLine(String prefix) {
-    final txt = _contentCtrl.text;
-    final sel = _contentCtrl.selection;
+    final txt = _doc.contentCtrl.text;
+    final sel = _doc.contentCtrl.selection;
     final lineStart = sel.isValid ? txt.lastIndexOf('\n', sel.start - 1) + 1 : 0;
-    _contentCtrl.value = TextEditingValue(
+    _doc.contentCtrl.value = TextEditingValue(
       text: txt.replaceRange(lineStart, lineStart, prefix),
       selection: TextSelection.collapsed(offset: lineStart + prefix.length),
     );
-    _contentFocus.requestFocus();
+    _doc.contentFocus.requestFocus();
     _onContentChanged();
   }
 
   /// 插入 Markdown 链接
   void _insertLink() {
-    final sel = _contentCtrl.selection;
-    final txt = _contentCtrl.text;
+    final sel = _doc.contentCtrl.selection;
+    final txt = _doc.contentCtrl.text;
     final selected = (sel.isValid && sel.start != sel.end) ? txt.substring(sel.start, sel.end) : '链接文本';
     final s = sel.isValid ? sel.start : txt.length;
     final e = sel.isValid ? sel.end : txt.length;
     final md = '[$selected](url)';
-    _contentCtrl.value = TextEditingValue(
+    _doc.contentCtrl.value = TextEditingValue(
       text: txt.replaceRange(s, e, md),
       selection: TextSelection(baseOffset: s + md.length - 4, extentOffset: s + md.length - 1),
     );
-    _contentFocus.requestFocus();
+    _doc.contentFocus.requestFocus();
     _onContentChanged();
   }
 
@@ -4916,16 +4939,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   /// 获取当前编辑器主题
-  EditorTheme get _currentEditorTheme => getEditorTheme(_editorTheme);
+  EditorTheme get _currentEditorTheme => getEditorTheme(_editor.editorTheme);
 
   // ──────────────────────────────────────────────
   // 1. 字体设置对话框
   // ──────────────────────────────────────────────
 
   void _showFontSettings() {
-    double localFontSize = _editorFontSize;
-    double localLineHeight = _editorLineHeight;
-    String localFontFamily = _editorFontFamily;
+    double localFontSize = _editor.editorFontSize;
+    double localLineHeight = _editor.editorLineHeight;
+    String localFontFamily = _editor.editorFontFamily;
 
     showDialog(
       context: context,
@@ -5030,9 +5053,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
               onPressed: () async {
                 if (mounted) {
                   setState(() {
-                    _editorFontSize = localFontSize;
-                    _editorLineHeight = localLineHeight;
-                    _editorFontFamily = localFontFamily;
+                    _editor.setEditorFontSize(localFontSize);
+                    _editor.setEditorLineHeight(localLineHeight);
+                    _editor.setEditorFontFamily(localFontFamily);
                   });
                 }
                 await _saveEditorSettings();
@@ -5053,7 +5076,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   /// 根据主题名称获取对应的 highlight 主题
   Map<String, TextStyle> _getHighlightTheme() {
-    switch (_editorTheme) {
+    switch (_editor.editorTheme) {
       case 'monokai':
         return highlight_monokai.monokaiSublimeTheme;
       case 'dracula':
@@ -5077,8 +5100,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         padding: const EdgeInsets.all(12),
         textStyle: TextStyle(
           fontFamily: 'monospace',
-          fontSize: _editorFontSize - 2,
-          height: _editorLineHeight * 0.85,
+          fontSize: _editor.editorFontSize - 2,
+          height: _editor.editorLineHeight * 0.85,
         ),
       );
     } catch (_) {
@@ -5094,8 +5117,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           code.trim(),
           style: TextStyle(
             fontFamily: 'monospace',
-            fontSize: _editorFontSize - 2,
-            height: _editorLineHeight * 0.85,
+            fontSize: _editor.editorFontSize - 2,
+            height: _editor.editorLineHeight * 0.85,
             color: _currentEditorTheme.codeBlockTextColor,
           ),
         ),
@@ -5111,7 +5134,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           '*暂无内容*',
           style: TextStyle(
             color: _currentEditorTheme.textColor.withOpacity(0.4),
-            fontSize: _editorFontSize,
+            fontSize: _editor.editorFontSize,
           ),
         ),
       );
@@ -5218,7 +5241,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       }
       final latex = m.group(1) ?? '';
       parts.add(Text('\$$latex\$', style: TextStyle(
-        fontSize: _editorFontSize,
+        fontSize: _editor.editorFontSize,
         color: _currentEditorTheme.textColor,
         fontStyle: FontStyle.italic,
       )));
@@ -5250,9 +5273,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     Color? codeBg, codeText;
     Color? linkColor;
 
-    h1Size = _editorFontSize * 1.5;
-    h2Size = _editorFontSize * 1.3;
-    h3Size = _editorFontSize * 1.15;
+    h1Size = _editor.editorFontSize * 1.5;
+    h2Size = _editor.editorFontSize * 1.3;
+    h3Size = _editor.editorFontSize * 1.15;
     h1Color = theme.headingColor;
     h2Color = theme.heading2Color;
     h3Color = theme.heading3Color;
@@ -5261,9 +5284,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     linkColor = theme.linkColor;
 
     // 如果有自定义 CSS，尝试解析
-    if (_customCss.isNotEmpty) {
+    if (_editor.customCss.isNotEmpty) {
       try {
-        final cssMap = _parseSimpleCss(_customCss);
+        final cssMap = _parseSimpleCss(_editor.customCss);
         if (cssMap.containsKey('h1-size')) h1Size = double.tryParse(cssMap['h1-size']!);
         if (cssMap.containsKey('h2-size')) h2Size = double.tryParse(cssMap['h2-size']!);
         if (cssMap.containsKey('h3-size')) h3Size = double.tryParse(cssMap['h3-size']!);
@@ -5275,31 +5298,31 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
     return MarkdownStyleSheet(
       p: TextStyle(
-        fontSize: _editorFontSize,
-        height: _editorLineHeight,
+        fontSize: _editor.editorFontSize,
+        height: _editor.editorLineHeight,
         color: theme.textColor,
-        fontFamily: _resolveFontFamily(_editorFontFamily),
+        fontFamily: _resolveFontFamily(_editor.editorFontFamily),
       ),
       h1: TextStyle(
         fontSize: h1Size,
         fontWeight: FontWeight.w700,
         color: h1Color,
-        fontFamily: _resolveFontFamily(_editorFontFamily),
+        fontFamily: _resolveFontFamily(_editor.editorFontFamily),
       ),
       h2: TextStyle(
         fontSize: h2Size,
         fontWeight: FontWeight.w600,
         color: h2Color,
-        fontFamily: _resolveFontFamily(_editorFontFamily),
+        fontFamily: _resolveFontFamily(_editor.editorFontFamily),
       ),
       h3: TextStyle(
         fontSize: h3Size,
         fontWeight: FontWeight.w600,
         color: h3Color,
-        fontFamily: _resolveFontFamily(_editorFontFamily),
+        fontFamily: _resolveFontFamily(_editor.editorFontFamily),
       ),
       code: TextStyle(
-        fontSize: _editorFontSize - 2,
+        fontSize: _editor.editorFontSize - 2,
         fontFamily: 'monospace',
         color: codeText,
         backgroundColor: codeBg,
@@ -5310,7 +5333,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       ),
       a: TextStyle(
         color: linkColor,
-        fontSize: _editorFontSize,
+        fontSize: _editor.editorFontSize,
       ),
       blockquoteDecoration: BoxDecoration(
         color: theme.blockquoteBackground,
@@ -5370,7 +5393,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
-          String selectedTheme = _editorTheme;
+          String selectedTheme = _editor.editorTheme;
           return AlertDialog(
             title: const Row(children: [
               Icon(Icons.palette_outlined, size: 20),
@@ -5503,7 +5526,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
               FilledButton(
                 onPressed: () async {
                   if (mounted) {
-                    setState(() => _editorTheme = selectedTheme);
+                    _editor.setEditorTheme(selectedTheme);
                   }
                   await _saveEditorSettings();
                   _showToast('主题已切换为: ${getEditorTheme(selectedTheme).name}');
@@ -5523,7 +5546,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ──────────────────────────────────────────────
 
   void _showCustomCssEditor() {
-    final cssCtrl = TextEditingController(text: _customCss);
+    final cssCtrl = TextEditingController(text: _editor.customCss);
 
     showDialog(
       context: context,
@@ -5572,7 +5595,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             onPressed: () {
               cssCtrl.text = '';
               if (mounted) {
-                setState(() => _customCss = '');
+                _editor.setCustomCss('');
               }
               _saveEditorSettings();
               _showToast('CSS 已重置');
@@ -5587,7 +5610,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           FilledButton(
             onPressed: () async {
               if (mounted) {
-                setState(() => _customCss = cssCtrl.text);
+                _editor.setCustomCss(cssCtrl.text);
               }
               await _saveEditorSettings();
               _showToast('自定义 CSS 已应用');
@@ -5656,7 +5679,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   void _showShortcutEditor() {
     // 合并默认快捷键和自定义快捷键
     final shortcuts = Map<String, String>.from(_defaultShortcuts);
-    shortcuts.addAll(_customShortcuts);
+    shortcuts.addAll(_editor.customShortcuts);
 
     showDialog(
       context: context,
@@ -5718,12 +5741,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                                 ),
                               ),
                               onSubmitted: (value) {
-                                _customShortcuts[action] = value.trim();
+                                _editor.customShortcuts[action] = value.trim();
                                 _saveEditorSettings();
                                 setDialogState(() {});
                               },
                               onTapOutside: (_) {
-                                _customShortcuts[action] = ctrl.text.trim();
+                                _editor.customShortcuts[action] = ctrl.text.trim();
                                 _saveEditorSettings();
                                 setDialogState(() {});
                               },
@@ -5739,7 +5762,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             actions: [
               TextButton(
                 onPressed: () {
-                  _customShortcuts.clear();
+                  _editor.customShortcuts.clear())s.clear());
                   _saveEditorSettings();
                   _showToast('快捷键已重置为默认值');
                   Navigator.pop(ctx);
@@ -5823,7 +5846,7 @@ PLACEHOLDER
         child: SelectableText(
           '\$\$$latexCode\$\$',
           style: TextStyle(
-            fontSize: _editorFontSize + 2,
+            fontSize: _editor.editorFontSize + 2,
             color: _currentEditorTheme.textColor,
             fontStyle: FontStyle.italic,
           ),
@@ -6046,6 +6069,7 @@ PLACEHOLDER
       _CommandItem('打开大纲', 'Ctrl+E', Icons.list_alt, () => _openRightDrawer(RightDrawerTab.outline)),
       _CommandItem('粘贴图片', 'Ctrl+Shift+V', Icons.image, () => _pasteImageFromClipboard()),
       _CommandItem('云同步', '', Icons.cloud_sync, () => _openSyncSettings()),
+      _CommandItem('P2P 同步', '', Icons.wifi, () => _openP2PSync()),
       _CommandItem('设置', '', Icons.settings_outlined, () => _openSettings()),
       _CommandItem('草稿箱', '', Icons.drafts_outlined, () => _openDrafts()),
       _CommandItem('远程文章', '', Icons.cloud_outlined, () => _openRemote()),
@@ -6173,7 +6197,7 @@ PLACEHOLDER
 
   Future<void> _saveAsToLocal() async {
     try {
-      final title = _titleCtrl.text.isNotEmpty ? _titleCtrl.text : 'untitled';
+      final title = _doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : 'untitled';
       final safeTitle = _safeTitle(title);
       final result = await FilePicker.platform.saveFile(
         dialogTitle: '另存为 Markdown 文件',
@@ -6255,7 +6279,7 @@ $body
   /// 导出 HTML 文件
   Future<void> _exportHtml() async {
     try {
-      final title = _titleCtrl.text.isNotEmpty ? _titleCtrl.text : 'untitled';
+      final title = _doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : 'untitled';
       final safeTitle = _safeTitle(title);
       final result = await FilePicker.platform.saveFile(
         dialogTitle: '导出 HTML 文件',
@@ -6264,7 +6288,7 @@ $body
         allowedExtensions: ['html', 'htm'],
       );
       if (result == null) return;
-      final html = _mdToHtml(_contentCtrl.text, title);
+      final html = _mdToHtml(_doc.contentCtrl.text, title);
       final file = File(result);
       await file.writeAsString(html);
       if (mounted) _showToast('HTML 已导出到: $result');
@@ -6276,9 +6300,9 @@ $body
   /// 导出 PDF 文件
   Future<void> _exportPdf() async {
     try {
-      final title = _titleCtrl.text.isNotEmpty ? _titleCtrl.text : 'untitled';
+      final title = _doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : 'untitled';
       final safeTitle = _safeTitle(title);
-      final html = _mdToHtml(_contentCtrl.text, title);
+      final html = _mdToHtml(_doc.contentCtrl.text, title);
 
       try {
         final result = await FilePicker.platform.saveFile(
@@ -6318,7 +6342,7 @@ $body
   /// 导出 DOCX 文件（基于 Office Open XML 格式）
   Future<void> _exportDocx() async {
     try {
-      final title = _titleCtrl.text.isNotEmpty ? _titleCtrl.text : 'untitled';
+      final title = _doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : 'untitled';
       final safeTitle = _safeTitle(title);
       final result = await FilePicker.platform.saveFile(
         dialogTitle: '导出 DOCX 文件',
@@ -6328,7 +6352,7 @@ $body
       );
       if (result == null) return;
 
-      final htmlContent = _mdToHtml(_contentCtrl.text, title);
+      final htmlContent = _mdToHtml(_doc.contentCtrl.text, title);
 
       // 构建基本的 Office Open XML 结构
       final docxBytes = _buildDocxZip(title, htmlContent);
@@ -6401,7 +6425,7 @@ $body
   /// 导出 EPUB 电子书
   Future<void> _exportEpub() async {
     try {
-      final title = _titleCtrl.text.isNotEmpty ? _titleCtrl.text : 'untitled';
+      final title = _doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : 'untitled';
       final safeTitle = _safeTitle(title);
       final result = await FilePicker.platform.saveFile(
         dialogTitle: '导出 EPUB 文件',
@@ -6423,7 +6447,7 @@ $body
   /// 构建 EPUB ZIP 文件
   Uint8List _buildEpubZip(String title) {
     final escapedTitle = _escapeXml(title);
-    final fullHtml = _mdToHtml(_contentCtrl.text, title);
+    final fullHtml = _mdToHtml(_doc.contentCtrl.text, title);
     // 提取 body 中的内容（去掉外层 HTML 模板）
     final bodyMatch = RegExp(r'<body>\n?(.*)\n?</body>', dotAll: true).firstMatch(fullHtml);
     final htmlContent = bodyMatch?.group(1) ?? fullHtml;
@@ -6634,7 +6658,7 @@ $htmlContent
   /// 重命名当前文件
   Future<void> _renameCurrentFile() async {
     try {
-      final currentPath = _currentArticle.remotePath;
+      final currentPath = _doc.currentArticle.remotePath;
       if (currentPath == null || currentPath.isEmpty) {
         if (mounted) _showToast('当前文章未关联文件，无法重命名');
         return;
@@ -6690,9 +6714,9 @@ $htmlContent
       await currentFile.rename(newPath);
 
       // 更新当前文章路径
-      _currentArticle = _currentArticle.copyWith(remotePath: newPath);
+      _doc.setCurrentArticle(_doc.currentArticle.copyWith(remotePath: newPath));
       if (mounted) {
-        setState(() {});
+        
         _showToast('文件已重命名为: $safeName.md');
       }
     } catch (e) {
@@ -6703,7 +6727,7 @@ $htmlContent
   /// 移动当前文件到指定目录
   Future<void> _moveCurrentFile() async {
     try {
-      final currentPath = _currentArticle.remotePath;
+      final currentPath = _doc.currentArticle.remotePath;
       if (currentPath == null || currentPath.isEmpty) {
         if (mounted) _showToast('当前文章未关联文件，无法移动');
         return;
@@ -6735,9 +6759,9 @@ $htmlContent
       await currentFile.delete();
 
       // 更新当前文章路径
-      _currentArticle = _currentArticle.copyWith(remotePath: newPath);
+      _doc.setCurrentArticle(_doc.currentArticle.copyWith(remotePath: newPath));
       if (mounted) {
-        setState(() {});
+        
         _showToast('文件已移动到: $newPath');
       }
     } catch (e) {
@@ -6753,7 +6777,7 @@ $htmlContent
     await _updateSettings(settings.copyWith(activeRepoId: repo.id));
     _editorRepo = repo;
     if (mounted) {
-      setState(() {});
+      
       _showToast('已切换到: ${repo.name}');
     }
   }
@@ -6763,16 +6787,25 @@ $htmlContent
   // ============================================================
 
   void _toggleLeftPanel() {
-    setState(() {
-      _leftPanelExpanded = !_leftPanelExpanded;
-      if (_leftPanelExpanded && _workMode == WorkMode.focus) _workMode = WorkMode.workspace;
-    });
+    _layout.toggleLeftPanel();
+    if (_layout.leftPanelExpanded && _layout.workMode == WorkMode.focus) {
+      _layout.switchWorkMode(WorkMode.workspace);
+    }
   }
 
-  void _toggleRightDrawer() => setState(() => _rightDrawerOpen = !_rightDrawerOpen);
+  void _toggleRightDrawer() => _layout.toggleRightDrawer();
+
+  /// Escape 键处理：关闭抽屉 → 退出专注模式 → 退出源码模式
+  void _handleEscape() {
+    if (_layout.rightDrawerOpen) {
+      _layout.closeRightDrawer();
+    } else if (_layout.workMode == WorkMode.focus || _layout.workMode == WorkMode.source) {
+      _switchWorkMode(WorkMode.workspace);
+    }
+  }
 
   void _openRightDrawer(RightDrawerTab tab) {
-    setState(() { _activeDrawerTab = tab; _rightDrawerOpen = true; });
+    _layout.openRightDrawer(tab);
   }
 
   void _toggleTheme() {
@@ -6780,33 +6813,31 @@ $htmlContent
   }
 
   void _switchWorkMode(WorkMode mode) {
-    setState(() {
-      _workMode = mode;
-      switch (mode) {
-        case WorkMode.workspace:
-          _leftPanelExpanded = true;
-          _rightDrawerOpen = false;
-          break;
-        case WorkMode.focus:
-          _leftPanelExpanded = false;
-          _rightDrawerOpen = false;
-          break;
-        case WorkMode.source:
-          break;
-      }
-    });
+    _layout.switchWorkMode(mode);
+    switch (mode) {
+      case WorkMode.workspace:
+        _layout.expandLeftPanel();
+        _layout.closeRightDrawer();
+        break;
+      case WorkMode.focus:
+        _layout.collapseLeftPanel();
+        _layout.closeRightDrawer();
+        break;
+      case WorkMode.source:
+        _layout.expandLeftPanel();
+        _layout.closeRightDrawer();
+        break;
+    }
   }
 
   void _handleSync() async {
-    _syncLogs.add('[${DateTime.now().toString().substring(11, 19)}] 开始同步...');
-    setState(() {});
+    _sync.addLog('开始同步...', status: SyncStatus.syncing);
     // 1. 同步远程文章列表
     await _refreshRemote();
-    _syncLogs.add('[${DateTime.now().toString().substring(11, 19)}] 远程文章已刷新');
+    _sync.addLog('远程文章已刷新', status: SyncStatus.success);
     // 2. 云同步草稿
     await _autoSyncToCloud();
-    _syncLogs.add('[${DateTime.now().toString().substring(11, 19)}] 云同步完成');
-    setState(() {});
+    _sync.addLog('云同步完成', status: SyncStatus.success);
     _showToast('同步完成');
   }
 
@@ -6816,15 +6847,20 @@ $htmlContent
 
   @override
   Widget build(BuildContext context) {
-    if (loading) {
+    final ui = context.watch<UiStateController>();
+    if (ui.loading) {
       return const Center(child: CircularProgressIndicator());
     }
+
+    final layout = context.watch<LayoutController>();
+    final editor = context.watch<EditorController>(); // 监听 EditorController 变化以触发 UI 刷新
+    final doc = context.watch<DocumentController>(); // 监听文档数据变更
 
     final stackChildren = <Widget>[
       Column(
         children: [
           // ── 顶部标题栏（专注模式下极简） ──
-          if (_workMode != WorkMode.focus)
+          if (layout.workMode != WorkMode.focus)
             DesktopTitleBar(
               onToggleLeftPanel: _toggleLeftPanel,
               onToggleRightDrawer: _toggleRightDrawer,
@@ -6837,24 +6873,24 @@ $htmlContent
               siteName: activeRepo?.name ?? settings.siteName,
               repos: repos,
               onSiteChange: _switchSite,
-              hasUnsavedChanges: _hasUnsavedChanges,
+              hasUnsavedChanges: _doc.hasUnsavedChanges,
             )
           else
             _focusModeTitleBar(),
 
           // ── 主体三栏 ──
           Expanded(
-            child: _workMode == WorkMode.focus ? _buildFocusEditor() : Row(
+            child: layout.workMode == WorkMode.focus
+                ? _buildFocusEditor()
+                : layout.workMode == WorkMode.source
+                    ? _buildSourceEditor()
+                    : Row(
               children: [
                 // 左侧导航面板（可折叠）
-                if (_leftPanelExpanded)
+                if (layout.leftPanelExpanded)
                   DesktopLeftPanel(
-                    width: _leftPanelWidth,
-                    onResize: (w) => setState(() => _leftPanelWidth = w),
-                    onOpenDraft: (id) {
-                      final article = drafts.firstWhere((a) => a.id == id, orElse: () => _currentArticle);
-                      _openExistingArticle(article);
-                    },
+                    width: layout.leftPanelWidth,
+                    onResize: (w) => _layout.setLeftPanelWidth(w),
                     onCollapse: _toggleLeftPanel,
                     repos: repos,
                     drafts: drafts,
@@ -6886,27 +6922,24 @@ $htmlContent
                     onSiteChange: _switchSite,
                     onShowHelp: _showHelpDialog,
                     onOpenRecycleBin: _openRecycleBin,
+                    onOpenP2PSync: _openP2PSync,
                     onOpenImageBedManager: _openImageBedManager,
                     onOpenProxySettings: _openProxySettings,
                     onOpenCacheCleanup: _openCacheCleanup,
                     onExportLogs: _exportLogs,
-                    onFixEncoding: _fixEncoding,
-                    onToggleOfflineMode: _toggleOfflineMode,
-                    onToggleNightEye: _toggleNightEyeProtection,
                     onOpenLinkChecker: _openLinkChecker,
                     onOpenBatchTools: _openBatchTools,
                     onOpenAiPromptTemplates: _openAiPromptTemplates,
                   ),
 
-                if (!_leftPanelExpanded) _collapseToggle(),
+                if (!layout.leftPanelExpanded) _collapseToggle(),
 
                 // 中央编辑区域
                 Expanded(
                   child: DesktopEditorArea(
-                    tabs: _openTabs,
-                    activeIndex: _activeTabIndex,
-                    workMode: _workMode,
-                    onTabChange: (i) => setState(() => _activeTabIndex = i),
+                    tabs: _editor.openTabs,
+                    activeIndex: _editor.activeTabIndex,
+                    onTabChange: (i) => _editor.switchTab(i),
                     onTabClose: _closeTab,
                     onNewArticle: _newArticle,
                     onSync: _handleSync,
@@ -6915,17 +6948,17 @@ $htmlContent
                 ),
 
                 // 右侧悬浮抽屉
-                if (_rightDrawerOpen)
+                if (layout.rightDrawerOpen)
                   DesktopRightDrawer(
-                    activeTab: _activeDrawerTab,
-                    onTabChange: (t) => setState(() => _activeDrawerTab = t),
-                    onClose: () => setState(() => _rightDrawerOpen = false),
-                    outlineItems: parseOutline(_contentCtrl.text),
-                    titleCtrl: _titleCtrl,
-                    tagsCtrl: _tagsCtrl,
-                    categoriesCtrl: _categoriesCtrl,
-                    coverCtrl: _coverCtrl,
-                    syncLogs: _syncLogs,
+                    activeTab: layout.activeDrawerTab,
+                    onTabChange: (t) => _layout.setDrawerTab(t),
+                    onClose: () => _layout.closeRightDrawer(),
+                    outlineItems: parseOutline(_doc.contentCtrl.text),
+                    titleCtrl: _doc.titleCtrl,
+                    tagsCtrl: _doc.tagsCtrl,
+                    categoriesCtrl: _doc.categoriesCtrl,
+                    coverCtrl: _doc.coverCtrl,
+                    syncLogs: _sync.logs.map((e) => '${e.timestamp.hour}:${e.timestamp.minute.toString().padLeft(2, '0')}:${e.timestamp.second.toString().padLeft(2, '0')} ${e.message}').toList(),
                     aiChatPanel: AiChatPanel(
                       key: _aiChatKey,
                       settings: settings,
@@ -6948,14 +6981,14 @@ $htmlContent
           ),
 
           // ── 底部状态栏（专注模式下隐藏） ──
-          if (_workMode != WorkMode.focus)
+          if (layout.workMode != WorkMode.focus)
             DesktopStatusBar(
-              workMode: _workMode,
+              workMode: layout.workMode,
               onModeChange: _switchWorkMode,
-              editorStatus: _editorStatus,
-              cursorPosition: _cursorPos,
-              wordCount: _wordCount,
-              charCount: _charCount,
+              editorStatus: _editor.editorStatus,
+              cursorPosition: (_editor.cursorPos.line, _editor.cursorPos.column),
+              wordCount: _editor.wordCount,
+              charCount: _editor.charCount,
               siteName: activeRepo?.name ?? settings.siteName,
               isSyncing: false,
             ),
@@ -7016,7 +7049,7 @@ $htmlContent
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              _titleCtrl.text.isNotEmpty ? _titleCtrl.text : '未命名文章',
+              _doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : '未命名文章',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
@@ -7028,11 +7061,11 @@ $htmlContent
           _focusToolbarButton(Icons.save_outlined, '保存草稿', _saveLocal, isDark),
           _focusToolbarButton(Icons.send_outlined, '发布', _handlePublish, isDark),
           _focusToolbarButton(Icons.image_outlined, '插入图片', _insertImage, isDark),
-          _focusToolbarButton(Icons.visibility_outlined, '切换预览', () => setState(() => _rightDrawerOpen = !_rightDrawerOpen), isDark, active: _rightDrawerOpen),
+          _focusToolbarButton(Icons.visibility_outlined, '切换预览', () => _layout.toggleRightDrawer(), isDark, active: context.watch<LayoutController>().rightDrawerOpen),
           PopupMenuButton<String>(
             tooltip: '导出',
             offset: const Offset(0, 36),
-            enabled: !_editorBusy,
+            enabled: !_editor.editorBusy,
             color: isDark ? const Color(0xFF252536) : null,
             icon: Icon(Icons.file_download_outlined, size: 16, color: isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280)),
             itemBuilder: (_) => [
@@ -7087,146 +7120,323 @@ $htmlContent
   Widget _buildFocusEditor() {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // 对标 MarkText 专注模式：两侧纯黑遮罩 + 内容居中 + 当前行高亮
     return Container(
-      color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
-      child: Column(
+      color: isDark ? const Color(0xFF0D0D1A) : const Color(0xFFF0F0F0),
+      child: Stack(
         children: [
-          Expanded(
-            child: Row(
-              children: [
-                // 左侧编辑区
-                Expanded(
-                  child: Center(
-                    child: SingleChildScrollView(
-                      controller: _focusScrollCtrl,
-                      padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 40),
+          // 主编辑区
+          Column(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    const Spacer(),
+                    // 编辑区容器
+                    Expanded(
+                      flex: 3,
                       child: Container(
-                        constraints: const BoxConstraints(maxWidth: 800),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // 标题输入
-                            TextField(
-                              controller: _titleCtrl,
-                              style: TextStyle(
-                                fontSize: 32,
-                                fontWeight: FontWeight.w700,
-                                height: 1.3,
-                                color: isDark ? Colors.white : const Color(0xFF1F2937),
-                                fontFamily: _resolveFontFamily(_editorFontFamily),
-                              ),
-                              cursorColor: cs.primary,
-                              decoration: InputDecoration(
-                                hintText: '在此输入标题...',
-                                hintStyle: TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.w700,
-                                  color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
-                                ),
-                                border: InputBorder.none,
-                              ),
-                              onChanged: (_) => _onContentChanged(),
-                            ),
-                            const SizedBox(height: 24),
-                            // 文章元信息
-                            Row(
+                        color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+                        child: SingleChildScrollView(
+                          controller: _focusScrollCtrl,
+                          padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 40),
+                          child: Container(
+                            constraints: const BoxConstraints(maxWidth: 800),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                _focusMetaChip(Icons.person_outline, '作者', _editorRepo?.owner ?? '未设置', isDark),
-                                const SizedBox(width: 12),
-                                _focusMetaChip(Icons.calendar_today, '日期', DateTime.now().toLocal().toString().split(' ')[0], isDark),
-                                const SizedBox(width: 12),
-                                _focusMetaChip(Icons.text_fields, '字数', '$_wordCount 词', isDark),
-                              ],
-                            ),
-                            const SizedBox(height: 24),
-                            Container(
-                              height: 1,
-                              color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E7EB),
-                            ),
-                            const SizedBox(height: 24),
-                            // 内容编辑区
-                            SizedBox(
-                              height: _contentCtrl.text.split('\n').length * (_editorFontSize * _editorLineHeight) + 600,
-                              child: TextField(
-                                controller: _contentCtrl,
-                                maxLines: null,
-                                expands: true,
-                                focusNode: _contentFocus,
-                                cursorColor: cs.primary,
-                                style: TextStyle(
-                                  fontSize: _editorFontSize,
-                                  height: _editorLineHeight,
-                                  color: isDark ? Colors.white.withOpacity(0.9) : const Color(0xFF374151),
-                                  fontFamily: _resolveFontFamily(_editorFontFamily),
+                                // 标题输入
+                                TextField(
+                                  controller: _doc.titleCtrl,
+                                  style: TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.3,
+                                    color: isDark ? Colors.white : const Color(0xFF1F2937),
+                                    fontFamily: _resolveFontFamily(_editor.editorFontFamily),
+                                  ),
+                                  cursorColor: cs.primary,
+                                  decoration: InputDecoration(
+                                    hintText: '在此输入标题...',
+                                    hintStyle: TextStyle(
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.w700,
+                                      color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+                                    ),
+                                    border: InputBorder.none,
+                                  ),
+                                  onChanged: (_) => _onContentChanged(),
                                 ),
-                                decoration: InputDecoration(
-                                  border: InputBorder.none,
-                                  hintText: '开始写作...',
-                                  hintStyle: TextStyle(
-                                    fontSize: _editorFontSize,
-                                    color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+                                const SizedBox(height: 24),
+                                // 文章元信息
+                                Row(
+                                  children: [
+                                    _focusMetaChip(Icons.person_outline, '作者', _editorRepo?.owner ?? '未设置', isDark),
+                                    const SizedBox(width: 12),
+                                    _focusMetaChip(Icons.calendar_today, '日期', DateTime.now().toLocal().toString().split(' ')[0], isDark),
+                                    const SizedBox(width: 12),
+                                    _focusMetaChip(Icons.text_fields, '字数', '${_editor.wordCount} 词', isDark),
+                                  ],
+                                ),
+                                const SizedBox(height: 24),
+                                Container(
+                                  height: 1,
+                                  color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E7EB),
+                                ),
+                                const SizedBox(height: 24),
+                                // 内容编辑区（带当前行高亮效果）
+                                SizedBox(
+                                  height: _doc.contentCtrl.text.split('\n').length * (_editor.editorFontSize * _editor.editorLineHeight) + 600,
+                                  child: TextField(
+                                    controller: _doc.contentCtrl,
+                                    maxLines: null,
+                                    expands: true,
+                                    focusNode: _doc.contentFocus,
+                                    cursorColor: cs.primary,
+                                    style: TextStyle(
+                                      fontSize: _editor.editorFontSize,
+                                      height: _editor.editorLineHeight,
+                                      color: isDark ? Colors.white.withOpacity(0.9) : const Color(0xFF374151),
+                                      fontFamily: _resolveFontFamily(_editor.editorFontFamily),
+                                    ),
+                                    decoration: InputDecoration(
+                                      border: InputBorder.none,
+                                      hintText: '开始写作...',
+                                      hintStyle: TextStyle(
+                                        fontSize: _editor.editorFontSize,
+                                        color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+                                      ),
+                                    ),
+                                    onChanged: (_) => _onContentChanged(),
                                   ),
                                 ),
-                                onChanged: (_) => _onContentChanged(),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // 右侧预览面板（可选）
+                    if (context.watch<LayoutController>().rightDrawerOpen)
+                      Container(
+                        width: 400,
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFFAFAFC),
+                          border: Border(
+                            left: BorderSide(
+                              color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
+                            ),
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Container(
+                              height: 36,
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
+                                  ),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.visibility, size: 14, color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
+                                  const SizedBox(width: 6),
+                                  Text('实时预览', style: TextStyle(fontSize: 11, color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF))),
+                                  const Spacer(),
+                                  GestureDetector(
+                                    onTap: () => _layout.closeRightDrawer(),
+                                    child: Icon(Icons.close, size: 14, color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Expanded(
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.all(16),
+                                child: _buildMarkdownPreview(_doc.contentCtrl.text),
                               ),
                             ),
                           ],
                         ),
-                      ),
+                      )
+                    else
+                      const Spacer(),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          // 底部打字机状态指示
+          Positioned(
+            bottom: 12,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.keyboard_double_arrow_down, size: 10, color: isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.2)),
+                    const SizedBox(width: 4),
+                    Text(
+                      '打字机模式 · 光标居中',
+                      style: TextStyle(fontSize: 9, color: isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.2)),
                     ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 源码模式编辑器：全屏等宽字体 Markdown 源码视图
+  Widget _buildSourceEditor() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+      child: Column(
+        children: [
+          // 源码模式标题栏
+          Container(
+            height: 32,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF252536) : const Color(0xFFFAFAFC),
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.code, size: 14, color: cs.primary),
+                const SizedBox(width: 8),
+                Text(
+                  '源码模式',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: cs.primary,
+                    letterSpacing: 0.5,
                   ),
                 ),
-                // 右侧预览面板（可选）
-                if (_rightDrawerOpen)
-                  Container(
-                    width: 400,
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFFAFAFC),
-                      border: Border(
-                        left: BorderSide(
-                          color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
-                        ),
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        // 预览面板头部
-                        Container(
-                          height: 36,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            border: Border(
-                              bottom: BorderSide(
-                                color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
-                              ),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.visibility, size: 14, color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
-                              const SizedBox(width: 6),
-                              Text('实时预览', style: TextStyle(fontSize: 11, color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF))),
-                              const Spacer(),
-                              GestureDetector(
-                                onTap: () => setState(() => _rightDrawerOpen = false),
-                                child: Icon(Icons.close, size: 14, color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: SingleChildScrollView(
-                            padding: const EdgeInsets.all(16),
-                            child: _buildMarkdownPreview(_contentCtrl.text),
-                          ),
-                        ),
-                      ],
-                    ),
+                const SizedBox(width: 12),
+                Text(
+                  _doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : '未命名文章',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF),
                   ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const Spacer(),
+                // 快捷操作
+                _sourceToolbarButton(Icons.save_outlined, '保存', _saveLocal, isDark),
+                _sourceToolbarButton(Icons.send_outlined, '发布', _handlePublish, isDark),
+                _sourceToolbarButton(Icons.content_copy, '复制全文', () {
+                  Clipboard.setData(ClipboardData(text: _doc.contentCtrl.text));
+                  _showToast('已复制到剪贴板');
+                }, isDark),
+                Container(
+                  width: 1,
+                  height: 18,
+                  color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
+                ),
+                _sourceToolbarButton(Icons.close_fullscreen, '退出源码模式', () => _switchWorkMode(WorkMode.workspace), isDark),
+              ],
+            ),
+          ),
+          // 源码编辑区
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: TextField(
+                controller: _doc.contentCtrl,
+                maxLines: null,
+                focusNode: _doc.contentFocus,
+                cursorColor: cs.primary,
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.7,
+                  fontFamily: 'monospace',
+                  color: isDark ? const Color(0xFFE0E0E0) : const Color(0xFF24292E),
+                ),
+                decoration: InputDecoration(
+                  border: InputBorder.none,
+                  hintText: '在此编辑 Markdown 源码...',
+                  hintStyle: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'monospace',
+                    color: isDark ? Colors.white.withOpacity(0.1) : const Color(0xFFB0B0B0),
+                  ),
+                ),
+                onChanged: (_) => _onContentChanged(),
+              ),
+            ),
+          ),
+          // 底部状态条
+          Container(
+            height: 24,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF252536) : const Color(0xFFFAFAFC),
+              border: Border(
+                top: BorderSide(
+                  color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                Text(
+                  'Markdown',
+                  style: TextStyle(fontSize: 11, color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF)),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '行 ${_editor.cursorPos.line} 列 ${_editor.cursorPos.column}',
+                  style: TextStyle(fontSize: 11, color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF)),
+                ),
+                const Spacer(),
+                Text(
+                  '$_editor.wordCount 词  $_editor.charCount 字',
+                  style: TextStyle(fontSize: 11, color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF)),
+                ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _sourceToolbarButton(IconData icon, String tooltip, VoidCallback onTap, bool isDark) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(4),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(4),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: Icon(icon, size: 15, color: isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280)),
+          ),
+        ),
       ),
     );
   }
@@ -7791,4 +8001,4 @@ class _ConflictResolutionDialogState extends State<_ConflictResolutionDialog> {
       ),
     );
   }
-}
+})

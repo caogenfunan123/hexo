@@ -3,29 +3,11 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'work_mode.dart';
-
-/// 编辑器标签页数据
-class EditorTab {
-  final String id;
-  final String title;
-  final IconData icon;
-  final Widget content;
-  final bool canClose;
-
-  const EditorTab({
-    required this.id,
-    required this.title,
-    required this.icon,
-    required this.content,
-    this.canClose = true,
-  });
-}
+import '../../controllers/editor_controller.dart';
 
 class DesktopEditorArea extends StatelessWidget {
   final List<EditorTab> tabs;
   final int activeIndex;
-  final WorkMode workMode;
   final ValueChanged<int> onTabChange;
   final ValueChanged<int> onTabClose;
   final VoidCallback? onNewArticle;
@@ -36,7 +18,6 @@ class DesktopEditorArea extends StatelessWidget {
     super.key,
     required this.tabs,
     required this.activeIndex,
-    required this.workMode,
     required this.onTabChange,
     required this.onTabClose,
     this.onNewArticle,
@@ -63,7 +44,7 @@ class DesktopEditorArea extends StatelessWidget {
           Expanded(
             child: IndexedStack(
               index: activeIndex.clamp(0, tabs.length - 1),
-              children: tabs.map((t) => t.content).toList(),
+              children: tabs.map((t) => t.content ?? const SizedBox.shrink()).toList(),
             ),
           ),
         ],

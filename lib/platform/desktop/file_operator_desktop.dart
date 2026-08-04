@@ -91,4 +91,18 @@ class DesktopFileOperator implements AppFileOperator {
   Future<String> getRootPath() async {
     return _rootPath;
   }
+
+  @override
+  Future<String?> exportToUserDirectory(String relativePath, {String? exportName}) async {
+    // 桌面端：直接复制到同目录，因为桌面端无沙盒限制
+    final source = '$_rootPath/$relativePath';
+    final destName = exportName ?? relativePath.split('/').last;
+    final dest = '$_rootPath/$destName';
+    final file = File(source);
+    if (await file.exists()) {
+      await file.copy(dest);
+      return dest;
+    }
+    return null;
+  }
 }

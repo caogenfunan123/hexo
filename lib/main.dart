@@ -6,9 +6,13 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:provider/provider.dart';
+
+import 'controllers/controllers.dart';
 
 import 'models/ai_profile.dart';
 import 'models/app_settings.dart';
+import 'models/article_type.dart';
 import 'models/article.dart';
 import 'models/blog_framework.dart';
 import 'models/blog_site_config.dart';
@@ -90,10 +94,29 @@ class HexoApp extends StatefulWidget {
 class _HexoAppState extends State<HexoApp> {
   late AppSettings _settings;
 
+  // ── 控制器（全局单例，注入到 Provider 树） ──
+  final LayoutController _layoutCtrl = LayoutController();
+  final EditorController _editorCtrl = EditorController();
+  final SyncController _syncCtrl = SyncController();
+  final SiteController _siteCtrl = SiteController();
+  final FrontMatterController _frontMatterCtrl = FrontMatterController();
+  final UiStateController _uiStateCtrl = UiStateController();
+
   @override
   void initState() {
     super.initState();
     _settings = widget.initialSettings;
+  }
+
+  @override
+  void dispose() {
+    _layoutCtrl.dispose();
+    _editorCtrl.dispose();
+    _syncCtrl.dispose();
+    _siteCtrl.dispose();
+    _frontMatterCtrl.dispose();
+    _uiStateCtrl.dispose();
+    super.dispose();
   }
 
   void updateTheme(Color c) {
@@ -102,12 +125,22 @@ class _HexoAppState extends State<HexoApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Hexo 写作',
-      theme: AppTheme.light(seedColor: _settings.themeColor),
-      home: RootShell(
-          onThemeChanged: updateTheme, initialSettings: _settings),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: _layoutCtrl),
+        ChangeNotifierProvider.value(value: _editorCtrl),
+        ChangeNotifierProvider.value(value: _syncCtrl),
+        ChangeNotifierProvider.value(value: _siteCtrl),
+        ChangeNotifierProvider.value(value: _frontMatterCtrl),
+        ChangeNotifierProvider.value(value: _uiStateCtrl),
+      ],
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'Hexo 写作',
+        theme: AppTheme.light(seedColor: _settings.themeColor),
+        home: RootShell(
+            onThemeChanged: updateTheme, initialSettings: _settings),
+      ),
     );
   }
 }
@@ -168,10 +201,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   SessionState _lastSession = SessionState.empty;
   bool _sessionRestored = false;
 
-  // ── 自动保存 ──
+  // ── 自动保存（P0 修复：每草稿独立防抖 + 三重落盘） ──
   Timer? _autoSaveTimer;
-  Timer? _debounceTimer;
   Timer? _autoSyncTimer; // 云端自动同步
+  /// 每草稿独立防抖定时器，杜绝多草稿相互阻塞
+  final Map<String, Timer> _debounceTimers = {};
+  /// 每草稿独立上次保存内容，切换草稿不丢失
+  final Map<String, String> _lastSavedContentMap = {};
   String _lastSavedContent = '';
   bool _hasUnsavedChanges = false;
 
@@ -182,7 +218,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   late TextEditingController _categoriesCtrl;
   late TextEditingController _coverCtrl;
   late Article _currentArticle;
-  String _articleType = 'post';
+  ArticleType _articleType = ArticleType.post;
   String? _selectedTemplateId;
   RepoConfig? _editorRepo;
   bool _editorBusy = false;
@@ -261,6 +297,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     }
   }
 
+  // ── 控制器访问器（从 Provider 获取） ──
+  LayoutController get _layout => context.read<LayoutController>();
+  EditorController get _editor => context.read<EditorController>();
+  SyncController get _sync => context.read<SyncController>();
+  SiteController get _site => context.read<SiteController>();
+  FrontMatterController get _frontMatter => context.read<FrontMatterController>();
+  UiStateController get _ui => context.read<UiStateController>();
+
   @override
   void initState() {
     super.initState();
@@ -280,7 +324,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       updatedAt: DateTime.now(),
       isDraft: true,
       repoId: activeRepo?.id,
-      articleType: 'post',
+      articleType: ArticleType.post,
     );
     _bootstrap();
   }
@@ -352,6 +396,25 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         autoTemplateId = TemplateResolver.resolvePostTemplateId(_editorRepo!, t);
         _selectedTemplateId = autoTemplateId;
       }
+
+      // 同步到站点控制器
+      final staticSites = r.map((repo) => SiteConfig(
+        id: repo.id,
+        name: repo.name,
+        repoUrl: 'https://github.com/${repo.owner}/${repo.repo}',
+        branch: repo.branch,
+        isDefault: repo.isDefault,
+        isStatic: true,
+        tokenId: repo.token.isNotEmpty ? repo.id : null,
+      )).toList();
+      final dynamicSites = s.blogSiteConfigs.map((cfg) => SiteConfig(
+        id: cfg.id,
+        name: cfg.name,
+        repoUrl: cfg.url,
+        isStatic: false,
+      )).toList();
+      _site.setSites(staticSites, dynamicSites);
+
       setState(() {
         settings = s;
         repos = r;
@@ -430,11 +493,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
-      // 进入后台：推送当前数据
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      // 三重落盘：APP 转入后台时强制冲刷所有等待中的保存任务
+      _flushAllPendingSaves();
       _autoSyncToCloud();
     } else if (state == AppLifecycleState.resumed) {
-      // 回到前台：拉取最新数据
       _autoPullFromCloud();
     }
   }
@@ -679,8 +742,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   void _resetEditor() {
     final repo = activeRepo;
     _editorRepo = repo;
-    _articleType = 'post';
-    // 自动解析仓库默认模板（重置后默认文章类型）
+    _articleType = ArticleType.post;
     String? autoTemplateId;
     if (repo != null) {
       autoTemplateId = TemplateResolver.resolvePostTemplateId(repo, templates);
@@ -710,7 +772,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   void _autoSelectTemplate() {
     final repo = _editorRepo;
     if (repo == null) return;
-    _selectedTemplateId = _articleType == 'post'
+    _selectedTemplateId = _articleType == ArticleType.post
         ? TemplateResolver.resolvePostTemplateId(repo, templates)
         : TemplateResolver.resolvePageTemplateId(repo, templates);
   }
@@ -729,8 +791,25 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   void _stopAutoSave() {
     _autoSaveTimer?.cancel();
     _autoSaveTimer = null;
-    _debounceTimer?.cancel();
-    _debounceTimer = null;
+    _flushAllPendingSaves();
+    for (final t in _debounceTimers.values) {
+      t.cancel();
+    }
+    _debounceTimers.clear();
+  }
+
+  /// 冲刷所有等待中的保存任务（三重落盘：文本变更 / 页面切换 / APP 转入后台）
+  void _flushAllPendingSaves() {
+    for (final entry in _debounceTimers.entries) {
+      entry.value.cancel();
+      final articleId = entry.key;
+      final content = _contentCtrl.text;
+      final title = _titleCtrl.text;
+      if (content.isNotEmpty && content != _lastSavedContentMap[articleId]) {
+        _autoSaveSnapshot();
+      }
+    }
+    _debounceTimers.clear();
   }
 
   void _onContentChanged() {
@@ -740,20 +819,23 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       return;
     }
     _hasUnsavedChanges = true;
-    // 防抖：停止输入后延时保存
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(seconds: 2), () {
+    // 每草稿独立防抖，杜绝多草稿相互阻塞
+    final articleId = _currentArticle.id;
+    _debounceTimers[articleId]?.cancel();
+    _debounceTimers[articleId] = Timer(const Duration(seconds: 2), () {
       _autoSaveSnapshot();
+      _debounceTimers.remove(articleId);
     });
   }
 
   Future<void> _autoSaveSnapshot() async {
     final content = _contentCtrl.text;
-    if (content.isEmpty || content == _lastSavedContent) return;
+    final articleId = _currentArticle.id;
+    if (content.isEmpty || content == _lastSavedContentMap[articleId]) return;
     final title = _titleCtrl.text;
     try {
       await sessionService.saveAutoSnapshot(
-        articleId: _currentArticle.id,
+        articleId: articleId,
         content: content,
         title: title.isEmpty ? '未命名' : title,
         tags: _tagsCtrl.text,
@@ -761,8 +843,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         cover: _coverCtrl.text,
       );
       _lastSavedContent = content;
+      _lastSavedContentMap[articleId] = content;
       _hasUnsavedChanges = false;
-      await sessionService.cleanupSnapshots(_currentArticle.id);
+      await sessionService.cleanupSnapshots(articleId);
       // 同时保存草稿到 storage
       await _saveDraft(_collect(draft: true));
       if (mounted) {
@@ -3591,7 +3674,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       updatedAt: post.modifiedDate,
       isDraft: false,
       published: true,
-      articleType: 'post',
+      articleType: ArticleType.post,
       remotePath: post.link,
       remoteSha: post.id?.toString(),
     );
@@ -4428,9 +4511,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                       subtitle: _editorRepo != null
                           ? '${_editorRepo!.postsPath}'
                           : '文章目录',
-                      active: _articleType == 'post',
+                      active: _articleType == ArticleType.post,
                       onTap: () => setState(() {
-                        _articleType = 'post';
+                        _articleType = ArticleType.post;
                         _autoSelectTemplate();
                       }),
                     ),
@@ -4443,9 +4526,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                       subtitle: _editorRepo != null
                           ? '${_editorRepo!.pagesPath}'
                           : '页面目录',
-                      active: _articleType == 'page',
+                      active: _articleType == ArticleType.page,
                       onTap: () => setState(() {
-                        _articleType = 'page';
+                        _articleType = ArticleType.page;
                         _autoSelectTemplate();
                       }),
                     ),
@@ -4462,7 +4545,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                         child: DropdownButtonFormField<String>(
                           value: _selectedTemplateId,
                           decoration: InputDecoration(
-                            labelText: '模板 (${_articleType == 'post' ? '博文' : '页面'})',
+                            labelText: '模板 (${_articleType == ArticleType.post ? '博文' : '页面'})',
                             prefixIcon: const Icon(Icons.view_quilt_outlined, size: 18),
                             border: InputBorder.none,
                             enabledBorder: InputBorder.none,
@@ -4475,7 +4558,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                               child: Text('无模板', style: TextStyle(fontSize: 13)),
                             ),
                             ...templates
-                                .where((t) => t.isPost == (_articleType == 'post'))
+                                .where((t) => t.isPost == (_articleType == ArticleType.post))
                                 .map((t) => DropdownMenuItem<String>(
                                       value: t.id,
                                       child: Text(
@@ -4525,7 +4608,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                         Expanded(
                           child: Text(
                             '框架: ${BlogFramework.byId(_editorRepo!.frameworkId)?.name ?? _editorRepo!.frameworkId} | '
-                            '文件名: ${_articleType == 'page' ? '无日期前缀' : (_editorRepo!.fileNameRule.postDatePrefix ? '自动加日期' : '纯标题')}',
+                            '文件名: ${_articleType == ArticleType.page ? '无日期前缀' : (_editorRepo!.fileNameRule.postDatePrefix ? '自动加日期' : '纯标题')}',
                             style: const TextStyle(fontSize: 11, color: Color(0xFF0369A1)),
                           ),
                         ),

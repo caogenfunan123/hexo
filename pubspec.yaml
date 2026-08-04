@@ -31,6 +31,8 @@ dependencies:
   # 导出
   printing: ^5.11.0
   pdf: ^3.10.0
+  # 状态管理
+  provider: ^6.1.1
   # 工具
   path_provider: ^2.1.0
   # 编码

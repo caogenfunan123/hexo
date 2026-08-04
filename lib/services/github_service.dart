@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../models/article.dart';
+import '../models/article_type.dart';
 import '../models/repo_config.dart';
 
 class GitHubFileItem {
@@ -181,7 +182,7 @@ class GitHubService {
   }
 
   Future<Article> upsertArticle(RepoConfig repo, Article article, {String? commitMessage}) async {
-    final isPage = article.articleType == 'page';
+    final isPage = article.articleType == ArticleType.page;
     final basePath = isPage
         ? repo.pagesPath.replaceAll(RegExp(r'/+$'), '')
         : repo.postsPath.replaceAll(RegExp(r'/+$'), '');

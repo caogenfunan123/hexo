@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:io';
 import '../models/article.dart';
+import '../models/article_type.dart';
 
 class _LinkResult {
   final Article article;
@@ -75,7 +76,7 @@ class _LinkCheckerScreenState extends State<LinkCheckerScreen>
       _knownPaths.add('/$name');
       _knownPaths.add('./$name');
       // Also add paths based on article type
-      if (article.articleType == 'post') {
+      if (article.articleType == ArticleType.post) {
         _knownPaths.add('posts/$name');
         _knownPaths.add('/posts/$name');
         _knownPaths.add('./posts/$name');
@@ -92,7 +93,7 @@ class _LinkCheckerScreenState extends State<LinkCheckerScreen>
           _knownPaths.add('$slug');
           _knownPaths.add('$slug/');
         }
-      } else if (article.articleType == 'page') {
+      } else if (article.articleType == ArticleType.page) {
         final slug = article.title
             .toLowerCase()
             .replaceAll(RegExp(r'\s+'), '-')

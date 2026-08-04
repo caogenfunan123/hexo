@@ -1,17 +1,21 @@
 /// 桌面版主入口
-/// 负责：窗口管理、系统托盘、全局快捷键、拖拽文件导入、布局记忆
+/// 负责：窗口管理、系统托盘、全局快捷键、拖拽文件导入、布局记忆、Provider 状态注入
 library;
 
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:system_tray/system_tray.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../theme/app_theme.dart';
+import '../controllers/controllers.dart';
 import 'desktop_shell.dart';
 
 /// 桌面版启动入口（由 lib/main.dart 根据平台自动调用，或通过 --target 直接使用）
@@ -51,6 +55,15 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
   // ── 主题 ──
   ThemeMode _themeMode = ThemeMode.system;
 
+  // ── 控制器（全局单例，注入到 Provider 树） ──
+  final DocumentController _docCtrl = DocumentController();
+  final LayoutController _layoutCtrl = LayoutController();
+  final EditorController _editorCtrl = EditorController();
+  final SyncController _syncCtrl = SyncController();
+  final SiteController _siteCtrl = SiteController();
+  final FrontMatterController _frontMatterCtrl = FrontMatterController();
+  final UiStateController _uiStateCtrl = UiStateController();
+
   @override
   void initState() {
     super.initState();
@@ -62,6 +75,13 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
   void dispose() {
     windowManager.removeListener(this);
     // hotKeyManager.unregisterAll();
+    _docCtrl.dispose();
+    _layoutCtrl.dispose();
+    _editorCtrl.dispose();
+    _syncCtrl.dispose();
+    _siteCtrl.dispose();
+    _frontMatterCtrl.dispose();
+    _uiStateCtrl.dispose();
     super.dispose();
   }
 
@@ -69,16 +89,34 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
     await _restoreLayout();
     await _initWindow();
     _initSystemTray();
-    // _registerHotkeys();
+    _initShortcuts();
   }
 
   // ============================================================
   // 窗口布局记忆
   // ============================================================
 
+  /// 获取布局文件路径（迁移到应用私有目录，避免系统清理丢失）
+  Future<File> _layoutFile() async {
+    final appDir = await getApplicationSupportDirectory();
+    final dir = Directory('${appDir.path}/.hexo');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    // 兼容旧路径迁移
+    final oldFile = File('${Directory.systemTemp.path}/hexo_desktop_layout.json');
+    final newFile = File('${dir.path}/desktop_layout.json');
+    if (await oldFile.exists() && !await newFile.exists()) {
+      try {
+        await oldFile.copy(newFile.path);
+      } catch (_) {}
+    }
+    return newFile;
+  }
+
   Future<void> _restoreLayout() async {
     try {
-      final file = File('${Directory.systemTemp.path}/hexo_desktop_layout.json');
+      final file = await _layoutFile();
       if (await file.exists()) {
         final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
         _windowPosition = Offset(
@@ -96,7 +134,7 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
 
   Future<void> _saveLayout() async {
     try {
-      final file = File('${Directory.systemTemp.path}/hexo_desktop_layout.json');
+      final file = await _layoutFile();
       await file.writeAsString(jsonEncode({
         'x': _windowPosition.dx,
         'y': _windowPosition.dy,
@@ -162,6 +200,8 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
   @override
   void onWindowClose() async {
     await _saveLayout();
+    // 关闭前强制落盘所有未保存内容
+    await _editorCtrl.onBeforeClose();
     // 最小化到托盘而不是关闭
     if (_isTrayReady) {
       await windowManager.hide();
@@ -191,6 +231,7 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
         }),
         MenuSeparator(),
         MenuItemLabel(label: '退出', onClicked: (_) async {
+          await _editorCtrl.onBeforeClose();
           await _systemTray.destroy();
           await windowManager.destroy();
         }),
@@ -206,9 +247,36 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
   // 全局快捷键
   // ============================================================
 
-  void _registerHotkeys() async {
-    // TODO: fix hotkey_manager compatibility with Flutter 3.24
+  /// 使用 Flutter 内置 Shortcuts 系统替代 hotkey_manager
+  /// 快捷键仅在应用窗口获得焦点时生效
+  late final Map<ShortcutActivator, VoidCallback> _shortcuts;
+
+  void _initShortcuts() {
+    _shortcuts = {
+      // 文件操作
+      const SingleActivator(LogicalKeyboardKey.keyN, control: true): () => _invokeShell('newArticle'),
+      const SingleActivator(LogicalKeyboardKey.keyO, control: true): () => openMarkdownFile(),
+      const SingleActivator(LogicalKeyboardKey.keyS, control: true): () => _invokeShell('sync'),
+      const SingleActivator(LogicalKeyboardKey.keyP, control: true): () => _invokeShell('publish'),
+      const SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true): () => _invokeShell('saveLocal'),
+      // 面板切换
+      const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _invokeShell('toggleLeftPanel'),
+      const SingleActivator(LogicalKeyboardKey.keyL, control: true, shift: true): () => _invokeShell('toggleRightDrawer'),
+      // 工作模式
+      const SingleActivator(LogicalKeyboardKey.keyF, control: true, shift: true): () => _invokeShell('focusMode'),
+      const SingleActivator(LogicalKeyboardKey.keyE, control: true, shift: true): () => _invokeShell('sourceMode'),
+      const SingleActivator(LogicalKeyboardKey.keyW, control: true, shift: true): () => _invokeShell('workspaceMode'),
+      // 编辑操作
+      const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _invokeShell('insertImage'),
+      const SingleActivator(LogicalKeyboardKey.keyF, control: true): () => _invokeShell('find'),
+      const SingleActivator(LogicalKeyboardKey.keyH, control: true): () => _invokeShell('replace'),
+      // 搜索
+      const SingleActivator(LogicalKeyboardKey.keyK, control: true): () => _invokeShell('commandPalette'),
+      // 窗口
+      const SingleActivator(LogicalKeyboardKey.escape): () => _invokeShell('escape'),
+    };
   }
+
   void _invokeShell(String action) {
     final state = DesktopApp.shellKey.currentState;
     if (state == null) return;
@@ -261,23 +329,37 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
 
   @override
   Widget build(BuildContext context) {
-    return DropTarget(
-      onDragDone: (details) {
-        for (final file in details.files) {
-          if (file.path.endsWith('.md') || file.path.endsWith('.markdown')) {
-            _loadMdFile(file.path);
+    return CallbackShortcuts(
+      bindings: _shortcuts,
+      child: DropTarget(
+        onDragDone: (details) {
+          for (final file in details.files) {
+            if (file.path.endsWith('.md') || file.path.endsWith('.markdown')) {
+              _loadMdFile(file.path);
+            }
           }
-        }
-      },
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'AI 博客编辑器',
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
-        themeMode: _themeMode,
-        home: DesktopShell(
-          key: DesktopApp.shellKey,
-          onToggleAppTheme: _toggleAppTheme,
+        },
+        child: MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: _docCtrl),
+            ChangeNotifierProvider.value(value: _layoutCtrl),
+            ChangeNotifierProvider.value(value: _editorCtrl),
+            ChangeNotifierProvider.value(value: _syncCtrl),
+            ChangeNotifierProvider.value(value: _siteCtrl),
+            ChangeNotifierProvider.value(value: _frontMatterCtrl),
+            ChangeNotifierProvider.value(value: _uiStateCtrl),
+          ],
+          child: MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'AI 博客编辑器',
+            theme: AppTheme.light(),
+            darkTheme: AppTheme.dark(),
+            themeMode: _themeMode,
+            home: DesktopShell(
+              key: DesktopApp.shellKey,
+              onToggleAppTheme: _toggleAppTheme,
+            ),
+          ),
         ),
       ),
     );

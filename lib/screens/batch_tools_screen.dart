@@ -336,7 +336,7 @@ class _BatchToolsScreenState extends State<BatchToolsScreen>
   // ─── Helpers ────────────────────────────────────────────────────────────
 
   String _extractFrontMatterField(String content, String field) {
-    final trimmed = content.trimLeft();
+    final trimmed = content.trimStart();
     if (!trimmed.startsWith('---')) return '';
     final end = content.indexOf('\n---', 3);
     if (end < 0) return '';
@@ -355,7 +355,7 @@ class _BatchToolsScreenState extends State<BatchToolsScreen>
   }
 
   String _setFrontMatterField(String content, String field, String value) {
-    final trimmed = content.trimLeft();
+    final trimmed = content.trimStart();
     if (!trimmed.startsWith('---')) {
       if (value.isEmpty) return content;
       return '---\n$field: $value\n---\n\n$content';

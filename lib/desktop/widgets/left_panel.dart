@@ -10,7 +10,6 @@ import '../../core/site_manager.dart';
 class DesktopLeftPanel extends StatefulWidget {
   final double width;
   final ValueChanged<double> onResize;
-  final ValueChanged<String> onOpenDraft;
   final VoidCallback onCollapse;
 
   // 实时数据
@@ -46,13 +45,11 @@ class DesktopLeftPanel extends StatefulWidget {
   final ValueChanged<RepoConfig>? onSiteChange;
   final VoidCallback onShowHelp;
   final VoidCallback onOpenRecycleBin;
+  final VoidCallback onOpenP2PSync;
   final VoidCallback onOpenImageBedManager;
   final VoidCallback onOpenProxySettings;
   final VoidCallback onOpenCacheCleanup;
   final VoidCallback onExportLogs;
-  final VoidCallback onFixEncoding;
-  final VoidCallback onToggleOfflineMode;
-  final VoidCallback onToggleNightEye;
   final VoidCallback onOpenLinkChecker;
   final VoidCallback onOpenBatchTools;
   final VoidCallback onOpenAiPromptTemplates;
@@ -61,7 +58,6 @@ class DesktopLeftPanel extends StatefulWidget {
     super.key,
     required this.width,
     required this.onResize,
-    required this.onOpenDraft,
     required this.onCollapse,
     this.repos = const [],
     this.drafts = const [],
@@ -93,13 +89,11 @@ class DesktopLeftPanel extends StatefulWidget {
     this.onSiteChange,
     required this.onShowHelp,
     required this.onOpenRecycleBin,
+    required this.onOpenP2PSync,
     required this.onOpenImageBedManager,
     required this.onOpenProxySettings,
     required this.onOpenCacheCleanup,
     required this.onExportLogs,
-    required this.onFixEncoding,
-    required this.onToggleOfflineMode,
-    required this.onToggleNightEye,
     required this.onOpenLinkChecker,
     required this.onOpenBatchTools,
     required this.onOpenAiPromptTemplates,
@@ -276,6 +270,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                       onToggle: () => _toggleSection('system'),
                       children: [
                         _navItem(icon: Icons.cloud_sync, label: '云同步', onTap: widget.onOpenSyncSettings),
+                        _navItem(icon: Icons.wifi, label: 'P2P 同步', onTap: widget.onOpenP2PSync),
                         _navItem(icon: Icons.settings_outlined, label: '设置', onTap: widget.onOpenSettings),
                         _navItem(icon: Icons.history, label: '操作日志', onTap: widget.onOpenLogs),
                         _navItem(icon: Icons.delete_outline, label: '回收站', onTap: widget.onOpenRecycleBin),
