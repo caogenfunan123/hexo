@@ -129,19 +129,7 @@ class _EditorDropTargetState extends State<EditorDropTarget> {
       onDragEntered: (detail) {
         setState(() {
           _dragging = true;
-          if (detail.files.length == 1) {
-            final path = detail.files.first.path;
-            final name = path.split('/').last;
-            if (_isImageFile(path)) {
-              _dragMessage = '释放以插入图片: $name';
-            } else if (_isMarkdownFile(path)) {
-              _dragMessage = '释放以打开文件: $name';
-            } else {
-              _dragMessage = '释放以添加文件: $name';
-            }
-          } else {
-            _dragMessage = '释放以添加 ${detail.files.length} 个文件';
-          }
+          _dragMessage = '释放文件以添加到编辑器';
         });
       },
       onDragExited: (detail) {

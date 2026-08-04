@@ -153,9 +153,9 @@ class _CommandPaletteState extends State<CommandPalette> {
                   ),
                 ],
               ),
-              child: RawKeyboardListener(
+              child: KeyboardListener(
                 focusNode: _focusNode,
-                onKey: _handleKey,
+                onKeyEvent: _handleKey,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
