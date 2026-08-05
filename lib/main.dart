@@ -143,6 +143,11 @@ class _HexoAppState extends State<HexoApp> {
     setState(() => _settings = _settings.copyWith(themeColor: c.value));
   }
 
+  /// 接收完整的 AppSettings 更新，触发 MaterialApp 重建（DesignConfig 变化时主题实时更新）
+  void updateSettings(AppSettings s) {
+    setState(() => _settings = s);
+  }
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -161,7 +166,9 @@ class _HexoAppState extends State<HexoApp> {
         theme: AppTheme.lightFromConfig(_settings.ui.designConfig),
         darkTheme: AppTheme.darkFromConfig(_settings.ui.designConfig),
         home: RootShell(
-            onThemeChanged: updateTheme, initialSettings: _settings),
+            onThemeChanged: updateTheme,
+            onSettingsChanged: updateSettings,
+            initialSettings: _settings),
       ),
     );
   }
@@ -169,10 +176,12 @@ class _HexoAppState extends State<HexoApp> {
 
 class RootShell extends StatefulWidget {
   final void Function(Color) onThemeChanged;
+  final void Function(AppSettings)? onSettingsChanged;
   final AppSettings initialSettings;
   const RootShell(
       {super.key,
       required this.onThemeChanged,
+      this.onSettingsChanged,
       required this.initialSettings});
 
   @override
@@ -1742,6 +1751,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     _startAutoSync(); // 重启自动同步（间隔/开关可能变化）
     await storage.saveSettings(s);
     widget.onThemeChanged(Color(s.themeColor));
+    // 通知父 widget 重建 MaterialApp（DesignConfig 变化时主题实时更新）
+    widget.onSettingsChanged?.call(s);
   }
 
   Future<void> _updateRepos(List<RepoConfig> r) async {
