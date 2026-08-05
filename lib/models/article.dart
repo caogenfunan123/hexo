@@ -126,12 +126,16 @@ class Article {
       }
     }
 
+    // 未来日期保护：如果 createdAt 在未来，使用当前日期
+    // 避免因时区差异导致 Cloudflare 构建时文章被判定为"未来文章"而不显示
+    final effectiveDate = createdAt.isAfter(DateTime.now()) ? DateTime.now() : createdAt;
+
     final dateFull =
-        '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')} ${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}:${createdAt.second.toString().padLeft(2, '0')}';
+        '${effectiveDate.year.toString().padLeft(4, '0')}-${effectiveDate.month.toString().padLeft(2, '0')}-${effectiveDate.day.toString().padLeft(2, '0')} ${effectiveDate.hour.toString().padLeft(2, '0')}:${effectiveDate.minute.toString().padLeft(2, '0')}:${effectiveDate.second.toString().padLeft(2, '0')}';
     final dateShort =
-        '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}';
+        '${effectiveDate.year.toString().padLeft(4, '0')}-${effectiveDate.month.toString().padLeft(2, '0')}-${effectiveDate.day.toString().padLeft(2, '0')}';
     final timeFull =
-        '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}:${createdAt.second.toString().padLeft(2, '0')}';
+        '${effectiveDate.hour.toString().padLeft(2, '0')}:${effectiveDate.minute.toString().padLeft(2, '0')}:${effectiveDate.second.toString().padLeft(2, '0')}';
     // 按框架生成日期格式：
     // - Hugo: 纯日期，避免未来时间导致文章被跳过
     // - Jekyll: 完整日期时间，模板中附加 +0800 时区
@@ -243,12 +247,15 @@ class Article {
 
   /// 使用自定义模板生成 Markdown
   String _applyCustomTemplate(TemplateItem template) {
+    // 未来日期保护
+    final effectiveDate = createdAt.isAfter(DateTime.now()) ? DateTime.now() : createdAt;
+
     final dateFull =
-        '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')} ${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}:${createdAt.second.toString().padLeft(2, '0')}';
+        '${effectiveDate.year.toString().padLeft(4, '0')}-${effectiveDate.month.toString().padLeft(2, '0')}-${effectiveDate.day.toString().padLeft(2, '0')} ${effectiveDate.hour.toString().padLeft(2, '0')}:${effectiveDate.minute.toString().padLeft(2, '0')}:${effectiveDate.second.toString().padLeft(2, '0')}';
     final dateShort =
-        '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}';
+        '${effectiveDate.year.toString().padLeft(4, '0')}-${effectiveDate.month.toString().padLeft(2, '0')}-${effectiveDate.day.toString().padLeft(2, '0')}';
     final timeFull =
-        '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}:${createdAt.second.toString().padLeft(2, '0')}';
+        '${effectiveDate.hour.toString().padLeft(2, '0')}:${effectiveDate.minute.toString().padLeft(2, '0')}:${effectiveDate.second.toString().padLeft(2, '0')}';
     // 按模板所属框架生成日期格式
     String dateForTemplate;
     switch (template.frameworkId) {
@@ -489,8 +496,10 @@ class Article {
   }
 
   String fileName({bool postDatePrefix = false}) {
+    // 未来日期保护：文件名中的日期前缀也不应为未来日期
+    final effectiveDate = createdAt.isAfter(DateTime.now()) ? DateTime.now() : createdAt;
     final datePrefix = postDatePrefix
-        ? '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}-'
+        ? '${effectiveDate.year.toString().padLeft(4, '0')}-${effectiveDate.month.toString().padLeft(2, '0')}-${effectiveDate.day.toString().padLeft(2, '0')}-'
         : '';
     final base = title.isEmpty
         ? 'untitled'
@@ -520,7 +529,9 @@ extension ArticleSlug on Article {
   String toSlug() {
     final hasNonAscii = title.codeUnits.any((c) => c > 127);
     if (hasNonAscii) {
-      return 'post-${createdAt.millisecondsSinceEpoch}';
+      // 未来日期保护
+      final effectiveDate = createdAt.isAfter(DateTime.now()) ? DateTime.now() : createdAt;
+      return 'post-${effectiveDate.millisecondsSinceEpoch}';
     }
     return title
         .replaceAll(RegExp(r'[^\w\s-]'), '')

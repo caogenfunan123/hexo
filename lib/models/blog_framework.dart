@@ -52,8 +52,9 @@ type: page
     // ── Hugo ──
     // Front Matter: YAML/TOML/JSON 均可，这里用 YAML
     // 文件名: 自由命名，无日期前缀要求
-    // 注意: date 格式应带时区（如 2026-08-05T10:30:00+08:00）
-    //       draft 默认应为 false，hugo new 会设为 true 需手动改
+    // 注意: date 用纯日期（YYYY-MM-DD），不带时间，避免时区差异导致文章被判定为"未来"
+    //       draft 必须为 false，否则 Hugo 不构建草稿
+    //       buildFuture = true 已在 hugo.toml 中设置作为兜底保护
     BlogFramework(
       id: 'hugo',
       name: 'Hugo',

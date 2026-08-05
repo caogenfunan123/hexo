@@ -123,6 +123,7 @@ categories: {{categories}}
 ''',
       ),
       // Hugo
+      // 注意: date 用纯日期(YYYY-MM-DD)，draft 必须为 false
       TemplateItem(
         id: 'builtin_hugo_post',
         name: 'Hugo 文章模板',
