@@ -13,6 +13,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:system_tray/system_tray.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../theme/app_theme.dart';
 import '../controllers/controllers.dart';
@@ -21,6 +22,13 @@ import 'desktop_shell.dart';
 /// 桌面版启动入口（由 lib/main.dart 根据平台自动调用，或通过 --target 直接使用）
 Future<void> runDesktopApp() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 桌面端必须初始化 sqflite FFI，否则 SQLite 操作会抛 MissingPluginException
+  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
+
   await windowManager.ensureInitialized();
   try {
     // await hotKeyManager.unregisterAll();

@@ -44,7 +44,12 @@ class DesktopEditorArea extends StatelessWidget {
           Expanded(
             child: IndexedStack(
               index: activeIndex.clamp(0, tabs.length - 1),
-              children: tabs.map((t) => t.content ?? const SizedBox.shrink()).toList(),
+              children: tabs.map((t) {
+                if (t.contentBuilder != null) {
+                  return Builder(builder: t.contentBuilder!);
+                }
+                return const SizedBox.shrink();
+              }).toList(),
             ),
           ),
         ],

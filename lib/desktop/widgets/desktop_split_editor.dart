@@ -259,14 +259,14 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
             constraints: const BoxConstraints(maxWidth: 720),
             child: ScrollbarTheme(
               data: ScrollbarThemeData(
-                thickness: MaterialStateProperty.all(0), // 隐藏滚动条
+                thickness: WidgetStateProperty.all(0), // 隐藏滚动条
               ),
               child: TextField(
                 controller: widget.contentController,
                 focusNode: widget.focusNode,
                 minLines: minLines,
                 maxLines: null,
-                expands: constraints.maxHeight.isFinite != true,
+                expands: constraints.maxHeight.isFinite,
                 keyboardType: TextInputType.multiline,
                 cursorColor: cs.primary,
                 onChanged: (_) => widget.onChanged?.call(),
@@ -313,7 +313,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
         constraints: const BoxConstraints(maxWidth: 720),
         child: ScrollbarTheme(
           data: ScrollbarThemeData(
-            thickness: MaterialStateProperty.all(0), // 隐藏滚动条
+            thickness: WidgetStateProperty.all(0), // 隐藏滚动条
           ),
           child: Scrollbar(
             controller: _previewScrollCtrl,
@@ -351,7 +351,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
                   : 15;
               return ScrollbarTheme(
                 data: ScrollbarThemeData(
-                  thickness: MaterialStateProperty.all(0), // 隐藏滚动条
+                  thickness: WidgetStateProperty.all(0), // 隐藏滚动条
                 ),
                 child: Scrollbar(
                   controller: _sourceScrollCtrl,
@@ -425,7 +425,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
           flex: ((1 - _splitRatio) * 100).round(),
           child: ScrollbarTheme(
             data: ScrollbarThemeData(
-              thickness: MaterialStateProperty.all(0), // 隐藏滚动条
+              thickness: WidgetStateProperty.all(0), // 隐藏滚动条
             ),
             child: Scrollbar(
               controller: _previewScrollCtrl,

@@ -1,14 +1,16 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../models/app_settings.dart';
 import '../models/article.dart';
 import '../models/repo_config.dart';
 import '../models/template_item.dart';
 
-/// 本地 JSON 持久化：优先 MethodChannel 应用目录，失败则用临时目录。
+/// 本地 JSON 持久化：桌面端用 path_provider，移动端用 MethodChannel，失败则用临时目录。
 class StorageService {
   static const _channel = MethodChannel('hexo/native');
   static const _settingsFile = 'settings.json';
@@ -22,6 +24,18 @@ class StorageService {
 
   Future<Directory> get root async {
     if (_root != null) return _root!;
+    // 桌面端：使用 path_provider 获取应用支持目录
+    if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+      try {
+        final appDir = await getApplicationSupportDirectory();
+        _root = Directory('${appDir.path}/hexo_blog_manager');
+        if (!await _root!.exists()) await _root!.create(recursive: true);
+        return _root!;
+      } catch (e) {
+        debugPrint('StorageService: path_provider failed: $e');
+      }
+    }
+    // 移动端：使用 MethodChannel 获取应用文件目录
     try {
       final path = await _channel.invokeMethod<String>('getFilesDir');
       if (path != null && path.isNotEmpty) {
@@ -30,6 +44,7 @@ class StorageService {
         return _root!;
       }
     } catch (_) {}
+    // 最终降级：系统临时目录
     _root = Directory('${Directory.systemTemp.path}/hexo_blog_manager');
     if (!await _root!.exists()) await _root!.create(recursive: true);
     return _root!;

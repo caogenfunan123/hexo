@@ -33,7 +33,7 @@ class EditorTab {
   final IconData icon;
   final bool canClose;
   final String contentKey;
-  final Widget? content;
+  final WidgetBuilder? contentBuilder;
 
   const EditorTab({
     required this.id,
@@ -41,7 +41,7 @@ class EditorTab {
     this.icon = Icons.article_outlined,
     this.canClose = true,
     this.contentKey = '',
-    this.content,
+    this.contentBuilder,
   });
 
   @override

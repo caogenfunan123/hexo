@@ -3,7 +3,9 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../models/app_settings.dart';
 import 'github_service.dart';
@@ -15,6 +17,18 @@ class ImageService {
   ImageService(this.github);
 
   Future<Uint8List?> pickImageBytes() async {
+    // 桌面端：使用 file_picker
+    if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
+      if (result == null || result.files.isEmpty) return null;
+      final path = result.files.single.path;
+      if (path == null) return null;
+      return await File(path).readAsBytes();
+    }
+    // 移动端：使用 MethodChannel
     try {
       final result = await _channel.invokeMethod<dynamic>('pickImage');
       if (result is Uint8List) return result;
@@ -32,7 +46,6 @@ class ImageService {
         }
       }
     } catch (e) {
-      // fallback: try open document via channel returning path only
       rethrow;
     }
     return null;
@@ -40,6 +53,22 @@ class ImageService {
 
   /// 批量选择图片，返回字节列表
   Future<List<Uint8List>?> pickMultipleImageBytes() async {
+    // 桌面端：使用 file_picker
+    if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: true,
+      );
+      if (result == null || result.files.isEmpty) return null;
+      final bytesList = <Uint8List>[];
+      for (final file in result.files) {
+        if (file.path != null) {
+          bytesList.add(await File(file.path!).readAsBytes());
+        }
+      }
+      return bytesList.isNotEmpty ? bytesList : null;
+    }
+    // 移动端：使用 MethodChannel
     try {
       final result = await _channel.invokeMethod<dynamic>('pickMultipleImages');
       if (result == null) return null;

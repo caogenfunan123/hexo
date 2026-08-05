@@ -49,7 +49,7 @@ import '../screens/dashboard_screen.dart';
 import '../screens/rss_screen.dart';
 import '../screens/history_screen.dart';
 import '../screens/folder_upload_screen.dart';
-import '../screens/preview_screen.dart';
+// preview_screen 使用 WebView，桌面端不可用，改为系统浏览器打开
 import '../screens/settings_screen.dart';
 import '../screens/site_editor_screen.dart';
 import '../screens/site_management_screen.dart';
@@ -105,7 +105,7 @@ import 'package:flutter_highlight/themes/monokai-sublime.dart' as highlight_mono
 import 'package:flutter_highlight/themes/dracula.dart' as highlight_dracula;
 import 'package:flutter_highlight/themes/nord.dart' as highlight_nord;
 import 'package:flutter_highlight/themes/vs.dart' as highlight_vs;
-import 'package:webview_flutter/webview_flutter.dart';
+// webview_flutter 在桌面端不可用，Mermaid 预览改为纯文本展示
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:markdown/markdown.dart' as md;
@@ -1252,13 +1252,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       id: tabId,
       title: article.title.isNotEmpty ? article.title : '未命名',
       icon: Icons.edit_note,
-      content: _buildEmbeddedEditor(),
+      contentBuilder: (_) => _buildEmbeddedEditor(),
       canClose: true,
     ));
   }
 
   void _openTab(String id, String title, IconData icon, Widget content) {
-    _editor.addTab(EditorTab(id: id, title: title, icon: icon, content: content, canClose: true));
+    _editor.addTab(EditorTab(id: id, title: title, icon: icon, contentBuilder: (_) => content, canClose: true));
   }
 
   void _closeTab(int index) {
@@ -2977,9 +2977,20 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   void _openPreview() {
-    _openTab('preview', '网站预览', Icons.language, PreviewScreen(
-      activeRepo: activeRepo,
-    ));
+    // 桌面端 WebView 不可用，直接在系统浏览器中打开
+    final url = activeRepo?.siteUrl ?? 'https://caogenfunan.me/';
+    try {
+      if (Platform.isWindows) {
+        Process.run('cmd', ['/c', 'start', url]);
+      } else if (Platform.isMacOS) {
+        Process.run('open', [url]);
+      } else {
+        Process.run('xdg-open', [url]);
+      }
+      _showToast('已在浏览器中打开: $url');
+    } catch (e) {
+      _showToast('无法打开浏览器: $e');
+    }
   }
 
   void _openSettings() {
@@ -6091,45 +6102,44 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ──────────────────────────────────────────────
 
   Widget _buildMermaidPreview(String mermaidCode) {
-    const htmlTemplate = '''
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-  <script>
-    mermaid.initialize({ startOnLoad: true, theme: 'default' });
-  </script>
-  <style>
-    body { margin: 0; padding: 16px; background: transparent; }
-    .mermaid { display: flex; justify-content: center; }
-  </style>
-</head>
-<body>
-  <div class="mermaid">
-PLACEHOLDER
-  </div>
-</body>
-</html>
-''';
-
-    final html = htmlTemplate.replaceFirst('PLACEHOLDER', mermaidCode.trim());
-
+    // 桌面端不支持 WebView，用代码块展示 Mermaid 源码
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFF6F8FA),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey.shade300),
       ),
-      height: 300,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: WebViewWidget(
-          controller: WebViewController()
-            ..setJavaScriptMode(JavaScriptMode.unrestricted)
-            ..loadHtmlString(html),
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.schema, size: 16, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 6),
+              Text(
+                'Mermaid 图表（桌面端仅显示源码）',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SelectableText(
+            mermaidCode.trim(),
+            style: TextStyle(
+              fontSize: 13,
+              fontFamily: 'monospace',
+              color: isDark ? Colors.white.withOpacity(0.8) : const Color(0xFF1F2937),
+            ),
+          ),
+        ],
       ),
     );
   }
