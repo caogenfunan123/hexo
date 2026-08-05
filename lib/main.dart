@@ -1074,8 +1074,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       await _saveDraft(pub.copyWith(isDraft: false, published: true));
       await _refreshRemote();
       // 触发 Cloudflare Pages 重新部署
-      if (_settings.cloudflareDeployHook.isNotEmpty) {
-        final deployed = await GitHubService.triggerCloudflareDeploy(_settings.cloudflareDeployHook);
+      if (settings.cloudflareDeployHook.isNotEmpty) {
+        final deployed = await GitHubService.triggerCloudflareDeploy(settings.cloudflareDeployHook);
         logService.add('Cloudflare 部署', deployed ? '已触发重新部署' : '部署钩子触发失败', success: deployed);
       }
       logService.add('发布成功', '已发布到 ${repo.fullName}: ${pub.title}');

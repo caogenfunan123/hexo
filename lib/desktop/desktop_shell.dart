@@ -2798,11 +2798,6 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         formatted++;
       }
       await storage.saveDrafts(drafts);
-      // 批量发布后触发 Cloudflare Pages 重新部署
-      if (published > 0 && settings.cloudflareDeployHook.isNotEmpty) {
-        final deployed = await GitHubService.triggerCloudflareDeploy(settings.cloudflareDeployHook);
-        logService.add('Cloudflare 部署', deployed ? '批量发布后已触发重新部署' : '部署钩子触发失败', success: deployed);
-      }
       if (mounted) {
         
         _showToast('已格式化 $formatted 篇草稿');
@@ -2839,6 +2834,11 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         } catch (e) { debugPrint('Shell: site config load failed: $e'); }
       }
       await storage.saveDrafts(drafts);
+      // 批量发布后触发 Cloudflare Pages 重新部署
+      if (published > 0 && settings.cloudflareDeployHook.isNotEmpty) {
+        final deployed = await GitHubService.triggerCloudflareDeploy(settings.cloudflareDeployHook);
+        logService.add('Cloudflare 部署', deployed ? '批量发布后已触发重新部署' : '部署钩子触发失败', success: deployed);
+      }
       if (mounted) {
         _editor.setEditorBusy(false); _editor.setEditorStatus(null);
         _showToast('批量发布完成: $published 成功, $failed 失败');
