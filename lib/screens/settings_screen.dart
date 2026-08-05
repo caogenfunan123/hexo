@@ -119,6 +119,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               await widget.onSettingsChanged(ns);
             },
           ),
+          const SizedBox(height: 12),
+          _field(
+            label: '站点预览 URL',
+            value: s.sitePreviewUrl,
+            hint: 'https://your-site.com/',
+            onChanged: (v) async {
+              final ns = s.copyWith(sitePreviewUrl: v);
+              await widget.onSettingsChanged(ns);
+            },
+          ),
         ]),
 
         const SizedBox(height: 20),
@@ -591,12 +601,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('博客地址'),
             subtitle: Text(activeRepo?.siteUrl.isNotEmpty == true
                 ? activeRepo!.siteUrl
-                : 'https://caogenfunan.me/'),
+                : (s.sitePreviewUrl.isNotEmpty ? s.sitePreviewUrl : '未设置')),
             trailing: const Icon(Icons.copy),
             onTap: () {
               final u = activeRepo?.siteUrl.isNotEmpty == true
                   ? activeRepo!.siteUrl
-                  : 'https://caogenfunan.me/';
+                  : (s.sitePreviewUrl.isNotEmpty ? s.sitePreviewUrl : '');
+              if (u.isEmpty) {
+                widget.onShowToast('未设置站点地址');
+                return;
+              }
               Clipboard.setData(ClipboardData(text: u));
               widget.onShowToast('已复制站点地址');
             },
@@ -696,7 +710,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const ListTile(
             contentPadding: EdgeInsets.zero,
             title: Text('作者'),
-            subtitle: Text('小子'),
+            subtitle: Text('开发者'),
           ),
           const ListTile(
             contentPadding: EdgeInsets.zero,
@@ -782,12 +796,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required String value,
     required ValueChanged<String> onChanged,
     bool obscure = false,
+    String? hint,
   }) {
     return TextFormField(
       initialValue: value,
       obscureText: obscure,
       decoration: InputDecoration(
         labelText: label,
+        hintText: hint,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
       ),
       onChanged: onChanged,

@@ -121,6 +121,7 @@ class AppSettings {
   int get httpTimeoutSeconds => ui.httpTimeoutSeconds;
   bool get allowInsecureHttps => ui.allowInsecureHttps;
   List<String> get statusPresets => ui.statusPresets;
+  String get sitePreviewUrl => ui.sitePreviewUrl;
   String get cloudflareDeployHook => ui.cloudflareDeployHook;
 
   // ============================================================
@@ -222,6 +223,7 @@ class AppSettings {
     int? httpTimeoutSeconds,
     bool? allowInsecureHttps,
     List<String>? statusPresets,
+    String? sitePreviewUrl,
     String? cloudflareDeployHook,
   }) {
     // 如果有扁平参数传入，构建对应的子对象
@@ -250,6 +252,7 @@ class AppSettings {
         themeColor != null || nightEyeProtection != null ||
         nightEyeIntensity != null || httpTimeoutSeconds != null ||
         allowInsecureHttps != null || statusPresets != null ||
+        sitePreviewUrl != null ||
         cloudflareDeployHook != null;
 
     final GitHubSettings effectiveGitHub = github ??
@@ -334,6 +337,7 @@ class AppSettings {
                 httpTimeoutSeconds: httpTimeoutSeconds,
                 allowInsecureHttps: allowInsecureHttps,
                 statusPresets: statusPresets,
+                sitePreviewUrl: sitePreviewUrl,
                 cloudflareDeployHook: cloudflareDeployHook,
               )
             : this.ui);

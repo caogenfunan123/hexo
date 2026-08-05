@@ -27,12 +27,15 @@ class UiSettings {
   // 发布状态预设
   final List<String> statusPresets;
 
+  // 站点预览 URL
+  final String sitePreviewUrl;
+
   // Cloudflare
   final String cloudflareDeployHook;
 
   const UiSettings({
     this.siteAvatar = '',
-    this.siteName = '小子的博客',
+    this.siteName = '',
     this.siteBio = '分享技术、生活和思考',
     this.siteHome = '',
     this.siteAbout = '',
@@ -45,6 +48,7 @@ class UiSettings {
     this.httpTimeoutSeconds = 30,
     this.allowInsecureHttps = false,
     this.statusPresets = const ['publish', 'draft', 'pending', 'private'],
+    this.sitePreviewUrl = '',
     this.cloudflareDeployHook = '',
   });
 
@@ -63,6 +67,7 @@ class UiSettings {
     int? httpTimeoutSeconds,
     bool? allowInsecureHttps,
     List<String>? statusPresets,
+    String? sitePreviewUrl,
     String? cloudflareDeployHook,
   }) {
     return UiSettings(
@@ -80,6 +85,7 @@ class UiSettings {
       httpTimeoutSeconds: httpTimeoutSeconds ?? this.httpTimeoutSeconds,
       allowInsecureHttps: allowInsecureHttps ?? this.allowInsecureHttps,
       statusPresets: statusPresets ?? this.statusPresets,
+      sitePreviewUrl: sitePreviewUrl ?? this.sitePreviewUrl,
       cloudflareDeployHook: cloudflareDeployHook ?? this.cloudflareDeployHook,
     );
   }
@@ -99,12 +105,13 @@ class UiSettings {
         'httpTimeoutSeconds': httpTimeoutSeconds,
         'allowInsecureHttps': allowInsecureHttps,
         'statusPresets': statusPresets,
+        'sitePreviewUrl': sitePreviewUrl,
         'cloudflareDeployHook': cloudflareDeployHook,
       };
 
   factory UiSettings.fromJson(Map<String, dynamic> j) => UiSettings(
         siteAvatar: j['siteAvatar']?.toString() ?? '',
-        siteName: j['siteName']?.toString() ?? '小子的博客',
+        siteName: j['siteName']?.toString() ?? '',
         siteBio: j['siteBio']?.toString() ?? '分享技术、生活和思考',
         siteHome: j['siteHome']?.toString() ?? '',
         siteAbout: j['siteAbout']?.toString() ?? '',
@@ -117,6 +124,7 @@ class UiSettings {
         httpTimeoutSeconds: (j['httpTimeoutSeconds'] as num?)?.toInt() ?? 30,
         allowInsecureHttps: j['allowInsecureHttps'] == true,
         statusPresets: _parseList(j['statusPresets'], const ['publish', 'draft', 'pending', 'private']),
+        sitePreviewUrl: j['sitePreviewUrl']?.toString() ?? '',
         cloudflareDeployHook: j['cloudflareDeployHook']?.toString() ?? '',
       );
 

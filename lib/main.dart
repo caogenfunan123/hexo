@@ -385,12 +385,12 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         r = [
           RepoConfig(
             id: DateTime.now().millisecondsSinceEpoch.toString(),
-            name: '小子的博客',
+            name: '我的博客',
             owner: 'caogenfunan123',
             repo: 'xiamend',
             branch: 'main',
             postsPath: 'source/_posts',
-            siteUrl: 'https://caogenfunan.me/',
+            siteUrl: '',
             token: s.effectiveGithubToken,
             isDefault: true,
           )
@@ -1713,7 +1713,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   Future<void> _refreshRss() async {
     final url = activeRepo?.siteUrl.isNotEmpty == true
         ? activeRepo!.siteUrl
-        : 'https://caogenfunan.me/';
+        : (settings.sitePreviewUrl.isNotEmpty ? settings.sitePreviewUrl : '');
     try {
       rssItems = await rssService.fetch(url);
       if (mounted) setState(() {});
@@ -3406,8 +3406,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     final pages = TextEditingController(
         text: existing?.pagesPath ?? 'source');
     final site = TextEditingController(
-        text: existing?.siteUrl ??
-            'https://caogenfunan.me/');
+        text: existing?.siteUrl.isNotEmpty == true
+            ? existing!.siteUrl
+            : '');
     final token = TextEditingController(
         text: existing?.token.isNotEmpty == true
             ? existing!.token
@@ -3979,7 +3980,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   Future<void> _showPwaGuide() async {
     final site = activeRepo?.siteUrl.isNotEmpty == true
         ? activeRepo!.siteUrl
-        : 'https://caogenfunan.me/';
+        : (settings.sitePreviewUrl.isNotEmpty ? settings.sitePreviewUrl : '');
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -4541,7 +4542,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             github: github,
             activeRepo: effectiveRepo);
       case 7:
-        return PreviewScreen(activeRepo: activeRepo);
+        return PreviewScreen(
+            activeRepo: activeRepo,
+            sitePreviewUrl: settings.sitePreviewUrl);
       case 8:
         return SettingsScreen(
             settings: settings,

@@ -134,6 +134,7 @@ categories: {{categories}}
 title: "{{title}}"
 date: {{date}}
 draft: {{draft}}
+description: ""
 tags: {{tags}}
 categories: {{categories}}
 ---
@@ -153,7 +154,7 @@ title: "{{title}}"
 date: {{date}}
 categories: {{categories}}
 tags: {{tags}}
-permalink: /{{slug}}/
+description: ""
 ---
 ''',
       ),
@@ -167,6 +168,7 @@ permalink: /{{slug}}/
         createdAt: now,
         frontMatter: '''---
 title: "{{title}}"
+description: ""
 pubDate: {{date}}
 draft: {{draft}}
 tags: {{tags}}
@@ -184,6 +186,7 @@ tags: {{tags}}
         frontMatter: '''---
 title: {{title}}
 date: {{date}}
+description: ""
 tags: {{tags}}
 ---
 ''',
@@ -199,8 +202,9 @@ tags: {{tags}}
         frontMatter: '''---
 title: "{{title}}"
 date: "{{date}}"
-slug: "/{{slug}}/"
+slug: "{{slug}}"
 tags: {{tags}}
+draft: {{draft}}
 ---
 ''',
       ),
@@ -216,6 +220,7 @@ tags: {{tags}}
 title: "{{title}}"
 date: "{{date}}"
 tags: {{tags}}
+draft: {{draft}}
 ---
 ''',
       ),
@@ -227,12 +232,13 @@ tags: {{tags}}
         isPost: true,
         isBuiltin: true,
         createdAt: now,
-        frontMatter: '''---
-Title: {{title}}
+        frontMatter: '''Title: {{title}}
 Date: {{date}}
 Tags: {{tags}}
 Category: {{categories}}
----
+Slug: {{slug}}
+Status: published
+
 ''',
       ),
       // 11ty

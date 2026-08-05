@@ -399,12 +399,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       r = [
         RepoConfig(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
-          name: '小子的博客',
+          name: '我的博客',
           owner: 'caogenfunan123',
           repo: 'xiamend',
           branch: 'main',
           postsPath: 'source/_posts',
-          siteUrl: 'https://caogenfunan.me/',
+          siteUrl: '',
           token: s.effectiveGithubToken,
           isDefault: true,
         )
@@ -1095,7 +1095,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   Future<void> _refreshRss() async {
-    final url = activeRepo?.siteUrl.isNotEmpty == true ? activeRepo!.siteUrl : 'https://caogenfunan.me/';
+    final url = activeRepo?.siteUrl.isNotEmpty == true ? activeRepo!.siteUrl : (settings.sitePreviewUrl.isNotEmpty ? settings.sitePreviewUrl : '');
     try { rssItems = await rssService.fetch(url); } catch (e) {
       debugPrint('RSS fetch error: $e');
     }
@@ -2987,7 +2987,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   void _openPreview() {
     // 桌面端 WebView 不可用，直接在系统浏览器中打开
-    final url = activeRepo?.siteUrl ?? 'https://caogenfunan.me/';
+    final url = activeRepo?.siteUrl.isNotEmpty == true
+        ? activeRepo!.siteUrl
+        : (settings.sitePreviewUrl.isNotEmpty ? settings.sitePreviewUrl : '');
+    if (url.isEmpty) return;
     try {
       if (Platform.isWindows) {
         Process.run('cmd', ['/c', 'start', url]);

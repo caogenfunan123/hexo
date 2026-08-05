@@ -51,6 +51,7 @@ type: page
 title: "{{title}}"
 date: {{date}}
 draft: {{draft}}
+description: ""
 tags: {{tags}}
 categories: {{categories}}
 ---
@@ -76,7 +77,7 @@ title: "{{title}}"
 date: {{date}}
 categories: {{categories}}
 tags: {{tags}}
-permalink: /{{title}}/
+description: ""
 ---
 ''',
       pageFrontMatter: '''---
@@ -96,6 +97,7 @@ permalink: /{{title}}/
       postFrontMatter: '''---
 title: {{title}}
 date: {{date}}
+description: ""
 tags: {{tags}}
 ---
 ''',
@@ -115,8 +117,9 @@ sidebar: auto
       postFrontMatter: '''---
 title: "{{title}}"
 date: "{{date}}"
-slug: "/{{title}}/"
+slug: "{{slug}}"
 tags: {{tags}}
+draft: {{draft}}
 ---
 ''',
       pageFrontMatter: '''---
@@ -136,6 +139,7 @@ slug: "/{{title}}/"
 title: "{{title}}"
 date: "{{date}}"
 tags: {{tags}}
+draft: {{draft}}
 ---
 ''',
       pageFrontMatter: '''---
@@ -152,8 +156,9 @@ title: "{{title}}"
       postDatePrefix: false,
       postFrontMatter: '''---
 title: "{{title}}"
+description: ""
 pubDate: {{date}}
-draft: false
+draft: {{draft}}
 tags: {{tags}}
 ---
 ''',
@@ -170,18 +175,18 @@ layout: ../layouts/Page.astro
       defaultPostsPath: 'content',
       defaultPagesPath: 'content/pages',
       postDatePrefix: false,
-      postFrontMatter: '''---
-Title: {{title}}
+      postFrontMatter: '''Title: {{title}}
 Date: {{date}}
 Tags: {{tags}}
 Category: {{categories}}
----
+Slug: {{slug}}
+Status: published
+
 ''',
-      pageFrontMatter: '''---
-Title: {{title}}
+      pageFrontMatter: '''Title: {{title}}
 Date: {{date}}
 Template: page
----
+
 ''',
     ),
     // ── 11ty ──

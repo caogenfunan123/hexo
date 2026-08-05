@@ -4,8 +4,9 @@ import '../models/repo_config.dart';
 
 class PreviewScreen extends StatefulWidget {
   final RepoConfig? activeRepo;
+  final String? sitePreviewUrl;
 
-  const PreviewScreen({super.key, required this.activeRepo});
+  const PreviewScreen({super.key, required this.activeRepo, this.sitePreviewUrl});
 
   @override
   State<PreviewScreen> createState() => _PreviewScreenState();
@@ -20,15 +21,21 @@ class _PreviewScreenState extends State<PreviewScreen> {
   @override
   void initState() {
     super.initState();
-    _currentUrl = widget.activeRepo?.siteUrl ?? 'https://caogenfunan.me/';
+    _currentUrl = widget.activeRepo?.siteUrl.isNotEmpty == true
+        ? widget.activeRepo!.siteUrl
+        : (widget.sitePreviewUrl?.isNotEmpty == true ? widget.sitePreviewUrl! : '');
     _urlCtrl = TextEditingController(text: _currentUrl);
     _webCtrl = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(NavigationDelegate(
         onPageStarted: (_) => setState(() => _loading = true),
         onPageFinished: (_) => setState(() => _loading = false),
-      ))
-      ..loadRequest(Uri.parse(_currentUrl));
+      ));
+    if (_currentUrl.isNotEmpty) {
+      _webCtrl.loadRequest(Uri.parse(_currentUrl));
+    } else {
+      _loading = false;
+    }
   }
 
   @override

@@ -38,9 +38,9 @@ class _SiteEditorScreenState extends State<SiteEditorScreen> {
   void initState() {
     super.initState();
     _descCtrl = TextEditingController(text: '个人博客 - 分享技术、生活与思考');
-    _titleCtrl = TextEditingController(text: '小子的博客');
+    _titleCtrl = TextEditingController(text: '');
     _subtitleCtrl = TextEditingController(text: '记录生活的点滴');
-    _authorCtrl = TextEditingController(text: '小子');
+    _authorCtrl = TextEditingController(text: '');
     _avatarCtrl = TextEditingController();
     _headerCtrl = TextEditingController();
     _footerCtrl = TextEditingController();
