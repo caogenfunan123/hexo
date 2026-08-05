@@ -106,11 +106,12 @@ permalink: /{{slug}}/
     // ── VuePress ──
     // Front Matter: 仅 YAML
     // 文件名: 自由命名，路径决定路由
-    // 注意: README.md 和 index.md 不能同时存在于同一目录
+    // 注意: 文章必须放在 docs/posts/ 子目录下，否则侧边栏和首页列表无法自动扫描
+    //       README.md 和 index.md 不能同时存在于同一目录
     BlogFramework(
       id: 'vuepress',
       name: 'VuePress',
-      defaultPostsPath: 'docs',
+      defaultPostsPath: 'docs/posts',
       defaultPagesPath: 'docs',
       postDatePrefix: false,
       postFrontMatter: '''---
@@ -203,11 +204,13 @@ layout: ../layouts/Page.astro
     // Front Matter: 键值对格式（非 YAML！），不用 --- 分隔符
     // 文件名: 自由命名，无日期前缀要求
     // 注意: 元数据与正文之间用空行分隔
-    //       设置标识符必须全大写（如 SITENAME）
+    //       文章必须放在 content/posts/ 子目录下
+    //       Tags/Category 为空时不应输出该行（Pelican 不识别 [] 语法）
+    //       Slug 应使用 ASCII 字符，中文标题需转拼音或用时间戳
     BlogFramework(
       id: 'pelican',
       name: 'Pelican',
-      defaultPostsPath: 'content',
+      defaultPostsPath: 'content/posts',
       defaultPagesPath: 'content/pages',
       postDatePrefix: false,
       postFrontMatter: '''Title: {{title}}

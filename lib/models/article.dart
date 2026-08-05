@@ -158,15 +158,30 @@ class Article {
         ? '[]'
         : '[${categories.map((c) => c.contains(' ') ? '"$c"' : c).join(', ')}]';
 
+    // Pelican 使用逗号分隔的元数据格式，不是 YAML 数组
+    // 空值时设为空字符串，后续会移除空行
+    final pelicanTagsStr = tags.isEmpty ? '' : tags.join(', ');
+    final pelicanCatsStr = categories.isEmpty ? '' : categories.join(', ');
+
+    // ASCII slug：非 ASCII 标题（如中文）使用时间戳，避免 URL 编码问题
+    final hasNonAscii = title.codeUnits.any((c) => c > 127);
+    final slugValue = hasNonAscii
+        ? 'post-${createdAt.millisecondsSinceEpoch}'
+        : title.toLowerCase().replaceAll(RegExp(r'\s+'), '-');
+
     final fw = BlogFramework.byId(frameworkId);
     if (fw != null) {
       final template = articleType == ArticleType.page ? fw.pageFrontMatter : fw.postFrontMatter;
       if (template.isNotEmpty) {
+        // 根据框架选择标签/分类格式
+        final effectiveTagsStr = frameworkId == 'pelican' ? pelicanTagsStr : tagsStr;
+        final effectiveCatsStr = frameworkId == 'pelican' ? pelicanCatsStr : catsStr;
+
         var fm = template
             .replaceAll('{{title}}', title.isEmpty ? '未命名' : title)
             .replaceAll('{{date}}', dateForFramework)
-            .replaceAll('{{tags}}', tagsStr)
-            .replaceAll('{{categories}}', catsStr);
+            .replaceAll('{{tags}}', effectiveTagsStr)
+            .replaceAll('{{categories}}', effectiveCatsStr);
         if (cover != null && cover!.isNotEmpty) {
           fm = fm.replaceAll('{{cover}}', cover!);
         } else {
@@ -174,9 +189,15 @@ class Article {
           fm = fm.replaceAll(RegExp(r'^.*\{\{cover\}\}.*\n', multiLine: true), '');
         }
         fm = fm.replaceAll('{{draft}}', isDraft.toString());
-        fm = fm.replaceAll('{{slug}}', title.toLowerCase().replaceAll(RegExp(r'\s+'), '-'));
+        fm = fm.replaceAll('{{slug}}', slugValue);
         // 移除所有未解析的模板占位符整行（如 {{summary}} 等）
         fm = fm.replaceAll(RegExp(r'^.*\{\{[^}]+\}\}.*\n', multiLine: true), '');
+
+        // Pelican: 移除值为空的元数据行（如 "Tags: \n"、"Category: \n"）
+        if (frameworkId == 'pelican') {
+          fm = fm.replaceAll(RegExp(r'^(Tags|Category):\s*\n', multiLine: true), '');
+        }
+
         return '$fm\n$content';
       }
     }
@@ -249,14 +270,27 @@ class Article {
     final catsStr = categories.isEmpty
         ? '[]'
         : '[${categories.map((c) => c.contains(' ') ? '"$c"' : c).join(', ')}]';
-    final slug = title.toLowerCase().replaceAll(RegExp(r'\s+'), '-');
+
+    // Pelican 使用逗号分隔格式
+    final pelicanTagsStr = tags.isEmpty ? '' : tags.join(', ');
+    final pelicanCatsStr = categories.isEmpty ? '' : categories.join(', ');
+
+    // ASCII slug：非 ASCII 标题使用时间戳
+    final hasNonAscii = title.codeUnits.any((c) => c > 127);
+    final slug = hasNonAscii
+        ? 'post-${createdAt.millisecondsSinceEpoch}'
+        : title.toLowerCase().replaceAll(RegExp(r'\s+'), '-');
+
+    // 根据模板所属框架选择标签/分类格式
+    final effectiveTagsStr = template.frameworkId == 'pelican' ? pelicanTagsStr : tagsStr;
+    final effectiveCatsStr = template.frameworkId == 'pelican' ? pelicanCatsStr : catsStr;
 
     var fm = template.frontMatter
         .replaceAll('{{title}}', title.isEmpty ? '未命名' : title)
         .replaceAll('{{date}}', dateForTemplate)
         .replaceAll('{{date_short}}', dateShort)
-        .replaceAll('{{tags}}', tagsStr)
-        .replaceAll('{{categories}}', catsStr)
+        .replaceAll('{{tags}}', effectiveTagsStr)
+        .replaceAll('{{categories}}', effectiveCatsStr)
         .replaceAll('{{slug}}', slug)
         .replaceAll('{{draft}}', isDraft.toString())
         .replaceAll('{{year}}', createdAt.year.toString())
@@ -272,6 +306,11 @@ class Article {
 
     // 移除所有未解析的模板占位符整行（如 {{summary}} 等）
     fm = fm.replaceAll(RegExp(r'^.*\{\{[^}]+\}\}.*\n', multiLine: true), '');
+
+    // Pelican: 移除值为空的元数据行
+    if (template.frameworkId == 'pelican') {
+      fm = fm.replaceAll(RegExp(r'^(Tags|Category):\s*\n', multiLine: true), '');
+    }
 
     return '$fm\n$content';
   }
@@ -477,9 +516,14 @@ class _Undefined {
 
 extension ArticleSlug on Article {
   /// 生成 SEO 友好的 slug（处理中文、特殊符号）
+  /// 非 ASCII 标题（如中文）使用时间戳，避免 URL 编码问题
   String toSlug() {
+    final hasNonAscii = title.codeUnits.any((c) => c > 127);
+    if (hasNonAscii) {
+      return 'post-${createdAt.millisecondsSinceEpoch}';
+    }
     return title
-        .replaceAll(RegExp(r'[^\w\s\u4e00-\u9fff-]'), '')
+        .replaceAll(RegExp(r'[^\w\s-]'), '')
         .replaceAll(RegExp(r'\s+'), '-')
         .toLowerCase();
   }

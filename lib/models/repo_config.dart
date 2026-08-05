@@ -167,6 +167,17 @@ class RepoConfig {
       fnRule = expectedRule;
     }
 
+    // ── 迁移逻辑：修正旧版本的错误 postsPath ──
+    // VuePress 旧版 postsPath='docs'，文章应放在 docs/posts/ 子目录下
+    // Pelican 旧版 postsPath='content'，文章应放在 content/posts/ 子目录下
+    String postsPath = j['postsPath']?.toString() ?? 'source/_posts';
+    if (frameworkId == 'vuepress' && postsPath == 'docs') {
+      postsPath = 'docs/posts';
+    }
+    if (frameworkId == 'pelican' && postsPath == 'content') {
+      postsPath = 'content/posts';
+    }
+
     // 兼容旧版本没有 syncType
     SyncType st = SyncType.gitRemote;
     final stStr = j['syncType']?.toString();
@@ -189,7 +200,7 @@ class RepoConfig {
       owner: j['owner']?.toString() ?? '',
       repo: j['repo']?.toString() ?? '',
       branch: j['branch']?.toString() ?? 'main',
-      postsPath: j['postsPath']?.toString() ?? 'source/_posts',
+      postsPath: postsPath,
       pagesPath: j['pagesPath']?.toString() ?? 'source',
       frameworkId: frameworkId,
       postDatePrefix: fnRule.postDatePrefix, // 与 fileNameRule 保持一致

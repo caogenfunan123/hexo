@@ -225,6 +225,8 @@ draft: {{draft}}
 ''',
       ),
       // Pelican
+      // 注意: Tags/Category 为空时自动移除该行，不为空时用逗号分隔
+      //       Slug 自动使用 ASCII 字符（中文标题转时间戳）
       TemplateItem(
         id: 'builtin_pelican_post',
         name: 'Pelican 文章模板',
