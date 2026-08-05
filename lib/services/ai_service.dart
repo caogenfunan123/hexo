@@ -639,6 +639,32 @@ class AiService {
       userPrompt: '请转换以下 FrontMatter：\n\n$frontMatter',
     );
   }
+
+  /// AI 分析仓库：自动检测博客框架并生成适配模板
+  ///
+  /// [repoInfo] 包含仓库中读取到的关键文件内容（配置文件、示例文章等）
+  Future<Map<String, dynamic>> analyzeRepoForTemplate({
+    required AppSettings settings,
+    required String repoInfo,
+    AiProfile? profile,
+  }) async {
+    final result = await complete(
+      settings: settings,
+      profile: profile,
+      systemPrompt: AiSessionManager.analyzeRepoPrompt,
+      userPrompt: '请分析以下仓库信息并生成适配的 FrontMatter 模板：\n\n$repoInfo',
+    );
+    // 提取 JSON 部分
+    try {
+      final jsonStart = result.indexOf('{');
+      final jsonEnd = result.lastIndexOf('}');
+      if (jsonStart >= 0 && jsonEnd > jsonStart) {
+        final jsonStr = result.substring(jsonStart, jsonEnd + 1);
+        return jsonDecode(jsonStr) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return {'error': '无法解析 AI 返回结果', 'raw': result};
+  }
 }
 
 /// 工具调用响应

@@ -669,6 +669,35 @@ AI优先完成：基础页面布局、目录结构、基础配置迁移。
 
   static const modelTestPrompt = '你是一个助手。';
 
+  /// AI 仓库分析：检测博客框架并生成适配模板
+  static const analyzeRepoPrompt = '''你是静态博客框架分析专家。根据提供的仓库文件信息，分析博客类型并生成适配的 FrontMatter 模板。
+
+分析步骤：
+1. 根据配置文件判断框架类型：
+   - _config.yml / package.json 含 hexo → Hexo
+   - config.toml / hugo.toml / go.mod 含 hugo → Hugo
+   - _config.yml / Gemfile 含 jekyll → Jekyll
+   - astro.config.mjs → Astro
+   - config.js / config.ts 含 vuepress → VuePress
+   - gatsby-config.js → Gatsby
+   - next.config.js → Next.js
+   - pelicanconf.py → Pelican
+   - .eleventy.js → 11ty
+2. 分析现有文章 FrontMatter 格式，提取实际使用的字段
+3. 根据主题配置（如 theme: butterfly）推断可能需要额外字段（如 cover, comments, top_img）
+
+请输出 JSON 格式（只输出 JSON，不要解释）：
+{
+  "framework": "hexo",
+  "frameworkName": "Hexo",
+  "theme": "butterfly",
+  "postTemplate": "---\\ntitle: {{title}}\\ndate: {{date}}\\ntags: {{tags}}\\ncategories: {{categories}}\\ncover: {{cover}}\\n---",
+  "pageTemplate": "---\\ntitle: {{title}}\\ndate: {{date}}\\ntype: page\\n---",
+  "postFields": ["title", "date", "tags", "categories", "cover"],
+  "pageFields": ["title", "date", "type"],
+  "explanation": "基于 Hexo + Butterfly 主题分析，Butterfly 主题需要 cover 字段显示封面图"
+}''';
+
   /// 构建动态上下文 JSON（兼容旧接口）
   static String buildContextJson({
     String? blogFramework,

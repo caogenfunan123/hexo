@@ -206,7 +206,7 @@ class _EditorScreenState extends State<EditorScreen> {
     });
     try {
       final a = _collect(draft: false);
-      final published = await widget.github.upsertArticle(repo, a);
+      final published = await widget.github.upsertArticle(repo, a, templates: widget.templates);
       setState(() {
         _article = published;
         _status = '发布成功';

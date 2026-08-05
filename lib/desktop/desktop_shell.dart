@@ -1023,7 +1023,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     _editor.setEditorBusy(true); _editor.setEditorStatus('正在发布...');
     try {
       final a = _collect(draft: false);
-      final pub = await github.upsertArticle(repo, a);
+      final pub = await github.upsertArticle(repo, a, templates: templates);
       _doc.setCurrentArticle(pub); _editor.setEditorStatus('已发布');
       _lastSavedContent = pub.content;
       _doc.markSaved();
@@ -2822,7 +2822,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
         final pubArticle = article.copyWith(isDraft: false, published: true);
         try {
-          final pub = await github.upsertArticle(repo, pubArticle);
+          final pub = await github.upsertArticle(repo, pubArticle, templates: templates);
           final idx = drafts.indexWhere((a) => a.id == id);
           if (idx >= 0) drafts[idx] = pub.copyWith(isDraft: false, published: true);
           published++;
@@ -3995,7 +3995,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       _editor.setEditorBusy(true); _editor.setEditorStatus('正在发布...');
       try {
         final a = _collect(draft: false);
-        final pub = await github.upsertArticle(repo, a);
+        final pub = await github.upsertArticle(repo, a, templates: templates);
         _doc.setCurrentArticle(pub); _editor.setEditorStatus('已发布');
         _lastSavedContent = pub.content;
         _doc.markSaved();
@@ -4293,7 +4293,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   void _showTemplateManager() async {
     await Navigator.of(context).push<void>(MaterialPageRoute(
-      builder: (_) => TemplateManagerScreen(storage: storage, aiService: aiService, settings: settings),
+      builder: (_) => TemplateManagerScreen(storage: storage, aiService: aiService, settings: settings, repos: repos, githubService: github),
     ));
     final t = await storage.loadAllTemplates();
     if (mounted) {

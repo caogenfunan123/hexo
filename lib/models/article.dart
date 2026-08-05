@@ -1,6 +1,7 @@
 import 'article_type.dart';
 import 'blog_framework.dart';
 import 'repo_config.dart';
+import 'template_item.dart';
 
 class Article {
   final String id;
@@ -115,7 +116,16 @@ class Article {
       );
 
   /// 用指定框架预设生成 FrontMatter + 正文
-  String toMarkdownWithFrontMatter({String frameworkId = 'hexo'}) {
+  /// 如果提供了 [templates] 且文章有 [templateId]，优先使用自定义模板
+  String toMarkdownWithFrontMatter({String frameworkId = 'hexo', List<TemplateItem>? templates}) {
+    // 优先查找自定义模板
+    if (templateId != null && templateId!.isNotEmpty && templates != null) {
+      final customTemplate = templates.where((t) => t.id == templateId).firstOrNull;
+      if (customTemplate != null) {
+        return _applyCustomTemplate(customTemplate);
+      }
+    }
+
     final dateFull =
         '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')} ${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}:${createdAt.second.toString().padLeft(2, '0')}';
     final dateShort =
@@ -168,11 +178,55 @@ class Article {
     return buf.toString();
   }
 
-  /// 绑定框架的 toMarkdownWithFrontMatter
-  String toMarkdownWithFrontMatterForRepo(RepoConfig repo) {
-    return toMarkdownWithFrontMatter(
-      frameworkId: repo.frameworkId,
-    );
+  /// 绑定框架 + 自定义模板的 toMarkdownWithFrontMatter
+  ///
+  /// 优先级：自定义模板 > 框架预设模板 > 通用回退
+  /// [templates] 为可选的自定义模板列表，用于查找用户自定义的模板
+  String toMarkdownWithFrontMatterForRepo(RepoConfig repo, {List<TemplateItem>? templates}) {
+    // 1. 优先查找自定义模板
+    if (templateId != null && templateId!.isNotEmpty && templates != null) {
+      final customTemplate = templates.where((t) => t.id == templateId).firstOrNull;
+      if (customTemplate != null) {
+        return _applyCustomTemplate(customTemplate);
+      }
+    }
+    // 2. 回退到框架预设
+    return toMarkdownWithFrontMatter(frameworkId: repo.frameworkId);
+  }
+
+  /// 使用自定义模板生成 Markdown
+  String _applyCustomTemplate(TemplateItem template) {
+    final dateFull =
+        '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')} ${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}:${createdAt.second.toString().padLeft(2, '0')}';
+    final dateShort =
+        '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}';
+    final tagsStr = tags.isEmpty
+        ? '[]'
+        : '[${tags.map((t) => t.contains(' ') ? '"$t"' : t).join(', ')}]';
+    final catsStr = categories.isEmpty
+        ? '[]'
+        : '[${categories.map((c) => c.contains(' ') ? '"$c"' : c).join(', ')}]';
+    final slug = title.toLowerCase().replaceAll(RegExp(r'\s+'), '-');
+
+    var fm = template.frontMatter
+        .replaceAll('{{title}}', title.isEmpty ? '未命名' : title)
+        .replaceAll('{{date}}', dateFull)
+        .replaceAll('{{date_short}}', dateShort)
+        .replaceAll('{{tags}}', tagsStr)
+        .replaceAll('{{categories}}', catsStr)
+        .replaceAll('{{slug}}', slug)
+        .replaceAll('{{draft}}', isDraft.toString())
+        .replaceAll('{{year}}', createdAt.year.toString())
+        .replaceAll('{{month}}', createdAt.month.toString().padLeft(2, '0'))
+        .replaceAll('{{day}}', createdAt.day.toString().padLeft(2, '0'));
+
+    if (cover != null && cover!.isNotEmpty) {
+      fm = fm.replaceAll('{{cover}}', cover!);
+    } else {
+      fm = fm.replaceAll('{{cover}}', '');
+    }
+
+    return '$fm\n$content';
   }
 
   /// 从 Markdown 文本解析 Article（修复版：正确处理 YAML 列表、嵌套引号、published 字段）

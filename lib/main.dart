@@ -1066,7 +1066,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     });
     try {
       final a = _collect(draft: false);
-      final pub = await github.upsertArticle(repo, a);
+      final pub = await github.upsertArticle(repo, a, templates: templates);
       if (mounted) setState(() {
         _doc.setCurrentArticle(pub);
         _editorStatus = '已发布';
@@ -1950,7 +1950,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               settings.webdavUsername,
               settings.webdavPassword,
               '$folder${a.id}.md',
-              a.toMarkdownWithFrontMatter());
+              a.toMarkdownWithFrontMatter(templates: templates));
           count++;
         }
       }
@@ -5336,6 +5336,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           storage: storage,
           aiService: aiService,
           settings: settings,
+          repos: repos,
+          githubService: github,
         ),
       ),
     );

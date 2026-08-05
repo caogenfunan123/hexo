@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../models/article.dart';
 import '../models/article_type.dart';
 import '../models/repo_config.dart';
+import '../models/template_item.dart';
 
 class GitHubFileItem {
   final String name;
@@ -181,14 +182,14 @@ class GitHubService {
     );
   }
 
-  Future<Article> upsertArticle(RepoConfig repo, Article article, {String? commitMessage}) async {
+  Future<Article> upsertArticle(RepoConfig repo, Article article, {String? commitMessage, List<TemplateItem>? templates}) async {
     final isPage = article.articleType == ArticleType.page;
     final basePath = isPage
         ? repo.pagesPath.replaceAll(RegExp(r'/+$'), '')
         : repo.postsPath.replaceAll(RegExp(r'/+$'), '');
     final fileName = article.fileNameForRepo(repo);
     final path = article.remotePath ?? '$basePath/$fileName';
-    final md = article.toMarkdownWithFrontMatterForRepo(repo);
+    final md = article.toMarkdownWithFrontMatterForRepo(repo, templates: templates);
     final content = base64Encode(utf8.encode(md));
     final message = commitMessage ??
         (article.remoteSha == null
@@ -216,6 +217,61 @@ class GitHubService {
       published: true,
       updatedAt: DateTime.now(),
     );
+  }
+
+  /// 读取仓库关键文件用于 AI 分析（配置文件 + 示例文章）
+  ///
+  /// 返回一个 Map，key 为文件路径，value 为文件内容
+  Future<Map<String, String>> readRepoAnalysisFiles(RepoConfig repo) async {
+    final result = <String, String>{};
+    // 关键配置文件列表
+    const configFiles = [
+      '_config.yml',
+      '_config.yaml',
+      'config.toml',
+      'hugo.toml',
+      'package.json',
+      'Gemfile',
+      'astro.config.mjs',
+      'gatsby-config.js',
+      'next.config.js',
+      'pelicanconf.py',
+      '.eleventy.js',
+      'config.js',
+      'config.ts',
+    ];
+    // 读取配置文件
+    for (final file in configFiles) {
+      try {
+        final data = await getRawFile(repo, file);
+        if (data != null) {
+          result[file] = data['content'] ?? '';
+        }
+      } catch (_) { /* 文件不存在，跳过 */ }
+    }
+    // 读取 posts 目录下最近 2 篇文章的 FrontMatter
+    try {
+      final posts = await listPosts(repo);
+      int count = 0;
+      for (final post in posts.take(2)) {
+        try {
+          final data = await getRawFile(repo, post.path);
+          if (data != null) {
+            // 只取 FrontMatter 部分（第一个 --- 到第二个 --- 之间）
+            final raw = data['content'] ?? '';
+            final firstSep = raw.indexOf('---');
+            if (firstSep >= 0) {
+              final secondSep = raw.indexOf('---', firstSep + 3);
+              if (secondSep > firstSep) {
+                result['sample:${post.name}'] = raw.substring(0, secondSep + 3);
+              }
+            }
+          }
+          count++;
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return result;
   }
 
   Future<void> deleteArticle(RepoConfig repo, Article article, {String? commitMessage}) async {

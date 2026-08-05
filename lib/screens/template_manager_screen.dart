@@ -2,21 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/app_settings.dart';
+import '../models/repo_config.dart';
 import '../models/template_item.dart';
 import '../services/ai_service.dart';
+import '../services/github_service.dart';
 import '../services/storage_service.dart';
 
-/// 模板管理页面：内置预设 + 自定义模板 + AI 生成
+/// 模板管理页面：内置预设 + 自定义模板 + AI 生成 + AI 仓库适配
 class TemplateManagerScreen extends StatefulWidget {
   final StorageService storage;
   final AiService aiService;
   final AppSettings settings;
+  final List<RepoConfig> repos;
+  final GitHubService? githubService;
 
   const TemplateManagerScreen({
     super.key,
     required this.storage,
     required this.aiService,
     required this.settings,
+    this.repos = const [],
+    this.githubService,
   });
 
   @override
@@ -206,14 +212,28 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
   }
 
   Future<void> _editTemplate(TemplateItem t) async {
+    TemplateItem target = t;
     if (t.isBuiltin) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('内置模板不可编辑，请先复制为自定义模板')),
+      // 内置模板：自动复制为自定义模板后再编辑
+      final now = DateTime.now();
+      final copy = t.copyWith(
+        id: 'edit_${now.millisecondsSinceEpoch}',
+        name: '${t.name} (自定义)',
+        isBuiltin: false,
+        createdAt: now,
       );
-      return;
+      final saved = await widget.storage.loadTemplates();
+      saved.add(copy);
+      await widget.storage.saveTemplates(saved);
+      target = copy;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已复制内置模板为可编辑: ${copy.name}')),
+        );
+      }
     }
-    final nameCtrl = TextEditingController(text: t.name);
-    final fmCtrl = TextEditingController(text: t.frontMatter);
+    final nameCtrl = TextEditingController(text: target.name);
+    final fmCtrl = TextEditingController(text: target.frontMatter);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -247,9 +267,9 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
     );
     if (ok != true) return;
     final saved = await widget.storage.loadTemplates();
-    final idx = saved.indexWhere((e) => e.id == t.id);
+    final idx = saved.indexWhere((e) => e.id == target.id);
     if (idx >= 0) {
-      saved[idx] = t.copyWith(
+      saved[idx] = target.copyWith(
         name: nameCtrl.text.trim(),
         frontMatter: fmCtrl.text.trim(),
       );
@@ -341,6 +361,240 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
     }
   }
 
+  /// AI 适配：分析仓库，自动检测框架并生成模板
+  Future<void> _aiAnalyzeRepo() async {
+    if (widget.githubService == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先配置 GitHub 仓库')),
+      );
+      return;
+    }
+    if (widget.repos.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('没有可用的仓库，请先添加仓库')),
+      );
+      return;
+    }
+
+    // 选择要分析的仓库
+    RepoConfig? selectedRepo = widget.repos.first;
+    if (widget.repos.length > 1) {
+      final chosen = await showDialog<RepoConfig>(
+        context: context,
+        builder: (ctx) => SimpleDialog(
+          title: const Text('选择要分析的仓库'),
+          children: widget.repos.map((r) => SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, r),
+            child: Text('${r.owner}/${r.repo} (${r.frameworkId})'),
+          )).toList(),
+        ),
+      );
+      if (chosen == null) return;
+      selectedRepo = chosen;
+    }
+
+    if (selectedRepo == null) return;
+
+    setState(() => _loading = true);
+    try {
+      // 读取仓库文件
+      final files = await widget.githubService!.readRepoAnalysisFiles(selectedRepo);
+      if (files.isEmpty) {
+        if (mounted) {
+          setState(() => _loading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('仓库中没有找到配置文件或文章，请确认仓库类型')),
+          );
+        }
+        return;
+      }
+
+      // 构建分析信息
+      final buf = StringBuffer();
+      buf.writeln('仓库: ${selectedRepo.owner}/${selectedRepo.repo}');
+      buf.writeln('当前框架: ${selectedRepo.frameworkId}');
+      buf.writeln();
+      buf.writeln('=== 仓库文件内容 ===');
+      for (final entry in files.entries) {
+        buf.writeln('--- ${entry.key} ---');
+        // 限制每个文件内容长度，避免超出 token 限制
+        final content = entry.value.length > 2000
+            ? '${entry.value.substring(0, 2000)}...'
+            : entry.value;
+        buf.writeln(content);
+        buf.writeln();
+      }
+
+      // 调用 AI 分析
+      final result = await widget.aiService.analyzeRepoForTemplate(
+        settings: widget.settings,
+        repoInfo: buf.toString(),
+      );
+
+      if (mounted) {
+        setState(() => _loading = false);
+
+        if (result.containsKey('error')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('AI 分析失败: ${result['error']}')),
+          );
+          return;
+        }
+
+        // 显示 AI 分析结果
+        final framework = result['framework']?.toString() ?? '未知';
+        final frameworkName = result['frameworkName']?.toString() ?? framework;
+        final theme = result['theme']?.toString() ?? '未知';
+        final explanation = result['explanation']?.toString() ?? '';
+        final postTemplate = result['postTemplate']?.toString() ?? '';
+        final pageTemplate = result['pageTemplate']?.toString() ?? '';
+
+        await _showAiResultDialog(framework, frameworkName, theme, explanation, postTemplate, pageTemplate);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('AI 分析失败: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showAiResultDialog(
+    String framework, String frameworkName, String theme, String explanation,
+    String postTemplate, String pageTemplate,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.auto_awesome, color: Color(0xFF8B5CF6), size: 22),
+            const SizedBox(width: 8),
+            const Text('AI 仓库分析结果'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _resultRow('框架', frameworkName),
+              _resultRow('主题', theme),
+              _resultRow('说明', explanation),
+              const SizedBox(height: 12),
+              const Text('📝 博文模板:', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5F5F5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(postTemplate, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+              ),
+              if (pageTemplate.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text('📄 页面模板:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(pageTemplate, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('放弃'),
+          ),
+          if (postTemplate.isNotEmpty)
+            FilledButton.icon(
+              icon: const Icon(Icons.save, size: 16),
+              label: const Text('保存博文模板'),
+              onPressed: () async {
+                final now = DateTime.now();
+                final t = TemplateItem(
+                  id: 'ai_repo_${now.millisecondsSinceEpoch}',
+                  name: 'AI适配: $frameworkName${theme != '未知' ? ' $theme' : ''}',
+                  frontMatter: postTemplate,
+                  frameworkId: framework,
+                  isPost: true,
+                  isBuiltin: false,
+                  createdAt: now,
+                );
+                final saved = await widget.storage.loadTemplates();
+                saved.add(t);
+                await widget.storage.saveTemplates(saved);
+                await _load();
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('已保存模板: ${t.name}')),
+                  );
+                }
+              },
+            ),
+          if (pageTemplate.isNotEmpty)
+            OutlinedButton.icon(
+              icon: const Icon(Icons.save, size: 16),
+              label: const Text('保存页面模板'),
+              onPressed: () async {
+                final now = DateTime.now();
+                final t = TemplateItem(
+                  id: 'ai_repo_${now.millisecondsSinceEpoch}_page',
+                  name: 'AI适配: $frameworkName${theme != '未知' ? ' $theme' : ''} 页面',
+                  frontMatter: pageTemplate,
+                  frameworkId: framework,
+                  isPost: false,
+                  isBuiltin: false,
+                  createdAt: now,
+                );
+                final saved = await widget.storage.loadTemplates();
+                saved.add(t);
+                await widget.storage.saveTemplates(saved);
+                await _load();
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('已保存模板: ${t.name}')),
+                  );
+                }
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _resultRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 40,
+            child: Text('$label:',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          ),
+          Expanded(
+            child: Text(value, style: const TextStyle(fontSize: 13)),
+          ),
+        ],
+      ),
+    );
+  }
+
   AppSettings get settings => widget.settings;
 
   @override
@@ -360,6 +614,11 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
             tooltip: 'AI 生成',
             onPressed: _aiGenerate,
             icon: const Icon(Icons.auto_awesome),
+          ),
+          IconButton(
+            tooltip: 'AI 适配仓库',
+            onPressed: widget.githubService != null ? _aiAnalyzeRepo : null,
+            icon: const Icon(Icons.analytics_outlined),
           ),
           IconButton(
             tooltip: '新建自定义',
@@ -518,15 +777,15 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
                   constraints: const BoxConstraints(),
                   padding: const EdgeInsets.all(4),
                 ),
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: '编辑',
+                  onPressed: () => _editTemplate(t),
+                  icon: const Icon(Icons.edit, size: 18),
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.all(4),
+                ),
                 if (!t.isBuiltin) ...[
-                  const SizedBox(width: 4),
-                  IconButton(
-                    tooltip: '编辑',
-                    onPressed: () => _editTemplate(t),
-                    icon: const Icon(Icons.edit, size: 18),
-                    constraints: const BoxConstraints(),
-                    padding: const EdgeInsets.all(4),
-                  ),
                   const SizedBox(width: 4),
                   IconButton(
                     tooltip: '删除',
