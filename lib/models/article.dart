@@ -420,10 +420,11 @@ class Article {
     return '$datePrefix$name';
   }
 
-  /// 根据仓库配置生成文件名（页面永不加日期前缀）
+  /// 根据仓库配置生成文件名
+  /// 所有文章统一使用纯标题作为文件名，不加日期前缀
+  /// （用户明确要求：文件名纯标题就挺好）
   String fileNameForRepo(RepoConfig repo) {
-    if (articleType == ArticleType.page) return fileName(postDatePrefix: false);
-    return fileName(postDatePrefix: repo.fileNameRule.postDatePrefix);
+    return fileName(postDatePrefix: false);
   }
 }
 

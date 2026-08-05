@@ -91,10 +91,37 @@ class StorageService {
 
   Future<List<RepoConfig>> loadRepos() async {
     final list = await _readList(_reposFile);
-    return list
+    final repos = list
         .whereType<Map>()
         .map((e) => RepoConfig.fromJson(Map<String, dynamic>.from(e)))
         .toList();
+    // 迁移：强制所有仓库的 postDatePrefix 为 false（用户要求纯标题）
+    bool needsSave = false;
+    for (int i = 0; i < repos.length; i++) {
+      final r = repos[i];
+      if (r.fileNameRule.postDatePrefix || r.postDatePrefix) {
+        repos[i] = r.copyWith(
+          postDatePrefix: false,
+          fileNameRule: FileNameRule(postDatePrefix: false, dateFormat: r.fileNameRule.dateFormat),
+        );
+        needsSave = true;
+      }
+      // 迁移：校正模板与框架不匹配的问题
+      final expectedPostTpl = RepoConfig.defaultPostTemplateForFramework(r.frameworkId);
+      final expectedPageTpl = RepoConfig.defaultPageTemplateForFramework(r.frameworkId);
+      if (expectedPostTpl != null && r.defaultPostTemplateId != expectedPostTpl) {
+        repos[i] = repos[i].copyWith(defaultPostTemplateId: expectedPostTpl);
+        needsSave = true;
+      }
+      if (expectedPageTpl != null && r.defaultPageTemplateId != expectedPageTpl) {
+        repos[i] = repos[i].copyWith(defaultPageTemplateId: expectedPageTpl);
+        needsSave = true;
+      }
+    }
+    if (needsSave) {
+      await saveRepos(repos);
+    }
+    return repos;
   }
 
   Future<void> saveRepos(List<RepoConfig> repos) =>
