@@ -159,11 +159,11 @@ class DesignConfig {
 - 浅色文字: 0x${lightTextColor.toRadixString(16).toUpperCase()}
 - 深色背景: 0x${darkBgColor.toRadixString(16).toUpperCase()}
 - 深色卡片: 0x${darkCardColor.toRadixString(16).toUpperCase()}
-- 圆角缩放: $borderRadiusScalex
-- 内边距缩放: $paddingScalex
-- 字号缩放: $fontScalex
-- 左面板宽度: $leftPanelWidthpx
-- 编辑器字号: $editorFontSizepx
+- 圆角缩放: ${borderRadiusScale}x
+- 内边距缩放: ${paddingScale}x
+- 字号缩放: ${fontScale}x
+- 左面板宽度: ${leftPanelWidth}px
+- 编辑器字号: ${editorFontSize}px
 - 编辑器行高: $editorLineHeight
 - 视觉密度: $densityName
 - 毛玻璃效果: ${enableBlur ? "开启" : "关闭"}

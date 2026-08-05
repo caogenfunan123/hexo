@@ -20,7 +20,7 @@ class BuiltinTools {
 
   /// 应用设置引用（供 appDesign 工具读写）
   static AppSettings? appSettings;
-  static void Function(AppSettings)? onSettingsChanged;
+  static Future<void> Function(AppSettings)? onSettingsChanged;
 
   /// Skill 管理器引用（供 skill 管理工具使用）
   static SkillManager? skillManager;
