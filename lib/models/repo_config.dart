@@ -147,6 +147,8 @@ class RepoConfig {
       };
 
   factory RepoConfig.fromJson(Map<String, dynamic> j) {
+    final frameworkId = j['frameworkId']?.toString() ?? 'hexo';
+
     // 兼容旧版本没有 fileNameRule
     FileNameRule fnRule;
     if (j['fileNameRule'] is Map) {
@@ -157,10 +159,29 @@ class RepoConfig {
       );
     }
 
+    // ── 迁移逻辑：确保 fileNameRule 与框架预设一致 ──
+    // 旧版本中 Jekyll 仓库的 postDatePrefix 可能被保存为 false，
+    // 此处根据框架预设自动修正
+    final expectedRule = FileNameRule.fromFramework(frameworkId);
+    if (fnRule.postDatePrefix != expectedRule.postDatePrefix) {
+      fnRule = expectedRule;
+    }
+
     // 兼容旧版本没有 syncType
     SyncType st = SyncType.gitRemote;
     final stStr = j['syncType']?.toString();
     if (stStr == 'localFolder') st = SyncType.localFolder;
+
+    // ── 迁移逻辑：补全缺失的模板绑定 ──
+    // 旧版本中部分框架没有页面模板映射，此处自动补全
+    String? postTplId = j['defaultPostTemplateId']?.toString();
+    String? pageTplId = j['defaultPageTemplateId']?.toString();
+    if (postTplId == null || postTplId.isEmpty) {
+      postTplId = defaultPostTemplateForFramework(frameworkId);
+    }
+    if (pageTplId == null || pageTplId.isEmpty) {
+      pageTplId = defaultPageTemplateForFramework(frameworkId);
+    }
 
     return RepoConfig(
       id: j['id']?.toString() ?? '',
@@ -170,14 +191,14 @@ class RepoConfig {
       branch: j['branch']?.toString() ?? 'main',
       postsPath: j['postsPath']?.toString() ?? 'source/_posts',
       pagesPath: j['pagesPath']?.toString() ?? 'source',
-      frameworkId: j['frameworkId']?.toString() ?? 'hexo',
-      postDatePrefix: j['postDatePrefix'] == true,
+      frameworkId: frameworkId,
+      postDatePrefix: fnRule.postDatePrefix, // 与 fileNameRule 保持一致
       fileNameRule: fnRule,
       siteUrl: j['siteUrl']?.toString() ?? '',
       token: j['token']?.toString() ?? '',
       isDefault: j['isDefault'] == true,
-      defaultPostTemplateId: j['defaultPostTemplateId']?.toString(),
-      defaultPageTemplateId: j['defaultPageTemplateId']?.toString(),
+      defaultPostTemplateId: postTplId,
+      defaultPageTemplateId: pageTplId,
       syncType: st,
     );
   }

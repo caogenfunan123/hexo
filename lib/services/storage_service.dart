@@ -166,12 +166,15 @@ class StorageService {
   Future<List<TemplateItem>> loadAllTemplates() async {
     final saved = await loadTemplates();
     final builtin = TemplatePresets.all();
-    // 合并：内置模板优先，但用户自定义覆盖同名
+    // 合并：内置模板始终使用代码中最新版本（不被磁盘缓存覆盖）
+    // 用户自定义模板（非 builtin_ 前缀 ID）正常加载
     final Map<String, TemplateItem> merged = {};
     for (final t in builtin) {
       merged[t.id] = t;
     }
     for (final t in saved) {
+      // 内置模板跳过，确保使用代码中的最新版本
+      if (t.id.startsWith('builtin_')) continue;
       merged[t.id] = t;
     }
     return merged.values.toList()
