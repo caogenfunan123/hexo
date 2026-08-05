@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../models/app_settings.dart';
 import '../models/article.dart';
 import '../models/repo_config.dart';
+import '../models/sync_settings.dart';
 import 'github_service.dart';
 import 'log_service.dart';
 import 'sync_service.dart';
@@ -72,10 +73,26 @@ class GitHubSyncBackend implements SyncBackend {
   @override
   bool get isConfigured => _repo != null && _repo!.token.isNotEmpty;
 
-  /// 配置同步仓库
+  /// 配置同步仓库（使用 RepoConfig，兼容旧接口）
   void configureRepo(RepoConfig repo, {String syncPath = '_hexo_sync'}) {
     _repo = repo;
     _syncPath = syncPath;
+  }
+
+  /// 从 SyncSettings 配置同步仓库（使用独立仓库，不与网站站点仓库混用）
+  void configureFromSyncSettings(SyncSettings settings) {
+    if (settings.syncRepoOwner.isEmpty || settings.syncRepoName.isEmpty || settings.syncRepoToken.isEmpty) {
+      _repo = null;
+      return;
+    }
+    _repo = RepoConfig(
+      id: 'sync_repo',
+      name: '同步仓库',
+      owner: settings.syncRepoOwner,
+      repo: settings.syncRepoName,
+      branch: settings.syncRepoBranch,
+      token: settings.syncRepoToken,
+    );
   }
 
   @override

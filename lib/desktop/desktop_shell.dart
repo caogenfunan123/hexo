@@ -342,6 +342,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!settings.draftSyncEnabled) return;
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       // 三重落盘：APP 转入后台时强制冲刷所有等待中的保存任务
       _flushAllPendingSaves();
@@ -476,14 +477,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     cloudSyncService.initDeviceKey(deviceKey);
     final githubBackend = GitHubSyncBackend(github);
     cloudSyncService.registerBackend(githubBackend);
-    if (effectiveRepo != null) {
-      githubBackend.configureRepo(effectiveRepo!);
-    }
+    githubBackend.configureFromSyncSettings(settings.sync);
     final webdavBackend = WebDavSyncBackend();
     webdavBackend.configureFromSettings(settings);
     cloudSyncService.registerBackend(webdavBackend);
     _startAutoSync();
-    if (cloudSyncService.hasConfiguredBackend) {
+    if (cloudSyncService.hasConfiguredBackend && settings.draftSyncEnabled) {
       _autoPullFromCloud();
     }
   }
@@ -646,7 +645,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   void _startAutoSync() {
     _stopAutoSync();
-    if (!settings.webdavAutoSyncEnabled) return;
+    if (!settings.draftSyncEnabled) return;
     _autoSyncTimer = Timer.periodic(
       Duration(seconds: settings.webdavAutoSyncIntervalSeconds),
       (_) => _autoSyncToCloud(),

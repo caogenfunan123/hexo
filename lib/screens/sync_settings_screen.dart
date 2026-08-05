@@ -83,16 +83,13 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
 
         // ── GitHub 同步 ──
         _sectionTitle('方案一：GitHub 仓库同步'),
-        const SizedBox(height: 8),
-        _backendCard(
-          icon: Icons.code,
-          name: 'GitHub 私有仓库',
-          description: '利用已有 GitHub 仓库的 _hexo_sync/ 目录存储同步数据，零额外成本，天然版本控制',
-          isConfigured: githubBackend?.isConfigured ?? false,
-          configWidget: githubBackend != null
-              ? _buildGitHubConfig(githubBackend as GitHubSyncBackend)
-              : const Text('GitHub 后端未注册', style: TextStyle(color: Colors.grey)),
+        const SizedBox(height: 4),
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text('使用独立的专用仓库保存草稿和同步数据，避免污染网站站点仓库',
+              style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
         ),
+        _buildGitHubConfig(githubBackend as GitHubSyncBackend),
         const SizedBox(height: 16),
 
         // ── WebDAV 同步 ──
@@ -107,8 +104,8 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
         ),
         const SizedBox(height: 24),
 
-        // ── 自动同步设置 ──
-        _sectionTitle('自动同步'),
+        // ── 草稿同步开关 ──
+        _sectionTitle('草稿同步'),
         const SizedBox(height: 8),
         Card(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -119,17 +116,17 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
             child: Column(
               children: [
                 SwitchListTile(
-                  title: const Text('启用自动同步', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('保存草稿后自动推送到云端'),
-                  value: widget.settings.webdavAutoSyncEnabled,
+                  title: const Text('启用草稿云同步', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('将草稿自动同步到配置的云端仓库，默认关闭'),
+                  value: widget.settings.draftSyncEnabled,
                   onChanged: (v) {
                     widget.onSettingsChanged(
-                      widget.settings.copyWith(webdavAutoSyncEnabled: v),
+                      widget.settings.copyWith(draftSyncEnabled: v),
                     );
                   },
                   contentPadding: EdgeInsets.zero,
                 ),
-                if (widget.settings.webdavAutoSyncEnabled) ...[
+                if (widget.settings.draftSyncEnabled) ...[
                   const Divider(),
                   ListTile(
                     title: const Text('同步间隔', style: TextStyle(fontSize: 14)),
@@ -299,65 +296,33 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
   }
 
   Widget _buildGitHubConfig(GitHubSyncBackend backend) {
+    final isConfigured = backend.isConfigured;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('选择同步仓库', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 8),
-        ...widget.repos.map((repo) {
-          final isActive = repo.id == widget.settings.activeRepoId;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: InkWell(
+        if (isConfigured) ...[
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.grey.withOpacity(0.05),
               borderRadius: BorderRadius.circular(8),
-              onTap: () {
-                backend.configureRepo(repo);
-                widget.onSettingsChanged(
-                  widget.settings.copyWith(activeRepoId: repo.id),
-                );
-                setState(() {});
-                widget.logService.add('云同步', '已选择 GitHub 同步仓库: ${repo.fullName}');
-              },
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: isActive
-                        ? Theme.of(context).colorScheme.primary
-                        : Colors.grey.shade200,
-                    width: isActive ? 1.5 : 1,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      isActive ? Icons.check_circle : Icons.circle_outlined,
-                      size: 18,
-                      color: isActive
-                          ? Theme.of(context).colorScheme.primary
-                          : Colors.grey,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(repo.name,
-                              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
-                          Text(repo.fullName,
-                              style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
-                        ],
-                      ),
-                    ),
-                    if (repo.token.isNotEmpty)
-                      const Icon(Icons.vpn_key, size: 14, color: Color(0xFF059669)),
-                  ],
-                ),
-              ),
             ),
-          );
-        }),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _infoRow('仓库', '${widget.settings.syncRepoOwner}/${widget.settings.syncRepoName}'),
+                _infoRow('分支', widget.settings.syncRepoBranch),
+                _infoRow('Token', widget.settings.syncRepoToken.isNotEmpty ? '已配置' : '未配置'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        OutlinedButton.icon(
+          icon: Icon(isConfigured ? Icons.edit : Icons.add, size: 16),
+          label: Text(isConfigured ? '修改同步仓库' : '配置同步仓库'),
+          onPressed: () => _showGitHubSyncRepoDialog(backend),
+        ),
       ],
     );
   }
@@ -409,6 +374,93 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
             child: Text(value,
                 style: const TextStyle(fontSize: 12),
                 overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showGitHubSyncRepoDialog(GitHubSyncBackend backend) async {
+    final ownerCtrl = TextEditingController(text: widget.settings.syncRepoOwner);
+    final repoCtrl = TextEditingController(text: widget.settings.syncRepoName);
+    final branchCtrl = TextEditingController(text: widget.settings.syncRepoBranch);
+    final tokenCtrl = TextEditingController(text: widget.settings.syncRepoToken);
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('配置同步仓库'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: ownerCtrl,
+                decoration: const InputDecoration(
+                  labelText: '仓库 Owner',
+                  hintText: 'your-github-username',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: repoCtrl,
+                decoration: const InputDecoration(
+                  labelText: '仓库名称',
+                  hintText: 'hexo-sync-backup',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: branchCtrl,
+                decoration: const InputDecoration(
+                  labelText: '分支',
+                  hintText: 'main',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: tokenCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'GitHub Token',
+                  hintText: 'ghp_xxxxxxxxxxxx',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text(
+                  '请使用与网站仓库不同的独立仓库，避免同步草稿污染网站代码',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF92400E)),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final newSettings = widget.settings.copyWith(
+                syncRepoOwner: ownerCtrl.text.trim(),
+                syncRepoName: repoCtrl.text.trim(),
+                syncRepoBranch: branchCtrl.text.trim().isEmpty ? 'main' : branchCtrl.text.trim(),
+                syncRepoToken: tokenCtrl.text.trim(),
+              );
+              widget.onSettingsChanged(newSettings);
+              backend.configureFromSyncSettings(newSettings.sync);
+              setState(() {});
+              widget.logService.add('云同步', '已配置 GitHub 同步仓库: ${ownerCtrl.text.trim()}/${repoCtrl.text.trim()}');
+              Navigator.pop(ctx, true);
+            },
+            child: const Text('保存'),
           ),
         ],
       ),

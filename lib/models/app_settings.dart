@@ -100,6 +100,11 @@ class AppSettings {
   bool get webdavSyncWifiOnly => sync.webdavSyncWifiOnly;
   bool get restoreSession => sync.restoreSession;
   bool get offlineMode => sync.offlineMode;
+  bool get draftSyncEnabled => sync.draftSyncEnabled;
+  String get syncRepoOwner => sync.syncRepoOwner;
+  String get syncRepoName => sync.syncRepoName;
+  String get syncRepoBranch => sync.syncRepoBranch;
+  String get syncRepoToken => sync.syncRepoToken;
 
   // ── UiSettings 代理 ──
   String get siteAvatar => ui.siteAvatar;
@@ -197,6 +202,11 @@ class AppSettings {
     bool? webdavSyncWifiOnly,
     bool? restoreSession,
     bool? offlineMode,
+    bool? draftSyncEnabled,
+    String? syncRepoOwner,
+    String? syncRepoName,
+    String? syncRepoBranch,
+    String? syncRepoToken,
     // UiSettings
     String? siteAvatar,
     String? siteName,
@@ -231,7 +241,9 @@ class AppSettings {
         backupDir != null || webdavUrl != null || webdavUsername != null ||
         webdavPassword != null || webdavFolder != null ||
         webdavAutoSyncEnabled != null || webdavAutoSyncIntervalSeconds != null ||
-        webdavSyncWifiOnly != null || restoreSession != null || offlineMode != null;
+        webdavSyncWifiOnly != null || restoreSession != null || offlineMode != null ||
+        draftSyncEnabled != null || syncRepoOwner != null || syncRepoName != null ||
+        syncRepoBranch != null || syncRepoToken != null;
     final bool hasUiFlat = siteName != null || siteBio != null ||
         siteAvatar != null || siteHome != null || siteAbout != null ||
         siteGuestbook != null || siteNow != null || siteWorks != null ||
@@ -298,6 +310,11 @@ class AppSettings {
                 webdavSyncWifiOnly: webdavSyncWifiOnly,
                 restoreSession: restoreSession,
                 offlineMode: offlineMode,
+                draftSyncEnabled: draftSyncEnabled,
+                syncRepoOwner: syncRepoOwner,
+                syncRepoName: syncRepoName,
+                syncRepoBranch: syncRepoBranch,
+                syncRepoToken: syncRepoToken,
               )
             : this.sync);
     final UiSettings effectiveUi = ui ??

@@ -26,6 +26,18 @@ class SyncSettings {
   // 离线模式
   final bool offlineMode;
 
+  // ── 草稿云同步（独立于网站仓库） ──
+  /// 是否启用草稿云同步，默认关闭
+  final bool draftSyncEnabled;
+  /// 同步仓库：owner
+  final String syncRepoOwner;
+  /// 同步仓库：repo 名称
+  final String syncRepoName;
+  /// 同步仓库：分支
+  final String syncRepoBranch;
+  /// 同步仓库：Token
+  final String syncRepoToken;
+
   const SyncSettings({
     this.autoSaveEnabled = true,
     this.autoSaveIntervalSeconds = 30,
@@ -40,6 +52,11 @@ class SyncSettings {
     this.webdavSyncWifiOnly = true,
     this.restoreSession = true,
     this.offlineMode = false,
+    this.draftSyncEnabled = false,
+    this.syncRepoOwner = '',
+    this.syncRepoName = '',
+    this.syncRepoBranch = 'main',
+    this.syncRepoToken = '',
   });
 
   SyncSettings copyWith({
@@ -56,6 +73,11 @@ class SyncSettings {
     bool? webdavSyncWifiOnly,
     bool? restoreSession,
     bool? offlineMode,
+    bool? draftSyncEnabled,
+    String? syncRepoOwner,
+    String? syncRepoName,
+    String? syncRepoBranch,
+    String? syncRepoToken,
   }) {
     return SyncSettings(
       autoSaveEnabled: autoSaveEnabled ?? this.autoSaveEnabled,
@@ -71,6 +93,11 @@ class SyncSettings {
       webdavSyncWifiOnly: webdavSyncWifiOnly ?? this.webdavSyncWifiOnly,
       restoreSession: restoreSession ?? this.restoreSession,
       offlineMode: offlineMode ?? this.offlineMode,
+      draftSyncEnabled: draftSyncEnabled ?? this.draftSyncEnabled,
+      syncRepoOwner: syncRepoOwner ?? this.syncRepoOwner,
+      syncRepoName: syncRepoName ?? this.syncRepoName,
+      syncRepoBranch: syncRepoBranch ?? this.syncRepoBranch,
+      syncRepoToken: syncRepoToken ?? this.syncRepoToken,
     );
   }
 
@@ -88,6 +115,11 @@ class SyncSettings {
         'webdavSyncWifiOnly': webdavSyncWifiOnly,
         'restoreSession': restoreSession,
         'offlineMode': offlineMode,
+        'draftSyncEnabled': draftSyncEnabled,
+        'syncRepoOwner': syncRepoOwner,
+        'syncRepoName': syncRepoName,
+        'syncRepoBranch': syncRepoBranch,
+        'syncRepoToken': syncRepoToken,
       };
 
   factory SyncSettings.fromJson(Map<String, dynamic> j) => SyncSettings(
@@ -104,5 +136,10 @@ class SyncSettings {
         webdavSyncWifiOnly: j['webdavSyncWifiOnly'] != false,
         restoreSession: j['restoreSession'] != false,
         offlineMode: j['offlineMode'] == true,
+        draftSyncEnabled: j['draftSyncEnabled'] == true,
+        syncRepoOwner: j['syncRepoOwner']?.toString() ?? '',
+        syncRepoName: j['syncRepoName']?.toString() ?? '',
+        syncRepoBranch: j['syncRepoBranch']?.toString() ?? 'main',
+        syncRepoToken: j['syncRepoToken']?.toString() ?? '',
       );
 }

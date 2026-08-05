@@ -506,24 +506,21 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     final deviceKey = await storage.loadDeviceKey();
     cloudSyncService.initDeviceKey(deviceKey);
 
-    // 注册 GitHub 后端
+    // 注册 GitHub 后端 — 使用独立同步仓库，不与网站仓库混用
     final githubBackend = GitHubSyncBackend(github);
     cloudSyncService.registerBackend(githubBackend);
-    // 如果有活跃仓库，自动配置
-    if (effectiveRepo != null) {
-      githubBackend.configureRepo(effectiveRepo!);
-    }
+    githubBackend.configureFromSyncSettings(settings.sync);
 
     // 注册 WebDAV 后端
     final webdavBackend = WebDavSyncBackend();
     webdavBackend.configureFromSettings(settings);
     cloudSyncService.registerBackend(webdavBackend);
 
-    // 启动自动同步
+    // 启动自动同步（仅当 draftSyncEnabled 开启时生效）
     _startAutoSync();
 
-    // 如果后端已配置，启动后自动拉取一次
-    if (cloudSyncService.hasConfiguredBackend) {
+    // 如果后端已配置且草稿同步开启，启动后自动拉取一次
+    if (cloudSyncService.hasConfiguredBackend && settings.draftSyncEnabled) {
       _autoPullFromCloud();
     }
   }
@@ -531,7 +528,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   /// 启动云端自动同步定时器
   void _startAutoSync() {
     _stopAutoSync();
-    if (!settings.webdavAutoSyncEnabled) return;
+    if (!settings.draftSyncEnabled) return;
     _autoSyncTimer = Timer.periodic(
       Duration(seconds: settings.webdavAutoSyncIntervalSeconds),
       (_) => _autoSyncToCloud(),
@@ -547,6 +544,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!settings.draftSyncEnabled) return;
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive || state == AppLifecycleState.detached) {
       // 三重落盘：APP 转入后台/被销毁时强制冲刷所有等待中的保存任务
       _flushAllPendingSaves();
