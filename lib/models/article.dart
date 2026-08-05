@@ -170,7 +170,7 @@ class Article {
     // ASCII slug：非 ASCII 标题（如中文）使用时间戳，避免 URL 编码问题
     final hasNonAscii = title.codeUnits.any((c) => c > 127);
     final slugValue = hasNonAscii
-        ? 'post-${createdAt.millisecondsSinceEpoch}'
+        ? 'post-${effectiveDate.millisecondsSinceEpoch}'
         : title.toLowerCase().replaceAll(RegExp(r'\s+'), '-');
 
     final fw = BlogFramework.byId(frameworkId);
@@ -285,7 +285,7 @@ class Article {
     // ASCII slug：非 ASCII 标题使用时间戳
     final hasNonAscii = title.codeUnits.any((c) => c > 127);
     final slug = hasNonAscii
-        ? 'post-${createdAt.millisecondsSinceEpoch}'
+        ? 'post-${effectiveDate.millisecondsSinceEpoch}'
         : title.toLowerCase().replaceAll(RegExp(r'\s+'), '-');
 
     // 根据模板所属框架选择标签/分类格式
@@ -300,9 +300,9 @@ class Article {
         .replaceAll('{{categories}}', effectiveCatsStr)
         .replaceAll('{{slug}}', slug)
         .replaceAll('{{draft}}', isDraft.toString())
-        .replaceAll('{{year}}', createdAt.year.toString())
-        .replaceAll('{{month}}', createdAt.month.toString().padLeft(2, '0'))
-        .replaceAll('{{day}}', createdAt.day.toString().padLeft(2, '0'));
+        .replaceAll('{{year}}', effectiveDate.year.toString())
+        .replaceAll('{{month}}', effectiveDate.month.toString().padLeft(2, '0'))
+        .replaceAll('{{day}}', effectiveDate.day.toString().padLeft(2, '0'));
 
     if (cover != null && cover!.isNotEmpty) {
       fm = fm.replaceAll('{{cover}}', cover!);
