@@ -151,7 +151,7 @@ categories: {{categories}}
         frontMatter: '''---
 layout: post
 title: "{{title}}"
-date: {{date}}
+date: {{date}} +0800
 categories: {{categories}}
 tags: {{tags}}
 description: ""
@@ -250,10 +250,10 @@ Status: published
         isBuiltin: true,
         createdAt: now,
         frontMatter: '''---
-title: {{title}}
+title: "{{title}}"
 date: {{date}}
 tags: {{tags}}
-layout: post.njk
+layout: layout.njk
 ---
 ''',
       ),
@@ -321,6 +321,76 @@ permalink: /{{slug}}/
         frontMatter: '''---
 title: "{{title}}"
 layout: ../layouts/Page.astro
+---
+''',
+      ),
+      // VuePress 页面
+      TemplateItem(
+        id: 'builtin_vuepress_page',
+        name: 'VuePress 页面模板',
+        frameworkId: 'vuepress',
+        isPost: false,
+        isBuiltin: true,
+        createdAt: now,
+        frontMatter: '''---
+title: {{title}}
+sidebar: auto
+---
+''',
+      ),
+      // Gatsby 页面
+      TemplateItem(
+        id: 'builtin_gatsby_page',
+        name: 'Gatsby 页面模板',
+        frameworkId: 'gatsby',
+        isPost: false,
+        isBuiltin: true,
+        createdAt: now,
+        frontMatter: '''---
+title: "{{title}}"
+slug: "/{{slug}}/"
+---
+''',
+      ),
+      // Next.js 页面
+      TemplateItem(
+        id: 'builtin_nextjs_page',
+        name: 'Next.js 页面模板',
+        frameworkId: 'nextjs',
+        isPost: false,
+        isBuiltin: true,
+        createdAt: now,
+        frontMatter: '''---
+title: "{{title}}"
+date: "{{date}}"
+---
+''',
+      ),
+      // Pelican 页面
+      TemplateItem(
+        id: 'builtin_pelican_page',
+        name: 'Pelican 页面模板',
+        frameworkId: 'pelican',
+        isPost: false,
+        isBuiltin: true,
+        createdAt: now,
+        frontMatter: '''Title: {{title}}
+Date: {{date}}
+Template: page
+
+''',
+      ),
+      // 11ty 页面
+      TemplateItem(
+        id: 'builtin_11ty_page',
+        name: '11ty 页面模板',
+        frameworkId: '11ty',
+        isPost: false,
+        isBuiltin: true,
+        createdAt: now,
+        frontMatter: '''---
+title: "{{title}}"
+layout: layout.njk
 ---
 ''',
       ),

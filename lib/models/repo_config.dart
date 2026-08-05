@@ -25,10 +25,15 @@ class FileNameRule {
       );
 
   /// 从框架预设生成默认规则
-  /// 所有框架默认不添加日期前缀，文件名使用纯标题
-  /// 如需日期前缀（如 Jekyll），可在仓库设置中手动开启
+  /// Jekyll 强制要求 YYYY-MM-DD-title.md 文件名格式
+  /// 其他框架使用纯标题作为文件名
   factory FileNameRule.fromFramework(String frameworkId) {
-    return const FileNameRule(postDatePrefix: false);
+    switch (frameworkId) {
+      case 'jekyll':
+        return const FileNameRule(postDatePrefix: true); // Jekyll 必须带日期前缀
+      default:
+        return const FileNameRule(postDatePrefix: false);
+    }
   }
 }
 
@@ -201,7 +206,12 @@ class RepoConfig {
       case 'hexo': return 'builtin_hexo_page';
       case 'hugo': return 'builtin_hugo_page';
       case 'jekyll': return 'builtin_jekyll_page';
+      case 'vuepress': return 'builtin_vuepress_page';
+      case 'gatsby': return 'builtin_gatsby_page';
+      case 'nextjs': return 'builtin_nextjs_page';
       case 'astro': return 'builtin_astro_page';
+      case 'pelican': return 'builtin_pelican_page';
+      case '11ty': return 'builtin_11ty_page';
       default: return 'builtin_hexo_page'; // 通用回退
     }
   }

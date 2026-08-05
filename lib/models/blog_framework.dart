@@ -1,4 +1,11 @@
 /// 静态博客框架预设
+///
+/// 每个框架的 front matter 模板均严格遵循其官方文档规范。
+/// 关键差异：
+/// - Jekyll 强制要求文件名带 YYYY-MM-DD 日期前缀
+/// - Pelican 使用键值对元数据格式（非 YAML front matter）
+/// - Next.js 原生使用 export 语句而非 YAML（模板兼容两种模式）
+/// - Astro 使用 Zod schema 验证 front matter 字段
 class BlogFramework {
   final String id;
   final String name;
@@ -20,6 +27,8 @@ class BlogFramework {
 
   static const List<BlogFramework> presets = [
     // ── Hexo ──
+    // Front Matter: YAML，支持 tags/categories
+    // 文件名: 自由命名，无日期前缀要求
     BlogFramework(
       id: 'hexo',
       name: 'Hexo',
@@ -41,6 +50,10 @@ type: page
 ''',
     ),
     // ── Hugo ──
+    // Front Matter: YAML/TOML/JSON 均可，这里用 YAML
+    // 文件名: 自由命名，无日期前缀要求
+    // 注意: date 格式应带时区（如 2026-08-05T10:30:00+08:00）
+    //       draft 默认应为 false，hugo new 会设为 true 需手动改
     BlogFramework(
       id: 'hugo',
       name: 'Hugo',
@@ -50,7 +63,7 @@ type: page
       postFrontMatter: '''---
 title: "{{title}}"
 date: {{date}}
-draft: {{draft}}
+draft: false
 description: ""
 tags: {{tags}}
 categories: {{categories}}
@@ -59,22 +72,25 @@ categories: {{categories}}
       pageFrontMatter: '''---
 title: "{{title}}"
 date: {{date}}
-draft: {{draft}}
+draft: false
 type: page
 ---
 ''',
     ),
     // ── Jekyll ──
+    // Front Matter: 仅 YAML，必须有 layout 字段
+    // 文件名: 强制 YYYY-MM-DD-title.md 格式！缺少日期前缀文章不会显示
+    // date 格式: 2026-08-05 14:30:00 +0800（需包含时间和时区）
     BlogFramework(
       id: 'jekyll',
       name: 'Jekyll',
       defaultPostsPath: '_posts',
       defaultPagesPath: '',
-      postDatePrefix: false,
+      postDatePrefix: true, // 关键：Jekyll 必须带日期前缀
       postFrontMatter: '''---
 layout: post
 title: "{{title}}"
-date: {{date}}
+date: {{date}} +0800
 categories: {{categories}}
 tags: {{tags}}
 description: ""
@@ -83,11 +99,14 @@ description: ""
       pageFrontMatter: '''---
 layout: page
 title: "{{title}}"
-permalink: /{{title}}/
+permalink: /{{slug}}/
 ---
 ''',
     ),
     // ── VuePress ──
+    // Front Matter: 仅 YAML
+    // 文件名: 自由命名，路径决定路由
+    // 注意: README.md 和 index.md 不能同时存在于同一目录
     BlogFramework(
       id: 'vuepress',
       name: 'VuePress',
@@ -108,6 +127,9 @@ sidebar: auto
 ''',
     ),
     // ── Gatsby ──
+    // Front Matter: YAML，字段通过 GraphQL 查询
+    // 文件名: 推荐 kebab-case，slug 在 front matter 中定义
+    // 注意: 2026 年 Gatsby 处于维护模式，不建议新项目使用
     BlogFramework(
       id: 'gatsby',
       name: 'Gatsby',
@@ -124,11 +146,15 @@ draft: {{draft}}
 ''',
       pageFrontMatter: '''---
 title: "{{title}}"
-slug: "/{{title}}/"
+slug: "/{{slug}}/"
 ---
 ''',
     ),
     // ── Next.js ──
+    // Front Matter: YAML（配合 gray-matter 插件解析，最通用方案）
+    // 文件名: 放在 content/ 目录，动态路由用 [slug]/page.tsx
+    // 注意: 必须在根目录创建 mdx-components.tsx 文件
+    //       如使用 @next/mdx 原生方案，可改用 export const metadata
     BlogFramework(
       id: 'nextjs',
       name: 'Next.js',
@@ -144,14 +170,19 @@ draft: {{draft}}
 ''',
       pageFrontMatter: '''---
 title: "{{title}}"
+date: "{{date}}"
 ---
 ''',
     ),
     // ── Astro ──
+    // Front Matter: YAML，但字段必须符合 content.config.ts 中 Zod schema 定义
+    // 文件名: 推荐 kebab-case，放在 src/content/blog/ 下
+    // 注意: Astro 5+ 必须使用 content.config.ts + glob loader
+    //       必填字段由 schema 定义（通常 title/description/pubDate）
     BlogFramework(
       id: 'astro',
       name: 'Astro',
-      defaultPostsPath: 'src/content',
+      defaultPostsPath: 'src/content/blog',
       defaultPagesPath: 'src/pages',
       postDatePrefix: false,
       postFrontMatter: '''---
@@ -169,6 +200,10 @@ layout: ../layouts/Page.astro
 ''',
     ),
     // ── Pelican ──
+    // Front Matter: 键值对格式（非 YAML！），不用 --- 分隔符
+    // 文件名: 自由命名，无日期前缀要求
+    // 注意: 元数据与正文之间用空行分隔
+    //       设置标识符必须全大写（如 SITENAME）
     BlogFramework(
       id: 'pelican',
       name: 'Pelican',
@@ -189,23 +224,27 @@ Template: page
 
 ''',
     ),
-    // ── 11ty ──
+    // ── 11ty (Eleventy) ──
+    // Front Matter: YAML，通过 layout 键指定布局
+    // 文件名: 自由命名，扩展名决定模板引擎
+    // 注意: Nunjucks 过滤器用括号传参 date("yyyy")，Liquid 用冒号 date: "%Y"
+    //       Eleventy v2 默认不注册 date 过滤器，需在 .eleventy.js 中手动添加
     BlogFramework(
       id: '11ty',
       name: '11ty',
-      defaultPostsPath: 'src',
+      defaultPostsPath: 'src/posts',
       defaultPagesPath: 'src',
       postDatePrefix: false,
       postFrontMatter: '''---
-title: {{title}}
+title: "{{title}}"
 date: {{date}}
 tags: {{tags}}
-layout: post.njk
+layout: layout.njk
 ---
 ''',
       pageFrontMatter: '''---
-title: {{title}}
-layout: page.njk
+title: "{{title}}"
+layout: layout.njk
 ---
 ''',
     ),

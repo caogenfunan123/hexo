@@ -130,10 +130,27 @@ class Article {
         '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')} ${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}:${createdAt.second.toString().padLeft(2, '0')}';
     final dateShort =
         '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}';
-    // Hugo/Jekyll 按 UTC 解析带时间的日期，未来时间会导致文章被跳过，使用纯日期
-    final dateForFramework = (frameworkId == 'hugo' || frameworkId == 'jekyll')
-        ? dateShort
-        : dateFull;
+    final timeFull =
+        '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}:${createdAt.second.toString().padLeft(2, '0')}';
+    // 按框架生成日期格式：
+    // - Hugo: 纯日期，避免未来时间导致文章被跳过
+    // - Jekyll: 完整日期时间，模板中附加 +0800 时区
+    // - Astro: ISO 8601 格式（含时区），符合 Zod schema 校验
+    // - 其他: 完整日期时间
+    String dateForFramework;
+    switch (frameworkId) {
+      case 'hugo':
+        dateForFramework = dateShort;
+        break;
+      case 'jekyll':
+        dateForFramework = dateFull; // 模板中已有 +0800
+        break;
+      case 'astro':
+        dateForFramework = '${dateShort}T${timeFull}+08:00';
+        break;
+      default:
+        dateForFramework = dateFull;
+    }
     final tagsStr = tags.isEmpty
         ? '[]'
         : '[${tags.map((t) => t.contains(' ') ? '"$t"' : t).join(', ')}]';
@@ -209,6 +226,23 @@ class Article {
         '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')} ${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}:${createdAt.second.toString().padLeft(2, '0')}';
     final dateShort =
         '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}';
+    final timeFull =
+        '${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}:${createdAt.second.toString().padLeft(2, '0')}';
+    // 按模板所属框架生成日期格式
+    String dateForTemplate;
+    switch (template.frameworkId) {
+      case 'hugo':
+        dateForTemplate = dateShort;
+        break;
+      case 'jekyll':
+        dateForTemplate = dateFull; // 模板中已有 +0800
+        break;
+      case 'astro':
+        dateForTemplate = '${dateShort}T${timeFull}+08:00';
+        break;
+      default:
+        dateForTemplate = dateFull;
+    }
     final tagsStr = tags.isEmpty
         ? '[]'
         : '[${tags.map((t) => t.contains(' ') ? '"$t"' : t).join(', ')}]';
@@ -219,7 +253,7 @@ class Article {
 
     var fm = template.frontMatter
         .replaceAll('{{title}}', title.isEmpty ? '未命名' : title)
-        .replaceAll('{{date}}', dateShort)
+        .replaceAll('{{date}}', dateForTemplate)
         .replaceAll('{{date_short}}', dateShort)
         .replaceAll('{{tags}}', tagsStr)
         .replaceAll('{{categories}}', catsStr)
@@ -430,10 +464,9 @@ class Article {
   }
 
   /// 根据仓库配置生成文件名
-  /// 所有文章统一使用纯标题作为文件名，不加日期前缀
-  /// （用户明确要求：文件名纯标题就挺好）
+  /// Jekyll 等框架要求 YYYY-MM-DD-title.md 格式，由 repo.fileNameRule.postDatePrefix 控制
   String fileNameForRepo(RepoConfig repo) {
-    return fileName(postDatePrefix: false);
+    return fileName(postDatePrefix: repo.fileNameRule.postDatePrefix);
   }
 }
 
