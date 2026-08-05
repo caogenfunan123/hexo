@@ -849,9 +849,9 @@ class AiChatPanelState extends State<AiChatPanel> {
   String get _emptyHint {
     switch (widget.sessionType) {
       case AiSessionType.article:
-        return 'AI 博文创作助手';
+        return 'AI 博文创作助手（支持仓库分析）';
       case AiSessionType.page:
-        return 'AI 页面编辑助手';
+        return 'AI 页面创作助手（支持仓库分析）';
       case AiSessionType.theme:
         return 'AI 主题开发助手';
       case AiSessionType.themeMigration:
