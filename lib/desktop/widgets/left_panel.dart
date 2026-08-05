@@ -188,6 +188,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                         _navItem(icon: Icons.web_outlined, label: 'AI 页面创作', onTap: widget.bus.onShowAiPageChat),
                         _navItem(icon: Icons.palette_outlined, label: 'AI 主题开发', onTap: widget.bus.onShowAiThemeChat),
                         _navItem(icon: Icons.fact_check_outlined, label: 'AI 站点巡检', onTap: widget.bus.onShowAiAudit),
+                        _navItem(icon: Icons.design_services_outlined, label: 'AI 应用 UI 设计', onTap: widget.bus.onShowAiAppDesign),
                         _navItem(icon: Icons.psychology_outlined, label: 'AI 模型管理', onTap: widget.bus.onShowAiModelManager),
                         _navItem(icon: Icons.text_snippet_outlined, label: 'AI 提示词模板', onTap: widget.bus.onOpenAiPromptTemplates),
                       ],

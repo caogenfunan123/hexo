@@ -2,6 +2,8 @@
 /// 从 AppSettings 拆分，独立管理主题、护眼、站点信息、发布状态预设
 library;
 
+import 'design_config.dart';
+
 class UiSettings {
   // 站点信息
   final String siteAvatar;
@@ -33,6 +35,9 @@ class UiSettings {
   // Cloudflare
   final String cloudflareDeployHook;
 
+  // 应用 UI 设计配置
+  final DesignConfig designConfig;
+
   const UiSettings({
     this.siteAvatar = '',
     this.siteName = '',
@@ -50,6 +55,7 @@ class UiSettings {
     this.statusPresets = const ['publish', 'draft', 'pending', 'private'],
     this.sitePreviewUrl = '',
     this.cloudflareDeployHook = '',
+    this.designConfig = const DesignConfig(),
   });
 
   UiSettings copyWith({
@@ -69,6 +75,7 @@ class UiSettings {
     List<String>? statusPresets,
     String? sitePreviewUrl,
     String? cloudflareDeployHook,
+    DesignConfig? designConfig,
   }) {
     return UiSettings(
       siteAvatar: siteAvatar ?? this.siteAvatar,
@@ -87,6 +94,7 @@ class UiSettings {
       statusPresets: statusPresets ?? this.statusPresets,
       sitePreviewUrl: sitePreviewUrl ?? this.sitePreviewUrl,
       cloudflareDeployHook: cloudflareDeployHook ?? this.cloudflareDeployHook,
+      designConfig: designConfig ?? this.designConfig,
     );
   }
 
@@ -107,6 +115,7 @@ class UiSettings {
         'statusPresets': statusPresets,
         'sitePreviewUrl': sitePreviewUrl,
         'cloudflareDeployHook': cloudflareDeployHook,
+        'designConfig': designConfig.toJson(),
       };
 
   factory UiSettings.fromJson(Map<String, dynamic> j) => UiSettings(
@@ -126,6 +135,9 @@ class UiSettings {
         statusPresets: _parseList(j['statusPresets'], const ['publish', 'draft', 'pending', 'private']),
         sitePreviewUrl: j['sitePreviewUrl']?.toString() ?? '',
         cloudflareDeployHook: j['cloudflareDeployHook']?.toString() ?? '',
+        designConfig: j['designConfig'] is Map
+            ? DesignConfig.fromJson(Map<String, dynamic>.from(j['designConfig'] as Map))
+            : const DesignConfig(),
       );
 
   static List<String> _parseList(dynamic raw, List<String> fallback) {

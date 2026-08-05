@@ -27,6 +27,7 @@ enum PanelAction {
   showAiPageChat,
   showAiThemeChat,
   showAiAudit,
+  showAiAppDesign,
   showAiModelManager,
   showToolLibrary,
   showBlogSiteManager,
@@ -97,6 +98,7 @@ class LeftPanelActionNotifier extends ChangeNotifier {
     VoidCallback? onShowAiPageChat,
     VoidCallback? onShowAiThemeChat,
     VoidCallback? onShowAiAudit,
+    VoidCallback? onShowAiAppDesign,
     VoidCallback? onShowAiModelManager,
     VoidCallback? onShowToolLibrary,
     VoidCallback? onShowBlogSiteManager,
@@ -131,6 +133,7 @@ class LeftPanelActionNotifier extends ChangeNotifier {
     _registerIfNotNull(PanelAction.showAiPageChat, onShowAiPageChat);
     _registerIfNotNull(PanelAction.showAiThemeChat, onShowAiThemeChat);
     _registerIfNotNull(PanelAction.showAiAudit, onShowAiAudit);
+    _registerIfNotNull(PanelAction.showAiAppDesign, onShowAiAppDesign);
     _registerIfNotNull(PanelAction.showAiModelManager, onShowAiModelManager);
     _registerIfNotNull(PanelAction.showToolLibrary, onShowToolLibrary);
     _registerIfNotNull(PanelAction.showBlogSiteManager, onShowBlogSiteManager);

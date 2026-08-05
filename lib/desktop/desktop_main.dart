@@ -16,6 +16,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../theme/app_theme.dart';
+import '../models/design_config.dart';
 import '../controllers/controllers.dart';
 import 'desktop_shell.dart';
 
@@ -64,6 +65,7 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
 
   // ── 主题 ──
   ThemeMode _themeMode = ThemeMode.system;
+  DesignConfig _designConfig = const DesignConfig();
 
   // ── 控制器（全局单例，注入到 Provider 树） ──
   final DocumentController _docCtrl = DocumentController();
@@ -491,13 +493,16 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
           child: MaterialApp(
             debugShowCheckedModeBanner: false,
             title: 'AI 博客编辑器',
-            theme: AppTheme.light(),
-            darkTheme: AppTheme.dark(),
+            theme: AppTheme.lightFromConfig(_designConfig),
+            darkTheme: AppTheme.darkFromConfig(_designConfig),
             themeMode: _themeMode,
             home: DesktopShell(
               key: DesktopApp.shellKey,
               onToggleAppTheme: _toggleAppTheme,
               onShortcutsChanged: _rebuildShortcuts,
+              onDesignConfigChanged: (dc) {
+                setState(() => _designConfig = dc);
+              },
             ),
           ),
         ),

@@ -19,6 +19,7 @@ import '../controllers/controllers.dart';
 
 import '../models/ai_profile.dart';
 import '../models/app_settings.dart';
+import '../models/design_config.dart';
 import '../models/article.dart';
 import '../models/article_type.dart';
 import '../models/blog_framework.dart';
@@ -36,6 +37,7 @@ import '../core/ai/theme_migration_service.dart';
 import '../core/template_engine/template_resolver.dart';
 import '../screens/ai_article_chat_screen.dart';
 import '../screens/ai_audit_screen.dart';
+import '../screens/ai_app_design_screen.dart';
 import '../screens/ai_model_manager_screen.dart';
 import '../screens/ai_theme_chat_screen.dart';
 import '../screens/article_reader_screen.dart';
@@ -135,8 +137,14 @@ import '../core/shared_bootstrap.dart';
 class DesktopShell extends StatefulWidget {
   final VoidCallback? onToggleAppTheme;
   final VoidCallback? onShortcutsChanged;
+  final ValueChanged<DesignConfig>? onDesignConfigChanged;
 
-  const DesktopShell({super.key, this.onToggleAppTheme, this.onShortcutsChanged});
+  const DesktopShell({
+    super.key,
+    this.onToggleAppTheme,
+    this.onShortcutsChanged,
+    this.onDesignConfigChanged,
+  });
 
   @override
   State<DesktopShell> createState() => DesktopShellState();
@@ -1114,10 +1122,15 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ============================================================
 
   Future<void> _updateSettings(AppSettings s) async {
+    final oldDc = settings.ui.designConfig;
     setState(() => settings = s);
     _updateSiteManager();
     _startAutoSync();
     await storage.saveSettings(s);
+    // 如果 DesignConfig 发生变化，通知 DesktopApp 重建主题
+    if (widget.onDesignConfigChanged != null && oldDc != s.ui.designConfig) {
+      widget.onDesignConfigChanged!(s.ui.designConfig);
+    }
   }
 
   Future<void> _updateRepos(List<RepoConfig> r) async {
@@ -4859,6 +4872,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     ));
   }
 
+  void _showAiAppDesign() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => AiAppDesignScreen(
+        settings: settings, activeRepo: effectiveRepo, aiService: aiService,
+        modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
+        onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
+      ),
+    ));
+  }
+
   void _showAiModelManager() {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => AiModelManagerScreen(
@@ -6291,7 +6314,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       ('写作编辑', ['Markdown 实时预览', '代码语法高亮（flutter_highlight）', 'LaTeX 数学公式（块级+内联）', 'Mermaid 图表渲染', '查找替换（支持正则）', 'TOC 自动生成', '可视化表格编辑', '全文格式化', '打字机模式（光标居中）']),
       ('图片处理', ['剪贴板截图粘贴上传', '本地图片选择上传', '批量插图+预处理压缩', '图片尺寸快捷设置', '图片路径相对/绝对切换', '发布前路径自动修复', '图床管理面板', '图片死链检测']),
       ('多格式导出', ['HTML（完整模板）', 'PDF（printing 包）', 'DOCX（OOXML）', 'EPUB（电子书）', '另存为到本地']),
-      ('AI 能力', ['AI 润色/续写', 'AI 博文/页面创作', 'AI 主题迁移', 'AI 站点巡检', 'AI 选区改写', 'AI 全文润色', 'AI 输出对比（diff 预览）', 'AI 提示词模板库']),
+      ('AI 能力', ['AI 润色/续写', 'AI 博文/页面创作', 'AI 主题迁移', 'AI 站点巡检', 'AI 应用 UI 设计', 'AI 选区改写', 'AI 全文润色', 'AI 输出对比（diff 预览）', 'AI 提示词模板库', 'AI 自主创建/管理技能']),
       ('编辑器自定义', ['7 种编辑器主题', '自定义字体/字号/行高', '自定义 CSS', '自定义快捷键', '夜间护眼滤镜']),
       ('文件管理', ['最近打开文件（10条）', '文件夹工作区', '文件重命名/移动', '拖拽 .md 文件导入', '回收站（防误删）', '版本历史快照', '编码修复工具']),
       ('同步与发布', ['GitHub / WebDAV 云同步', '同步冲突可视化对比', '冲突策略（本地/云端优先）', '一键发布到 GitHub/CMS', '发布前预检测', '定时发布', '发布变更日志']),
@@ -6401,6 +6424,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       CommandItem(label: '粘贴图片', category: '编辑', shortcut: 'Ctrl+Shift+V', icon: Icons.image, onExecute: () => _pasteImageFromClipboard()),
       CommandItem(label: 'AI 博文创作', category: 'AI', shortcut: '', icon: Icons.article_outlined, onExecute: () => _showAiArticleChat()),
       CommandItem(label: 'AI 站点巡检', category: 'AI', shortcut: '', icon: Icons.fact_check_outlined, onExecute: () => _showAiAudit()),
+      CommandItem(label: 'AI 应用 UI 设计', category: 'AI', shortcut: '', icon: Icons.palette_outlined, onExecute: () => _showAiAppDesign()),
       CommandItem(label: 'AI 选区改写', category: 'AI', shortcut: '', icon: Icons.short_text, onExecute: () => _sendSelectionToAi()),
       CommandItem(label: 'AI 全文润色', category: 'AI', shortcut: '', icon: Icons.auto_awesome, onExecute: () => _sendFullToAi()),
       CommandItem(label: '草稿箱', category: '导航', shortcut: '', icon: Icons.drafts_outlined, onExecute: () => _openDrafts()),
@@ -7103,6 +7127,7 @@ $htmlContent
     onShowAiPageChat: _showAiPageChat,
     onShowAiThemeChat: _showAiThemeChat,
     onShowAiAudit: _showAiAudit,
+    onShowAiAppDesign: _showAiAppDesign,
     onShowAiModelManager: _showAiModelManager,
     onShowToolLibrary: _showToolLibrary,
     onShowBlogSiteManager: _showBlogSiteManager,

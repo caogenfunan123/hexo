@@ -52,6 +52,7 @@ class ShellActionBus {
   final VoidCallback onShowAiPageChat;
   final VoidCallback onShowAiThemeChat;
   final VoidCallback onShowAiAudit;
+  final VoidCallback onShowAiAppDesign;
   final VoidCallback onShowAiModelManager;
   final VoidCallback onShowToolLibrary;
 
@@ -104,6 +105,7 @@ class ShellActionBus {
     required this.onShowAiPageChat,
     required this.onShowAiThemeChat,
     required this.onShowAiAudit,
+    required this.onShowAiAppDesign,
     required this.onShowAiModelManager,
     required this.onShowToolLibrary,
     required this.onShowBlogSiteManager,

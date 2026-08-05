@@ -335,6 +335,11 @@ class AiChatPanelState extends State<AiChatPanel> {
     // 注入仓库引用到工具系统
     BuiltinTools.gitHubService = widget.gitHubService;
     BuiltinTools.activeRepo = widget.activeRepo;
+    // 注入应用设置引用（供 appDesign 工具读写）
+    BuiltinTools.appSettings = widget.settings;
+    BuiltinTools.onSettingsChanged = widget.onSettingsChanged;
+    // 注入 SkillManager 引用（供 skill 管理工具使用）
+    BuiltinTools.skillManager = _skillManager;
 
     try {
       final stream = widget.dispatcher.dispatchStream(
@@ -858,6 +863,8 @@ class AiChatPanelState extends State<AiChatPanel> {
         return 'AI 主题迁移助手';
       case AiSessionType.audit:
         return 'AI 站点巡检助手';
+      case AiSessionType.appDesign:
+        return 'AI 应用 UI 设计助手';
     }
   }
 
@@ -873,6 +880,8 @@ class AiChatPanelState extends State<AiChatPanel> {
         return '主题迁移';
       case AiSessionType.audit:
         return '站点巡检';
+      case AiSessionType.appDesign:
+        return '应用 UI 设计';
     }
   }
 

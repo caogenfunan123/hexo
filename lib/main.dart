@@ -158,7 +158,8 @@ class _HexoAppState extends State<HexoApp> {
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Hexo 写作',
-        theme: AppTheme.light(seedColor: _settings.themeColor),
+        theme: AppTheme.lightFromConfig(_settings.ui.designConfig),
+        darkTheme: AppTheme.darkFromConfig(_settings.ui.designConfig),
         home: RootShell(
             onThemeChanged: updateTheme, initialSettings: _settings),
       ),
