@@ -148,6 +148,9 @@ class Article {
             .replaceAll('{{categories}}', catsStr);
         if (cover != null && cover!.isNotEmpty) {
           fm = fm.replaceAll('{{cover}}', cover!);
+        } else {
+          // 移除包含 {{cover}} 的整行，避免生成空值
+          fm = fm.replaceAll(RegExp(r'^.*\{\{cover\}\}.*\n', multiLine: true), '');
         }
         fm = fm.replaceAll('{{draft}}', isDraft.toString());
         fm = fm.replaceAll('{{slug}}', title.toLowerCase().replaceAll(RegExp(r'\s+'), '-'));
@@ -223,7 +226,8 @@ class Article {
     if (cover != null && cover!.isNotEmpty) {
       fm = fm.replaceAll('{{cover}}', cover!);
     } else {
-      fm = fm.replaceAll('{{cover}}', '');
+      // 移除包含 {{cover}} 的整行，避免生成空值
+      fm = fm.replaceAll(RegExp(r'^.*\{\{cover\}\}.*\n', multiLine: true), '');
     }
 
     return '$fm\n$content';

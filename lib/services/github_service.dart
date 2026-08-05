@@ -471,6 +471,28 @@ class GitHubService {
 
   String _encPath(String path) =>
       path.split('/').where((e) => e.isNotEmpty).map(Uri.encodeComponent).join('/');
+
+  /// 触发 Cloudflare Pages 重新部署
+  /// [deployHookUrl] 为 Cloudflare Pages 的 Deploy Hook URL
+  /// 成功返回 true，失败返回 false
+  static Future<bool> triggerCloudflareDeploy(String deployHookUrl) async {
+    if (deployHookUrl.isEmpty) return false;
+    try {
+      final client = HttpClient();
+      try {
+        final req = await client.openUrl('POST', Uri.parse(deployHookUrl));
+        req.headers.contentType = ContentType.json;
+        final res = await req.close();
+        await res.drain<void>();
+        return res.statusCode >= 200 && res.statusCode < 300;
+      } finally {
+        client.close(force: true);
+      }
+    } catch (e) {
+      debugPrint('Cloudflare deploy hook failed: $e');
+      return false;
+    }
+  }
 }
 
 class GitHubSearchHit {

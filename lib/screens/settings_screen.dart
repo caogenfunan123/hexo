@@ -610,6 +610,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.cloud_upload),
+            title: const Text('Cloudflare 部署钩子'),
+            subtitle: Text(s.cloudflareDeployHook.isNotEmpty
+                ? '已配置（发布后自动触发重新部署）'
+                : '未配置（发布后需手动触发部署）'),
+            trailing: const Icon(Icons.edit, size: 18),
+            onTap: () async {
+              final ctrl = TextEditingController(text: s.cloudflareDeployHook);
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Cloudflare Deploy Hook'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        '在 Cloudflare Pages → 项目设置 → Deploy Hooks 中创建钩子，粘贴 URL 到此处。发布文章后将自动触发重新部署。',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: ctrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Deploy Hook URL',
+                          hintText: 'https://api.cloudflare.com/...',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('取消'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('保存'),
+                    ),
+                  ],
+                ),
+              );
+              if (ok == true) {
+                await widget.onSettingsChanged(
+                  widget.settings.copyWith(cloudflareDeployHook: ctrl.text.trim()),
+                );
+                widget.onShowToast('Cloudflare 部署钩子已保存');
+              }
+            },
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.web),
             title: const Text('网站页面编辑'),
             subtitle: const Text('头像 · 名称 · 首页 · 关于 · 留言 · Now · 作品'),

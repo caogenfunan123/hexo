@@ -25,15 +25,10 @@ class FileNameRule {
       );
 
   /// 从框架预设生成默认规则
+  /// 所有框架默认不添加日期前缀，文件名使用纯标题
+  /// 如需日期前缀（如 Jekyll），可在仓库设置中手动开启
   factory FileNameRule.fromFramework(String frameworkId) {
-    switch (frameworkId) {
-      case 'hugo':
-      case 'jekyll':
-      case 'gatsby':
-        return const FileNameRule(postDatePrefix: true);
-      default:
-        return const FileNameRule(postDatePrefix: false);
-    }
+    return const FileNameRule(postDatePrefix: false);
   }
 }
 

@@ -1029,6 +1029,11 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       _doc.markSaved();
       await _saveDraft(pub.copyWith(isDraft: false, published: true));
       await _refreshRemote();
+      // 触发 Cloudflare Pages 重新部署
+      if (settings.cloudflareDeployHook.isNotEmpty) {
+        final deployed = await GitHubService.triggerCloudflareDeploy(settings.cloudflareDeployHook);
+        logService.add('Cloudflare 部署', deployed ? '已触发重新部署' : '部署钩子触发失败', success: deployed);
+      }
       logService.add('发布成功', '已发布到 ${repo.fullName}: ${pub.title}');
       if (mounted) _showToast('已发布到 ${repo.fullName}');
     } catch (e) {
@@ -1413,7 +1418,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                     Expanded(
                       child: Text(
                         '框架: ${BlogFramework.byId(_editorRepo?.frameworkId ?? '')?.name ?? _editorRepo?.frameworkId ?? '未知'} | '
-                        '文件名: ${_doc.articleType == ArticleType.page ? '无日期前缀' : ((_editorRepo?.fileNameRule.postDatePrefix ?? true) ? '自动加日期' : '纯标题')}',
+                        '文件名: ${_doc.articleType == ArticleType.page ? '无日期前缀' : ((_editorRepo?.fileNameRule.postDatePrefix ?? false) ? '自动加日期' : '纯标题')}',
                         style: const TextStyle(fontSize: 11, color: Color(0xFF0369A1)),
                       ),
                     ),
@@ -2793,6 +2798,11 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         formatted++;
       }
       await storage.saveDrafts(drafts);
+      // 批量发布后触发 Cloudflare Pages 重新部署
+      if (published > 0 && settings.cloudflareDeployHook.isNotEmpty) {
+        final deployed = await GitHubService.triggerCloudflareDeploy(settings.cloudflareDeployHook);
+        logService.add('Cloudflare 部署', deployed ? '批量发布后已触发重新部署' : '部署钩子触发失败', success: deployed);
+      }
       if (mounted) {
         
         _showToast('已格式化 $formatted 篇草稿');

@@ -46,11 +46,11 @@ type: page
       name: 'Hugo',
       defaultPostsPath: 'content/posts',
       defaultPagesPath: 'content',
-      postDatePrefix: true,
+      postDatePrefix: false,
       postFrontMatter: '''---
 title: "{{title}}"
 date: {{date}}
-draft: true
+draft: {{draft}}
 tags: {{tags}}
 categories: {{categories}}
 ---
@@ -69,7 +69,7 @@ type: page
       name: 'Jekyll',
       defaultPostsPath: '_posts',
       defaultPagesPath: '',
-      postDatePrefix: true,
+      postDatePrefix: false,
       postFrontMatter: '''---
 layout: post
 title: "{{title}}"
@@ -111,7 +111,7 @@ sidebar: auto
       name: 'Gatsby',
       defaultPostsPath: 'content/blog',
       defaultPagesPath: 'src/pages',
-      postDatePrefix: true,
+      postDatePrefix: false,
       postFrontMatter: '''---
 title: "{{title}}"
 date: "{{date}}"
