@@ -65,7 +65,6 @@ class _EditorScreenState extends State<EditorScreen> {
   final FocusNode _contentFocus = FocusNode();
   ArticleType _articleType = ArticleType.post; // post 或 page
   String? _selectedTemplateId;
-  bool _showPreview = false;
 
   @override
   void initState() {
@@ -892,10 +891,6 @@ class _EditorScreenState extends State<EditorScreen> {
                           onChanged: (v) {
                             setState(() => _selectedTemplateId = v);
                             if (v != null) {
-                              final t = widget.templates.firstWhere(
-                                (e) => e.id == v,
-                                orElse: () => widget.templates.first,
-                              );
                               // 应用模板到标题/标签占位
                               if (_title.text.isEmpty) {
                                 _title.text = _articleType == ArticleType.page ? '新页面' : '新文章';

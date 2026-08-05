@@ -88,7 +88,6 @@ class WordPressAdapter implements BlogRepository {
     }
 
     _handleError(response.statusCode, text);
-    return {}; // unreachable, _handleError always throws
   }
 
   /// 分类 HTTP 错误，抛出友好提示
@@ -202,7 +201,6 @@ class WordPressAdapter implements BlogRepository {
     }
 
     _handleError(response.statusCode, text);
-    return [];
   }
 
   @override
@@ -225,7 +223,6 @@ class WordPressAdapter implements BlogRepository {
     if (response.statusCode == 404) return null;
 
     _handleError(response.statusCode, text);
-    return null;
   }
 
   @override
@@ -430,7 +427,7 @@ class WordPressAdapter implements BlogRepository {
           flushParagraph(codeBuf);
           inCodeBlock = true;
           codeLang = line.trim().substring(3).trim();
-          if (codeLang!.isEmpty) codeLang = null;
+          if (codeLang.isEmpty) codeLang = null;
         }
         continue;
       }

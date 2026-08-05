@@ -23,12 +23,6 @@ class WebDavService {
       ..badCertificateCallback = (cert, host, port) => false;
   }
 
-  String _path(String folder, String path) {
-    final base = folder.replaceAll(RegExp(r'/$'), '');
-    final p = path.replaceAll(RegExp(r'^/'), '');
-    return '$base/$p'.replaceAll(RegExp(r'/+'), '/');
-  }
-
   Future<String> _put(String url, String token, List<int> bytes, {Map<String, String>? extraHeaders}) async {
     final client = await _openClient();
     try {
@@ -63,10 +57,6 @@ class WebDavService {
     }
   }
 
-  Future<String> _get(String url, String token) async {
-    return await _method('GET', url, token);
-  }
-
   Future<List<WebDavItem>> list(String baseUrl, String username, String password, String folder) async {
     final url = '${baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl}${folder.isEmpty ? '' : '/' + folder.replaceFirst(RegExp(r'^/'), '')}';
     final body = await _method('PROPFIND', url, _basicToken(username, password), extraHeaders: {'Depth': '1'});
@@ -85,7 +75,7 @@ class WebDavService {
 
   Future<void> _mkcol(String path, String baseUrl, String username, String password) async {
     final url = '${baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl}/${path.replaceFirst(RegExp(r'^/'), '')}';
-    await _method('MKCOL', url, _basicToken(username, password)).catchError((_) => null);
+    await _method('MKCOL', url, _basicToken(username, password)).catchError((_) => '');
   }
 
   Future<List<int>> downloadFile(String baseUrl, String username, String password, String folder, String name) async {

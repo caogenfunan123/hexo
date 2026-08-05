@@ -1,4 +1,6 @@
 /// 文件实体
+import 'dart:io';
+
 class FileEntity {
   final String name;
   final String path; // 相对路径
@@ -96,3 +98,4 @@ abstract class AppFileOperator {
   /// - SDK 31 = Android 12
   /// - SDK 33 = Android 13
   Future<int> getSdkVersion() async => 0;
+}

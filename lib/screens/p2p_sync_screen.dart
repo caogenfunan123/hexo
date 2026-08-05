@@ -4,7 +4,6 @@
 library;
 
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/p2p_sync_service.dart';
 import '../models/article.dart';

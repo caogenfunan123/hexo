@@ -4,7 +4,6 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 /// 解析后的 Front-matter 字段
 class FrontMatterData {

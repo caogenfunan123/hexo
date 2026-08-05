@@ -186,7 +186,6 @@ class DesktopEditorArea extends StatelessWidget {
   }
 
   Widget _emptyState(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(

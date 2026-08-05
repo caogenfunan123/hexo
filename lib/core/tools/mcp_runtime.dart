@@ -250,7 +250,6 @@ class McpRuntime {
     try {
       final skillJson = jsonDecode(skill.skillContent!) as Map<String, dynamic>;
       final steps = skillJson['steps'] as List? ?? [];
-      final vars = inst.params ?? {};
 
       final results = <String>[];
       for (final step in steps) {

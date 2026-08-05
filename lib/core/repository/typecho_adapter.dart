@@ -100,7 +100,6 @@ class TypechoAdapter implements BlogRepository {
     }
 
     _handleError(response.statusCode, text);
-    return {};
   }
 
   Never _handleError(int statusCode, String body) {
@@ -422,7 +421,6 @@ class TypechoAdapter implements BlogRepository {
     final buf = StringBuffer();
     final lines = md.split('\n');
     bool inCodeBlock = false;
-    String? codeLang;
     StringBuffer codeBuf = StringBuffer();
     bool inTable = false;
     StringBuffer tableBuf = StringBuffer();
@@ -449,7 +447,6 @@ class TypechoAdapter implements BlogRepository {
           inCodeBlock = false;
         } else {
           inCodeBlock = true;
-          codeLang = line.trim().substring(3).trim();
         }
         continue;
       }

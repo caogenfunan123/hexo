@@ -108,7 +108,7 @@ class GitHubService {
 
   Future<bool> testToken(RepoConfig repo) async {
     final data = await getUser(repo.token);
-    return data != null && (data['login']?.toString().isNotEmpty ?? false);
+    return data['login']?.toString().isNotEmpty ?? false;
   }
 
   /// 用原始 token 校验并返回 /user 信息；失败抛异常。
@@ -252,7 +252,6 @@ class GitHubService {
     // 读取 posts 目录下最近 2 篇文章的 FrontMatter
     try {
       final posts = await listPosts(repo);
-      int count = 0;
       for (final post in posts.take(2)) {
         try {
           final data = await getRawFile(repo, post.path);
@@ -267,7 +266,6 @@ class GitHubService {
               }
             }
           }
-          count++;
         } catch (_) {}
       }
     } catch (_) {}

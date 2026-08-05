@@ -116,14 +116,13 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
                 cs: cs,
                 isDark: isDark,
               ),
-            if (bus.onNewArticle != null)
-              _titleBarButton(
-                icon: Icons.add,
-                tooltip: '新建文章 (Ctrl+N)',
-                onTap: bus.onNewArticle!,
-                cs: cs,
-                isDark: isDark,
-              ),
+            _titleBarButton(
+              icon: Icons.add,
+              tooltip: '新建文章 (Ctrl+N)',
+              onTap: bus.onNewArticle,
+              cs: cs,
+              isDark: isDark,
+            ),
             _titleBarButton(
               icon: Icons.sync,
               tooltip: '同步 (Ctrl+S)',

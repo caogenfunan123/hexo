@@ -52,7 +52,6 @@ class MarkdownFormatter {
   /// 格式化 Markdown 表格，对齐列
   static String _formatTables(String text) {
     final lines = text.split('\n');
-    final result = <String>[];
     final tableLines = <int>[];
 
     for (var i = 0; i < lines.length; i++) {

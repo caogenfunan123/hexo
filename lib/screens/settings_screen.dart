@@ -72,18 +72,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  Future<void> _saveSettings() async {
-    final s = widget.settings.copyWith(
-      siteName: _siteNameCtrl.text.trim(),
-      siteBio: _siteBioCtrl.text.trim(),
-    );
-    await widget.onSettingsChanged(s);
-    widget.onShowToast('设置已保存');
-  }
-
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final s = widget.settings;
     final activeRepo = widget.repos.isEmpty
         ? null
@@ -454,7 +444,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: Text(
               activeRepo == null
                   ? '请先添加仓库'
-                  : '使用 ${activeRepo!.fullName} / ${activeRepo!.branch}，Token 回退已登录令牌',
+                  : '使用 ${activeRepo.fullName} / ${activeRepo.branch}，Token 回退已登录令牌',
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () async {

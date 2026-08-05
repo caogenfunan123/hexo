@@ -100,7 +100,7 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
       frontMatter: fmCtrl.text.trim().isEmpty
           ? '---\ntitle: {{title}}\ndate: {{date}}\ntags: {{tags}}\n---'
           : fmCtrl.text.trim(),
-      isPost: isPost ?? true,
+      isPost: isPost,
       isBuiltin: false,
       createdAt: now,
     );
@@ -392,8 +392,6 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
       if (chosen == null) return;
       selectedRepo = chosen;
     }
-
-    if (selectedRepo == null) return;
 
     setState(() => _loading = true);
     try {

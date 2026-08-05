@@ -43,8 +43,6 @@ class _MobileDiffScreenState extends State<MobileDiffScreen> {
   final ScrollController _newScrollController = ScrollController();
 
   // 合并状态
-  final Set<int> _acceptedLineIndices = {};
-  final Set<int> _rejectedLineIndices = {};
   bool _showManualMerge = false;
 
   @override

@@ -58,7 +58,6 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
   bool _isTrayReady = false;
 
   // ── 布局记忆 ──
-  static const _layoutKey = 'desktop_layout';
   Offset _windowPosition = const Offset(100, 80);
   Size _windowSize = const Size(1280, 800);
   bool _isMaximized = false;

@@ -56,7 +56,6 @@ class DesktopSplitEditor extends StatefulWidget {
 class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
   late SplitEditorMode _mode;
   double _splitRatio = 0.5; // 源码区占比
-  bool _isDragging = false;
 
   // 源码区滚动控制器
   final ScrollController _sourceScrollCtrl = ScrollController();

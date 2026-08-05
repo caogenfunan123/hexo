@@ -285,13 +285,6 @@ class AiChatPanelState extends State<AiChatPanel> {
     _scrollToBottom();
   }
 
-  void _addUserMessage(String text) {
-    setState(() => _messages.add(ChatMessage(role: 'user', content: text)));
-    widget.dispatcher.addUserMessage(text);
-    _saveHistory();
-    _scrollToBottom();
-  }
-
   void _addAssistantMessage(String text) {
     setState(() => _messages.add(ChatMessage(role: 'assistant', content: text)));
     widget.dispatcher.addAssistantMessage(text);
@@ -657,22 +650,6 @@ class AiChatPanelState extends State<AiChatPanel> {
     }
 
     return files;
-  }
-
-  /// 写入单个文件到 Git 仓库
-  Future<void> _writeSingleFile(ParsedFileOp file) async {
-    final repo = widget.activeRepo;
-    final git = widget.gitHubService;
-    if (repo == null || git == null) {
-      throw Exception('未配置 Git 仓库');
-    }
-    await git.putRawFile(
-      repo,
-      file.path,
-      file.content,
-      commitMessage: 'ai: create ${file.path}',
-    );
-    file.written = true;
   }
 
   /// 写入所有已解析文件到 Git 仓库

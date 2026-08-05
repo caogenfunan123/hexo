@@ -82,7 +82,6 @@ MarkdownStyleSheet createUnifiedMarkdownStyle({
   final codeBgColor = isDark ? const Color(0xFF2D2D3A) : const Color(0xFFF5F5F5);
   final blockQuoteColor = isDark ? const Color(0xFF4C4C5A) : const Color(0xFFE0E0E0);
   final tableBorderColor = isDark ? const Color(0xFF3E3E42) : const Color(0xFFE0E0E0);
-  final tableHeaderBgColor = isDark ? const Color(0xFF2D2D3A) : const Color(0xFFF5F5F5);
   final hrColor = isDark ? const Color(0xFF3E3E42) : const Color(0xFFE0E0E0);
 
   // 字号

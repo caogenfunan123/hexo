@@ -6,12 +6,10 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:window_manager/window_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:archive/archive.dart';
 
@@ -40,7 +38,6 @@ import '../screens/ai_audit_screen.dart';
 import '../screens/ai_app_design_screen.dart';
 import '../screens/ai_model_manager_screen.dart';
 import '../screens/ai_theme_chat_screen.dart';
-import '../screens/article_reader_screen.dart';
 import '../screens/blog_site_editor_screen.dart';
 import '../screens/drafts_screen.dart';
 import '../screens/remote_screen.dart';
@@ -88,13 +85,9 @@ import '../screens/ai_prompt_templates_screen.dart';
 import '../screens/p2p_sync_screen.dart';
 import '../widgets/ai_chat_panel.dart';
 import 'widgets/ai_selection_edit_dialog.dart';
-import '../theme/app_theme.dart';
 
 // ── 新功能集成（桌面版） ──
 import '../widgets/typewriter_scroll.dart';
-import '../widgets/focus_mode_overlay.dart';
-import '../widgets/editor_animations.dart';
-import '../widgets/unified_markdown_styles.dart';
 import '../widgets/orientation_guard.dart';
 import '../services/site_isolation_service.dart';
 import '../services/template_sync_service.dart';
@@ -106,7 +99,6 @@ import 'package:flutter_highlight/themes/github.dart' as highlight_github;
 import 'package:flutter_highlight/themes/monokai-sublime.dart' as highlight_monokai;
 import 'package:flutter_highlight/themes/dracula.dart' as highlight_dracula;
 import 'package:flutter_highlight/themes/nord.dart' as highlight_nord;
-import 'package:flutter_highlight/themes/vs.dart' as highlight_vs;
 // webview_flutter 在桌面端不可用，Mermaid 预览改为纯文本展示
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
@@ -118,11 +110,9 @@ import 'widgets/left_panel.dart';
 import 'widgets/editor_area.dart';
 import 'widgets/right_drawer.dart';
 import 'widgets/status_bar.dart';
-import 'widgets/work_mode.dart';
 import 'widgets/editor_themes.dart';
 import 'widgets/desktop_split_editor.dart';
 import 'widgets/frontmatter_card.dart';
-import 'widgets/markdown_formatter.dart';
 import 'widgets/markdown_syntax_highlighter.dart';
 import 'widgets/editor_drop_target.dart';
 import 'widgets/spell_check_panel.dart';
@@ -229,7 +219,6 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ──────────────────────────────────────────────
   // 会话
   // ──────────────────────────────────────────────
-  SessionState _lastSession = SessionState.empty;
   bool _sessionRestored = false;
 
   // ──────────────────────────────────────────────
@@ -556,7 +545,6 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       entry.value.cancel();
       final articleId = entry.key;
       final content = _doc.contentCtrl.text;
-      final title = _doc.titleCtrl.text;
       if (content.isNotEmpty && content != _lastSavedContentMap[articleId]) {
         _autoSaveSnapshot();
       }
@@ -760,7 +748,6 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     try {
       final session = await sessionService.loadSession();
       if (!session.hasArticle || session.isHome) return;
-      _lastSession = session;
       final article = Article(
         id: session.articleId,
         title: session.articleTitle,
@@ -1878,7 +1865,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final preResult = await imageService.preprocessImages(bytesList, settings, onProgress: (current, total, beforeKB, afterKB) {
         if (mounted) _editor.setEditorStatus('预处理 $current/$total: ${beforeKB}KB → ${afterKB}KB');
       });
-      int uploaded = 0, failed = 0;
+      int uploaded = 0;
       final buf = StringBuffer();
       for (var i = 0; i < total; i++) {
         _editor.setEditorStatus('正在上传图片 ${i + 1}/$total...');
@@ -2289,7 +2276,6 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
     if (!_editor.useRelativeImagePath) {
       // 转换为相对路径：https://site.com/images/photo.png → images/photo.png
-      final escapedBase = RegExp.escape(baseUrl);
       final replaced = text.replaceAllMapped(imagePattern, (m) {
         final alt = m.group(1) ?? '';
         var url = m.group(2) ?? '';
@@ -2325,63 +2311,6 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         _showToast('已切换为绝对路径模式');
       }
     }
-    _onContentChanged();
-  }
-
-  // ============================================================
-  // 图片尺寸快捷设置
-  // ============================================================
-
-  void _setImageSize(String size) {
-    final text = _doc.contentCtrl.text;
-    final sel = _doc.contentCtrl.selection;
-    final pos = sel.isValid ? sel.start : text.length;
-
-    // 检查光标是否在图片语法附近
-    String width;
-    switch (size) {
-      case 'small':  width = '200'; break;
-      case 'medium': width = '400'; break;
-      case 'large':  width = '600'; break;
-      case 'full':   width = '100%'; break;
-      default:       width = '400';
-    }
-
-    // 查找光标附近的图片语法
-    final beforeText = text.substring(0, pos);
-    final imageMatch = RegExp(r'!\[([^\]]*)\]\(([^)]+)\)', multiLine: true);
-    final matches = imageMatch.allMatches(beforeText);
-    int? lastEnd;
-    String? lastUrl;
-    for (final m in matches) {
-      if (m.end <= pos) {
-        lastEnd = m.end;
-        lastUrl = m.group(2);
-      }
-    }
-
-    if (lastEnd != null && lastUrl != null) {
-      // 在图片 URL 后面插入尺寸标记
-      final sizeStr = ' =${width}x';
-      // 使用 HTML img 标签风格
-      final htmlImg = '<img src="$lastUrl" width="$width"/>';
-      // 检查是否已经是 HTML 格式
-      final beforeMarkdown = text.substring(0, lastEnd);
-      final mdMatch = RegExp(r'!\[([^\]]*)\]\(([^)]+)\)$', multiLine: true);
-      final mdLastMatch = mdMatch.firstMatch(beforeMarkdown);
-      if (mdLastMatch != null) {
-        final alt = mdLastMatch.group(1) ?? '';
-        final url = mdLastMatch.group(2) ?? '';
-        _doc.contentCtrl.value = TextEditingValue(
-          text: text.replaceRange(mdLastMatch.start, mdLastMatch.end, '<img src="$url" alt="$alt" width="$width"/>'),
-          selection: TextSelection.collapsed(offset: mdLastMatch.start + '<img src="$url" alt="$alt" width="$width"/>'.length),
-        );
-      }
-    } else {
-      // 没有找到图片，直接插入 HTML 模板
-      _insertText('<img src="url" width="$width" alt=""/>');
-    }
-    _doc.contentFocus.requestFocus();
     _onContentChanged();
   }
 
@@ -2892,9 +2821,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           // 打开远程文章到编辑器
           _openExistingArticle(Article(
             id: DateTime.now().millisecondsSinceEpoch.toString(),
-            title: post.title, content: post.contentMd ?? '',
+            title: post.title, content: post.contentMd,
             tags: post.tags, categories: post.categories,
-            createdAt: post.date ?? DateTime.now(), updatedAt: DateTime.now(),
+            createdAt: post.date, updatedAt: DateTime.now(),
             isDraft: true, remoteSha: post.id?.toString(),
           ));
         },
@@ -3766,11 +3695,11 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       try {
         final adapter = siteManager.currentAdapter;
         if (adapter != null) {
-          final mapping = syncService.findByLocalId(siteManager.currentAdapter?.config?.id ?? '', _doc.currentArticle.id);
+          final mapping = syncService.findByLocalId(siteManager.currentAdapter?.config.id ?? '', _doc.currentArticle.id);
           if (mapping != null) {
             final remotePost = await adapter.getPostById(mapping.remotePostId);
             if (remotePost != null) {
-              remoteContent = remotePost.contentMd ?? '';
+              remoteContent = remotePost.contentMd;
             }
           }
         }
@@ -4405,7 +4334,6 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             ),
             FilledButton(
               onPressed: () {
-                final newResults = spellCheckService.check(_doc.contentCtrl.text);
                 Navigator.pop(ctx);
                 _showSpellCheck();
               },
@@ -4503,7 +4431,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       String sha = result?['sha'] ?? '';
       if (!mounted) return;
       final ctrl = TextEditingController(text: content);
-      final ok = await showDialog<bool>(
+      await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text('${repo.frameworkId} 配置编辑'),
@@ -4908,20 +4836,6 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     ));
   }
 
-  Future<bool> _confirm(String msg) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认'), content: Text(msg),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确定')),
-        ],
-      ),
-    );
-    return ok == true;
-  }
-
   // ============================================================
   // 全局操作入口（由 desktop_main 快捷键/托盘/拖拽调用）
   // ============================================================
@@ -5060,23 +4974,6 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         }
       }
     } catch (e) { debugPrint('Shell: git log failed: $e'); }
-  }
-
-  /// 从最近文件中打开
-  void _openRecentFile(RecentFile rf) async {
-    try {
-      final file = File(rf.path);
-      if (!await file.exists()) {
-        _showToast('文件不存在: ${rf.path}');
-        _recentFiles.removeWhere((f) => f.path == rf.path);
-        _persistRecentFiles();
-        return;
-      }
-      final content = await file.readAsString();
-      openExternalFile(rf.name, content, rf.path);
-    } catch (e) {
-      _showToast('打开文件失败: $e');
-    }
   }
 
   /// 文件打开对话框
@@ -5557,7 +5454,6 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   /// 渲染普通 Markdown 文本（不含代码块）
   Widget _renderPlainMarkdown(String text) {
-    final theme = _currentEditorTheme;
     final cssStyle = _buildCustomMarkdownStyleSheet();
 
     // 处理内联 LaTeX $...$
@@ -6564,6 +6460,7 @@ $body
         if (result == null) return;
 
         // 使用 Printing 包将 HTML 直接转换为 PDF 字节
+        // ignore: deprecated_member_use
         final pdfBytes = await Printing.convertHtml(
           format: PdfPageFormat.a4,
           html: html,

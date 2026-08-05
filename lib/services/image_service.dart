@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -211,7 +210,7 @@ class ImageService {
     final path =
         '${settings.imageBedPath.replaceAll(RegExp(r'/+$'), '')}/$name'
             .replaceAll(RegExp(r'^/+'), '');
-    final rawUrl = await github.uploadBinary(
+    await github.uploadBinary(
       token: token,
       owner: owner,
       repo: repo,

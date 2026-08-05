@@ -27,9 +27,6 @@ class TypewriterScrollController {
   /// 是否启用打字机模式
   bool _enabled = true;
 
-  /// 屏幕中心行号
-  int get _centerLine => visibleLines ~/ 2;
-
   TypewriterScrollController({
     required this.scrollController,
     this.lineHeight = 22.0,

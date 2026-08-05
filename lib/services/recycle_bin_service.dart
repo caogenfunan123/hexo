@@ -93,7 +93,6 @@ class RecycleBinService {
     }
 
     final entryId = DateTime.now().millisecondsSinceEpoch.toString();
-    final ext = filePath.endsWith('.md') ? '.md' : '.txt';
     final trashFileName = '${entryId}_${article.fileName()}';
     final trashPath = '${_rootDir.path}/$trashFileName';
 

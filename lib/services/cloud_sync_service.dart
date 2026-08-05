@@ -259,7 +259,7 @@ class WebDavSyncBackend implements SyncBackend {
         if (!item.isDir && (prefix.isEmpty || item.name.startsWith(prefix))) {
           result.add(SyncFileInfo(
             path: item.name,
-            size: item.size ?? 0,
+            size: item.size,
             modified: item.modified,
           ));
         }

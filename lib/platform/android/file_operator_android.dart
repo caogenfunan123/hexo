@@ -12,7 +12,7 @@ import '../../core/file_manager/file_abstract.dart';
 /// - 内部文件（快照、缓存、回收站索引、同步元数据）→ getApplicationDocumentsDirectory()
 /// - 用户导出 → SAF / MediaStore / 共享存储
 /// - 所有文件操作统一经由本接口，禁止跨平台直接使用 File 原生 API
-class AndroidFileOperator implements AppFileOperator {
+class AndroidFileOperator extends AppFileOperator {
   static const _channel = MethodChannel('hexo/native');
 
   Directory? _internalRoot;

@@ -46,7 +46,6 @@ class _LogScreenState extends State<LogScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final logs = _filteredLogs;
 
     return Column(

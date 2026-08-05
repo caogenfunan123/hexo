@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../services/recycle_bin_service.dart';
-import 'dart:io';
 
 class RecycleBinScreen extends StatefulWidget {
   final RecycleBinService recycleBinService;

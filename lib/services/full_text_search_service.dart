@@ -243,7 +243,6 @@ class FullTextSearchService {
 
       try {
         final content = await entity.readAsString();
-        final searchContent = caseSensitive ? content : content.toLowerCase();
         final matches = <SearchMatch>[];
         int matchCount = 0;
 

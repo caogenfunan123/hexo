@@ -1,8 +1,5 @@
 import 'dart:convert';
 
-import 'tool_entity.dart';
-import 'skill_manager.dart';
-
 /// AI 输出指令解析结果
 class ParsedInstruction {
   final InstructionType type;

@@ -386,7 +386,7 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
     final branchCtrl = TextEditingController(text: widget.settings.syncRepoBranch);
     final tokenCtrl = TextEditingController(text: widget.settings.syncRepoToken);
 
-    final result = await showDialog<bool>(
+    await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('配置同步仓库'),

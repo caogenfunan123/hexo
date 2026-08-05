@@ -24,8 +24,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-import '../models/article_type.dart';
-
 /// 编辑器标签页数据模型
 class EditorTab {
   final String id;
@@ -82,7 +80,6 @@ class CursorPosition {
 
 class EditorController extends ChangeNotifier {
   static const int _maxRetries = 3;
-  static const Duration _debounceDuration = Duration(seconds: 2);
 
   // ── 标签页 ──
   final List<EditorTab> _openTabs = [];

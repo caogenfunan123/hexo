@@ -571,30 +571,4 @@ class _AiSelectionEditMobileState extends State<AiSelectionEditMobile>
     );
   }
 
-  /// 显示移动端 AI 选区编辑的 BottomSheet
-  static Future<String?> show(
-    BuildContext context, {
-    required String selectedText,
-    required AiService aiService,
-    required AppSettings settings,
-  }) {
-    return showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.3,
-        maxChildSize: 0.9,
-        builder: (ctx, scrollController) => SingleChildScrollView(
-          controller: scrollController,
-          child: AiSelectionEditMobile(
-            selectedText: selectedText,
-            aiService: aiService,
-            settings: settings,
-          ),
-        ),
-      ),
-    );
-  }
 }

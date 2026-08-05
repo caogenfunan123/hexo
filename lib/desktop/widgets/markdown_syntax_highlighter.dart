@@ -606,7 +606,6 @@ class MarkdownSyntaxController extends TextEditingController {
     var offset = 0;
     var inCodeBlock = false;
     var inFrontmatter = false;
-    var frontmatterCount = 0;
 
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i];
@@ -616,7 +615,6 @@ class MarkdownSyntaxController extends TextEditingController {
       // Frontmatter 检测
       if (i == 0 && line.trim() == '---') {
         inFrontmatter = true;
-        frontmatterCount = 0;
         spans.add(_HighlightSpan(
           start: lineStart,
           end: lineEnd,

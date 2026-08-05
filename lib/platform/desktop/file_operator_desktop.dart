@@ -3,7 +3,7 @@ import '../../core/file_manager/file_abstract.dart';
 
 /// 桌面平台（Windows/Mac/Linux）文件操作实现
 /// 直接使用本地文件系统，无需沙盒
-class DesktopFileOperator implements AppFileOperator {
+class DesktopFileOperator extends AppFileOperator {
   final String _rootPath;
 
   DesktopFileOperator({String? rootPath})

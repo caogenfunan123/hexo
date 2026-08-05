@@ -260,7 +260,7 @@ class _ToastAnimationState extends State<ToastAnimation>
   @override
   Widget build(BuildContext context) {
     return WidgetAnimator(
-      animation: _controller,
+      listenable: _controller,
       builder: (context, child) {
         return Opacity(
           opacity: _opacity.value,

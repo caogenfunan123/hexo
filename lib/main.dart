@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -72,13 +70,9 @@ import 'theme/app_theme.dart';
 
 // ── 移动端新功能集成 ──
 import 'widgets/typewriter_scroll.dart';
-import 'widgets/editor_animations.dart';
 import 'widgets/unified_markdown_styles.dart';
 import 'widgets/orientation_guard.dart';
 import 'widgets/ai_selection_edit_mobile.dart';
-import 'screens/mobile_diff_screen.dart';
-import 'screens/mobile_recycle_bin_screen.dart';
-import 'screens/mobile_snapshot_screen.dart';
 import 'services/site_isolation_service.dart';
 import 'services/p2p_sync_service.dart';
 import 'screens/p2p_sync_screen.dart';
@@ -189,7 +183,6 @@ class RootShell extends StatefulWidget {
 }
 
 class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
-  static const _channel = MethodChannel('hexo/native');
   final storage = StorageService();
   final github = GitHubService();
   late final imageService = ImageService(github);
@@ -222,14 +215,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   int _currentPage = 0;
   bool loading = true;
   bool busy = false;
-  String searchQuery = '';
-  List<GitHubSearchHit> githubSearchHits = [];
-  bool githubSearchLoading = false;
   String? error;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  // ── 会话记忆 ──
-  SessionState _lastSession = SessionState.empty;
   bool _sessionRestored = false;
 
   // ── 自动保存（P0 修复：每草稿独立防抖 + 三重落盘） ──
@@ -335,12 +323,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   }
 
   // ── 控制器访问器（从 Provider 获取） ──
-  LayoutController get _layout => context.read<LayoutController>();
   EditorController get _editor => context.read<EditorController>();
-  SyncController get _sync => context.read<SyncController>();
   SiteController get _site => context.read<SiteController>();
-  FrontMatterController get _frontMatter => context.read<FrontMatterController>();
-  UiStateController get _ui => context.read<UiStateController>();
   DocumentController get _doc => context.read<DocumentController>();
 
   @override
@@ -665,7 +649,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     try {
       final session = await sessionService.loadSession();
       if (!session.hasArticle || session.isHome) return;
-      _lastSession = session;
 
       // 恢复文章数据
       final article = Article(
@@ -716,12 +699,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       articleRemotePath: _doc.currentArticle.remotePath ?? '',
       articleRemoteSha: _doc.currentArticle.remoteSha ?? '',
     );
-    _lastSession = state;
     await sessionService.saveSession(state);
   }
 
   Future<void> _clearSession() async {
-    _lastSession = SessionState.empty;
     await sessionService.clearSession();
   }
 
@@ -875,7 +856,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       entry.value.cancel();
       final articleId = entry.key;
       final content = _doc.contentCtrl.text;
-      final title = _doc.titleCtrl.text;
       if (content.isNotEmpty && content != _lastSavedContentMap[articleId]) {
         _autoSaveSnapshot();
       }
@@ -1228,7 +1208,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           _publishCancelToken.throwIfCancelled();
         }
       }
-      final finalResult = result!;
+      final finalResult = result;
       final isUpdate = remoteId != null;
       // 更新本地文章状态，记录远程 ID
       final pub = a.copyWith(
@@ -1644,52 +1624,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     );
   }
 
-  /// 移动端 Diff 对比视图
-  void _showMobileDiff(String original, String modified, {String title = 'Diff 对比'}) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => MobileDiffScreen(
-        oldText: original,
-        newText: modified,
-        oldLabel: '原始版本',
-        newLabel: '修改版本',
-        onAccept: (acceptedText) {
-          _doc.contentCtrl.text = acceptedText;
-          _onContentChanged();
-        },
-      ),
-    ));
-  }
-
-  /// 移动端回收站
-  void _showMobileRecycleBin() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => MobileRecycleBinScreen(
-        recycleBinService: _recycleBin!,
-        onRestore: (entryId) {
-          _showToast('已恢复 #$entryId');
-        },
-      ),
-    ));
-  }
-
-  /// 移动端版本快照
-  void _showMobileSnapshots() {
-    final article = _doc.currentArticle;
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => MobileSnapshotScreen(
-        articleId: article.id,
-        articleTitle: article.title,
-        currentContent: _doc.contentCtrl.text,
-        snapshotService: _snapshotService!,
-        onRestore: (snapshotContent) {
-          _doc.contentCtrl.text = snapshotContent;
-          _onContentChanged();
-          _showToast('快照已恢复');
-        },
-      ),
-    ));
-  }
-
   // --- Data methods ---
   Future<void> _saveDraft(Article a) async {
     final i = drafts.indexWhere((e) => e.id == a.id);
@@ -1763,7 +1697,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   Future<void> _persistSettings() => storage.saveSettings(settings);
   Future<void> _persistRepos() => storage.saveRepos(repos);
-  Future<void> _persistDrafts() => storage.saveDrafts(drafts);
 
   Future<void> _saveMdBackup() async {
     try {
@@ -2204,7 +2137,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   /// 打开动态 CMS 站点管理页面
   Future<void> _showBlogSiteManager() async {
-    final result = await Navigator.of(context).push<BlogSiteConfig?>(
+    await Navigator.of(context).push<BlogSiteConfig?>(
       MaterialPageRoute(
         builder: (_) => BlogSiteEditorScreen(
           appSettings: settings,
@@ -3891,103 +3824,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     }
   }
 
-  // ============ Search ============
-
-  Future<void> _showSearch() async {
-    final controller =
-        TextEditingController(text: searchQuery);
-    final q = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('全文搜索'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: const InputDecoration(
-                hintText: '标题 / 正文 / 标签 / 文件名 / 仓库全文',
-                prefixIcon: Icon(Icons.search),
-              ),
-              onSubmitted: (v) => Navigator.pop(ctx, v),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              '本地草稿会按标题/正文/标签过滤；远程文章会再请求 GitHub Code Search 做仓库全文检索。',
-              style: TextStyle(
-                  fontSize: 12, color: Color(0xFF64748B)),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, ''),
-              child: const Text('清除')),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(ctx, controller.text),
-            child: const Text('搜索'),
-          ),
-        ],
-      ),
-    );
-    if (q == null) return;
-    final query = q.trim();
-    setState(() {
-      searchQuery = query;
-      if (query.isEmpty) githubSearchHits = [];
-    });
-    if (query.isNotEmpty) {
-      await _runGithubFullTextSearch(query);
-    }
-  }
-
-  Future<void> _runGithubFullTextSearch(String query) async {
-    final repo = effectiveRepo;
-    if (repo == null || repo.token.isEmpty) {
-      setState(() => githubSearchHits = []);
-      return;
-    }
-    setState(() => githubSearchLoading = true);
-    try {
-      final hits = await github.searchCode(repo, query);
-      if (!mounted) return;
-      setState(() => githubSearchHits = hits);
-      if (hits.isEmpty) {
-        _showToast('GitHub 全文无匹配');
-      } else {
-        _showToast('GitHub 全文命中 ${hits.length} 个文件');
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => githubSearchHits = []);
-      _showToast('GitHub 全文搜索失败: $e');
-    } finally {
-      if (mounted) setState(() => githubSearchLoading = false);
-    }
-  }
-
   // ============ Import & PWA ============
-
-  Future<void> _importLocalMd() async {
-    try {
-      final result =
-          await _channel.invokeMethod<Map>('pickFile');
-      if (result == null) return;
-      final b64 = result['base64']?.toString() ?? '';
-      final name =
-          result['name']?.toString() ?? 'untitled.md';
-      if (b64.isEmpty) return;
-      final content = utf8.decode(base64Decode(b64));
-      final article = Article.fromMarkdown(content,
-          id: DateTime.now().millisecondsSinceEpoch.toString());
-      _openExistingArticle(article);
-    } catch (e) {
-      _showToast('导入失败: $e');
-    }
-  }
 
   Future<void> _showPwaGuide() async {
     final site = activeRepo?.siteUrl.isNotEmpty == true
@@ -5126,7 +4963,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   /// 站点切换器 + 类型指示器
   Widget _buildSiteSwitcher(ColorScheme cs) {
     final allSites = siteManager.allSites;
-    final currentIdentity = siteManager.currentSiteIdentity;
     final isDynamic = siteManager.isDynamicSite;
 
     return _editorCard(
@@ -5550,7 +5386,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
       if (!mounted) return;
       final ctrl = TextEditingController(text: content);
-      final ok = await showDialog<bool>(
+      await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text('${repo.frameworkId} 配置编辑'),

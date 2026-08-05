@@ -8,7 +8,6 @@ import '../../models/repo_config.dart';
 import 'remote_cms_tools.dart';
 import 'skill_manager.dart';
 import 'tool_entity.dart';
-import 'tool_registry.dart';
 
 /// 内置工具定义和实现
 class BuiltinTools {
@@ -623,11 +622,6 @@ class BuiltinTools {
     return null;
   }
 
-  /// 校验路径是否在允许的目录范围内
-  static bool _isPathAllowed(String path, List<String> allowedDirs) {
-    return allowedDirs.any((dir) => path.startsWith(dir));
-  }
-
   /// 读取仓库文件
   static Future<ToolCallResult> _executeFileRead(ToolCallRequest req) async {
     final path = req.arguments['path']?.toString() ?? '';
@@ -777,7 +771,7 @@ class BuiltinTools {
 
       // 如果指定了 commitSha，尝试从该 commit 恢复文件
       if (commitSha != null && commitSha.isNotEmpty) {
-        final targetCommit = commits.where((c) => c.sha?.startsWith(commitSha) == true).firstOrNull;
+        final targetCommit = commits.where((c) => c.sha.startsWith(commitSha) == true).firstOrNull;
         if (targetCommit == null) {
           return ToolCallResult(toolId: 'git_rollback', content: '', success: false, error: '未找到指定commit: $commitSha');
         }

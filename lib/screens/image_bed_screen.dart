@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 
 import '../models/app_settings.dart';
 import '../models/article.dart';
-import '../models/repo_config.dart';
 import '../services/github_service.dart';
 import '../services/image_service.dart';
 
@@ -29,7 +28,6 @@ class _ImageBedItem {
     required this.size,
     required this.downloadUrl,
     required this.cdnUrl,
-    this.lastModified,
   });
 
   String get formattedSize {

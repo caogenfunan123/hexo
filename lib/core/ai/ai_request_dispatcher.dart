@@ -328,7 +328,7 @@ class AiRequestDispatcher {
         }
 
         // 判断是否可重试
-        if (isRetryableError != null && !isRetryableError(lastError!)) {
+        if (isRetryableError != null && !isRetryableError(lastError)) {
           break;
         }
 
@@ -338,7 +338,7 @@ class AiRequestDispatcher {
           if (currentModel != null) {
             fallbackModels.removeWhere(
               (m) => m.modelId == currentModel!.modelId &&
-                  m.apiBase == currentModel!.apiBase,
+                m.apiBase == currentModel.apiBase,
             );
           }
           if (fallbackModels.isEmpty) break;

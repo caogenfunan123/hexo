@@ -148,7 +148,6 @@ class SyncService {
     final entries = <SyncEntry>[];
     final siteId = siteConfig.id;
     final mappings = getMappings(siteId);
-    final mappedLocalIds = mappings.map((m) => m.localArticleId).toSet();
     final mappedRemoteIds = mappings.map((m) => m.remotePostId).toSet();
 
     // 1. 本地文章 → 检查同步状态

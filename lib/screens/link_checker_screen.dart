@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
 import 'dart:io';
 import '../models/article.dart';
 import '../models/article_type.dart';
@@ -19,8 +18,6 @@ class _LinkResult {
     required this.url,
     required this.isInternal,
     this.status = LinkStatus.unknown,
-    this.httpCode,
-    this.error,
   });
 }
 

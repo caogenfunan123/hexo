@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../models/app_settings.dart';
-import '../../models/blog_framework.dart';
 import '../../services/ai_service.dart';
 import '../../services/github_service.dart';
 import 'ai_session_manager.dart';
@@ -10,9 +9,8 @@ import 'ai_session_manager.dart';
 /// 主题迁移服务：跨框架主题转换
 class ThemeMigrationService {
   final AiService _aiService;
-  final GitHubService _githubService;
 
-  ThemeMigrationService(this._aiService, this._githubService);
+  ThemeMigrationService(this._aiService, GitHubService _);
 
   /// 分析主题源码，识别源框架
   Future<ThemeAnalysis> analyzeSource({

@@ -11,6 +11,7 @@ library;
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 
 /// 发现的设备信息
 class MdnsDevice {

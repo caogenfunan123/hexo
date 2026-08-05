@@ -134,7 +134,6 @@ class GhostAdapter implements BlogRepository {
     }
 
     _handleError(response.statusCode, text);
-    return {};
   }
 
   Never _handleError(int statusCode, String body) {
@@ -457,7 +456,7 @@ class GhostAdapter implements BlogRepository {
         } else {
           inCodeBlock = true;
           codeLang = line.trim().substring(3).trim();
-          if (codeLang!.isEmpty) codeLang = null;
+          if (codeLang.isEmpty) codeLang = null;
         }
         continue;
       }
