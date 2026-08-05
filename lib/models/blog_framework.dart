@@ -58,7 +58,7 @@ categories: {{categories}}
       pageFrontMatter: '''---
 title: "{{title}}"
 date: {{date}}
-draft: true
+draft: {{draft}}
 type: page
 ---
 ''',

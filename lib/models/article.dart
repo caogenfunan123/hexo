@@ -130,6 +130,10 @@ class Article {
         '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')} ${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}:${createdAt.second.toString().padLeft(2, '0')}';
     final dateShort =
         '${createdAt.year.toString().padLeft(4, '0')}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}';
+    // Hugo/Jekyll 按 UTC 解析带时间的日期，未来时间会导致文章被跳过，使用纯日期
+    final dateForFramework = (frameworkId == 'hugo' || frameworkId == 'jekyll')
+        ? dateShort
+        : dateFull;
     final tagsStr = tags.isEmpty
         ? '[]'
         : '[${tags.map((t) => t.contains(' ') ? '"$t"' : t).join(', ')}]';
@@ -143,7 +147,7 @@ class Article {
       if (template.isNotEmpty) {
         var fm = template
             .replaceAll('{{title}}', title.isEmpty ? '未命名' : title)
-            .replaceAll('{{date}}', dateFull)
+            .replaceAll('{{date}}', dateForFramework)
             .replaceAll('{{tags}}', tagsStr)
             .replaceAll('{{categories}}', catsStr);
         if (cover != null && cover!.isNotEmpty) {
@@ -154,6 +158,8 @@ class Article {
         }
         fm = fm.replaceAll('{{draft}}', isDraft.toString());
         fm = fm.replaceAll('{{slug}}', title.toLowerCase().replaceAll(RegExp(r'\s+'), '-'));
+        // 移除所有未解析的模板占位符整行（如 {{summary}} 等）
+        fm = fm.replaceAll(RegExp(r'^.*\{\{[^}]+\}\}.*\n', multiLine: true), '');
         return '$fm\n$content';
       }
     }
@@ -213,7 +219,7 @@ class Article {
 
     var fm = template.frontMatter
         .replaceAll('{{title}}', title.isEmpty ? '未命名' : title)
-        .replaceAll('{{date}}', dateFull)
+        .replaceAll('{{date}}', dateShort)
         .replaceAll('{{date_short}}', dateShort)
         .replaceAll('{{tags}}', tagsStr)
         .replaceAll('{{categories}}', catsStr)
@@ -229,6 +235,9 @@ class Article {
       // 移除包含 {{cover}} 的整行，避免生成空值
       fm = fm.replaceAll(RegExp(r'^.*\{\{cover\}\}.*\n', multiLine: true), '');
     }
+
+    // 移除所有未解析的模板占位符整行（如 {{summary}} 等）
+    fm = fm.replaceAll(RegExp(r'^.*\{\{[^}]+\}\}.*\n', multiLine: true), '');
 
     return '$fm\n$content';
   }
