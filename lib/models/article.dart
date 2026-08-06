@@ -238,7 +238,10 @@ class Article {
     if (templateId != null && templateId!.isNotEmpty && templates != null) {
       final customTemplate = templates.where((t) => t.id == templateId).firstOrNull;
       if (customTemplate != null) {
-        return _applyCustomTemplate(customTemplate);
+        // 生成时日期等动态值必须跟随"仓库绑定的框架"，避免
+        // 模板所属框架与目标框架不一致导致生成非法 FrontMatter、
+        // 文章在博客上不显示（如 Hugo 误用 Hexo 模板的完整日期格式）。
+        return _applyCustomTemplate(customTemplate, repoFrameworkId: repo.frameworkId);
       }
     }
     // 2. 回退到框架预设
@@ -246,7 +249,10 @@ class Article {
   }
 
   /// 使用自定义模板生成 Markdown
-  String _applyCustomTemplate(TemplateItem template) {
+  ///
+  /// [repoFrameworkId] 为仓库绑定的博客框架 ID。模板仅决定 FrontMatter
+  /// 的字段结构，日期 / 标签等动态值的格式一律跟随目标框架。
+  String _applyCustomTemplate(TemplateItem template, {String? repoFrameworkId}) {
     // 未来日期保护
     final effectiveDate = createdAt.isAfter(DateTime.now()) ? DateTime.now() : createdAt;
 
@@ -256,9 +262,10 @@ class Article {
         '${effectiveDate.year.toString().padLeft(4, '0')}-${effectiveDate.month.toString().padLeft(2, '0')}-${effectiveDate.day.toString().padLeft(2, '0')}';
     final timeFull =
         '${effectiveDate.hour.toString().padLeft(2, '0')}:${effectiveDate.minute.toString().padLeft(2, '0')}:${effectiveDate.second.toString().padLeft(2, '0')}';
-    // 按模板所属框架生成日期格式
+    // 动态值格式跟随目标框架（仓库绑定框架优先）
+    final targetFramework = repoFrameworkId ?? template.frameworkId;
     String dateForTemplate;
-    switch (template.frameworkId) {
+    switch (targetFramework) {
       case 'hugo':
         dateForTemplate = dateShort;
         break;
@@ -288,9 +295,9 @@ class Article {
         ? 'post-${effectiveDate.millisecondsSinceEpoch}'
         : title.toLowerCase().replaceAll(RegExp(r'\s+'), '-');
 
-    // 根据模板所属框架选择标签/分类格式
-    final effectiveTagsStr = template.frameworkId == 'pelican' ? pelicanTagsStr : tagsStr;
-    final effectiveCatsStr = template.frameworkId == 'pelican' ? pelicanCatsStr : catsStr;
+    // 标签/分类格式跟随目标框架（Pelican 使用逗号分隔）
+    final effectiveTagsStr = targetFramework == 'pelican' ? pelicanTagsStr : tagsStr;
+    final effectiveCatsStr = targetFramework == 'pelican' ? pelicanCatsStr : catsStr;
 
     var fm = template.frontMatter
         .replaceAll('{{title}}', title.isEmpty ? '未命名' : title)
@@ -315,7 +322,7 @@ class Article {
     fm = fm.replaceAll(RegExp(r'^.*\{\{[^}]+\}\}.*\n', multiLine: true), '');
 
     // Pelican: 移除值为空的元数据行
-    if (template.frameworkId == 'pelican') {
+    if (targetFramework == 'pelican') {
       fm = fm.replaceAll(RegExp(r'^(Tags|Category):\s*\n', multiLine: true), '');
     }
 
@@ -331,7 +338,7 @@ class Article {
     String? cover;
     ArticleType articleType = ArticleType.post;
     String? templateId;
-    bool isDraft = true;
+    bool isDraft = false;
     bool published = false;
     String body = md;
 

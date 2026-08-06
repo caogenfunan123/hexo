@@ -17,6 +17,7 @@ import '../core/tools/tool_registry.dart';
 import '../core/tools/builtin_tools.dart';
 import '../models/app_settings.dart';
 import '../models/repo_config.dart';
+import '../models/template_item.dart';
 import '../services/ai_service.dart';
 import '../services/github_service.dart';
 import '../services/storage_service.dart';
@@ -37,6 +38,9 @@ class AiChatPanel extends StatefulWidget {
   final String? postsPath;
   final String? pagesPath;
   final String? themesPath;
+  final String? defaultPostTemplateId;
+  final String? defaultPageTemplateId;
+  final String? fileNameRuleDesc;
   final String? initialMessage;
   final bool selfCheckEnabled;
   final Future<void> Function(AppSettings) onSettingsChanged;
@@ -49,6 +53,9 @@ class AiChatPanel extends StatefulWidget {
 
   /// 👇 对话持久化：本地存储
   final StorageService? storageService;
+
+  /// 模板被 update_template 工具修改后的回调（宿主应用刷新模板列表）
+  final Future<void> Function(List<TemplateItem> templates)? onTemplatesChanged;
 
   const AiChatPanel({
     super.key,
@@ -63,6 +70,9 @@ class AiChatPanel extends StatefulWidget {
     this.postsPath,
     this.pagesPath,
     this.themesPath,
+    this.defaultPostTemplateId,
+    this.defaultPageTemplateId,
+    this.fileNameRuleDesc,
     this.initialMessage,
     this.selfCheckEnabled = true,
     required this.onSettingsChanged,
@@ -71,6 +81,7 @@ class AiChatPanel extends StatefulWidget {
     this.gitHubService,
     this.activeRepo,
     this.storageService,
+    this.onTemplatesChanged,
   });
 
   @override
@@ -256,6 +267,9 @@ class AiChatPanelState extends State<AiChatPanel> {
         postsPath: widget.postsPath,
         pagesPath: widget.pagesPath,
         themesPath: widget.themesPath,
+        defaultPostTemplateId: widget.defaultPostTemplateId,
+        defaultPageTemplateId: widget.defaultPageTemplateId,
+        fileNameRuleDesc: widget.fileNameRuleDesc,
         targetFramework: widget.targetFramework,
         savedToolsList: savedToolsList,
       ),
@@ -333,6 +347,9 @@ class AiChatPanelState extends State<AiChatPanel> {
     BuiltinTools.onSettingsChanged = widget.onSettingsChanged;
     // 注入 SkillManager 引用（供 skill 管理工具使用）
     BuiltinTools.skillManager = _skillManager;
+    // 注入本地存储与模板变更回调（供模板/框架会话读写本地模板）
+    BuiltinTools.storageService = widget.storageService;
+    BuiltinTools.onTemplatesChanged = widget.onTemplatesChanged;
 
     try {
       final stream = widget.dispatcher.dispatchStream(
@@ -842,6 +859,8 @@ class AiChatPanelState extends State<AiChatPanel> {
         return 'AI 站点巡检助手';
       case AiSessionType.appDesign:
         return 'AI 应用 UI 设计助手';
+      case AiSessionType.template:
+        return 'AI 模板与博客框架助手';
     }
   }
 
@@ -859,6 +878,8 @@ class AiChatPanelState extends State<AiChatPanel> {
         return '站点巡检';
       case AiSessionType.appDesign:
         return '应用 UI 设计';
+      case AiSessionType.template:
+        return '模板与框架';
     }
   }
 

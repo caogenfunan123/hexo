@@ -3,7 +3,9 @@ import 'dart:io';
 
 import '../../models/app_settings.dart';
 import '../../models/design_config.dart';
+import '../../models/template_item.dart';
 import '../../services/github_service.dart';
+import '../../services/storage_service.dart';
 import '../../models/repo_config.dart';
 import 'remote_cms_tools.dart';
 import 'skill_manager.dart';
@@ -24,6 +26,12 @@ class BuiltinTools {
   /// Skill 管理器引用（供 skill 管理工具使用）
   static SkillManager? skillManager;
 
+  /// 本地存储引用（供模板读写工具使用，由 AiChatPanel 设置）
+  static StorageService? storageService;
+
+  /// 模板变更回调（供 update_template 持久化后刷新应用内模板列表）
+  static Future<void> Function(List<TemplateItem> templates)? onTemplatesChanged;
+
   /// 所有内置工具定义
   static List<ToolEntity> get all => [
         webSearch,
@@ -40,6 +48,10 @@ class BuiltinTools {
         updateSkill,
         deleteSkill,
         listSkills,
+        listTemplates,
+        readTemplate,
+        updateTemplate,
+        listPosts,
       ];
 
   // ── ① Web 搜索工具 ──
@@ -339,6 +351,65 @@ class BuiltinTools {
     updatedAt: DateTime(2026, 1, 1),
   );
 
+  // ── ⑮ 列出文章模板 ──
+  static final ToolEntity listTemplates = ToolEntity(
+    id: 'list_templates',
+    name: '列出文章模板',
+    description: '列出博客编辑器应用内已保存的全部文章/页面 FrontMatter 模板（含内置与自定义），包含模板 ID、名称、所属框架、类型。用于诊断发布文章不显示时的模板与博客框架匹配问题。',
+    type: ToolType.builtin,
+    builtinHandler: 'list_templates',
+    parameters: const [],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
+
+  // ── ⑯ 读取文章模板 ──
+  static final ToolEntity readTemplate = ToolEntity(
+    id: 'read_template',
+    name: '读取文章模板',
+    description: '读取应用内指定模板的完整 FrontMatter 内容，用于检查模板字段与占位符是否匹配目标博客框架。',
+    type: ToolType.builtin,
+    builtinHandler: 'read_template',
+    parameters: const [
+      ToolParam(name: 'template_id', type: 'string', description: '模板 ID，可通过 list_templates 获取', required: true),
+    ],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
+
+  // ── ⑰ 更新/新建文章模板 ──
+  static final ToolEntity updateTemplate = ToolEntity(
+    id: 'update_template',
+    name: '修改/新建文章模板',
+    description: '新建或修改应用内的文章/页面 FrontMatter 模板。用于把模板字段调整为符合仓库博客框架的规范，修复文章发布后不显示的问题。修改后立即持久化，在编辑器模板下拉框中生效。',
+    type: ToolType.builtin,
+    builtinHandler: 'update_template',
+    parameters: const [
+      ToolParam(name: 'template_id', type: 'string', description: '模板 ID；新建时自定义（如 fix_hugo_post，不要用 builtin_ 前缀）', required: true),
+      ToolParam(name: 'name', type: 'string', description: '模板显示名称', required: false),
+      ToolParam(name: 'front_matter', type: 'string', description: '完整 FrontMatter 模板（含 --- 围栏）。可使用的占位符：{{title}} {{date}} {{date_short}} {{tags}} {{categories}} {{slug}} {{draft}} {{cover}} {{year}} {{month}} {{day}}', required: true),
+      ToolParam(name: 'framework_id', type: 'string', description: '适配的博客框架 ID：hexo/hugo/jekyll/pelican/astro/vuepress/nextjs/gatsby/eleventy/custom。custom 表示通用模板', required: false, defaultValue: 'custom'),
+      ToolParam(name: 'is_post', type: 'boolean', description: 'true=博文模板，false=页面模板', required: false, defaultValue: 'true'),
+    ],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
+
+  // ── ⑱ 列出已发布文章 ──
+  static final ToolEntity listPosts = ToolEntity(
+    id: 'list_posts',
+    name: '列出仓库文章',
+    description: '列出仓库文章目录下的 .md 文章文件及其 FrontMatter 片段，用于对比"已正常显示"与"不显示"的文章，诊断模板/框架适配问题。',
+    type: ToolType.builtin,
+    builtinHandler: 'list_posts',
+    parameters: const [
+      ToolParam(name: 'path', type: 'string', description: '文章目录路径，默认使用仓库配置的文章目录', required: false, defaultValue: ''),
+      ToolParam(name: 'limit', type: 'string', description: '最多列出几篇（同时输出每篇 FrontMatter 前若干行），默认 10', required: false, defaultValue: '10'),
+    ],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
+
   /// 远程 CMS 工具 ID 集合（用于路由判断）
   static const _remoteCmsToolIds = {
     // WordPress
@@ -390,6 +461,14 @@ class BuiltinTools {
         return _executeDeleteSkill(request);
       case 'list_skills':
         return _executeListSkills(request);
+      case 'list_templates':
+        return _executeListTemplates(request);
+      case 'read_template':
+        return _executeReadTemplate(request);
+      case 'update_template':
+        return _executeUpdateTemplate(request);
+      case 'list_posts':
+        return _executeListPosts(request);
       default:
         return ToolCallResult(
           toolId: request.toolId,
@@ -713,7 +792,7 @@ class BuiltinTools {
       return ToolCallResult(toolId: 'list_dir', content: '', success: false, error: '未配置仓库连接');
     }
     try {
-      final items = await gitHubService!.listPosts(activeRepo!, path: path.isEmpty ? null : path);
+      final items = await gitHubService!.listDirContents(activeRepo!, path: path.isEmpty ? null : path);
       final buf = StringBuffer();
       buf.writeln('目录: ${path.isEmpty ? "/" : path}');
       buf.writeln('---');
@@ -1211,5 +1290,234 @@ class BuiltinTools {
         error: '列表获取失败: $e',
       );
     }
+  }
+
+  // ── 列出本地文章模板 ──
+  static Future<ToolCallResult> _executeListTemplates(ToolCallRequest req) async {
+    if (storageService == null) {
+      return ToolCallResult(
+        toolId: 'list_templates',
+        content: '',
+        success: false,
+        error: '本地存储未初始化，无法读取模板',
+      );
+    }
+    try {
+      final templates = await storageService!.loadAllTemplates();
+      final buf = StringBuffer();
+      buf.writeln('=== 文章模板列表 (${templates.length} 个) ===\n');
+      for (final t in templates) {
+        final tag = t.id.startsWith('builtin_') ? '[内置]' : '[自定义]';
+        final type = t.isPost ? '博文' : '页面';
+        buf.writeln('$tag ${t.name}  [${t.id}]');
+        buf.writeln('  类型: $type | 框架: ${t.frameworkId}');
+      }
+      buf.writeln('\n提示：内置模板由代码维护不可修改；需要修复模板时用 update_template 以自定义 ID 新建或更新。');
+      return ToolCallResult(toolId: 'list_templates', content: buf.toString(), success: true);
+    } catch (e) {
+      return ToolCallResult(
+        toolId: 'list_templates',
+        content: '',
+        success: false,
+        error: '模板列表读取失败: $e',
+      );
+    }
+  }
+
+  // ── 读取单个本地文章模板 ──
+  static Future<ToolCallResult> _executeReadTemplate(ToolCallRequest req) async {
+    final templateId = req.arguments['template_id']?.toString() ?? '';
+    if (storageService == null) {
+      return ToolCallResult(
+        toolId: 'read_template',
+        content: '',
+        success: false,
+        error: '本地存储未初始化，无法读取模板',
+      );
+    }
+    if (templateId.isEmpty) {
+      return ToolCallResult(
+        toolId: 'read_template',
+        content: '',
+        success: false,
+        error: 'template_id 不能为空',
+      );
+    }
+    try {
+      final templates = await storageService!.loadAllTemplates();
+      final t = templates.where((e) => e.id == templateId).firstOrNull;
+      if (t == null) {
+        return ToolCallResult(
+          toolId: 'read_template',
+          content: '',
+          success: false,
+          error: '模板不存在: $templateId（先用 list_templates 查看可用 ID）',
+        );
+      }
+      final type = t.isPost ? '博文' : '页面';
+      final buf = StringBuffer();
+      buf.writeln('模板: ${t.name}  [${t.id}]');
+      buf.writeln('类型: $type | 框架: ${t.frameworkId}');
+      buf.writeln('--- FrontMatter 开始 ---');
+      buf.writeln(t.frontMatter);
+      buf.writeln('--- FrontMatter 结束 ---');
+      return ToolCallResult(toolId: 'read_template', content: buf.toString(), success: true);
+    } catch (e) {
+      return ToolCallResult(
+        toolId: 'read_template',
+        content: '',
+        success: false,
+        error: '模板读取失败: $e',
+      );
+    }
+  }
+
+  // ── 新建/更新本地文章模板 ──
+  static Future<ToolCallResult> _executeUpdateTemplate(ToolCallRequest req) async {
+    if (storageService == null) {
+      return ToolCallResult(
+        toolId: 'update_template',
+        content: '',
+        success: false,
+        error: '本地存储未初始化，无法保存模板',
+      );
+    }
+    final templateId = req.arguments['template_id']?.toString() ?? '';
+    final name = req.arguments['name']?.toString() ?? '';
+    final frontMatter = req.arguments['front_matter']?.toString() ?? '';
+    final frameworkId = req.arguments['framework_id']?.toString() ?? 'custom';
+    final isPost = (req.arguments['is_post']?.toString() ?? 'true').toLowerCase() == 'true';
+
+    if (templateId.isEmpty) {
+      return ToolCallResult(
+        toolId: 'update_template',
+        content: '',
+        success: false,
+        error: 'template_id 不能为空',
+      );
+    }
+    if (templateId.startsWith('builtin_')) {
+      return ToolCallResult(
+        toolId: 'update_template',
+        content: '',
+        success: false,
+        error: '内置模板(id 以 builtin_ 开头)由代码维护，无法修改。请改用自定义 ID 新建模板（如 fix_${frameworkId}_post）。',
+      );
+    }
+    if (frontMatter.isEmpty) {
+      return ToolCallResult(
+        toolId: 'update_template',
+        content: '',
+        success: false,
+        error: 'front_matter 不能为空',
+      );
+    }
+    try {
+      final saved = await storageService!.loadTemplates();
+      final existing = saved.where((e) => e.id == templateId).firstOrNull;
+      final now = DateTime.now();
+      final updated = TemplateItem(
+        id: templateId,
+        name: name.isNotEmpty ? name : (existing?.name ?? templateId),
+        frontMatter: frontMatter,
+        frameworkId: frameworkId,
+        isPost: isPost,
+        createdAt: existing?.createdAt ?? now,
+      );
+      final List<TemplateItem> newList;
+      if (existing != null) {
+        newList = saved.map((e) => e.id == templateId ? updated : e).toList();
+      } else {
+        newList = [...saved, updated];
+      }
+      await storageService!.saveTemplates(newList);
+      if (onTemplatesChanged != null) {
+        try {
+          await onTemplatesChanged!(newList);
+        } catch (_) {}
+      }
+      final action = existing != null ? '已更新' : '已新建';
+      return ToolCallResult(
+        toolId: 'update_template',
+        content: '$action模板 [$templateId]（${updated.name}），框架: $frameworkId，类型: ${isPost ? "博文" : "页面"}。已持久化，可在编辑器模板下拉框中选用。',
+        success: true,
+      );
+    } catch (e) {
+      return ToolCallResult(
+        toolId: 'update_template',
+        content: '',
+        success: false,
+        error: '模板保存失败: $e',
+      );
+    }
+  }
+
+  // ── 列出仓库文章（含 FrontMatter 片段） ──
+  static Future<ToolCallResult> _executeListPosts(ToolCallRequest req) async {
+    if (gitHubService == null || activeRepo == null) {
+      return ToolCallResult(
+        toolId: 'list_posts',
+        content: '',
+        success: false,
+        error: '未配置仓库连接，无法读取文章',
+      );
+    }
+    final path = req.arguments['path']?.toString() ?? '';
+    final limit = (int.tryParse(req.arguments['limit']?.toString() ?? '') ?? 10).clamp(1, 20);
+    if (path.isNotEmpty) {
+      final pathErr = _validatePath(path);
+      if (pathErr != null) {
+        return ToolCallResult(toolId: 'list_posts', content: '', success: false, error: pathErr);
+      }
+    }
+    try {
+      final items = await gitHubService!.listPosts(activeRepo!, path: path.isEmpty ? null : path);
+      final buf = StringBuffer();
+      buf.writeln('=== 仓库文章列表 (共 ${items.length} 篇，展示前 $limit 篇) ===\n');
+      var shown = 0;
+      for (final item in items) {
+        if (shown >= limit) break;
+        shown++;
+        buf.writeln('$shown. ${item.name}  (${item.path})');
+        try {
+          final raw = await gitHubService!.getRawFile(activeRepo!, item.path);
+          final fmLines = raw == null ? const <String>[] : _extractFrontMatter(raw['content'] ?? '');
+          if (fmLines.isNotEmpty) {
+            buf.writeln('   --- FrontMatter 片段 ---');
+            for (final l in fmLines) {
+              buf.writeln('   $l');
+            }
+            buf.writeln('   --- 结束 ---');
+          } else {
+            buf.writeln('   (无 FrontMatter 或格式异常)');
+          }
+        } catch (e) {
+          buf.writeln('   (读取失败: $e)');
+        }
+        buf.writeln();
+      }
+      if (items.isEmpty) buf.writeln('(目录中暂无 .md 文章)');
+      return ToolCallResult(toolId: 'list_posts', content: buf.toString(), success: true);
+    } catch (e) {
+      return ToolCallResult(
+        toolId: 'list_posts',
+        content: '',
+        success: false,
+        error: '文章列表获取失败: $e',
+      );
+    }
+  }
+
+  /// 提取 Markdown 的 FrontMatter 行（首个 --- 到第二个 --- 之间，最多 40 行）
+  static List<String> _extractFrontMatter(String md) {
+    final lines = md.split('\n');
+    if (lines.isEmpty || lines.first.trim() != '---') return const [];
+    final result = <String>[];
+    for (var i = 1; i < lines.length && result.length < 40; i++) {
+      final line = lines[i];
+      if (line.trim() == '---') break;
+      result.add(line);
+    }
+    return result;
   }
 }

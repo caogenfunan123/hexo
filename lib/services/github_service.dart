@@ -163,6 +163,27 @@ class GitHubService {
     return [];
   }
 
+  /// 列出仓库目录全部内容（含子目录与非 md 文件），供 AI 诊断仓库结构使用。
+  /// 不做 commit 历史富化，仅按 目录在前、名称升序 排列。
+  Future<List<GitHubFileItem>> listDirContents(RepoConfig repo, {String? path}) async {
+    final p = path?.replaceAll(RegExp(r'/+$'), '');
+    final url =
+        '${repo.apiBase}/contents/${_encPath(p ?? '')}?ref=${Uri.encodeComponent(repo.branch)}';
+    final data = await _request('GET', url, repo.token);
+    if (data is List) {
+      final items = data
+          .whereType<Map>()
+          .map((e) => GitHubFileItem.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      items.sort((a, b) {
+        if (a.type != b.type) return a.type == 'dir' ? -1 : 1;
+        return a.name.compareTo(b.name);
+      });
+      return items;
+    }
+    return [];
+  }
+
   Future<Article> getArticle(RepoConfig repo, GitHubFileItem item) async {
     final url =
         '${repo.apiBase}/contents/${_encPath(item.path)}?ref=${Uri.encodeComponent(repo.branch)}';

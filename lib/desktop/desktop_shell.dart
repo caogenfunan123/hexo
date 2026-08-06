@@ -37,6 +37,7 @@ import '../screens/ai_article_chat_screen.dart';
 import '../screens/ai_audit_screen.dart';
 import '../screens/ai_app_design_screen.dart';
 import '../screens/ai_model_manager_screen.dart';
+import '../screens/ai_template_chat_screen.dart';
 import '../screens/ai_theme_chat_screen.dart';
 import '../screens/blog_site_editor_screen.dart';
 import '../screens/drafts_screen.dart';
@@ -1394,6 +1395,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                     tooltip: '管理模板',
                     onPressed: () => _showTemplateManager(),
                     icon: const Icon(Icons.settings_outlined, size: 18),
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.all(4),
+                  ),
+                  IconButton(
+                    tooltip: 'AI 修复模板与框架',
+                    onPressed: _showAiTemplateChat,
+                    icon: const Icon(Icons.auto_fix_high, size: 18),
                     constraints: const BoxConstraints(),
                     padding: const EdgeInsets.all(4),
                   ),
@@ -4810,6 +4818,21 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     ));
   }
 
+  void _showAiTemplateChat() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => AiTemplateChatScreen(
+        settings: settings, activeRepo: effectiveRepo, aiService: aiService,
+        modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
+        onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
+        onTemplatesChanged: (_) async {
+          if (!mounted) return;
+          final t = await storage.loadAllTemplates();
+          setState(() => templates = t);
+        },
+      ),
+    ));
+  }
+
   void _showAiModelManager() {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => AiModelManagerScreen(
@@ -6320,6 +6343,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       CommandItem(label: '粘贴图片', category: '编辑', shortcut: 'Ctrl+Shift+V', icon: Icons.image, onExecute: () => _pasteImageFromClipboard()),
       CommandItem(label: 'AI 博文创作', category: 'AI', shortcut: '', icon: Icons.article_outlined, onExecute: () => _showAiArticleChat()),
       CommandItem(label: 'AI 站点巡检', category: 'AI', shortcut: '', icon: Icons.fact_check_outlined, onExecute: () => _showAiAudit()),
+      CommandItem(label: 'AI 模板与博客框架', category: 'AI', shortcut: '', icon: Icons.view_quilt_outlined, onExecute: () => _showAiTemplateChat()),
       CommandItem(label: 'AI 应用 UI 设计', category: 'AI', shortcut: '', icon: Icons.palette_outlined, onExecute: () => _showAiAppDesign()),
       CommandItem(label: 'AI 选区改写', category: 'AI', shortcut: '', icon: Icons.short_text, onExecute: () => _sendSelectionToAi()),
       CommandItem(label: 'AI 全文润色', category: 'AI', shortcut: '', icon: Icons.auto_awesome, onExecute: () => _sendFullToAi()),

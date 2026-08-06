@@ -29,6 +29,7 @@ import 'core/template_engine/template_resolver.dart';
 import 'screens/ai_article_chat_screen.dart';
 import 'screens/ai_audit_screen.dart';
 import 'screens/ai_model_manager_screen.dart';
+import 'screens/ai_template_chat_screen.dart';
 import 'screens/ai_theme_chat_screen.dart';
 import 'screens/article_reader_screen.dart';
 import 'screens/blog_site_editor_screen.dart';
@@ -4164,6 +4165,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   _drawerAction(Icons.palette_outlined, 'AI 主题开发', _showAiThemeChat),
                   _drawerItem(10, Icons.auto_fix_high, 'AI 主题迁移'),
                   _drawerAction(Icons.fact_check_outlined, 'AI 站点巡检', _showAiAudit),
+                  _drawerAction(Icons.view_quilt_outlined, 'AI 模板与框架', _showAiTemplateChat),
                   _drawerAction(Icons.psychology_outlined, 'AI 模型管理', _showAiModelManager),
                   _drawerAction(Icons.build_outlined, '工具库', _showToolLibrary),
                   const SizedBox(height: 8),
@@ -5505,6 +5507,29 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           onSettingsChanged: _updateSettings,
           gitHubService: github,
           storageService: storage,
+        ),
+      ),
+    );
+  }
+
+  void _showAiTemplateChat() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AiTemplateChatScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          aiService: aiService,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          selfChecker: aiSelfChecker,
+          onSettingsChanged: _updateSettings,
+          gitHubService: github,
+          storageService: storage,
+          onTemplatesChanged: (_) async {
+            if (!mounted) return;
+            final t = await storage.loadAllTemplates();
+            setState(() => templates = t);
+          },
         ),
       ),
     );
