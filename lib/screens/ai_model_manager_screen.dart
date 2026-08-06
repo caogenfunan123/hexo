@@ -81,6 +81,7 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
     final apiKeyCtrl = TextEditingController(
       text: widget.settings.aiApiKey,
     );
+    final customUrlCtrl = TextEditingController();
     String group = 'general';
 
     final ok = await showDialog<bool>(
@@ -107,6 +108,15 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                     hintText: 'sk-...',
                   ),
                   obscureText: true,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: customUrlCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '自定义模型列表地址（选填）',
+                    hintText: '留空则使用标准 /v1/models',
+                    isDense: true,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
@@ -154,25 +164,59 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
           apiKey: apiKeyCtrl.text.trim(),
           model: '',
         ),
+        customModelsUrl: customUrlCtrl.text.trim().isEmpty ? null : customUrlCtrl.text.trim(),
       );
     } catch (e) {
       setState(() => _loading = false);
-      // 拉取失败 → 展示预设列表作为兜底
-      if (mounted) {
-        final usePreset = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('拉取失败，使用预设列表？'),
-            content: Text('API 未返回模型列表: $e\n\n是否使用内置预设模型列表代替？'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('使用预设')),
-            ],
-          ),
-        );
-        if (usePreset == true) {
-          modelIds = _presetModels.map((p) => p.modelId).toList();
-          await _showModelSelectionDialog(apiBaseCtrl.text.trim(), apiKeyCtrl.text.trim(), group, modelIds);
+      if (!mounted) return;
+
+      // 根据错误类型显示不同提示
+      String errorMsg;
+      bool showFallback = true;
+      if (e is FetchModelException) {
+        switch (e.error) {
+          case FetchModelError.emptyList:
+            errorMsg = '密钥未开通可用模型，请检查账号额度';
+            break;
+          case FetchModelError.notImplemented:
+            errorMsg = '该服务商未实现标准模型列表接口\n你可填写上方「自定义模型列表地址」重试，或使用内置预设';
+            break;
+          case FetchModelError.tokenInvalid:
+            errorMsg = 'API Token 鉴权失败，请核对密钥';
+            showFallback = false;
+            break;
+          case FetchModelError.forbidden:
+            errorMsg = '该密钥被禁止访问模型列表接口';
+            break;
+          case FetchModelError.timeout:
+            errorMsg = '网络超时，请检查网络与 API 地址';
+            break;
+          case FetchModelError.unknown:
+            errorMsg = e.message;
+            break;
+        }
+      } else {
+        errorMsg = e.toString();
+      }
+
+      final useFallback = showFallback && await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('拉取失败'),
+          content: Text('$errorMsg\n\n是否使用内置预设模型列表代替？'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('使用预设')),
+          ],
+        ),
+      ) == true;
+
+      if (useFallback) {
+        modelIds = _presetModels.map((p) => p.modelId).toList();
+        await _showModelSelectionDialog(apiBaseCtrl.text.trim(), apiKeyCtrl.text.trim(), group, modelIds);
+      } else if (!showFallback) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg)));
         }
       }
       return;

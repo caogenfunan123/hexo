@@ -17,6 +17,25 @@ class StreamChunk {
   const StreamChunk({required this.content, this.isDone = false, this.finishReason, this.toolCalls});
 }
 
+/// 拉取模型列表错误类型
+enum FetchModelError {
+  emptyList,      // 返回空列表
+  notImplemented, // 404 接口不存在
+  tokenInvalid,   // 401 鉴权失败
+  forbidden,      // 403 禁止访问
+  timeout,        // 网络超时
+  unknown,        // 其他错误
+}
+
+/// 拉取模型列表异常
+class FetchModelException implements Exception {
+  final FetchModelError error;
+  final String message;
+  const FetchModelException(this.error, this.message);
+  @override
+  String toString() => message;
+}
+
 class AiService {
   String _joinUrl(String base, String path) {
     var b = base.trim();
@@ -121,7 +140,10 @@ class AiService {
   }
 
   /// 拉取 OpenAI 兼容 /models 列表，适配各类中转站。
-  Future<List<String>> listModels(AppSettings settings, {AiProfile? profile}) async {
+  /// 拉取模型列表
+  ///
+  /// [customModelsUrl] 可选，当服务商不遵循标准 /v1/models 时，传入完整地址
+  Future<List<String>> listModels(AppSettings settings, {AiProfile? profile, String? customModelsUrl}) async {
     final p = resolveProfile(settings, override: profile);
     if (p.apiKey.isEmpty) {
       throw Exception('请先填写 API Key');
@@ -129,14 +151,14 @@ class AiService {
     if (p.baseUrl.trim().isEmpty) {
       throw Exception('请先填写 Base URL');
     }
-    final url = _modelsUrl(p);
+    final url = customModelsUrl?.trim() ?? _modelsUrl(p);
     try {
       final text = await _http(
         method: 'GET',
         url: url,
         apiKey: p.apiKey,
         useBearer: p.useBearer,
-      );
+      ).timeout(const Duration(seconds: 10));
       final data = jsonDecode(text);
       final ids = <String>{};
       if (data is Map && data['data'] is List) {
@@ -166,11 +188,25 @@ class AiService {
       }
       final list = ids.toList()..sort();
       if (list.isEmpty) {
-        throw Exception('未解析到模型列表，响应: ${text.length > 200 ? text.substring(0, 200) : text}');
+        throw const FetchModelException(FetchModelError.emptyList, '密钥未开通可用模型，请检查账号额度，或手动填写模型 ID');
       }
       return list;
+    } on TimeoutException {
+      throw const FetchModelException(FetchModelError.timeout, '拉取模型列表超时，请检查网络与 API 地址');
+    } on FetchModelException {
+      rethrow;
     } catch (e) {
-      throw Exception('获取模型失败（$url）: $e');
+      final msg = e.toString();
+      if (msg.contains('HTTP 404') || msg.contains('404')) {
+        throw const FetchModelException(FetchModelError.notImplemented, '该服务商未实现标准模型列表接口，请手动填写模型 ID');
+      }
+      if (msg.contains('HTTP 401') || msg.contains('401')) {
+        throw const FetchModelException(FetchModelError.tokenInvalid, 'API Token 鉴权失败，请核对密钥');
+      }
+      if (msg.contains('HTTP 403') || msg.contains('403')) {
+        throw const FetchModelException(FetchModelError.forbidden, '该密钥被禁止访问模型列表接口，请手动填写模型 ID');
+      }
+      throw FetchModelException(FetchModelError.unknown, '获取模型列表失败（$url）: $e');
     }
   }
 
