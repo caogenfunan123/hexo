@@ -726,16 +726,33 @@ class AiService {
     }
 
     final url = _chatUrl(p);
+
+    // 火山方舟不兼容 OpenAI 工具调用参数，需过滤
+    final isVolcengine = _isVolcengineArk(p.baseUrl);
+
+    // 过滤消息：火山方舟不支持 tool_calls 字段和 tool 角色
+    List<Map<String, dynamic>> filteredMessages = messages;
+    if (isVolcengine) {
+      filteredMessages = messages
+          .map((m) {
+            final msg = Map<String, dynamic>.from(m);
+            msg.remove('tool_calls');
+            return msg;
+          })
+          .where((m) => m['role'] != 'tool')
+          .toList();
+    }
+
     final body = <String, dynamic>{
       'model': p.model,
       'messages': [
         {'role': 'system', 'content': systemPrompt},
-        ...messages,
+        ...filteredMessages,
       ],
       'temperature': temperature,
       'stream': true,
     };
-    if (tools != null && tools.isNotEmpty) {
+    if (tools != null && tools.isNotEmpty && !isVolcengine) {
       body['tools'] = tools;
       body['tool_choice'] = 'auto';
     }
@@ -755,6 +772,13 @@ class AiService {
     }
 
     return ChatRequestParams(url: Uri.parse(url), headers: headers, body: body);
+  }
+
+  /// 检测是否为火山方舟 ARK 服务
+  bool _isVolcengineArk(String baseUrl) {
+    final uri = Uri.tryParse(baseUrl);
+    if (uri == null) return false;
+    return uri.host.contains('volces.com');
   }
 }
 
