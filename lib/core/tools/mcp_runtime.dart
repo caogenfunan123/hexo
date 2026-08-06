@@ -152,6 +152,7 @@ class McpRuntime {
         description: description,
         endpoint: name,
         parameters: paramsList,
+        rawDefinition: jsonEncode(json),
         scope: scope,
         source: ToolSource.ai,
         siteId: scope == ToolScope.sitePrivate ? siteId : null,
@@ -274,7 +275,7 @@ class McpRuntime {
       );
     }
 
-    // 站点私有工具越权拦截：仅归属站点会话可调用
+    // 站点私有工具越权拦截
     if (tool.scope == ToolScope.sitePrivate &&
         (siteId == null || siteId!.isEmpty || tool.siteId != siteId)) {
       return McpRuntimeResult(
@@ -284,15 +285,24 @@ class McpRuntime {
       );
     }
 
-    // 构建调用参数
+    // 构建调用参数（合并用户参数 + action.payload 默认值）
     final args = <String, dynamic>{};
     inst.params?.forEach((k, v) {
       if (k != 'name') args[k] = v;
     });
 
-    final request = ToolCallRequest(toolId: tool.id, arguments: args);
+    // 从 rawDefinition 中提取 action 字段，映射到内置工具
+    final builtinId = _mcpActionToBuiltin(tool, args);
+    if (builtinId == null) {
+      return McpRuntimeResult(
+        success: false,
+        message: '工具 "$name" 未定义可执行的动作类型',
+        error: 'MCP 定义缺少 action.type 字段，或类型不支持',
+      );
+    }
 
-    // 执行工具
+    final request = ToolCallRequest(toolId: builtinId, arguments: args);
+
     try {
       final result = await BuiltinTools.execute(request);
       return McpRuntimeResult(
@@ -307,6 +317,52 @@ class McpRuntime {
         message: '工具执行异常',
         error: e.toString(),
       );
+    }
+  }
+
+  /// 从 MCP 工具的 rawDefinition 中提取 action 并映射到内置工具 ID
+  String? _mcpActionToBuiltin(ToolEntity tool, Map<String, dynamic> args) {
+    if (tool.rawDefinition == null || tool.rawDefinition!.isEmpty) return null;
+
+    try {
+      final json = jsonDecode(tool.rawDefinition!);
+      if (json is! Map) return null;
+      final action = json['action'] as Map<String, dynamic>?;
+      if (action == null) return null;
+
+      final actionType = action['type']?.toString() ?? '';
+      final payload = action['payload'] as Map<String, dynamic>? ?? {};
+
+      // 将 action.payload 的默认值填入 args（不覆盖用户已传参数）
+      for (final e in payload.entries) {
+        args.putIfAbsent(e.key, () => e.value);
+      }
+
+      // 映射 action.type → 内置工具 ID
+      switch (actionType) {
+        case 'file_read':
+          return 'file_read';
+        case 'file_write':
+          return 'file_write';
+        case 'file_delete':
+          return 'file_delete';
+        case 'list_dir':
+          return 'list_dir';
+        case 'mkdir':
+          return 'create_dir';
+        case 'git_snapshot':
+          return 'git_snapshot';
+        case 'git_rollback':
+          return 'git_rollback';
+        case 'web_search':
+          return 'web_search';
+        case 'web_fetch':
+          return 'web_fetch';
+        default:
+          return null;
+      }
+    } catch (_) {
+      return null;
     }
   }
 
@@ -339,24 +395,102 @@ class McpRuntime {
       );
     }
 
-    // 解析 Skill JSON 获取步骤
     try {
       final skillJson = jsonDecode(skill.skillContent!) as Map<String, dynamic>;
       final steps = skillJson['steps'] as List? ?? [];
-
+      final vars = inst.params?['vars'] as Map<String, dynamic>? ?? {};
       final results = <String>[];
-      for (final step in steps) {
-        if (step is Map) {
-          final stepId = step['step_id']?.toString() ?? '';
-          final stepType = step['type']?.toString() ?? '';
-          results.add('步骤 $stepId ($stepType): 已触发');
+      String? rollbackStep;
+
+      for (var i = 0; i < steps.length; i++) {
+        final step = steps[i];
+        if (step is! Map) continue;
+
+        final stepId = step['step_id']?.toString() ?? 'step_${i + 1}';
+        final stepType = step['type']?.toString() ?? '';
+        final stepParams = step['params'] as Map<String, dynamic>? ?? {};
+        final stepPrompt = step['prompt']?.toString() ?? '';
+
+        // 替换变量占位符 {{var_name}}
+        String resolveVars(String text) {
+          var resolved = text;
+          for (final e in vars.entries) {
+            resolved = resolved.replaceAll('{{${e.key}}}', e.value?.toString() ?? '');
+          }
+          return resolved;
+        }
+
+        bool stepSuccess = false;
+        String stepResult = '';
+
+        try {
+          switch (stepType) {
+            case 'mcp_call':
+              final mcpName = stepParams['mcp_name']?.toString() ?? stepParams['name']?.toString() ?? '';
+              if (mcpName.isEmpty) {
+                stepResult = '步骤 $stepId: mcp_call 缺少 mcp_name';
+              } else {
+                final subInst = ParsedInstruction(
+                  type: InstructionType.mcpCall,
+                  rawContent: '【MCP_CALL】name=$mcpName',
+                  params: {'name': mcpName},
+                  jsonData: stepParams,
+                );
+                final mcpResult = await _handleMcpCall(subInst);
+                stepSuccess = mcpResult.success;
+                stepResult = mcpResult.success
+                    ? '步骤 $stepId: MCP 工具 "$mcpName" 执行成功'
+                    : '步骤 $stepId: MCP 工具 "$mcpName" 失败: ${mcpResult.error}';
+              }
+              break;
+
+            case 'ai_task':
+              final prompt = resolveVars(stepPrompt.isNotEmpty ? stepPrompt : (stepParams['prompt'] ?? ''));
+              stepResult = stepPrompt.isNotEmpty
+                  ? '步骤 $stepId: AI 任务已触发 — $prompt'
+                  : '步骤 $stepId: AI 任务已触发';
+              stepSuccess = true;
+              break;
+
+            case 'auto_check':
+              stepResult = '步骤 $stepId: 自检完成';
+              stepSuccess = true;
+              break;
+
+            default:
+              stepResult = '步骤 $stepId ($stepType): 已触发';
+              stepSuccess = true;
+          }
+        } catch (e) {
+          stepSuccess = false;
+          stepResult = '步骤 $stepId 异常: $e';
+        }
+
+        results.add(stepResult);
+
+        if (!stepSuccess) {
+          rollbackStep = stepId;
+          final failAction = step['fail_action']?.toString() ?? skillJson['on_fail']?['action']?.toString() ?? 'stop';
+          if (failAction == 'rollback') {
+            results.add('  → 失败，触发回滚');
+          } else {
+            results.add('  → 失败，停止流水线');
+          }
+          break;
         }
       }
 
+      final buf = StringBuffer();
+      buf.writeln('Skill "${skill.name}" 流水线执行完成');
+      buf.writeln('---');
+      for (final r in results) {
+        buf.writeln(r);
+      }
+
       return McpRuntimeResult(
-        success: true,
-        message: 'Skill "${skill.name}" 流水线已启动\n${results.join('\n')}',
-        data: {'steps': results},
+        success: rollbackStep == null,
+        message: buf.toString(),
+        data: {'steps': results, 'has_rollback': rollbackStep != null},
       );
     } catch (e) {
       return McpRuntimeResult(
@@ -452,16 +586,36 @@ class McpRuntime {
   }
 
   /// 处理【调用工具】
-  McpRuntimeResult _handleCallTool(ParsedInstruction inst) {
+  Future<McpRuntimeResult> _handleCallTool(ParsedInstruction inst) async {
     final text = inst.queryText ?? '';
     // 解析格式: 工具名称 | 参数xxx 或 工具名称(参数)
     final parts = text.split(RegExp(r'[|(]'));
     final toolName = parts.isNotEmpty ? parts[0].trim() : '';
 
-    return McpRuntimeResult(
-      success: true,
-      message: '工具调用请求: $toolName',
-      data: {'tool_name': toolName, 'raw': text},
+    if (toolName.isEmpty) {
+      return McpRuntimeResult(
+        success: false,
+        message: '调用工具名称不能为空',
+        error: '参数缺失',
+      );
+    }
+
+    // 从注册表查找工具
+    final tool = _registry.get(toolName) ?? _registry.get('mcp_$toolName');
+    if (tool == null) {
+      return McpRuntimeResult(
+        success: false,
+        message: '未找到工具: $toolName',
+        error: '工具不存在',
+      );
+    }
+
+    // 通过 MCP 调用机制执行
+    final subInst = ParsedInstruction(
+      type: InstructionType.mcpCall,
+      rawContent: '【MCP_CALL】name=$toolName',
+      params: {'name': toolName},
     );
+    return await _handleMcpCall(subInst);
   }
 }

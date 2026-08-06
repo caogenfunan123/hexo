@@ -74,6 +74,7 @@ class ToolEntity {
   final String? endpoint;        // MCP: 服务端点
   final String? skillContent;    // Skill: 技能内容（System Prompt）
   final String? builtinHandler;  // Builtin: 处理器标识
+  final String? rawDefinition;   // MCP: 原始 JSON 定义（含 action 字段）
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool enabled;
@@ -91,6 +92,7 @@ class ToolEntity {
     this.endpoint,
     this.skillContent,
     this.builtinHandler,
+    this.rawDefinition,
     required this.createdAt,
     required this.updatedAt,
     this.enabled = true,
@@ -131,6 +133,7 @@ class ToolEntity {
     'endpoint': endpoint,
     'skillContent': skillContent,
     'builtinHandler': builtinHandler,
+    'rawDefinition': rawDefinition,
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
     'enabled': enabled,
@@ -152,6 +155,7 @@ class ToolEntity {
     endpoint: j['endpoint']?.toString(),
     skillContent: j['skillContent']?.toString(),
     builtinHandler: j['builtinHandler']?.toString(),
+    rawDefinition: j['rawDefinition']?.toString(),
     createdAt: DateTime.tryParse(j['createdAt']?.toString() ?? '') ?? DateTime.now(),
     updatedAt: DateTime.tryParse(j['updatedAt']?.toString() ?? '') ?? DateTime.now(),
     enabled: j['enabled'] != false,
@@ -186,6 +190,7 @@ class ToolEntity {
     String? endpoint,
     String? skillContent,
     String? builtinHandler,
+    Object? rawDefinition = _sentinel,
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? enabled,
@@ -203,6 +208,7 @@ class ToolEntity {
       endpoint: endpoint ?? this.endpoint,
       skillContent: skillContent ?? this.skillContent,
       builtinHandler: builtinHandler ?? this.builtinHandler,
+      rawDefinition: identical(rawDefinition, _sentinel) ? this.rawDefinition : rawDefinition as String?,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       enabled: enabled ?? this.enabled,

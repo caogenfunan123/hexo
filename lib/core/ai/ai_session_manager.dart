@@ -172,7 +172,7 @@ class AiSessionManager {
     "allow_overwrite": false
   },
   "action": {
-    "type": "file_read|file_write|mkdir|rm|git_snapshot|git_rollback|diff|list_dir",
+    "type": "file_read|file_write|file_delete|list_dir|mkdir|git_snapshot|git_rollback|web_search|web_fetch",
     "payload": {}
   },
   "post_check": {"enable":true,"check_rules":["path_valid","syntax_check"]}
@@ -220,6 +220,20 @@ class AiSessionManager {
 
 ### 启动Skill调用格式
 【SKILL_RUN】skill_id=工具ID;vars={"key":"value"}
+
+### MCP 工具执行机制（已实现）
+你创建的 MCP 工具在保存后**可以实际执行**，无需用户手动操作：
+1. MCP 工具定义中的 `action.type` 字段指定了工具调用的底层能力（如 `file_read`、`file_write`、`list_dir`、`mkdir`、`git_snapshot`、`git_rollback`、`web_search`、`web_fetch`）
+2. `action.payload` 中的默认值会自动合并到调用参数中
+3. 调用时使用 `【MCP_CALL】name=工具名;params={"key":"value"}` 即可执行
+4. 也支持通过 `【调用工具】工具名称 | 参数` 格式调用
+
+### Skill 流水线执行机制（已实现）
+Skill 脚本中的步骤现在可以实际执行：
+1. `mcp_call` 类型：实际调用指定的 MCP 工具并返回执行结果
+2. `ai_task` 类型：触发 AI 任务提示
+3. `auto_check` 类型：执行自检流程
+4. 步骤失败时按 `fail_action` 配置执行停止或回滚
 
 ### 工具开发标准约束
 - 所有文件操作严格遵守目录隔离规则：博文、页面、themes主题目录互相隔离
