@@ -5,6 +5,7 @@ import '../../models/ai_profile.dart';
 import '../../models/app_settings.dart';
 import '../../services/ai_service.dart';
 import '../../services/chat_sse_service.dart';
+import '../../services/volcengine_adapter.dart';
 import '../tools/tool_entity.dart';
 import '../tools/tool_executor.dart';
 import '../tools/tool_registry.dart';
@@ -160,6 +161,7 @@ class AiRequestDispatcher {
     int timeoutSeconds = 50,
     int switchCount = 0,
     required CancelToken cancelToken,
+    bool disableTools = false,
   }) async {
     const maxToolRounds = 5;
     final stopwatch = Stopwatch()..start();
@@ -184,7 +186,7 @@ class AiRequestDispatcher {
         ..._chatHistory,
       ];
 
-      final tools = ToolRegistry().enabledTools.isNotEmpty
+      final tools = !disableTools && ToolRegistry().enabledTools.isNotEmpty
           ? ToolRegistry().toOpenAiTools()
           : null;
 
@@ -203,7 +205,10 @@ class AiRequestDispatcher {
         headers: params.headers,
         body: params.body,
         idleTimeout: Duration(seconds: timeoutSeconds),
-cancelToken: cancelToken,
+        cancelToken: cancelToken,
+        chunkTransform: VolcengineAdapter.isVolcengineArk(params.url.toString())
+            ? VolcengineAdapter.transformResponseChunk
+            : null,
       );
 
       final Map<int, Map<String, dynamic>> toolCallAccum = {};
@@ -269,6 +274,37 @@ cancelToken: cancelToken,
 
       if (streamError != null) {
         _recordStreamCall(preferredModel, stopwatch, false);
+
+        // 火山方舟 400 降级：自动重试无工具模式
+        if (streamError.contains('HTTP 400') || streamError.contains('InvalidParameter')) {
+          final isVolcengine = preferredModel != null
+              ? VolcengineAdapter.isVolcengineArk(preferredModel.apiBase)
+              : false;
+          if (isVolcengine && toolRound == 0) {
+            onModelSwitched?.call(SwitchEvent(
+              fromModel: preferredModel?.modelName ?? '当前模型',
+              toModel: preferredModel?.modelName ?? '当前模型',
+              reason: '火山方舟参数不兼容，降级为无工具模式重试',
+              attempt: switchCount + 1,
+            ));
+            // 禁用工具后重试（发空工具列表）
+            await _runStream(
+              controller,
+              settings: settings,
+              preferredModel: preferredModel,
+              temperature: temperature,
+              toolRound: toolRound,
+              fallbackModels: fallbackModels,
+              maxSwitchCount: maxSwitchCount,
+              timeoutSeconds: timeoutSeconds,
+              switchCount: switchCount + 1,
+              cancelToken: cancelToken,
+              disableTools: true,
+            );
+            return;
+          }
+        }
+
         if (switchCount < maxSwitchCount && fallbackModels.isNotEmpty) {
           final next = _pickNextModel(preferredModel, fallbackModels);
           if (next != null) {

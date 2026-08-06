@@ -30,6 +30,7 @@ class SseChatEvent {
 /// - 坏分片跳过不终止会话
 /// - 完整事件抛出上层，UI 可见报错
 /// - 和调度器共用同一个 CancelToken，仅用户手动停止/调度器降级才关闭连接
+/// - 可选 chunkTransform 回调，用于火山方舟等非标准格式适配
 class ChatSseService {
   HttpClient? _client;
   StreamController<SseChatEvent>? _eventController;
@@ -39,19 +40,21 @@ class ChatSseService {
   ///
   /// [idleTimeout] 闲置超时：如 25 秒没收到新分片判定超时，不是总时长
   /// [cancelToken] 与调度器共用的取消令牌
+  /// [chunkTransform] 可选的 chunk 转换回调，用于火山方舟等非标准格式适配
   Stream<SseChatEvent> startStream({
     required Uri url,
     required Map<String, String> headers,
     required Map<String, dynamic> body,
     required Duration idleTimeout,
     required CancelToken cancelToken,
+    Map<String, dynamic>? Function(Map<String, dynamic> chunk)? chunkTransform,
   }) {
     _client = HttpClient();
     _eventController = StreamController<SseChatEvent>();
     _isClosed = false;
 
     final stream = _eventController!.stream;
-    _runTask(url, headers, body, idleTimeout, cancelToken);
+    _runTask(url, headers, body, idleTimeout, cancelToken, chunkTransform: chunkTransform);
     return stream;
   }
 
@@ -60,8 +63,9 @@ class ChatSseService {
     Map<String, String> headers,
     Map<String, dynamic> body,
     Duration idleTimeout,
-    CancelToken cancelToken,
-  ) async {
+    CancelToken cancelToken, {
+    Map<String, dynamic>? Function(Map<String, dynamic> chunk)? chunkTransform,
+  }) async {
     try {
       final request = await _client!.postUrl(url);
       headers.forEach((k, v) => request.headers.set(k, v));
@@ -121,7 +125,14 @@ class ChatSseService {
 
           final rawData = trimLine.substring(5).trim();
           try {
-            final jsonObj = jsonDecode(rawData);
+            var jsonObj = jsonDecode(rawData);
+            // 应用 chunk 转换器（火山方舟等非标准格式适配）
+            if (chunkTransform != null && jsonObj is Map<String, dynamic>) {
+              final transformed = chunkTransform(jsonObj);
+              if (transformed != null) {
+                jsonObj = transformed;
+              }
+            }
             if (jsonObj is Map && jsonObj['choices'] is List) {
               final choices = jsonObj['choices'] as List;
               if (choices.isNotEmpty) {

@@ -6,6 +6,7 @@ import '../core/tools/tool_entity.dart';
 import '../core/ai/ai_session_manager.dart';
 import '../models/ai_profile.dart';
 import '../models/app_settings.dart';
+import 'volcengine_adapter.dart';
 
 /// SSE 流式块
 class StreamChunk {
@@ -726,36 +727,26 @@ class AiService {
     }
 
     final url = _chatUrl(p);
-
-    // 火山方舟不兼容 OpenAI 工具调用参数，需过滤
-    final isVolcengine = _isVolcengineArk(p.baseUrl);
-
-    // 过滤消息：火山方舟不支持 tool_calls 字段和 tool 角色
-    List<Map<String, dynamic>> filteredMessages = messages;
-    if (isVolcengine) {
-      filteredMessages = messages
-          .map((m) {
-            final msg = Map<String, dynamic>.from(m);
-            msg.remove('tool_calls');
-            return msg;
-          })
-          .where((m) => m['role'] != 'tool')
-          .toList();
-    }
+    final isVolcengine = VolcengineAdapter.isVolcengineArk(p.baseUrl);
 
     final body = <String, dynamic>{
       'model': p.model,
       'messages': [
         {'role': 'system', 'content': systemPrompt},
-        ...filteredMessages,
+        ...messages,
       ],
       'temperature': temperature,
       'stream': true,
     };
-    if (tools != null && tools.isNotEmpty && !isVolcengine) {
+    if (tools != null && tools.isNotEmpty) {
       body['tools'] = tools;
       body['tool_choice'] = 'auto';
     }
+
+    // 火山方舟格式转换：保留 tools 能力，做入参适配
+    final finalBody = isVolcengine
+        ? VolcengineAdapter.transformRequest(originBody: body)
+        : body;
 
     final headers = <String, String>{
       'Content-Type': 'application/json',
@@ -771,10 +762,11 @@ class AiService {
       }
     }
 
-    return ChatRequestParams(url: Uri.parse(url), headers: headers, body: body);
+    return ChatRequestParams(url: Uri.parse(url), headers: headers, body: finalBody);
   }
 
   /// 检测是否为火山方舟 ARK 服务
+  @Deprecated('Use VolcengineAdapter.isVolcengineArk instead')
   bool _isVolcengineArk(String baseUrl) {
     final uri = Uri.tryParse(baseUrl);
     if (uri == null) return false;
