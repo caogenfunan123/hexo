@@ -4,12 +4,14 @@ import 'dart:convert';
 import '../../models/ai_profile.dart';
 import '../../models/app_settings.dart';
 import '../../services/ai_service.dart';
+import '../../services/chat_sse_service.dart';
 import '../tools/tool_entity.dart';
 import '../tools/tool_executor.dart';
 import '../tools/tool_registry.dart';
 import 'ai_model_entity.dart';
 import 'ai_model_manager.dart';
 import 'ai_model_probe_service.dart';
+import 'cancel_token.dart';
 
 /// 模型切换事件（UI 提示条用）
 class SwitchEvent {
@@ -34,6 +36,7 @@ class AiRequestDispatcher {
   final AiModelManager _modelManager;
   final AiModelProbeService _probeService;
   StreamController<StreamChunk>? _activeStreamController;
+  CancelToken? _cancelToken;
 
   /// 模型切换事件回调（UI 展示提示条）
   void Function(SwitchEvent event)? onModelSwitched;
@@ -43,6 +46,8 @@ class AiRequestDispatcher {
 
   /// 取消当前正在进行的流式请求
   void cancelCurrent() {
+    _cancelToken?.cancel();
+    _cancelToken = null;
     _activeStreamController?.close();
     _activeStreamController = null;
   }
@@ -91,6 +96,7 @@ class AiRequestDispatcher {
 
     final controller = StreamController<StreamChunk>();
     _activeStreamController = controller;
+    _cancelToken = CancelToken();
 
     // 异步构建备选队列并启动流式处理
     _prepareAndRunStream(
@@ -139,6 +145,7 @@ class AiRequestDispatcher {
       fallbackModels: fallbacks,
       maxSwitchCount: effectiveMaxSwitch,
       timeoutSeconds: effectiveTimeout,
+      cancelToken: _cancelToken!,
     );
   }
 
@@ -152,6 +159,7 @@ class AiRequestDispatcher {
     int maxSwitchCount = 3,
     int timeoutSeconds = 50,
     int switchCount = 0,
+    required CancelToken cancelToken,
   }) async {
     const maxToolRounds = 5;
     final stopwatch = Stopwatch()..start();
@@ -180,77 +188,94 @@ class AiRequestDispatcher {
           ? ToolRegistry().toOpenAiTools()
           : null;
 
-      final stream = _aiService.completeStream(
+      final sseService = ChatSseService();
+      final params = _aiService.prepareChatRequest(
         settings: settings,
         systemPrompt: _systemPrompt,
-        userPrompt: _buildMessagesString(messages),
+        messages: messages,
         profile: profile,
         temperature: temperature,
-        messages: messages,
         tools: tools,
       );
 
+      final sseStream = sseService.startStream(
+        url: params.url,
+        headers: params.headers,
+        body: params.body,
+        idleTimeout: Duration(seconds: timeoutSeconds),
+cancelToken: cancelToken,
+      );
+
+      final Map<int, Map<String, dynamic>> toolCallAccum = {};
       List<Map<String, dynamic>>? pendingToolCalls;
+      String? streamError;
 
       try {
-        await for (final chunk in stream
-            .timeout(Duration(seconds: timeoutSeconds))) {
+        await for (final event in sseStream) {
           if (controller.isClosed) break;
-          if (chunk.content.isNotEmpty) {
-            fullContent.write(chunk.content);
-            controller.add(chunk);
+          switch (event.type) {
+            case SseChatEventType.chunk:
+              if (event.content != null && event.content!.isNotEmpty) {
+                fullContent.write(event.content);
+                controller.add(StreamChunk(content: event.content!));
+              }
+              break;
+            case SseChatEventType.toolCall:
+              if (event.toolPayload != null && event.toolPayload!['tool_calls'] is List) {
+                for (final tc in (event.toolPayload!['tool_calls'] as List)) {
+                  if (tc is Map) {
+                    final idx = (tc['index'] as num?)?.toInt() ?? 0;
+                    toolCallAccum.putIfAbsent(idx, () => <String, dynamic>{});
+                    final acc = toolCallAccum[idx]!;
+                    if (tc['id'] != null) acc['id'] = tc['id'];
+                    if (tc['type'] != null) acc['type'] = tc['type'];
+                    if (tc['function'] is Map) {
+                      final func = tc['function'] as Map;
+                      acc.putIfAbsent('function', () => <String, dynamic>{});
+                      final accFunc = acc['function'] as Map<String, dynamic>;
+                      if (func['name'] != null) accFunc['name'] = func['name'];
+                      if (func['arguments'] != null) {
+                        accFunc['arguments'] = (accFunc['arguments'] ?? '') + (func['arguments'] as String);
+                      }
+                    }
+                  }
+                }
+              }
+              break;
+            case SseChatEventType.finish:
+              pendingToolCalls = toolCallAccum.isNotEmpty
+                  ? toolCallAccum.entries.map((e) => Map<String, dynamic>.from(e.value)).toList()
+                  : null;
+              toolCallAccum.clear();
+              break;
+            case SseChatEventType.error:
+              streamError = event.error?.toString() ?? '流式响应异常';
+              break;
+            case SseChatEventType.cancel:
+              break;
           }
-          if (chunk.isDone) {
-            pendingToolCalls = chunk.toolCalls;
-            break;
-          }
+          if (streamError != null) break;
+          if (pendingToolCalls != null) break;
         }
-      } on TimeoutException {
-        stopwatch.stop();
-        _recordStreamCall(preferredModel, stopwatch, false);
-        // 触发超时切换
-        if (switchCount < maxSwitchCount && fallbackModels.isNotEmpty) {
-          final next = _pickNextModel(preferredModel, fallbackModels);
-          if (next != null) {
-            onModelSwitched?.call(SwitchEvent(
-              fromModel: preferredModel?.modelName ?? '当前模型',
-              toModel: next.modelName,
-              reason: '响应超时（>${timeoutSeconds}s）',
-              attempt: switchCount + 1,
-            ));
-            await _runStream(
-              controller,
-              settings: settings,
-              preferredModel: next,
-              temperature: temperature,
-              toolRound: toolRound,
-              fallbackModels: fallbackModels,
-              maxSwitchCount: maxSwitchCount,
-              timeoutSeconds: timeoutSeconds,
-              switchCount: switchCount + 1,
-            );
-            return;
-          }
-        }
-        if (!controller.isClosed) {
-          controller.addError(TimeoutException(
-            '模型响应超时（>${timeoutSeconds}s）',
-            Duration(seconds: timeoutSeconds),
-          ));
-          await controller.close();
-        }
-        return;
       } catch (e) {
-        stopwatch.stop();
+        streamError = e.toString();
+      }
+
+      stopwatch.stop();
+
+      if (controller.isClosed) {
+        return;
+      }
+
+      if (streamError != null) {
         _recordStreamCall(preferredModel, stopwatch, false);
-        // 请求异常时也尝试切换
         if (switchCount < maxSwitchCount && fallbackModels.isNotEmpty) {
           final next = _pickNextModel(preferredModel, fallbackModels);
           if (next != null) {
             onModelSwitched?.call(SwitchEvent(
               fromModel: preferredModel?.modelName ?? '当前模型',
               toModel: next.modelName,
-              reason: '请求失败（$e）',
+              reason: '请求失败（$streamError）',
               attempt: switchCount + 1,
             ));
             await _runStream(
@@ -263,18 +288,18 @@ class AiRequestDispatcher {
               maxSwitchCount: maxSwitchCount,
               timeoutSeconds: timeoutSeconds,
               switchCount: switchCount + 1,
+              cancelToken: cancelToken,
             );
             return;
           }
         }
         if (!controller.isClosed) {
-          controller.addError(e);
+          controller.addError(Exception(streamError));
           await controller.close();
         }
         return;
       }
 
-      stopwatch.stop();
       _recordStreamCall(preferredModel, stopwatch, true);
 
       // 处理工具调用（兼容多种 finish_reason，部分厂商返回 "stop" 而非 "tool_calls"）
@@ -338,6 +363,7 @@ class AiRequestDispatcher {
           maxSwitchCount: maxSwitchCount,
           timeoutSeconds: timeoutSeconds,
           switchCount: switchCount,
+          cancelToken: cancelToken,
         );
         return;
       }

@@ -701,6 +701,64 @@ class AiService {
     } catch (_) {}
     return {'error': '无法解析 AI 返回结果', 'raw': result};
   }
+
+  /// 构建聊天请求参数（URL、headers、body），供 ChatSseService 使用
+  ChatRequestParams prepareChatRequest({
+    required AppSettings settings,
+    required String systemPrompt,
+    required List<Map<String, dynamic>> messages,
+    AiProfile? profile,
+    double temperature = 0.7,
+    List<Map<String, dynamic>>? tools,
+  }) {
+    final p = resolveProfile(settings, override: profile);
+    if (p.apiKey.isEmpty) {
+      throw Exception('请先在设置中配置 AI 中转站并填写 API Key');
+    }
+    if (p.model.isEmpty) {
+      throw Exception('请先选择模型');
+    }
+
+    final url = _chatUrl(p);
+    final body = <String, dynamic>{
+      'model': p.model,
+      'messages': [
+        {'role': 'system', 'content': systemPrompt},
+        ...messages,
+      ],
+      'temperature': temperature,
+      'stream': true,
+    };
+    if (tools != null && tools.isNotEmpty) {
+      body['tools'] = tools;
+      body['tool_choice'] = 'auto';
+    }
+
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+    };
+    if (p.apiKey.isNotEmpty) {
+      if (p.useBearer) {
+        headers['Authorization'] = 'Bearer ${p.apiKey}';
+      } else {
+        headers['Authorization'] = p.apiKey;
+        headers['api-key'] = p.apiKey;
+        headers['x-api-key'] = p.apiKey;
+      }
+    }
+
+    return ChatRequestParams(url: Uri.parse(url), headers: headers, body: body);
+  }
+}
+
+/// 聊天请求参数
+class ChatRequestParams {
+  final Uri url;
+  final Map<String, String> headers;
+  final Map<String, dynamic> body;
+
+  ChatRequestParams({required this.url, required this.headers, required this.body});
 }
 
 /// 工具调用响应
