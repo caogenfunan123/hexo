@@ -1,9 +1,6 @@
-import 'dart:convert';
-
-/// 火山方舟 ↔ OpenAI Function-Call 格式双向转换器
+/// 火山方舟 ↔ OpenAI Function-Call 格式入参转换器
 ///
-/// 不再粗暴删除 tools 字段，而是做入参转换、出参转换、消息体适配三层处理，
-/// 让火山方舟也能跑完整 MCP 工具链。
+/// 将 OpenAI 标准请求体转换为火山方舟兼容格式，让火山方舟也能跑完整 MCP 工具链。
 class VolcengineAdapter {
   /// 检测是否为火山方舟 ARK 服务
   static bool isVolcengineArk(String baseUrl) {
@@ -62,49 +59,5 @@ class VolcengineAdapter {
     return output;
   }
 
-  /// 把火山 SSE 的 chunk 翻译成内部统一 OpenAI delta 格式
-  static Map<String, dynamic>? transformResponseChunk(Map<String, dynamic> arkChunk) {
-    if (!arkChunk.containsKey('choices')) return null;
-    final choices = arkChunk['choices'];
-    if (choices is! List || choices.isEmpty) return null;
-    final choice = choices[0];
-    if (choice is! Map) return null;
-    final delta = choice['delta'];
-    if (delta is! Map) return null;
-
-    if (delta['tool_calls'] != null) {
-      final List<dynamic> arkToolCalls = (delta['tool_calls'] as List<dynamic>?) ?? [];
-      final List<Map<String, dynamic>> openAiToolCalls = [];
-
-      for (final arkTc in arkToolCalls) {
-        if (arkTc is! Map) continue;
-        final func = (arkTc['function'] as Map?) ?? {};
-        openAiToolCalls.add({
-          'index': arkTc['index'] ?? 0,
-          'id': arkTc['id'],
-          'type': 'function',
-          'function': {
-            'name': func['name'],
-            'arguments': func['arguments'],
-          },
-        });
-      }
-
-      if (openAiToolCalls.isNotEmpty) {
-        return {
-          'choices': [
-            {
-              'delta': {
-                'content': delta['content'],
-                'tool_calls': openAiToolCalls,
-              },
-              'finish_reason': choice['finish_reason'],
-            },
-          ],
-        };
-      }
-    }
-
-    return null;
-  }
+  
 }
