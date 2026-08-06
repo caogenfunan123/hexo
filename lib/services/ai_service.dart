@@ -65,11 +65,17 @@ class AiService {
     // https://host/v1
     // https://host/openai/v1
     // https://host/v1/chat/completions (已在 normalize 去掉)
+    // https://host/api/coding/v3 (火山引擎)
+    // https://host/api/paas/v4 (智谱)
     final uri = Uri.tryParse(base);
-    if (uri != null && uri.pathSegments.contains('v1')) {
-      return base;
+    if (uri != null) {
+      for (final seg in uri.pathSegments) {
+        if (RegExp(r'^v\d+$').hasMatch(seg)) {
+          return base;
+        }
+      }
     }
-    if (base.endsWith('/v1')) return base;
+    if (RegExp(r'/v\d+$').hasMatch(base)) return base;
     return '$base/v1';
   }
 
