@@ -19,7 +19,7 @@ class SwitchEvent {
   final int attempt;
   final DateTime time;
 
-  const SwitchEvent({
+  SwitchEvent({
     required this.fromModel,
     required this.toModel,
     required this.reason,

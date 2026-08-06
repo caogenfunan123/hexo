@@ -57,7 +57,7 @@ class ToolSchemaValidator {
   ];
 
   /// 危险操作黑名单：正则匹配（更精确）
-  static const List<RegExp> _dangerPatterns = [
+  static final List<RegExp> _dangerPatterns = [
     RegExp(r'DELETE\s+FROM\s+\S+\s*;?\s*$', caseSensitive: false), // 无 WHERE 的 DELETE
     RegExp(r'UPDATE\s+\S+\s+SET\s+.+\s+WHERE\s+[^=]+=\s*[^=]+\s*;?\s*$', caseSensitive: false),
     RegExp(r'git\s+push\s+(-f|--force)', caseSensitive: false),

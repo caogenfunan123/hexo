@@ -12,7 +12,7 @@ class ProbeResult {
   final bool success;
   final DateTime probedAt;
 
-  const ProbeResult({
+  ProbeResult({
     required this.modelId,
     required this.apiBase,
     required this.latencyMs,
