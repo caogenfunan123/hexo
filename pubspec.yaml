@@ -1,7 +1,7 @@
 name: hexo
 description: Hexo 博客写作与发布管理系统 - 全平台 (Android / iOS / Web / 桌面)
 publish_to: 'none'
-version: 1.0.3+4
+version: 1.0.4+5
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
