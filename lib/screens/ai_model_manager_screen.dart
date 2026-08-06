@@ -7,7 +7,29 @@ import '../models/ai_profile.dart';
 import '../models/app_settings.dart';
 import '../services/ai_service.dart';
 
-/// AI 模型管理面板
+/// 预置模型库
+class _ModelPreset {
+  final String modelId;
+  final String modelName;
+  final String baseUrl;
+  final String group;
+  const _ModelPreset(this.modelId, this.modelName, this.baseUrl, this.group);
+}
+
+const _presetModels = [
+  _ModelPreset('deepseek-chat', 'DeepSeek V3', 'https://api.deepseek.com/v1', 'code'),
+  _ModelPreset('deepseek-reasoner', 'DeepSeek R1', 'https://api.deepseek.com/v1', 'code'),
+  _ModelPreset('qwen-max', '通义千问 Max', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'general'),
+  _ModelPreset('qwen-plus', '通义千问 Plus', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'general'),
+  _ModelPreset('glm-4', '智谱 GLM-4', 'https://open.bigmodel.cn/api/paas/v4', 'general'),
+  _ModelPreset('glm-4-flash', '智谱 GLM-4-Flash', 'https://open.bigmodel.cn/api/paas/v4', 'general'),
+  _ModelPreset('moonshot-v1-8k', '月之暗面 Kimi', 'https://api.moonshot.cn/v1', 'general'),
+  _ModelPreset('doubao-1-5-pro-32k-250115', '豆包 1.5 Pro', 'https://ark.cn-beijing.volces.com/api/v3', 'longtext'),
+  _ModelPreset('gpt-4o-mini', 'GPT-4o-mini', 'https://api.openai.com/v1', 'general'),
+  _ModelPreset('gpt-4o', 'GPT-4o', 'https://api.openai.com/v1', 'general'),
+  _ModelPreset('claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet', 'https://api.anthropic.com/v1', 'general'),
+  _ModelPreset('gemini-2.0-flash', 'Gemini 2.0 Flash', 'https://generativelanguage.googleapis.com/v1beta', 'general'),
+];
 class AiModelManagerScreen extends StatefulWidget {
   final AiModelManager modelManager;
   final AiService aiService;
@@ -167,7 +189,7 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
     final baseCtrl = TextEditingController(text: widget.settings.aiBaseUrl);
     final keyCtrl = TextEditingController(text: widget.settings.aiApiKey);
     String group = 'general';
-    int timeout = 30;
+    int timeout = 50;
 
     final ok = await showDialog<bool>(
       context: context,
@@ -233,6 +255,107 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
 
     await widget.modelManager.addModel(model);
     await _loadModels();
+  }
+
+  /// 一键导入常用模型
+  Future<void> _addPresetModels() async {
+    final apiKeyCtrl = TextEditingController();
+    final baseCtrl = TextEditingController();
+    final selected = Set<String>.from(_presetModels.map((p) => p.modelId));
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          title: const Text('一键添加常用模型'),
+          content: SizedBox(
+            width: 400,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('选择要添加的模型，输入 API Key 后批量导入：',
+                      style: TextStyle(fontSize: 13)),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: apiKeyCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'API Key',
+                      hintText: '所有选中模型共用此 Key',
+                    ),
+                    obscureText: true,
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: baseCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Base URL 覆盖（可选）',
+                      hintText: '留空则使用各模型默认 Base URL',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('选择模型：', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  ..._presetModels.map((p) => CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text('${p.modelName}（${p.modelId}）',
+                            style: const TextStyle(fontSize: 13)),
+                        subtitle: Text(p.baseUrl, style: const TextStyle(fontSize: 11)),
+                        value: selected.contains(p.modelId),
+                        onChanged: (v) {
+                          setDlg(() {
+                            if (v == true) {
+                              selected.add(p.modelId);
+                            } else {
+                              selected.remove(p.modelId);
+                            }
+                          });
+                        },
+                      )),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('导入 ${selected.length} 个'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+
+    final key = apiKeyCtrl.text.trim();
+    if (key.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请填写 API Key')));
+      return;
+    }
+
+    final overrideBase = baseCtrl.text.trim();
+    final models = _presetModels
+        .where((p) => selected.contains(p.modelId))
+        .map((p) => AiModelEntity(
+              modelId: p.modelId,
+              modelName: p.modelName,
+              apiBase: overrideBase.isNotEmpty ? overrideBase : p.baseUrl,
+              apiKey: key,
+              group: p.group,
+              enable: true,
+            ))
+        .toList();
+
+    await widget.modelManager.batchImport(models);
+    await _loadModels();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('成功导入 ${models.length} 个模型')),
+      );
+    }
   }
 
   Future<void> _toggleModel(AiModelEntity model) async {
@@ -366,6 +489,13 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          FloatingActionButton.small(
+            heroTag: 'presets',
+            onPressed: _addPresetModels,
+            tooltip: '一键添加常用模型',
+            child: const Icon(Icons.library_books_outlined),
+          ),
+          const SizedBox(height: 8),
           FloatingActionButton.small(
             heroTag: 'fetch',
             onPressed: _fetchFromProxy,

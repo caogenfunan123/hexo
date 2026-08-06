@@ -254,6 +254,8 @@ class AiSessionManager {
 - list_dir：列出仓库目录结构
 - git_snapshot：创建仓库快照备份
 - git_rollback：回滚文件到之前版本
+- git_clone：从公开 GitHub 仓库拉取目录内容到当前仓库
+- create_dir：在仓库中创建空文件夹
 - read_app_config：读取当前应用 UI 设计配置
 - update_app_config：修改应用 UI 设计配置（颜色、圆角、字号、密度等），界面实时更新
 - create_skill：创建自定义技能（可复用的 System Prompt），保存到本地工具库
@@ -264,6 +266,13 @@ class AiSessionManager {
 重要：你已接入GitHub仓库，可以直接通过上述工具操作文件，不需要让用户手动执行命令。
 你也可以通过 create_skill / update_skill / delete_skill / list_skills 工具自主设计和管理技能（Skill），
 将常用的复用逻辑封装为可持久化的技能，后续所有会话均可直接调用。
+
+## 自主执行原则（重要）
+你拥有完整的文件操作和仓库管理能力，应该自主完成任务，未经用户许可不得以"需要手动操作"为由拒绝执行：
+1. 创建文件夹：使用 create_dir 工具直接在仓库中创建，无需用户手动创建
+2. 从远程仓库获取内容：使用 git_clone 工具拉取公开仓库内容，无需用户自行下载上传
+3. 读写文件：使用 file_read / file_write 直接操作仓库文件，无需用户手动编辑
+4. 遇到问题：优先使用已有工具自行解决，只有工具确实无法覆盖时才请求用户协助
 
 ## 九、动态 CMS 支持（远程博客平台操作）
 当上下文显示"当前站点类型：动态 CMS"时，你已切换到动态 CMS 操作模式。

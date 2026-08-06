@@ -59,6 +59,8 @@ class BuiltinTools {
         readTemplate,
         updateTemplate,
         listPosts,
+        gitClone,
+        createDir,
       ];
 
   // ── ① Web 搜索工具 ──
@@ -417,6 +419,85 @@ class BuiltinTools {
     updatedAt: DateTime(2026, 1, 1),
   );
 
+  // ── ⑲ Git 克隆工具 ──
+  static final ToolEntity gitClone = ToolEntity(
+    id: 'git_clone',
+    name: '克隆远程仓库文档',
+    description: '从公开 GitHub 仓库拉取指定目录下的文件内容到当前仓库目标位置。用于复制主题、模板、示例代码等。限制最多 200 个文件。',
+    type: ToolType.builtin,
+    builtinHandler: 'git_clone',
+    parameters: const [
+      ToolParam(
+        name: 'remote_owner',
+        type: 'string',
+        description: '远程仓库所有者（用户名或组织名）',
+        required: true,
+      ),
+      ToolParam(
+        name: 'remote_repo',
+        type: 'string',
+        description: '远程仓库名称',
+        required: true,
+      ),
+      ToolParam(
+        name: 'remote_branch',
+        type: 'string',
+        description: '远程仓库分支，默认 main',
+        required: false,
+        defaultValue: 'main',
+      ),
+      ToolParam(
+        name: 'remote_path',
+        type: 'string',
+        description: '远程仓库中要拉取的目录路径，默认为根目录',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'target_path',
+        type: 'string',
+        description: '当前仓库中写入的目标目录路径，默认为远程目录名',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'commit_message',
+        type: 'string',
+        description: 'Git 提交信息，默认自动生成',
+        required: false,
+        defaultValue: '',
+      ),
+    ],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
+
+  // ── ⑳ 创建文件夹工具 ──
+  static final ToolEntity createDir = ToolEntity(
+    id: 'create_dir',
+    name: '创建仓库文件夹',
+    description: '在仓库中创建空文件夹（写入 .gitkeep 占位文件）。用于在新建文章前准备分类目录或主题目录。',
+    type: ToolType.builtin,
+    builtinHandler: 'create_dir',
+    parameters: const [
+      ToolParam(
+        name: 'path',
+        type: 'string',
+        description: '要创建的文件夹路径',
+        required: true,
+      ),
+      ToolParam(
+        name: 'commit_message',
+        type: 'string',
+        description: 'Git 提交信息，默认自动生成',
+        required: false,
+        defaultValue: '',
+      ),
+    ],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
+
   /// 远程 CMS 工具 ID 集合（用于路由判断）
   static const _remoteCmsToolIds = {
     // WordPress
@@ -476,6 +557,10 @@ class BuiltinTools {
         return _executeUpdateTemplate(request);
       case 'list_posts':
         return _executeListPosts(request);
+      case 'git_clone':
+        return _executeGitClone(request);
+      case 'create_dir':
+        return _executeCreateDir(request);
       default:
         return ToolCallResult(
           toolId: request.toolId,
@@ -1526,5 +1611,135 @@ class BuiltinTools {
       result.add(line);
     }
     return result;
+  }
+
+  // ── 克隆远程仓库内容 ──
+  static Future<ToolCallResult> _executeGitClone(ToolCallRequest req) async {
+    final owner = req.arguments['remote_owner']?.toString().trim() ?? '';
+    final repo = req.arguments['remote_repo']?.toString().trim() ?? '';
+    final branch = req.arguments['remote_branch']?.toString().trim() ?? 'main';
+    final remotePath = req.arguments['remote_path']?.toString().trim() ?? '';
+    var targetPath = req.arguments['target_path']?.toString().trim() ?? '';
+    final commitMsg = req.arguments['commit_message']?.toString().trim() ??
+        'AI: clone $owner/$repo/$branch/$remotePath';
+
+    if (owner.isEmpty || repo.isEmpty) {
+      return ToolCallResult(toolId: 'git_clone', content: '', success: false, error: 'remote_owner 和 remote_repo 不能为空');
+    }
+
+    if (gitHubService == null || activeRepo == null) {
+      return ToolCallResult(toolId: 'git_clone', content: '', success: false, error: '未配置仓库连接');
+    }
+
+    try {
+      final items = await gitHubService!.listRemoteDirContents(
+        owner: owner,
+        repo: repo,
+        branch: branch,
+        path: remotePath,
+        maxFiles: 200,
+      );
+
+      final files = items.where((e) => e.type == 'file').toList();
+      if (files.isEmpty) {
+        return ToolCallResult(toolId: 'git_clone', content: '', success: false, error: '远程目录中未找到文件');
+      }
+
+      // 自动推断目标目录：remotePath 的最后一段，或仓库名
+      if (targetPath.isEmpty) {
+        targetPath = remotePath.isNotEmpty
+            ? remotePath.split('/').last
+            : repo;
+      }
+
+      var successCount = 0;
+      final errors = <String>[];
+      for (final file in files) {
+        try {
+          final content = await gitHubService!.getRemoteRawFile(
+            owner: owner,
+            repo: repo,
+            branch: branch,
+            path: file.path,
+          );
+          if (content == null) {
+            errors.add('${file.path}: 无法读取内容');
+            continue;
+          }
+          final relativePath = remotePath.isNotEmpty
+              ? file.path.startsWith(remotePath)
+                  ? file.path.substring(remotePath.length).replaceFirst(RegExp(r'^/'), '')
+                  : file.path;
+          final target = '$targetPath/$relativePath'.replaceAll(RegExp(r'/+'), '/');
+
+          String? existingSha;
+          try {
+            final existing = await gitHubService!.getRawFile(activeRepo!, target);
+            existingSha = existing?['sha']?.toString();
+          } catch (_) {}
+
+          await gitHubService!.putRawFile(
+            activeRepo!,
+            target,
+            content,
+            sha: existingSha,
+            commitMessage: commitMsg,
+          );
+          successCount++;
+        } catch (e) {
+          errors.add('${file.path}: $e');
+        }
+      }
+
+      final buf = StringBuffer();
+      buf.writeln('克隆完成: 成功 $successCount/${files.length} 个文件');
+      buf.writeln('目标目录: $targetPath');
+      if (errors.isNotEmpty) {
+        buf.writeln('失败 ${errors.length} 个:');
+        for (final e in errors.take(5)) {
+          buf.writeln('  - $e');
+        }
+      }
+      return ToolCallResult(toolId: 'git_clone', content: buf.toString(), success: true);
+    } catch (e) {
+      return ToolCallResult(toolId: 'git_clone', content: '', success: false, error: '克隆失败: $e');
+    }
+  }
+
+  // ── 创建空文件夹 ──
+  static Future<ToolCallResult> _executeCreateDir(ToolCallRequest req) async {
+    final path = req.arguments['path']?.toString().trim() ?? '';
+    final commitMsg = req.arguments['commit_message']?.toString().trim() ??
+        'AI: create directory $path';
+
+    if (path.isEmpty) {
+      return ToolCallResult(toolId: 'create_dir', content: '', success: false, error: '路径不能为空');
+    }
+    final pathErr = _validatePath(path);
+    if (pathErr != null) {
+      return ToolCallResult(toolId: 'create_dir', content: '', success: false, error: pathErr);
+    }
+    if (gitHubService == null || activeRepo == null) {
+      return ToolCallResult(toolId: 'create_dir', content: '', success: false, error: '未配置仓库连接');
+    }
+
+    try {
+      final gitkeep = '$path/.gitkeep';
+      String? existingSha;
+      try {
+        final existing = await gitHubService!.getRawFile(activeRepo!, gitkeep);
+        existingSha = existing?['sha']?.toString();
+      } catch (_) {}
+      await gitHubService!.putRawFile(
+        activeRepo!,
+        gitkeep,
+        '',
+        sha: existingSha,
+        commitMessage: commitMsg,
+      );
+      return ToolCallResult(toolId: 'create_dir', content: '文件夹已创建: $path', success: true);
+    } catch (e) {
+      return ToolCallResult(toolId: 'create_dir', content: '', success: false, error: '创建文件夹失败: $e');
+    }
   }
 }

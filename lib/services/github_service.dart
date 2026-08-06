@@ -70,13 +70,18 @@ class GitCommitItem {
 }
 
 class GitHubService {
-  Future<Map<String, String>> _headers(String token) async => {
-        'Accept': 'application/vnd.github+json',
-        'Authorization': 'Bearer $token',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'HexoBlogManager',
-        'Content-Type': 'application/json',
-      };
+  Future<Map<String, String>> _headers(String token) async {
+    final h = <String, String>{
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'HexoBlogManager',
+      'Content-Type': 'application/json',
+    };
+    if (token.isNotEmpty) {
+      h['Authorization'] = 'Bearer $token';
+    }
+    return h;
+  }
 
   Future<dynamic> _request(
     String method,
@@ -490,6 +495,61 @@ class GitHubService {
 
   String _encPath(String path) =>
       path.split('/').where((e) => e.isNotEmpty).map(Uri.encodeComponent).join('/');
+
+  /// 列出远程公开仓库目录内容，递归到指定深度/文件数上限
+  Future<List<GitHubFileItem>> listRemoteDirContents({
+    required String owner,
+    required String repo,
+    required String branch,
+    String path = '',
+    String? token,
+    int maxFiles = 200,
+  }) async {
+    final result = <GitHubFileItem>[];
+    final t = token ?? '';
+    final baseUrl = 'https://api.github.com/repos/$owner/$repo';
+
+    Future<void> recurse(String p) async {
+      if (result.length >= maxFiles) return;
+      final url = '$baseUrl/contents/${_encPath(p)}?ref=${Uri.encodeComponent(branch)}';
+      try {
+        final data = await _request('GET', url, t);
+        if (data is! List) return;
+        for (final e in data.whereType<Map>()) {
+          if (result.length >= maxFiles) break;
+          final item = GitHubFileItem.fromJson(Map<String, dynamic>.from(e));
+          result.add(item);
+          if (item.type == 'dir') {
+            await recurse(item.path);
+          }
+        }
+      } catch (_) {}
+    }
+
+    await recurse(path);
+    return result;
+  }
+
+  /// 获取远程公开仓库文件的原始内容（文本）
+  Future<String?> getRemoteRawFile({
+    required String owner,
+    required String repo,
+    required String branch,
+    required String path,
+    String? token,
+  }) async {
+    final t = token ?? '';
+    final url = 'https://api.github.com/repos/$owner/$repo/contents/${_encPath(path)}?ref=${Uri.encodeComponent(branch)}';
+    try {
+      final data = await _request('GET', url, t);
+      if (data is! Map) return null;
+      final contentB64 = (data['content']?.toString() ?? '').replaceAll('\n', '');
+      if (contentB64.isEmpty) return null;
+      return utf8.decode(base64Decode(contentB64));
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// 触发 Cloudflare Pages 重新部署
   /// [deployHookUrl] 为 Cloudflare Pages 的 Deploy Hook URL

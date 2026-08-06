@@ -150,7 +150,7 @@ class AiRequestDispatcher {
     int toolRound = 0,
     List<AiModelEntity> fallbackModels = const [],
     int maxSwitchCount = 3,
-    int timeoutSeconds = 25,
+    int timeoutSeconds = 50,
     int switchCount = 0,
   }) async {
     const maxToolRounds = 5;
@@ -416,7 +416,7 @@ class AiRequestDispatcher {
     int maxRetries = 3,
     bool enableAutoSwitch = true,
     bool autoOptimal = true,
-    int timeoutSeconds = 25,
+    int timeoutSeconds = 50,
     bool Function(String)? isRetryableError,
   }) async {
     addUserMessage(userMessage);
