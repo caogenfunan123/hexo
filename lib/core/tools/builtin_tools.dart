@@ -7,6 +7,7 @@ import '../../models/template_item.dart';
 import '../../services/github_service.dart';
 import '../../services/storage_service.dart';
 import '../../models/repo_config.dart';
+import '../ai/token_vault.dart';
 import 'remote_cms_tools.dart';
 import 'skill_manager.dart';
 import 'tool_entity.dart';
@@ -31,6 +32,12 @@ class BuiltinTools {
 
   /// 模板变更回调（供 update_template 持久化后刷新应用内模板列表）
   static Future<void> Function(List<TemplateItem> templates)? onTemplatesChanged;
+
+  /// 当前站点脱敏凭据（AI 可感知存在性，不含明文）
+  static SiteCredentials? siteCredentials;
+
+  /// 当前站点 ID（供站点私有工具作用域判断）
+  static String? siteId;
 
   /// 所有内置工具定义
   static List<ToolEntity> get all => [

@@ -9,14 +9,37 @@ import '../tools/tool_executor.dart';
 import '../tools/tool_registry.dart';
 import 'ai_model_entity.dart';
 import 'ai_model_manager.dart';
+import 'ai_model_probe_service.dart';
+
+/// 模型切换事件（UI 提示条用）
+class SwitchEvent {
+  final String fromModel;
+  final String toModel;
+  final String reason;
+  final int attempt;
+  final DateTime time;
+
+  const SwitchEvent({
+    required this.fromModel,
+    required this.toModel,
+    required this.reason,
+    required this.attempt,
+    DateTime? time,
+  }) : time = time ?? DateTime.now();
+}
 
 /// 请求调度器：超时监听、故障自动切换备选模型、完整上下文继承
 class AiRequestDispatcher {
   final AiService _aiService;
   final AiModelManager _modelManager;
+  final AiModelProbeService _probeService;
   StreamController<StreamChunk>? _activeStreamController;
 
-  AiRequestDispatcher(this._aiService, this._modelManager);
+  /// 模型切换事件回调（UI 展示提示条）
+  void Function(SwitchEvent event)? onModelSwitched;
+
+  AiRequestDispatcher(this._aiService, this._modelManager)
+      : _probeService = AiModelProbeService(_modelManager);
 
   /// 取消当前正在进行的流式请求
   void cancelCurrent() {
@@ -57,6 +80,9 @@ class AiRequestDispatcher {
     required String userMessage,
     AiModelEntity? preferredModel,
     double temperature = 0.7,
+    bool autoOptimal = true,
+    int? timeoutSeconds,
+    int? maxSwitchCount,
   }) {
     // 取消之前的请求
     cancelCurrent();
@@ -66,15 +92,54 @@ class AiRequestDispatcher {
     final controller = StreamController<StreamChunk>();
     _activeStreamController = controller;
 
-    // 启动异步流式处理（不保存返回值，通过 controller 控制取消）
-    _runStream(
+    // 异步构建备选队列并启动流式处理
+    _prepareAndRunStream(
       controller,
       settings: settings,
       preferredModel: preferredModel,
       temperature: temperature,
+      autoOptimal: autoOptimal,
+      timeoutSeconds: timeoutSeconds,
+      maxSwitchCount: maxSwitchCount,
     );
 
     return controller.stream;
+  }
+
+  Future<void> _prepareAndRunStream(
+    StreamController<StreamChunk> controller, {
+    required AppSettings settings,
+    AiModelEntity? preferredModel,
+    double temperature = 0.7,
+    bool autoOptimal = true,
+    int? timeoutSeconds,
+    int? maxSwitchCount,
+  }) async {
+    List<AiModelEntity> fallbacks = [];
+    try {
+      if (autoOptimal) {
+        fallbacks = await _probeService.getPriorityQueue();
+      } else {
+        fallbacks = await _modelManager.getEnabled();
+      }
+    } catch (_) {
+      // 探测失败降级为全量可用模型
+      fallbacks = await _modelManager.getEnabled();
+    }
+
+    final effectiveTimeout =
+        timeoutSeconds ?? settings.ai.aiRequestTimeoutSec;
+    final effectiveMaxSwitch = maxSwitchCount ?? settings.ai.aiMaxSwitchCount;
+
+    await _runStream(
+      controller,
+      settings: settings,
+      preferredModel: preferredModel,
+      temperature: temperature,
+      fallbackModels: fallbacks,
+      maxSwitchCount: effectiveMaxSwitch,
+      timeoutSeconds: effectiveTimeout,
+    );
   }
 
   Future<void> _runStream(
@@ -83,6 +148,10 @@ class AiRequestDispatcher {
     AiModelEntity? preferredModel,
     double temperature = 0.7,
     int toolRound = 0,
+    List<AiModelEntity> fallbackModels = const [],
+    int maxSwitchCount = 3,
+    int timeoutSeconds = 25,
+    int switchCount = 0,
   }) async {
     const maxToolRounds = 5;
     final stopwatch = Stopwatch()..start();
@@ -123,17 +192,90 @@ class AiRequestDispatcher {
 
       List<Map<String, dynamic>>? pendingToolCalls;
 
-      await for (final chunk in stream) {
-        if (controller.isClosed) break;
-        if (chunk.content.isNotEmpty) {
-          fullContent.write(chunk.content);
-          controller.add(chunk);
+      try {
+        await for (final chunk in stream
+            .timeout(Duration(seconds: timeoutSeconds))) {
+          if (controller.isClosed) break;
+          if (chunk.content.isNotEmpty) {
+            fullContent.write(chunk.content);
+            controller.add(chunk);
+          }
+          if (chunk.isDone) {
+            pendingToolCalls = chunk.toolCalls;
+            break;
+          }
         }
-        if (chunk.isDone) {
-          pendingToolCalls = chunk.toolCalls;
-          break;
+      } on TimeoutException {
+        stopwatch.stop();
+        _recordStreamCall(preferredModel, stopwatch, false);
+        // 触发超时切换
+        if (switchCount < maxSwitchCount && fallbackModels.isNotEmpty) {
+          final next = _pickNextModel(preferredModel, fallbackModels);
+          if (next != null) {
+            onModelSwitched?.call(SwitchEvent(
+              fromModel: preferredModel?.modelName ?? '当前模型',
+              toModel: next.modelName,
+              reason: '响应超时（>${timeoutSeconds}s）',
+              attempt: switchCount + 1,
+            ));
+            await _runStream(
+              controller,
+              settings: settings,
+              preferredModel: next,
+              temperature: temperature,
+              toolRound: toolRound,
+              fallbackModels: fallbackModels,
+              maxSwitchCount: maxSwitchCount,
+              timeoutSeconds: timeoutSeconds,
+              switchCount: switchCount + 1,
+            );
+            return;
+          }
         }
+        if (!controller.isClosed) {
+          controller.addError(TimeoutException(
+            '模型响应超时（>${timeoutSeconds}s）',
+            Duration(seconds: timeoutSeconds),
+          ));
+          await controller.close();
+        }
+        return;
+      } catch (e) {
+        stopwatch.stop();
+        _recordStreamCall(preferredModel, stopwatch, false);
+        // 请求异常时也尝试切换
+        if (switchCount < maxSwitchCount && fallbackModels.isNotEmpty) {
+          final next = _pickNextModel(preferredModel, fallbackModels);
+          if (next != null) {
+            onModelSwitched?.call(SwitchEvent(
+              fromModel: preferredModel?.modelName ?? '当前模型',
+              toModel: next.modelName,
+              reason: '请求失败（$e）',
+              attempt: switchCount + 1,
+            ));
+            await _runStream(
+              controller,
+              settings: settings,
+              preferredModel: next,
+              temperature: temperature,
+              toolRound: toolRound,
+              fallbackModels: fallbackModels,
+              maxSwitchCount: maxSwitchCount,
+              timeoutSeconds: timeoutSeconds,
+              switchCount: switchCount + 1,
+            );
+            return;
+          }
+        }
+        if (!controller.isClosed) {
+          controller.addError(e);
+          await controller.close();
+        }
+        return;
       }
+
+      stopwatch.stop();
+      _recordStreamCall(preferredModel, stopwatch, true);
 
       // 处理工具调用（兼容多种 finish_reason，部分厂商返回 "stop" 而非 "tool_calls"）
       if (pendingToolCalls != null &&
@@ -192,6 +334,10 @@ class AiRequestDispatcher {
           preferredModel: preferredModel,
           temperature: temperature,
           toolRound: toolRound + 1,
+          fallbackModels: fallbackModels,
+          maxSwitchCount: maxSwitchCount,
+          timeoutSeconds: timeoutSeconds,
+          switchCount: switchCount,
         );
         return;
       }
@@ -230,6 +376,35 @@ class AiRequestDispatcher {
     }
   }
 
+  /// 记录单次流式调用（成功/失败）到模型管理器，供择优评分
+  void _recordStreamCall(
+    AiModelEntity? model,
+    Stopwatch stopwatch,
+    bool success,
+  ) {
+    if (model == null) return;
+    _modelManager.recordCall(
+      model.modelId,
+      model.apiBase,
+      stopwatch.elapsedMilliseconds,
+      success,
+    );
+  }
+
+  /// 从备选队列挑选下一个模型（跳过当前模型）
+  AiModelEntity? _pickNextModel(
+    AiModelEntity? current,
+    List<AiModelEntity> fallbacks,
+  ) {
+    if (current == null) {
+      return fallbacks.isEmpty ? null : fallbacks.first;
+    }
+    for (final m in fallbacks) {
+      if (m.modelId != current.modelId) return m;
+    }
+    return null;
+  }
+
   /// 完整的请求分发：自动故障切换
   /// 返回 {content, usedModel, switched}
   Future<DispatchResult> dispatch({
@@ -240,13 +415,17 @@ class AiRequestDispatcher {
     double temperature = 0.7,
     int maxRetries = 3,
     bool enableAutoSwitch = true,
+    bool autoOptimal = true,
+    int timeoutSeconds = 25,
     bool Function(String)? isRetryableError,
   }) async {
     addUserMessage(userMessage);
 
-    // 构建备选模型队列
+    // 构建备选模型队列（自动择优时按探测优先级排序）
     final fallbackModels = enableAutoSwitch
-        ? await _modelManager.getEnabled()
+        ? await _probeService.getPriorityQueue(
+            autoOptimal: autoOptimal,
+          )
         : <AiModelEntity>[];
 
     // 当前尝试的模型
@@ -290,7 +469,7 @@ class AiRequestDispatcher {
               temperature: temperature,
             )
             .timeout(
-              Duration(seconds: currentModel?.timeoutSecond ?? 30),
+              Duration(seconds: currentModel?.timeoutSecond ?? timeoutSeconds),
             );
         stopwatch.stop();
 
@@ -343,7 +522,17 @@ class AiRequestDispatcher {
           }
           if (fallbackModels.isEmpty) break;
           // 找优先级最高的
-          currentModel = fallbackModels.first;
+          final nextModel = fallbackModels.first;
+          // 触发切换事件
+          if (currentModel != null) {
+            onModelSwitched?.call(SwitchEvent(
+              fromModel: currentModel.modelName,
+              toModel: nextModel.modelName,
+              reason: '响应超时或请求失败（$lastError）',
+              attempt: attemptIndex,
+            ));
+          }
+          currentModel = nextModel;
         } else {
           break;
         }

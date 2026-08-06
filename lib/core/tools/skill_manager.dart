@@ -48,6 +48,10 @@ class SkillManager {
     required String description,
     String? content,
     List<ToolParam> parameters = const [],
+    ToolScope scope = ToolScope.global,
+    ToolSource source = ToolSource.user,
+    String? siteId,
+    String? riskLevel,
   }) async {
     final now = DateTime.now();
     final id = 'skill_${now.millisecondsSinceEpoch}';
@@ -60,6 +64,10 @@ class SkillManager {
       skillContent: content,
       createdAt: now,
       updatedAt: now,
+      scope: scope,
+      source: source,
+      siteId: siteId,
+      riskLevel: riskLevel,
     );
     _skills.add(skill);
     _registry.registerSkill(skill);
@@ -74,6 +82,9 @@ class SkillManager {
     String? content,
     List<ToolParam>? parameters,
     bool? enabled,
+    ToolScope? scope,
+    String? siteId,
+    String? riskLevel,
   }) async {
     final idx = _skills.indexWhere((s) => s.id == id);
     if (idx < 0) return null;
@@ -84,6 +95,9 @@ class SkillManager {
       skillContent: content,
       parameters: parameters,
       enabled: enabled,
+      scope: scope,
+      siteId: siteId,
+      riskLevel: riskLevel,
       updatedAt: DateTime.now(),
     );
     _skills[idx] = updated;
@@ -107,6 +121,10 @@ class SkillManager {
     required String description,
     required String endpoint,
     List<ToolParam> parameters = const [],
+    ToolScope scope = ToolScope.global,
+    ToolSource source = ToolSource.user,
+    String? siteId,
+    String? riskLevel,
   }) async {
     final now = DateTime.now();
     final id = 'mcp_${now.millisecondsSinceEpoch}';
@@ -119,10 +137,44 @@ class SkillManager {
       endpoint: endpoint,
       createdAt: now,
       updatedAt: now,
+      scope: scope,
+      source: source,
+      siteId: siteId,
+      riskLevel: riskLevel,
     );
     _registry.registerMcp(tool);
     await _saveMcpTools();
     return tool;
+  }
+
+  /// 更新 MCP 工具
+  Future<ToolEntity?> updateMcpTool(String id, {
+    String? name,
+    String? description,
+    String? endpoint,
+    List<ToolParam>? parameters,
+    bool? enabled,
+    ToolScope? scope,
+    String? siteId,
+    String? riskLevel,
+  }) async {
+    final tool = _registry.get(id);
+    if (tool == null || tool.type != ToolType.mcp) return null;
+    final updated = tool.copyWith(
+      name: name,
+      description: description,
+      endpoint: endpoint,
+      parameters: parameters,
+      enabled: enabled,
+      scope: scope,
+      siteId: siteId,
+      riskLevel: riskLevel,
+      updatedAt: DateTime.now(),
+    );
+    _registry.unregister(id);
+    _registry.registerMcp(updated);
+    await _saveMcpTools();
+    return updated;
   }
 
   /// 删除 MCP 工具

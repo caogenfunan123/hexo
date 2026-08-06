@@ -581,6 +581,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ]),
 
         const SizedBox(height: 20),
+        // ── AI 调度器 ──
+        _sectionTitle('AI 调度器'),
+        const SizedBox(height: 8),
+        _settingsCard([
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('自动择优模式'),
+            subtitle: const Text('后台探测各模型延迟，优先调用当前最快模型'),
+            value: s.ai.aiAutoOptimalModel,
+            onChanged: (v) async {
+              await widget.onSettingsChanged(
+                s.copyWith(ai: s.ai.copyWith(aiAutoOptimalModel: v)),
+              );
+            },
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('允许 AI 自动保存工具'),
+            subtitle: const Text('AI 生成的 MCP/Skill 校验通过后自动存入工具箱'),
+            value: s.ai.aiAllowAutoSaveTools,
+            onChanged: (v) async {
+              await widget.onSettingsChanged(
+                s.copyWith(ai: s.ai.copyWith(aiAllowAutoSaveTools: v)),
+              );
+            },
+          ),
+          _field(
+            label: '请求超时阈值（秒）',
+            value: s.ai.aiRequestTimeoutSec.toString(),
+            onChanged: (v) async {
+              final n = int.tryParse(v);
+              if (n == null || n <= 0) return;
+              await widget.onSettingsChanged(
+                s.copyWith(ai: s.ai.copyWith(aiRequestTimeoutSec: n)),
+              );
+            },
+          ),
+          _field(
+            label: '最大自动切换次数',
+            value: s.ai.aiMaxSwitchCount.toString(),
+            onChanged: (v) async {
+              final n = int.tryParse(v);
+              if (n == null || n < 0) return;
+              await widget.onSettingsChanged(
+                s.copyWith(ai: s.ai.copyWith(aiMaxSwitchCount: n)),
+              );
+            },
+          ),
+        ]),
+
+        const SizedBox(height: 20),
         // ── 站点与 PWA ──
         _sectionTitle('站点与 PWA'),
         const SizedBox(height: 8),

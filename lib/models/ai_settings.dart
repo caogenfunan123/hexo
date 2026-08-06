@@ -14,6 +14,12 @@ class AiSettings {
   final String defaultModelId;
   final String defaultModelBase;
 
+  // ── 全局模型调度器配置 ──
+  final int aiRequestTimeoutSec;   // 请求超时阈值（秒），默认 25
+  final int aiMaxSwitchCount;      // 最大自动切换次数，默认 3
+  final bool aiAutoOptimalModel;   // 自动择优模式，默认开启
+  final bool aiAllowAutoSaveTools; // 允许 AI 自动保存工具到工具箱，默认开启
+
   const AiSettings({
     this.aiProvider = 'openai',
     this.aiApiKey = '',
@@ -23,6 +29,10 @@ class AiSettings {
     this.activeAiProfileId = '',
     this.defaultModelId = '',
     this.defaultModelBase = '',
+    this.aiRequestTimeoutSec = 25,
+    this.aiMaxSwitchCount = 3,
+    this.aiAutoOptimalModel = true,
+    this.aiAllowAutoSaveTools = true,
   });
 
   AiProfile? get activeAiProfile {
@@ -57,6 +67,10 @@ class AiSettings {
     String? activeAiProfileId,
     String? defaultModelId,
     String? defaultModelBase,
+    int? aiRequestTimeoutSec,
+    int? aiMaxSwitchCount,
+    bool? aiAutoOptimalModel,
+    bool? aiAllowAutoSaveTools,
   }) {
     return AiSettings(
       aiProvider: aiProvider ?? this.aiProvider,
@@ -67,6 +81,10 @@ class AiSettings {
       activeAiProfileId: activeAiProfileId ?? this.activeAiProfileId,
       defaultModelId: defaultModelId ?? this.defaultModelId,
       defaultModelBase: defaultModelBase ?? this.defaultModelBase,
+      aiRequestTimeoutSec: aiRequestTimeoutSec ?? this.aiRequestTimeoutSec,
+      aiMaxSwitchCount: aiMaxSwitchCount ?? this.aiMaxSwitchCount,
+      aiAutoOptimalModel: aiAutoOptimalModel ?? this.aiAutoOptimalModel,
+      aiAllowAutoSaveTools: aiAllowAutoSaveTools ?? this.aiAllowAutoSaveTools,
     );
   }
 
@@ -79,6 +97,10 @@ class AiSettings {
         'activeAiProfileId': activeAiProfileId,
         'defaultModelId': defaultModelId,
         'defaultModelBase': defaultModelBase,
+        'aiRequestTimeoutSec': aiRequestTimeoutSec,
+        'aiMaxSwitchCount': aiMaxSwitchCount,
+        'aiAutoOptimalModel': aiAutoOptimalModel,
+        'aiAllowAutoSaveTools': aiAllowAutoSaveTools,
       };
 
   factory AiSettings.fromJson(Map<String, dynamic> j) {
@@ -116,6 +138,10 @@ class AiSettings {
       activeAiProfileId: activeId,
       defaultModelId: j['defaultModelId']?.toString() ?? '',
       defaultModelBase: j['defaultModelBase']?.toString() ?? '',
+      aiRequestTimeoutSec: (j['aiRequestTimeoutSec'] as num?)?.toInt() ?? 25,
+      aiMaxSwitchCount: (j['aiMaxSwitchCount'] as num?)?.toInt() ?? 3,
+      aiAutoOptimalModel: j['aiAutoOptimalModel'] != false,
+      aiAllowAutoSaveTools: j['aiAllowAutoSaveTools'] != false,
     );
   }
 }

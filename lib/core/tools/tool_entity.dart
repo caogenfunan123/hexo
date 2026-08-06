@@ -8,6 +8,18 @@ enum ToolType {
   mcp,        // MCP 协议工具
 }
 
+/// 工具作用域：站点私有 / 全局公用
+enum ToolScope {
+  global,      // 所有站点、所有对话可见
+  sitePrivate, // 仅当前仓库会话可见
+}
+
+/// 工具来源：用户手动创建 / AI 会话自动生成
+enum ToolSource {
+  user,
+  ai,
+}
+
 /// 工具参数定义
 class ToolParam {
   final String name;
@@ -65,6 +77,10 @@ class ToolEntity {
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool enabled;
+  final ToolScope scope;         // 站点私有 / 全局公用
+  final ToolSource source;       // 用户创建 / AI 生成
+  final String? siteId;          // scope==sitePrivate 时的归属站点 ID
+  final String? riskLevel;       // low | middle | high
 
   const ToolEntity({
     required this.id,
@@ -78,6 +94,10 @@ class ToolEntity {
     required this.createdAt,
     required this.updatedAt,
     this.enabled = true,
+    this.scope = ToolScope.global,
+    this.source = ToolSource.user,
+    this.siteId,
+    this.riskLevel,
   });
 
   /// 生成 OpenAI Function Calling 格式的工具定义
@@ -114,6 +134,10 @@ class ToolEntity {
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
     'enabled': enabled,
+    'scope': scope.name,
+    'source': source.name,
+    'siteId': siteId,
+    'riskLevel': riskLevel,
   };
 
   factory ToolEntity.fromJson(Map<String, dynamic> j) => ToolEntity(
@@ -131,6 +155,10 @@ class ToolEntity {
     createdAt: DateTime.tryParse(j['createdAt']?.toString() ?? '') ?? DateTime.now(),
     updatedAt: DateTime.tryParse(j['updatedAt']?.toString() ?? '') ?? DateTime.now(),
     enabled: j['enabled'] != false,
+    scope: _parseScope(j['scope']?.toString()),
+    source: _parseSource(j['source']?.toString()),
+    siteId: j['siteId']?.toString(),
+    riskLevel: j['riskLevel']?.toString(),
   );
 
   static ToolType _parseType(String? s) {
@@ -139,6 +167,14 @@ class ToolEntity {
       case 'mcp': return ToolType.mcp;
       default: return ToolType.builtin;
     }
+  }
+
+  static ToolScope _parseScope(String? s) {
+    return s == 'sitePrivate' ? ToolScope.sitePrivate : ToolScope.global;
+  }
+
+  static ToolSource _parseSource(String? s) {
+    return s == 'ai' ? ToolSource.ai : ToolSource.user;
   }
 
   ToolEntity copyWith({
@@ -153,6 +189,10 @@ class ToolEntity {
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? enabled,
+    ToolScope? scope,
+    ToolSource? source,
+    Object? siteId = _sentinel,
+    Object? riskLevel = _sentinel,
   }) {
     return ToolEntity(
       id: id ?? this.id,
@@ -166,8 +206,14 @@ class ToolEntity {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       enabled: enabled ?? this.enabled,
+      scope: scope ?? this.scope,
+      source: source ?? this.source,
+      siteId: identical(siteId, _sentinel) ? this.siteId : siteId as String?,
+      riskLevel: identical(riskLevel, _sentinel) ? this.riskLevel : riskLevel as String?,
     );
   }
+
+  static const Object _sentinel = Object();
 }
 
 /// 工具调用请求

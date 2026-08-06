@@ -10,6 +10,8 @@ import '../core/ai/ai_model_manager.dart';
 import '../core/ai/ai_request_dispatcher.dart';
 import '../core/ai/ai_self_checker.dart';
 import '../core/ai/ai_session_manager.dart';
+import '../core/ai/ai_tool_manager.dart';
+import '../core/ai/token_vault.dart';
 import '../core/tools/instruction_parser.dart';
 import '../core/tools/mcp_runtime.dart';
 import '../core/tools/skill_manager.dart';
@@ -128,7 +130,14 @@ class AiChatPanelState extends State<AiChatPanel> {
   /// 工具系统
   late final SkillManager _skillManager;
   late final McpRuntime _mcpRuntime;
+  late final AiToolManager _toolManager;
   bool _toolsInitialized = false;
+
+  /// 模型切换事件（提示条）
+  SwitchEvent? _lastSwitchEvent;
+
+  /// 当前实际使用的模型（自动择优时可能切换）
+  AiModelEntity? _activeModel;
 
   List<ChatMessage> get messages => _messages;
 
@@ -136,12 +145,30 @@ class AiChatPanelState extends State<AiChatPanel> {
   void initState() {
     super.initState();
     _skillManager = SkillManager();
-    _mcpRuntime = McpRuntime(_skillManager, ToolRegistry());
+    _toolManager = AiToolManager();
+    _mcpRuntime = McpRuntime(
+      _skillManager,
+      ToolRegistry(),
+      toolManager: _toolManager,
+      siteId: widget.activeRepo?.id ?? '',
+      allowAutoSave: widget.settings.ai.aiAllowAutoSaveTools,
+    );
     _initTools();
     _loadModels();
     _initSession();
     _loadHistory();
     _scrollCtrl.addListener(_onScroll);
+    // 模型切换事件 → 提示条 + 更新实际模型
+    widget.dispatcher.onModelSwitched = (event) {
+      if (!mounted) return;
+      setState(() {
+        _lastSwitchEvent = event;
+        if (_selectedModel != null) {
+          _activeModel = _selectedModel;
+        }
+      });
+      _addSystemMessage('🔄 ${event.reason}\n已自动切换至「${event.toModel}」继续处理');
+    };
   }
 
   void _onScroll() {
@@ -293,6 +320,19 @@ class AiChatPanelState extends State<AiChatPanel> {
     if (mounted) setState(() {});
   }
 
+  /// 解析当前站点的脱敏凭据（供工具系统感知存在性，不含明文）
+  SiteCredentials _resolveCredentials(String siteId) {
+    final repo = widget.activeRepo;
+    if (repo != null && repo.id == siteId) {
+      return _toolManager.credentialsFromRepo(repo);
+    }
+    final site = widget.settings.blogSiteConfigs.where((s) => s.id == siteId).firstOrNull;
+    if (site != null) {
+      return _toolManager.credentialsFromBlogSite(site);
+    }
+    return const SiteCredentials(kind: 'unknown');
+  }
+
   void _addSystemMessage(String text) {
     setState(() => _messages.add(ChatMessage(role: 'system', content: text)));
     _saveHistory();
@@ -342,6 +382,12 @@ class AiChatPanelState extends State<AiChatPanel> {
     // 注入仓库引用到工具系统
     BuiltinTools.gitHubService = widget.gitHubService;
     BuiltinTools.activeRepo = widget.activeRepo;
+    // 注入当前站点脱敏凭据（真实令牌只在服务层注入，不进入 AI 上下文明文）
+    final siteId = widget.activeRepo?.id ?? widget.settings.effectiveActiveSiteId;
+    BuiltinTools.siteId = siteId;
+    BuiltinTools.siteCredentials = _resolveCredentials(siteId);
+    _mcpRuntime.siteId = siteId;
+    _mcpRuntime.allowAutoSave = widget.settings.ai.aiAllowAutoSaveTools;
     // 注入应用设置引用（供 appDesign 工具读写）
     BuiltinTools.appSettings = widget.settings;
     BuiltinTools.onSettingsChanged = widget.onSettingsChanged;
@@ -356,6 +402,7 @@ class AiChatPanelState extends State<AiChatPanel> {
         settings: widget.settings,
         userMessage: msg,
         preferredModel: _selectedModel,
+        autoOptimal: widget.settings.ai.aiAutoOptimalModel,
       );
 
       _streamSub = stream.listen(
@@ -884,37 +931,102 @@ class AiChatPanelState extends State<AiChatPanel> {
   }
 
   Widget _buildSessionHeader(ColorScheme cs) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(0.5),
-        border: Border(bottom: BorderSide(color: cs.outlineVariant.withOpacity(0.3))),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.chat_outlined, size: 16, color: cs.primary),
-          const SizedBox(width: 6),
-          Text(
-            _sessionTitle,
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface),
+    final activeModel = _activeModel ?? _selectedModel;
+    final modelLabel = activeModel != null
+        ? activeModel.modelId
+        : (widget.settings.effectiveAiModel.isNotEmpty
+            ? widget.settings.effectiveAiModel
+            : '未选择模型');
+    final autoOptimal = widget.settings.ai.aiAutoOptimalModel;
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withOpacity(0.5),
+            border: Border(bottom: BorderSide(color: cs.outlineVariant.withOpacity(0.3))),
           ),
-          if (_messages.isNotEmpty) ...[
-            const SizedBox(width: 4),
-            Text(
-              '(${_messages.length} 条消息)',
-              style: TextStyle(fontSize: 11, color: cs.outline),
+          child: Row(
+            children: [
+              Icon(Icons.chat_outlined, size: 16, color: cs.primary),
+              const SizedBox(width: 6),
+              Text(
+                _sessionTitle,
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface),
+              ),
+              if (_messages.isNotEmpty) ...[
+                const SizedBox(width: 4),
+                Text(
+                  '(${_messages.length} 条消息)',
+                  style: TextStyle(fontSize: 11, color: cs.outline),
+                ),
+              ],
+              const Spacer(),
+              // 当前模型 + 自动择优标记
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: autoOptimal
+                      ? cs.primaryContainer.withOpacity(0.6)
+                      : cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.memory, size: 13, color: cs.primary),
+                    const SizedBox(width: 4),
+                    Text(
+                      modelLabel,
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurface),
+                    ),
+                    if (autoOptimal) ...[
+                      const SizedBox(width: 4),
+                      Text(
+                        '自动择优',
+                        style: TextStyle(fontSize: 10, color: cs.primary),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (_messages.isNotEmpty) ...[
+                const SizedBox(width: 4),
+                _SessionHeaderButton(
+                  icon: Icons.add_comment_outlined,
+                  label: '新建',
+                  tooltip: '新建会话（清空当前对话）',
+                  onTap: _busy ? null : newSession,
+                ),
+              ],
+            ],
+          ),
+        ),
+        // 模型切换提示条
+        if (_lastSwitchEvent != null)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            color: cs.tertiaryContainer.withOpacity(0.7),
+            child: Row(
+              children: [
+                Icon(Icons.swap_horiz, size: 14, color: cs.onTertiaryContainer),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '「${_lastSwitchEvent!.fromModel}」${_lastSwitchEvent!.reason}，已自动切换至「${_lastSwitchEvent!.toModel}」',
+                    style: TextStyle(fontSize: 11, color: cs.onTertiaryContainer),
+                  ),
+                ),
+                InkWell(
+                  onTap: () => setState(() => _lastSwitchEvent = null),
+                  child: Icon(Icons.close, size: 14, color: cs.onTertiaryContainer),
+                ),
+              ],
             ),
-          ],
-          const Spacer(),
-          if (_messages.isNotEmpty)
-            _SessionHeaderButton(
-              icon: Icons.add_comment_outlined,
-              label: '新建',
-              tooltip: '新建会话（清空当前对话）',
-              onTap: _busy ? null : newSession,
-            ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 

@@ -1,10 +1,12 @@
 import 'dart:convert';
 
+import '../ai/ai_tool_manager.dart';
 import 'builtin_tools.dart';
 import 'instruction_parser.dart';
 import 'skill_manager.dart';
 import 'tool_entity.dart';
 import 'tool_registry.dart';
+import 'tool_schema_validator.dart';
 
 /// MCP 运行时指令执行结果
 class McpRuntimeResult {
@@ -25,8 +27,24 @@ class McpRuntimeResult {
 class McpRuntime {
   final SkillManager _skillManager;
   final ToolRegistry _registry;
+  final ToolSchemaValidator _validator;
+  final AiToolManager? _toolManager;
 
-  McpRuntime(this._skillManager, this._registry);
+  /// 当前站点 ID（站点私有工具归属）
+  String? siteId;
+
+  /// 是否允许 AI 自动保存工具（设置页总开关）
+  bool allowAutoSave = true;
+
+  McpRuntime(
+    this._skillManager,
+    this._registry, {
+    AiToolManager? toolManager,
+    String? siteId,
+    this.allowAutoSave = true,
+  })  : _toolManager = toolManager,
+        _validator = ToolSchemaValidator(),
+        siteId = siteId;
 
   /// 执行解析出的指令列表
   Future<List<McpRuntimeResult>> executeInstructions(
@@ -88,7 +106,18 @@ class McpRuntime {
     final description = meta['description']?.toString() ?? '';
     final riskLevel = meta['risk_level']?.toString() ?? 'middle';
 
-    // 解析参数
+    // ── 双重校验：格式 + 危险操作黑名单 ──
+    final validation = _validator.validateMcp(json);
+    if (!validation.pass) {
+      return McpRuntimeResult(
+        success: false,
+        message: 'MCP 定义未通过校验，未保存',
+        error: validation.message,
+        data: {'validation': validation.message, 'blocked_by': validation.blockedBy},
+      );
+    }
+
+    // ── 解析参数 ──
     final paramsList = <ToolParam>[];
     final paramsRaw = json['params'] as List?;
     if (paramsRaw != null) {
@@ -105,18 +134,37 @@ class McpRuntime {
       }
     }
 
-    // 持久化到磁盘（通过 SkillManager）
+    // 自动保存总开关：关闭时仅返回校验通过信息，不落库
+    if (!allowAutoSave) {
+      return McpRuntimeResult(
+        success: false,
+        message: 'MCP 校验通过，但 AI 自动保存已关闭',
+        error: '请前往设置开启「允许 AI 自动保存工具」，或在工具箱手动创建',
+        data: {'validation_passed': true, 'risk_level': riskLevel},
+      );
+    }
+
+    // 持久化到磁盘（通过 SkillManager），带作用域与来源标记
     try {
+      final scope = _resolveScope(meta);
       final tool = await _skillManager.registerMcpTool(
         name: displayName,
         description: description,
         endpoint: name,
         parameters: paramsList,
+        scope: scope,
+        source: ToolSource.ai,
+        siteId: scope == ToolScope.sitePrivate ? siteId : null,
+        riskLevel: riskLevel,
       );
       return McpRuntimeResult(
         success: true,
         message: 'MCP工具 "$displayName" 已保存到工具库',
-        data: {'tool_id': tool.id, 'risk_level': riskLevel},
+        data: {
+          'tool_id': tool.id,
+          'risk_level': riskLevel,
+          'scope': scope.name,
+        },
       );
     } catch (e) {
       return McpRuntimeResult(
@@ -151,16 +199,42 @@ class McpRuntime {
     final displayName = meta['display_name']?.toString() ?? name;
     final description = meta['description']?.toString() ?? '';
 
+    // ── 双重校验：格式 + 危险操作黑名单 ──
+    final validation = _validator.validateSkill(json);
+    if (!validation.pass) {
+      return McpRuntimeResult(
+        success: false,
+        message: 'Skill 定义未通过校验，未保存',
+        error: validation.message,
+        data: {'validation': validation.message, 'blocked_by': validation.blockedBy},
+      );
+    }
+
+    // 自动保存总开关：关闭时仅返回校验通过信息，不落库
+    if (!allowAutoSave) {
+      return McpRuntimeResult(
+        success: false,
+        message: 'Skill 校验通过，但 AI 自动保存已关闭',
+        error: '请前往设置开启「允许 AI 自动保存工具」，或在工具箱手动创建',
+        data: {'validation_passed': true},
+      );
+    }
+
     try {
+      final scope = _resolveScope(meta);
       await _skillManager.createSkill(
         name: displayName,
         description: description,
         content: const JsonEncoder.withIndent('  ').convert(json),
+        scope: scope,
+        source: ToolSource.ai,
+        siteId: scope == ToolScope.sitePrivate ? siteId : null,
+        riskLevel: meta['risk_level']?.toString() ?? 'middle',
       );
       return McpRuntimeResult(
         success: true,
         message: 'Skill "$displayName" 已保存到工具库',
-        data: {'skill_name': name},
+        data: {'skill_name': name, 'scope': scope.name},
       );
     } catch (e) {
       return McpRuntimeResult(
@@ -169,6 +243,15 @@ class McpRuntime {
         error: e.toString(),
       );
     }
+  }
+
+  /// 解析工具作用域：AI 标记 site_private 或 global_available=false 时为站点私有
+  ToolScope _resolveScope(Map<String, dynamic> meta) {
+    final scopeRaw = meta['scope']?.toString() ?? meta['global_available']?.toString();
+    if (scopeRaw == 'site_private' || scopeRaw == 'site' || scopeRaw == 'false') {
+      return ToolScope.sitePrivate;
+    }
+    return ToolScope.global;
   }
 
   /// 处理【MCP_CALL】—— 执行 MCP 工具
@@ -188,6 +271,16 @@ class McpRuntime {
         success: false,
         message: '未找到工具: $name',
         error: '工具不存在',
+      );
+    }
+
+    // 站点私有工具越权拦截：仅归属站点会话可调用
+    if (tool.scope == ToolScope.sitePrivate &&
+        (siteId == null || siteId!.isEmpty || tool.siteId != siteId)) {
+      return McpRuntimeResult(
+        success: false,
+        message: '工具 "$name" 为站点私有，当前会话无权调用',
+        error: '无权限: 站点私有工具',
       );
     }
 
