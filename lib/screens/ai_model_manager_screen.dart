@@ -87,7 +87,7 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) => AlertDialog(
-          title: const Text('批量拉取中转站模型'),
+          title: const Text('从中转站拉取模型'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -96,14 +96,15 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                   controller: apiBaseCtrl,
                   decoration: const InputDecoration(
                     labelText: '中转 API 地址',
-                    hintText: 'https://api.openai.com/v1',
+                    hintText: 'https://ai-models.app.baizhi.cloud/api/openai',
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: apiKeyCtrl,
                   decoration: const InputDecoration(
-                    labelText: 'API Key',
+                    labelText: 'API Token',
+                    hintText: 'sk-...',
                   ),
                   obscureText: true,
                 ),
@@ -112,9 +113,9 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                   value: group,
                   decoration: const InputDecoration(labelText: '模型分组'),
                   items: const [
-                    DropdownMenuItem(value: 'general', child: Text('📝 通用对话')),
-                    DropdownMenuItem(value: 'code', child: Text('🧑‍💻 代码优选')),
-                    DropdownMenuItem(value: 'longtext', child: Text('📄 长文本')),
+                    DropdownMenuItem(value: 'general', child: Text('通用对话')),
+                    DropdownMenuItem(value: 'code', child: Text('代码优选')),
+                    DropdownMenuItem(value: 'longtext', child: Text('长文本')),
                   ],
                   onChanged: (v) => setDlg(() => group = v ?? 'general'),
                 ),
@@ -128,7 +129,7 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('拉取'),
+              child: const Text('拉取列表'),
             ),
           ],
         ),
@@ -142,8 +143,9 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
       _error = null;
     });
 
+    List<String> modelIds;
     try {
-      final ids = await widget.aiService.listModels(
+      modelIds = await widget.aiService.listModels(
         widget.settings,
         profile: AiProfile(
           id: 'temp',
@@ -153,30 +155,177 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
           model: '',
         ),
       );
+    } catch (e) {
+      setState(() => _loading = false);
+      // 拉取失败 → 展示预设列表作为兜底
+      if (mounted) {
+        final usePreset = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('拉取失败，使用预设列表？'),
+            content: Text('API 未返回模型列表: $e\n\n是否使用内置预设模型列表代替？'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('使用预设')),
+            ],
+          ),
+        );
+        if (usePreset == true) {
+          modelIds = _presetModels.map((p) => p.modelId).toList();
+          await _showModelSelectionDialog(apiBaseCtrl.text.trim(), apiKeyCtrl.text.trim(), group, modelIds);
+        }
+      }
+      return;
+    }
 
-      final newModels = ids.map((id) => AiModelEntity(
-        modelId: id,
-        modelName: id,
-        apiBase: apiBaseCtrl.text.trim(),
-        apiKey: apiKeyCtrl.text.trim(),
-        group: group,
-        enable: true,
-        priority: 0,
-      )).toList();
+    if (mounted) setState(() => _loading = false);
+    if (mounted) {
+      await _showModelSelectionDialog(apiBaseCtrl.text.trim(), apiKeyCtrl.text.trim(), group, modelIds);
+    }
+  }
 
-      await widget.modelManager.batchImport(newModels);
+  /// 展示模型选择列表（勾选 + 别名），选中后批量导入
+  Future<void> _showModelSelectionDialog(String apiBase, String apiKey, String group, List<String> modelIds) async {
+    final selected = Set<String>.from(modelIds);
+    final aliases = <String, TextEditingController>{};
+    final searchCtrl = TextEditingController();
+    var searchQuery = '';
+
+    for (final id in modelIds) {
+      aliases[id] = TextEditingController();
+    }
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) {
+          final filtered = searchQuery.isEmpty
+              ? modelIds
+              : modelIds.where((id) => id.toLowerCase().contains(searchQuery.toLowerCase())).toList();
+
+          return AlertDialog(
+            title: const Text('选择要导入的模型'),
+            content: SizedBox(
+              width: 450,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: searchCtrl,
+                    decoration: const InputDecoration(
+                      hintText: '搜索模型...',
+                      prefixIcon: Icon(Icons.search),
+                      isDense: true,
+                    ),
+                    onChanged: (v) => setDlg(() => searchQuery = v),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => setDlg(() {
+                          if (selected.length == filtered.length) {
+                            selected.clear();
+                          } else {
+                            selected.addAll(filtered);
+                          }
+                        }),
+                        child: Text(selected.length == filtered.length ? '取消全选' : '全选'),
+                      ),
+                      Text('${selected.length}/${modelIds.length} 个选中', style: const TextStyle(fontSize: 12)),
+                    ],
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: filtered.length,
+                      itemBuilder: (ctx, i) {
+                        final id = filtered[i];
+                        final aliasCtrl = aliases[id]!;
+                        return CheckboxListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          value: selected.contains(id),
+                          onChanged: (v) => setDlg(() {
+                            if (v == true) {
+                              selected.add(id);
+                            } else {
+                              selected.remove(id);
+                            }
+                          }),
+                          title: Text(id, style: const TextStyle(fontSize: 13)),
+                          subtitle: SizedBox(
+                            height: 32,
+                            child: TextField(
+                              controller: aliasCtrl,
+                              decoration: const InputDecoration(
+                                hintText: '别名（可选）',
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                border: OutlineInputBorder(),
+                              ),
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              FilledButton(
+                onPressed: () {
+                  if (selected.isEmpty) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('请至少选择一个模型')));
+                    return;
+                  }
+                  Navigator.pop(ctx);
+                  _importSelectedModels(apiBase, apiKey, group, selected, aliases);
+                },
+                child: Text('导入 ${selected.length} 个'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _importSelectedModels(String apiBase, String apiKey, String group, Set<String> selected, Map<String, TextEditingController> aliases) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final models = selected.map((id) {
+        final alias = aliases[id]?.text.trim() ?? '';
+        return AiModelEntity(
+          modelId: id,
+          modelName: alias.isNotEmpty ? alias : id,
+          apiBase: apiBase,
+          apiKey: apiKey,
+          group: group,
+          enable: true,
+          priority: 0,
+        );
+      }).toList();
+
+      await widget.modelManager.batchImport(models);
       await _loadModels();
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('成功拉取 ${newModels.length} 个模型')),
+          SnackBar(content: Text('成功导入 ${models.length} 个模型')),
         );
       }
     } catch (e) {
       setState(() => _error = e.toString());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('拉取失败: $e')),
+          SnackBar(content: Text('导入失败: $e')),
         );
       }
     }
