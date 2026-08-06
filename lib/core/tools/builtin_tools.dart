@@ -628,7 +628,15 @@ class BuiltinTools {
                 buf.writeln('$count. $text');
                 if (url.isNotEmpty) buf.writeln('   $url');
                 buf.writeln();
-              }
+/// 计算远程文件相对于源目录的路径
+  static String _relativePath(String remotePath, String filePath) {
+    if (remotePath.isEmpty) return filePath;
+    if (filePath.startsWith(remotePath)) {
+      return filePath.substring(remotePath.length).replaceFirst(RegExp(r'^/'), '');
+    }
+    return filePath;
+  }
+}
             }
           }
         }
@@ -1666,10 +1674,7 @@ class BuiltinTools {
             errors.add('${file.path}: 无法读取内容');
             continue;
           }
-          final relativePath = remotePath.isNotEmpty
-              ? file.path.startsWith(remotePath)
-                  ? file.path.substring(remotePath.length).replaceFirst(RegExp(r'^/'), '')
-                  : file.path;
+final relativePath = _relativePath(remotePath, file.path);
           final target = '$targetPath/$relativePath'.replaceAll(RegExp(r'/+'), '/');
 
           String? existingSha;
