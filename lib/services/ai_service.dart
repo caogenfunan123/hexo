@@ -717,6 +717,7 @@ class AiService {
     AiProfile? profile,
     double temperature = 0.7,
     List<Map<String, dynamic>>? tools,
+    int toolRound = 0,
   }) {
     final p = resolveProfile(settings, override: profile);
     if (p.apiKey.isEmpty) {
@@ -745,7 +746,7 @@ class AiService {
 
     // 火山方舟格式转换：保留 tools 能力，做入参适配
     final finalBody = isVolcengine
-        ? VolcengineAdapter.transformRequest(originBody: body)
+        ? VolcengineAdapter.transformRequest(originBody: body, toolRound: toolRound)
         : body;
 
     final headers = <String, String>{

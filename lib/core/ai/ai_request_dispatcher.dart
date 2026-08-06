@@ -198,6 +198,7 @@ class AiRequestDispatcher {
         profile: profile,
         temperature: temperature,
         tools: tools,
+        toolRound: toolRound,
       );
 
       final sseStream = sseService.startStream(
@@ -373,6 +374,7 @@ class AiRequestDispatcher {
           final toolResultMsg = {
             'role': 'tool',
             'tool_call_id': request.callId,
+            'name': toolName,
             'content': result.success ? result.content : 'Error: ${result.error}',
           };
           _chatHistory.add(toolResultMsg);

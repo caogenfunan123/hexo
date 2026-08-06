@@ -15,6 +15,7 @@ class VolcengineAdapter {
   /// 将 OpenAI 标准请求体转换为火山方舟兼容请求
   static Map<String, dynamic> transformRequest({
     required Map<String, dynamic> originBody,
+    int toolRound = 0,
   }) {
     final output = Map<String, dynamic>.from(originBody);
 
@@ -34,24 +35,28 @@ class VolcengineAdapter {
       }
       final role = msg['role'];
       if (role == 'tool') {
+        final toolName = msg['name']?.toString() ?? msg['tool_call_id']?.toString() ?? '未知工具';
+        final content = msg['content']?.toString() ?? '';
         newMessages.add({
           'role': 'user',
-          'content': '[TOOL_RESULT name=${msg['tool_call_id']}]\n${msg['content'] ?? ''}',
+          'content': '[TOOL_RESULT] 工具 "$toolName" 执行完成\n$content',
         });
       } else {
-        final m = Map<String, dynamic>.from(msg);
-        m.remove('tool_calls');
-        newMessages.add(m);
+        newMessages.add(Map<String, dynamic>.from(msg));
       }
     }
     output['messages'] = newMessages;
 
     // 3. tool_choice 字段做兼容，火山只支持 none / auto
+    //    首轮用 auto 让 AI 决定是否调用工具，后续轮次强制 none 避免循环
     if (output.containsKey('tool_choice')) {
       final tc = output['tool_choice'];
       if (tc is Map) {
-        output['tool_choice'] = 'auto';
+        output['tool_choice'] = toolRound > 0 ? 'none' : 'auto';
       }
+    }
+    if (toolRound > 0) {
+      output['tool_choice'] = 'none';
     }
 
     return output;
