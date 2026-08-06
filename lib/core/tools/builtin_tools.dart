@@ -628,15 +628,7 @@ class BuiltinTools {
                 buf.writeln('$count. $text');
                 if (url.isNotEmpty) buf.writeln('   $url');
                 buf.writeln();
-/// 计算远程文件相对于源目录的路径
-  static String _relativePath(String remotePath, String filePath) {
-    if (remotePath.isEmpty) return filePath;
-    if (filePath.startsWith(remotePath)) {
-      return filePath.substring(remotePath.length).replaceFirst(RegExp(r'^/'), '');
-    }
-    return filePath;
-  }
-}
+              }
             }
           }
         }
@@ -1746,5 +1738,14 @@ final relativePath = _relativePath(remotePath, file.path);
     } catch (e) {
       return ToolCallResult(toolId: 'create_dir', content: '', success: false, error: '创建文件夹失败: $e');
     }
+  }
+
+  /// 计算远程文件相对于源目录的路径
+  static String _relativePath(String remotePath, String filePath) {
+    if (remotePath.isEmpty) return filePath;
+    if (filePath.startsWith(remotePath)) {
+      return filePath.substring(remotePath.length).replaceFirst(RegExp(r'^/'), '');
+    }
+    return filePath;
   }
 }
