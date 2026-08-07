@@ -3,6 +3,7 @@ import 'dart:io';
 
 import '../../services/storage_service.dart';
 import 'ai_model_entity.dart';
+import 'ai_provider.dart';
 
 /// AI 模型管理器：批量拉取中转站模型、本地持久化 CRUD
 class AiModelManager {
@@ -160,9 +161,61 @@ class AiModelManager {
     await saveStats(stats);
   }
 
+  /// 按 Provider 拉取模型列表（对标 MonkeyCode GetProviderModelList）
+  /// - OpenAI 兼容系列: GET {base}/models
+  /// - Ollama: GET {base}/api/tags
+  Future<List<String>> getProviderModelList({
+    required ModelProvider provider,
+    required String baseUrl,
+    required String apiKey,
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    final client = HttpClient()..connectionTimeout = timeout;
+    try {
+      var base = baseUrl.trim();
+      while (base.endsWith('/')) base = base.substring(0, base.length - 1);
+
+      if (provider == ModelProvider.ollama) {
+        final uri = Uri.parse('$base/api/tags');
+        final req = await client.getUrl(uri);
+        final res = await req.close().timeout(timeout);
+        final text = await res.transform(utf8.decoder).join().timeout(timeout);
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          throw Exception('HTTP ${res.statusCode}: $text');
+        }
+        final data = jsonDecode(text);
+        final models = data['models'] as List? ?? [];
+        return models.map((m) {
+          final name = (m as Map)['name']?.toString() ?? '';
+          return name;
+        }).where((n) => n.isNotEmpty).toList()..sort();
+      }
+
+      final uri = Uri.parse('$base/models');
+      final req = await client.getUrl(uri);
+      req.headers.set('Content-Type', 'application/json');
+      req.headers.set('Accept', 'application/json');
+      if (apiKey.isNotEmpty) {
+        req.headers.set('Authorization', 'Bearer $apiKey');
+      }
+      final res = await req.close().timeout(timeout);
+      final text = await res.transform(utf8.decoder).join().timeout(timeout);
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        throw Exception('HTTP ${res.statusCode}: $text');
+      }
+      final data = jsonDecode(text);
+      final items = data['data'] as List? ?? data['models'] as List? ?? [];
+      return items.map((m) {
+        if (m is Map && m['id'] != null) return m['id'].toString();
+        return m.toString();
+      }).where((n) => n.isNotEmpty).toList()..sort();
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   /// 批量拉取中转站模型列表
-  Future<List<AiModelEntity>> fetchModelsFromProxy({
-    required String apiBase,
+  Future<List<AiModelEntity>> fetchModelsFromProxy({    required String apiBase,
     required String apiKey,
     String? apiPath,
     bool useBearer = true,
@@ -231,4 +284,176 @@ class AiModelManager {
     }
     return [];
   }
+
+  // ── 连通性检测（CheckByConfig，对标 MonkeyCode llm.HealthCheck） ──
+
+  /// 校验一组模型配置的连通性（添加前验证 base_url + api_key + model 是否可用）。
+  /// 支持 openai_chat / openai_responses / anthropic 三种接口协议。
+  /// 返回校验结果；不修改本地存储。
+  Future<ModelCheckResult> checkByConfig({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    InterfaceType interfaceType = InterfaceType.openaiChat,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final stopwatch = Stopwatch()..start();
+    try {
+      await _pingModel(
+        baseUrl: baseUrl,
+        apiKey: apiKey,
+        model: model,
+        interfaceType: interfaceType,
+        timeout: timeout,
+      );
+      stopwatch.stop();
+      return ModelCheckResult(success: true, durationMs: stopwatch.elapsedMilliseconds);
+    } catch (e) {
+      stopwatch.stop();
+      return ModelCheckResult(
+        success: false,
+        error: e.toString(),
+        durationMs: stopwatch.elapsedMilliseconds,
+      );
+    }
+  }
+
+  Future<void> _pingModel({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    required InterfaceType interfaceType,
+    required Duration timeout,
+  }) async {
+    final client = HttpClient()
+      ..connectionTimeout = timeout;
+    try {
+      var base = baseUrl.trim();
+      while (base.endsWith('/')) base = base.substring(0, base.length - 1);
+      final uri = switch (interfaceType) {
+        InterfaceType.anthropic => Uri.parse('$base/messages'),
+        InterfaceType.openaiResponses => Uri.parse('$base/responses'),
+        InterfaceType.openaiChat => Uri.parse('$base/chat/completions'),
+      };
+      final body = switch (interfaceType) {
+        InterfaceType.anthropic => {
+            'model': model,
+            'max_tokens': 1,
+            'messages': [
+              {'role': 'user', 'content': 'hi'},
+            ],
+          },
+        InterfaceType.openaiResponses => {
+            'model': model,
+            'input': [
+              {'role': 'user', 'content': 'hi'},
+            ],
+          },
+        InterfaceType.openaiChat => {
+            'model': model,
+            'messages': [
+              {'role': 'user', 'content': 'hi'},
+            ],
+            'max_tokens': 1,
+          },
+      };
+
+      final req = await client.postUrl(uri);
+      req.headers.set('Content-Type', 'application/json');
+      req.headers.set('Accept', 'application/json');
+      if (interfaceType == InterfaceType.anthropic) {
+        req.headers.set('x-api-key', apiKey);
+        req.headers.set('anthropic-version', '2023-06-01');
+      } else {
+        req.headers.set('Authorization', 'Bearer $apiKey');
+      }
+      final bytes = utf8.encode(jsonEncode(body));
+      req.contentLength = bytes.length;
+      req.add(bytes);
+      final res = await req.close().timeout(timeout);
+      final text = await res.transform(utf8.decoder).join().timeout(timeout);
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        // 提取上游错误信息（部分服务商返回 {error:{message}}）
+        String detail = text.length > 300 ? text.substring(0, 300) : text;
+        try {
+          final data = jsonDecode(text);
+          if (data is Map && data['error'] is Map) {
+            final msg = (data['error'] as Map)['message']?.toString();
+            if (msg != null && msg.isNotEmpty) detail = msg;
+          }
+        } catch (_) {}
+        throw Exception('HTTP ${res.statusCode}: $detail');
+      }
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// 更新某模型的连通性检查结果（对标 MonkeyCode UpdateCheckResult）
+  Future<void> updateCheckResult(
+    String modelId,
+    String apiBase,
+    ModelCheckResult result,
+  ) async {
+    await _saveCheckState(modelId, apiBase, result.toJson());
+  }
+
+  static const _checkFile = 'ai_model_checks.json';
+
+  Future<void> _saveCheckState(String modelId, String apiBase, Map<String, dynamic> check) async {
+    final f = File('${(await _storage.root).path}/$_checkFile');
+    Map<String, dynamic> all = {};
+    if (await f.exists()) {
+      try {
+        final data = jsonDecode(await f.readAsString());
+        if (data is Map) all = Map<String, dynamic>.from(data);
+      } catch (_) {}
+    }
+    all['$apiBase|$modelId'] = check;
+    await f.writeAsString(const JsonEncoder.withIndent('  ').convert(all));
+  }
+
+  Future<ModelCheckResult?> getCheckResult(String modelId, String apiBase) async {
+    try {
+      final f = File('${(await _storage.root).path}/$_checkFile');
+      if (!await f.exists()) return null;
+      final data = jsonDecode(await f.readAsString());
+      if (data is Map && data['$apiBase|$modelId'] is Map) {
+        return ModelCheckResult.fromJson(
+          Map<String, dynamic>.from(data['$apiBase|$modelId'] as Map),
+        );
+      }
+    } catch (_) {}
+    return null;
+  }
+}
+
+/// 健康检查结果（连通性检测，对标 MonkeyCode llm.HealthCheck）
+class ModelCheckResult {
+  final bool success;
+  final String? error;
+  final DateTime checkedAt;
+  final int durationMs;
+
+  ModelCheckResult({
+    required this.success,
+    this.error,
+    DateTime? checkedAt,
+    this.durationMs = 0,
+  }) : checkedAt = checkedAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'success': success,
+        if (error != null) 'error': error,
+        'checkedAt': checkedAt.toIso8601String(),
+        'durationMs': durationMs,
+      };
+
+  factory ModelCheckResult.fromJson(Map<String, dynamic> j) => ModelCheckResult(
+        success: j['success'] == true,
+        error: j['error']?.toString(),
+        checkedAt:
+            DateTime.tryParse(j['checkedAt']?.toString() ?? '') ?? DateTime.now(),
+        durationMs: (j['durationMs'] as num?)?.toInt() ?? 0,
+      );
 }

@@ -243,6 +243,28 @@ class ToolCallRequest {
     );
   }
 
+  /// 从 Anthropic Messages 响应解析 tool_use content block
+  factory ToolCallRequest.fromAnthropic(Map<String, dynamic> block) {
+    return ToolCallRequest(
+      toolId: block['name']?.toString() ?? '',
+      callId: block['id']?.toString() ?? '',
+      arguments: _parseArgs(block['input']),
+    );
+  }
+
+  /// 从 OpenAI Responses 响应解析 function_call output
+  factory ToolCallRequest.fromOpenAIResponses(Map<String, dynamic> out) {
+    final call = out['call'] as Map<String, dynamic>? ?? {};
+    final args = call['arguments'] is String
+        ? jsonDecode(call['arguments'] as String)
+        : call['arguments'];
+    return ToolCallRequest(
+      toolId: call['name']?.toString() ?? out['name']?.toString() ?? '',
+      callId: out['call_id']?.toString() ?? call['call_id']?.toString() ?? '',
+      arguments: _parseArgs(args),
+    );
+  }
+
   static Map<String, dynamic> _parseArgs(dynamic args) {
     if (args is Map) return Map<String, dynamic>.from(args);
     if (args is String) {

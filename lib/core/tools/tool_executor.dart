@@ -81,18 +81,33 @@ class ToolExecutor {
       );
     }
 
+    // rawDefinition 中若记录了远端工具名与认证头，使用远端名调用
+    var remoteName = mcpTool.id;
+    final headers = <String, String>{};
+    if (mcpTool.rawDefinition != null && mcpTool.rawDefinition!.isNotEmpty) {
+      try {
+        final raw = jsonDecode(mcpTool.rawDefinition!) as Map<String, dynamic>;
+        remoteName = raw['remote_name']?.toString() ?? remoteName;
+        final h = raw['headers'];
+        if (h is Map) {
+          h.forEach((k, v) => headers[k.toString()] = v.toString());
+        }
+      } catch (_) {}
+    }
+
     final client = HttpClient();
     try {
       final uri = Uri.parse(mcpTool.endpoint!);
       final httpReq = await client.postUrl(uri);
       httpReq.headers.set('Content-Type', 'application/json');
       httpReq.headers.set('Accept', 'application/json');
+      headers.forEach((k, v) => httpReq.headers.set(k, v));
 
       final body = jsonEncode({
         'jsonrpc': '2.0',
         'method': 'tools/call',
         'params': {
-          'name': mcpTool.id,
+          'name': remoteName,
           'arguments': request.arguments,
         },
         'id': DateTime.now().millisecondsSinceEpoch,
@@ -104,11 +119,43 @@ class ToolExecutor {
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(text) as Map<String, dynamic>;
-        final result = data['result']?['content']?.toString() ??
-            data['result']?.toString() ?? text;
+        final jsonrpcError = data['error'];
+        if (jsonrpcError != null) {
+          return ToolCallResult(
+            toolId: mcpTool.id,
+            content: '',
+            success: false,
+            error: 'MCP 调用失败: $jsonrpcError',
+          );
+        }
+        final result = data['result'];
+        // 解析 MCP 标准结构化内容数组
+        String resultText;
+        if (result is Map && result['content'] is List) {
+          final parts = (result['content'] as List).whereType<Map>().map((c) {
+            final ct = c['type']?.toString() ?? 'text';
+            if (ct == 'image') return '[图片]';
+            if (ct == 'resource') return c['text']?.toString() ?? '[资源]';
+            return c['text']?.toString() ?? '';
+          }).where((s) => s.isNotEmpty).join('\n');
+          final isError = (result['isError'] == true);
+          if (parts.isEmpty && result['structuredContent'] != null) {
+            resultText = jsonEncode(result['structuredContent']);
+          } else {
+            resultText = parts;
+          }
+          if (resultText.isEmpty) resultText = jsonEncode(result);
+          return ToolCallResult(
+            toolId: mcpTool.id,
+            content: resultText,
+            success: !isError,
+            error: isError ? 'MCP 工具返回错误' : null,
+          );
+        }
+        resultText = result?.toString() ?? text;
         return ToolCallResult(
           toolId: mcpTool.id,
-          content: result,
+          content: resultText,
           success: true,
         );
       } else {

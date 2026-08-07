@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../core/tools/skill_manager.dart';
 import '../core/tools/tool_entity.dart';
+import 'mcp_server_screen.dart';
+import 'writing_task_screen.dart';
 
 /// 工具库管理页面
 class ToolLibraryScreen extends StatefulWidget {
@@ -37,6 +39,26 @@ class ToolLibraryScreen extends StatefulWidget {
       appBar: AppBar(
         title: const Text('工具库'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.task_alt_outlined),
+            tooltip: '写作任务',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const WritingTaskScreen()),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.dns_outlined),
+            tooltip: 'MCP 服务器',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const McpServerScreen()),
+              ).then((_) => _refresh());
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: '新建技能',

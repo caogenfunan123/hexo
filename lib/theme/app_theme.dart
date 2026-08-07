@@ -130,7 +130,7 @@ class AppTheme {
           borderRadius: BorderRadius.vertical(bottom: Radius.circular(baseRadius * 1.5)),
         ),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: cardColor,
         elevation: 0,
         shadowColor: Colors.transparent,
@@ -186,7 +186,7 @@ class AppTheme {
         side: BorderSide.none,
         padding: EdgeInsets.symmetric(horizontal: 8, vertical: 0),
       ),
-      dialogTheme: DialogTheme(
+      dialogTheme: DialogThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(baseRadius * 2)),
         backgroundColor: cardColor,
         elevation: 8,
@@ -295,7 +295,7 @@ class AppTheme {
           borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
         ),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: card,
         elevation: 0,
         shadowColor: Colors.transparent,
@@ -345,7 +345,7 @@ class AppTheme {
         side: BorderSide.none,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
       ),
-      dialogTheme: DialogTheme(
+      dialogTheme: DialogThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         backgroundColor: Colors.white,
         elevation: 8,
@@ -436,7 +436,7 @@ class AppTheme {
           fontWeight: FontWeight.w700,
         ),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: const Color(0xFF1E293B),
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -468,7 +468,7 @@ class AppTheme {
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
-      dialogTheme: DialogTheme(
+      dialogTheme: DialogThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         backgroundColor: const Color(0xFF1E293B),
         elevation: 8,

@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../core/ai/ai_provider.dart';
 import '../core/tools/tool_entity.dart';
 import '../core/ai/ai_session_manager.dart';
 import '../models/ai_profile.dart';
 import '../models/app_settings.dart';
+import 'usage_tracker.dart';
 import 'volcengine_adapter.dart';
 
 /// AI 回复块（非流式，兼容旧接口使用 Stream 返回）
@@ -231,6 +233,107 @@ class AiService {
     if (p.model.isEmpty) {
       throw Exception('请先选择模型');
     }
+    switch (p.interfaceType) {
+      case InterfaceType.anthropic:
+        return _completeAnthropic(p, systemPrompt: systemPrompt, userPrompt: userPrompt, temperature: temperature);
+      case InterfaceType.openaiResponses:
+        return _completeOpenAIResponses(p, systemPrompt: systemPrompt, userPrompt: userPrompt, temperature: temperature);
+      case InterfaceType.openaiChat:
+        return _completeOpenAIChat(p, systemPrompt: systemPrompt, userPrompt: userPrompt, temperature: temperature);
+    }
+  }
+
+  /// Anthropic Messages 协议请求
+  Future<String> _completeAnthropic(AiProfile p, {required String systemPrompt, required String userPrompt, double temperature = 0.7}) async {
+    final url = _joinUrl(_normalizeBase(p.baseUrl), '/messages');
+    final body = {
+      'model': p.model,
+      'max_tokens': 4096,
+      'temperature': temperature,
+      'system': systemPrompt,
+      'messages': [
+        {'role': 'user', 'content': userPrompt},
+      ],
+    };
+    final text = await _httpAnthropic(url, p.apiKey, body);
+    final data = jsonDecode(text);
+    if (data is Map && data['content'] is List) {
+      final buf = StringBuffer();
+      for (final part in data['content'] as List) {
+        if (part is Map && part['type'] == 'text' && part['text'] != null) {
+          buf.write(part['text']);
+        }
+      }
+      if (buf.isNotEmpty) return buf.toString();
+    }
+    throw Exception('Anthropic 返回格式异常: ${text.length > 300 ? text.substring(0, 300) : text}');
+  }
+
+  /// OpenAI Responses 协议请求
+  Future<String> _completeOpenAIResponses(AiProfile p, {required String systemPrompt, required String userPrompt, double temperature = 0.7}) async {
+    final url = _joinUrl(_normalizeBase(p.baseUrl), '/responses');
+    final body = {
+      'model': p.model,
+      'temperature': temperature,
+      'input': [
+        {'role': 'system', 'content': systemPrompt},
+        {'role': 'user', 'content': userPrompt},
+      ],
+    };
+    final text = await _http(
+      method: 'POST',
+      url: url,
+      apiKey: p.apiKey,
+      useBearer: p.useBearer,
+      body: body,
+    );
+    final data = jsonDecode(text);
+    if (data is Map && data['output'] is List) {
+      final buf = StringBuffer();
+      for (final out in data['output'] as List) {
+        if (out is Map && out['type'] == 'message' && out['content'] is List) {
+          for (final part in out['content'] as List) {
+            if (part is Map && part['type'] == 'output_text' && part['text'] != null) {
+              buf.write(part['text']);
+            } else if (part is Map && part['type'] == 'text' && part['text'] != null) {
+              buf.write(part['text']);
+            }
+          }
+        }
+      }
+      if (buf.isNotEmpty) return buf.toString();
+    }
+    if (data is Map && data['output_text'] != null) {
+      return data['output_text'].toString();
+    }
+    throw Exception('OpenAI Responses 返回格式异常: ${text.length > 300 ? text.substring(0, 300) : text}');
+  }
+
+  /// Anthropic 专用 HTTP 请求（x-api-key header）
+  Future<String> _httpAnthropic(String url, String apiKey, Map<String, dynamic> body) async {
+    final client = HttpClient();
+    try {
+      final uri = Uri.parse(url);
+      final req = await client.postUrl(uri);
+      req.headers.set('Content-Type', 'application/json');
+      req.headers.set('Accept', 'application/json');
+      req.headers.set('x-api-key', apiKey);
+      req.headers.set('anthropic-version', '2023-06-01');
+      final bytes = utf8.encode(jsonEncode(body));
+      req.contentLength = bytes.length;
+      req.add(bytes);
+      final res = await req.close();
+      final text = await res.transform(utf8.decoder).join();
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        throw Exception('HTTP ${res.statusCode}: $text');
+      }
+      return text;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<String> _completeOpenAIChat(AiProfile p, {required String systemPrompt, required String userPrompt, double temperature = 0.7}) async {
     final url = _chatUrl(p);
     final body = {
       'model': p.model,
@@ -298,7 +401,233 @@ class AiService {
     if (p.model.isEmpty) {
       throw Exception('请先选择模型');
     }
+    switch (p.interfaceType) {
+      case InterfaceType.anthropic:
+        return _completeWithToolsAnthropic(p, systemPrompt: systemPrompt, messages: messages, tools: tools, temperature: temperature);
+      case InterfaceType.openaiResponses:
+        return _completeWithToolsOpenAIResponses(p, systemPrompt: systemPrompt, messages: messages, tools: tools, temperature: temperature);
+      case InterfaceType.openaiChat:
+        return _completeWithToolsOpenAIChat(p, systemPrompt: systemPrompt, messages: messages, tools: tools, temperature: temperature, toolRound: toolRound);
+    }
+  }
 
+  /// 将 OpenAI 风格历史转换为 Anthropic 消息格式
+  List<Map<String, dynamic>> _toAnthropicMessages(
+    List<Map<String, dynamic>> messages,
+  ) {
+    final out = <Map<String, dynamic>>[];
+    for (final m in messages) {
+      final role = m['role']?.toString() ?? 'user';
+      if (role == 'system') continue; // system 单独传
+      if (role == 'assistant') {
+        final content = m['content']?.toString() ?? '';
+        final toolCalls = m['tool_calls'];
+        if (toolCalls is List && toolCalls.isNotEmpty) {
+          final blocks = <Map<String, dynamic>>[];
+          if (content.isNotEmpty) {
+            blocks.add({'type': 'text', 'text': content});
+          }
+          for (final tc in toolCalls) {
+            if (tc is Map) {
+              final fn = tc['function'] as Map<String, dynamic>? ?? {};
+              blocks.add({
+                'type': 'tool_use',
+                'id': tc['id']?.toString() ?? 'toolu_${DateTime.now().microsecondsSinceEpoch}',
+                'name': fn['name']?.toString() ?? '',
+                'input': _parseJsonArg(fn['arguments']),
+              });
+            }
+          }
+          out.add({'role': 'assistant', 'content': blocks});
+        } else {
+          out.add({'role': 'assistant', 'content': content});
+        }
+      } else if (role == 'tool') {
+        out.add({
+          'role': 'user',
+          'content': [
+            {
+              'type': 'tool_result',
+              'tool_use_id': m['tool_call_id']?.toString() ?? '',
+              'content': m['content']?.toString() ?? '',
+            },
+          ],
+        });
+      } else {
+        out.add({'role': 'user', 'content': m['content']?.toString() ?? ''});
+      }
+    }
+    return out;
+  }
+
+  Map<String, dynamic> _parseJsonArg(dynamic raw) {
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    if (raw is String) {
+      try {
+        final parsed = jsonDecode(raw);
+        if (parsed is Map) return Map<String, dynamic>.from(parsed);
+      } catch (_) {}
+    }
+    return {};
+  }
+
+  /// Anthropic Messages + tool_use 协议
+  Future<ToolCallResponse> _completeWithToolsAnthropic(
+    AiProfile p, {
+    required String systemPrompt,
+    required List<Map<String, dynamic>> messages,
+    List<Map<String, dynamic>>? tools,
+    double temperature = 0.7,
+  }) async {
+    final url = _joinUrl(_normalizeBase(p.baseUrl), '/messages');
+    final body = <String, dynamic>{
+      'model': p.model,
+      'max_tokens': 8192,
+      'temperature': temperature,
+      'system': systemPrompt,
+      'messages': _toAnthropicMessages(messages),
+    };
+    if (tools != null && tools.isNotEmpty) {
+      body['tools'] = toAnthropicTools(tools);
+      body['tool_choice'] = {'type': 'auto'};
+    }
+    final text = await _httpAnthropic(url, p.apiKey, body);
+    final data = jsonDecode(text);
+    if (data is! Map) throw Exception('Anthropic 返回格式异常');
+    final usage = UsageParser.fromAnthropic(data);
+
+    final content = data['content'] as List? ?? [];
+    final allMessages = <Map<String, dynamic>>[];
+    final textBuf = StringBuffer();
+    final toolCalls = <ToolCallRequest>[];
+    final contentBlocks = <Map<String, dynamic>>[];
+
+    for (final part in content) {
+      if (part is! Map) continue;
+      final type = part['type']?.toString();
+      if (type == 'text') {
+        final t = part['text']?.toString() ?? '';
+        textBuf.write(t);
+        contentBlocks.add({'type': 'text', 'text': t});
+      } else if (type == 'tool_use') {
+        final tc = ToolCallRequest.fromAnthropic(Map<String, dynamic>.from(part));
+        toolCalls.add(tc);
+        contentBlocks.add(Map<String, dynamic>.from(part));
+      }
+    }
+
+    final assistantMsg = {
+      'role': 'assistant',
+      if (contentBlocks.isNotEmpty) 'content': contentBlocks,
+      if (toolCalls.isNotEmpty)
+        'tool_calls': toolCalls
+            .map((tc) => {
+                  'id': tc.callId,
+                  'type': 'function',
+                  'function': {'name': tc.toolId, 'arguments': jsonEncode(tc.arguments)},
+                })
+            .toList(),
+    };
+    allMessages.addAll(messages);
+    allMessages.add(assistantMsg);
+
+    if (toolCalls.isNotEmpty) {
+      return ToolCallResponse(content: textBuf.isEmpty ? null : textBuf.toString(), toolCalls: toolCalls, allMessages: allMessages, usage: usage);
+    }
+    final textContent = textBuf.toString();
+    if (textContent.isNotEmpty) return ToolCallResponse(content: textContent, allMessages: allMessages, usage: usage);
+    throw Exception('Anthropic 返回空内容');
+  }
+
+  /// OpenAI Responses + function_call 协议
+  Future<ToolCallResponse> _completeWithToolsOpenAIResponses(
+    AiProfile p, {
+    required String systemPrompt,
+    required List<Map<String, dynamic>> messages,
+    List<Map<String, dynamic>>? tools,
+    double temperature = 0.7,
+  }) async {
+    final url = _joinUrl(_normalizeBase(p.baseUrl), '/responses');
+    final input = <Map<String, dynamic>>[
+      {'role': 'system', 'content': systemPrompt},
+      ...messages,
+    ];
+    final body = <String, dynamic>{
+      'model': p.model,
+      'temperature': temperature,
+      'input': input,
+    };
+    if (tools != null && tools.isNotEmpty) {
+      body['tools'] = tools.map((t) {
+        final fn = t['function'] as Map<String, dynamic>? ?? {};
+        return {
+          'type': 'function',
+          'name': fn['name'] ?? '',
+          'description': fn['description'] ?? '',
+          'parameters': fn['parameters'] ?? {'type': 'object', 'properties': {}},
+        };
+      }).toList();
+    }
+
+    final text = await _http(method: 'POST', url: url, apiKey: p.apiKey, useBearer: p.useBearer, body: body);
+    final data = jsonDecode(text);
+    if (data is! Map) throw Exception('OpenAI Responses 返回格式异常');
+    final usage = UsageParser.fromOpenAiResponses(data);
+
+    final outputs = data['output'] as List? ?? [];
+    final textBuf = StringBuffer();
+    final toolCalls = <ToolCallRequest>[];
+    final outBlocks = <Map<String, dynamic>>[];
+
+    for (final out in outputs) {
+      if (out is! Map) continue;
+      final type = out['type']?.toString();
+      if (type == 'message' && out['content'] is List) {
+        for (final part in out['content'] as List) {
+          if (part is Map) {
+            final pt = part['type']?.toString();
+            if (pt == 'output_text' || pt == 'text') {
+              final t = part['text']?.toString() ?? '';
+              textBuf.write(t);
+              outBlocks.add({'type': 'output_text', 'text': t});
+            }
+          }
+        }
+      } else if (type == 'function_call') {
+        toolCalls.add(ToolCallRequest.fromOpenAIResponses(Map<String, dynamic>.from(out)));
+      }
+    }
+
+    final assistantMsg = <String, dynamic>{
+      'role': 'assistant',
+      if (textBuf.isNotEmpty) 'content': textBuf.toString(),
+      if (toolCalls.isNotEmpty)
+        'tool_calls': toolCalls
+            .map((tc) => {
+                  'id': tc.callId,
+                  'type': 'function',
+                  'function': {'name': tc.toolId, 'arguments': jsonEncode(tc.arguments)},
+                })
+            .toList(),
+    };
+    final allMessages = <Map<String, dynamic>>[...messages, assistantMsg];
+
+    if (toolCalls.isNotEmpty) {
+      return ToolCallResponse(content: textBuf.isEmpty ? null : textBuf.toString(), toolCalls: toolCalls, allMessages: allMessages, usage: usage);
+    }
+    final content = textBuf.toString();
+    if (content.isNotEmpty) return ToolCallResponse(content: content, allMessages: allMessages, usage: usage);
+    throw Exception('OpenAI Responses 返回空内容');
+  }
+
+  Future<ToolCallResponse> _completeWithToolsOpenAIChat(
+    AiProfile p, {
+    required String systemPrompt,
+    required List<Map<String, dynamic>> messages,
+    List<Map<String, dynamic>>? tools,
+    double temperature = 0.7,
+    int toolRound = 0,
+  }) async {
     final url = _chatUrl(p);
     final allMessages = <Map<String, dynamic>>[];
     final hasSystemPrompt = messages.isNotEmpty && messages.first['role'] == 'system';
@@ -336,6 +665,7 @@ class AiService {
     if (data is! Map) {
       throw Exception('AI 返回格式异常');
     }
+    final usage = UsageParser.fromOpenAiChat(data);
 
     final choices = data['choices'] as List?;
     if (choices == null || choices.isEmpty) {
@@ -368,19 +698,20 @@ class AiService {
         content: message['content']?.toString(),
         toolCalls: toolCalls,
         allMessages: allMessages,
+        usage: usage,
       );
     }
 
     // 没有工具调用，返回纯文本
     final content = message['content']?.toString();
     if (content != null && content.isNotEmpty) {
-      return ToolCallResponse(content: content, allMessages: allMessages);
+      return ToolCallResponse(content: content, allMessages: allMessages, usage: usage);
     }
 
     // 如果 content 为空且没有 tool_calls，可能是结束了
     final finishReason = choice['finish_reason']?.toString();
     if (finishReason == 'stop') {
-      return ToolCallResponse(content: '', allMessages: allMessages);
+      return ToolCallResponse(content: '', allMessages: allMessages, usage: usage);
     }
 
     throw Exception('AI 返回空内容');
@@ -394,6 +725,7 @@ class AiService {
     AiProfile? profile,
     List<Map<String, dynamic>>? tools,
     double temperature = 0.7,
+    int toolRound = 0,
   }) async {
     final p = resolveProfile(settings, override: profile);
     if (p.apiKey.isEmpty) {
@@ -403,57 +735,15 @@ class AiService {
       throw Exception('请先选择模型');
     }
 
-    final url = _chatUrl(p);
-    final allMessages = [...messages, ...toolResults];
-
-    final body = <String, dynamic>{
-      'model': p.model,
-      'messages': allMessages,
-      'temperature': temperature,
-      'stream': false,
-    };
-
-    if (tools != null && tools.isNotEmpty) {
-      body['tools'] = tools;
-      body['tool_choice'] = 'auto';
-    }
-
-    final text = await _http(
-      method: 'POST',
-      url: url,
-      apiKey: p.apiKey,
-      useBearer: p.useBearer,
-      body: body,
-    );
-
-    final data = jsonDecode(text);
-    if (data is! Map) {
-      throw Exception('AI 返回格式异常');
-    }
-
-    final choices = data['choices'] as List?;
-    if (choices == null || choices.isEmpty) {
-      throw Exception('AI 返回无 choices');
-    }
-
-    final choice = choices.first as Map;
-    final message = choice['message'] as Map?;
-    final content = message?['content']?.toString() ?? choice['text']?.toString() ?? '';
-
-    // 检查是否还有 tool_calls
-    final toolCallsRaw = message?['tool_calls'];
-    List<ToolCallRequest>? moreToolCalls;
-    if (toolCallsRaw is List && toolCallsRaw.isNotEmpty) {
-      moreToolCalls = toolCallsRaw
-          .whereType<Map>()
-          .map((tc) => ToolCallRequest.fromOpenAi(Map<String, dynamic>.from(tc)))
-          .toList();
-    }
-
-    return ToolCallResponse(
-      content: content,
-      toolCalls: moreToolCalls,
-      allMessages: allMessages,
+    final allMessages = <Map<String, dynamic>>[...messages, ...toolResults];
+    return completeWithTools(
+      settings: settings,
+      systemPrompt: '',
+      messages: allMessages,
+      profile: p,
+      tools: tools,
+      temperature: temperature,
+      toolRound: toolRound,
     );
   }
 
@@ -556,11 +846,13 @@ class ToolCallResponse {
   final String? content;
   final List<ToolCallRequest>? toolCalls;
   final List<Map<String, dynamic>> allMessages;
+  final Map<String, dynamic>? usage; // token 用量（inputTokens/outputTokens/cacheReadTokens...）
 
   const ToolCallResponse({
     this.content,
     this.toolCalls,
     this.allMessages = const [],
+    this.usage,
   });
 
   bool get hasToolCalls => toolCalls != null && toolCalls!.isNotEmpty;

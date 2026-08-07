@@ -3,6 +3,8 @@ import 'dart:async';
 import '../../models/ai_profile.dart';
 import '../../models/app_settings.dart';
 import '../../services/ai_service.dart';
+import '../../services/storage_service.dart';
+import '../../services/usage_tracker.dart';
 import '../../services/volcengine_adapter.dart';
 import '../tools/tool_executor.dart';
 import '../tools/tool_registry.dart';
@@ -158,15 +160,7 @@ class AiRequestDispatcher {
     try {
       AiProfile? profile;
       if (preferredModel != null) {
-        profile = AiProfile(
-          id: preferredModel.modelId,
-          name: preferredModel.modelName,
-          baseUrl: preferredModel.apiBase,
-          apiKey: preferredModel.apiKey,
-          model: preferredModel.modelId,
-          apiPath: preferredModel.apiPath,
-          useBearer: preferredModel.useBearer,
-        );
+        profile = _profileFromModel(preferredModel);
       }
 
       final messages = [
@@ -194,6 +188,7 @@ class AiRequestDispatcher {
 
         stopwatch.stop();
         _recordStreamCall(preferredModel, stopwatch, true);
+        await _recordUsage(profile, response);
 
         if (controller.isClosed) return;
 
@@ -320,8 +315,7 @@ class AiRequestDispatcher {
   }
 
   /// 记录单次流式调用（成功/失败）到模型管理器，供择优评分
-  void _recordStreamCall(
-    AiModelEntity? model,
+  void _recordStreamCall(    AiModelEntity? model,
     Stopwatch stopwatch,
     bool success,
   ) {
@@ -332,6 +326,30 @@ class AiRequestDispatcher {
       stopwatch.elapsedMilliseconds,
       success,
     );
+  }
+
+  /// 记录 token 用量（对标 MonkeyCode usage_capture）
+  Future<void> _recordUsage(AiProfile? profile, ToolCallResponse response) async {
+    final usage = response.usage;
+    if (usage == null) return;
+    if (profile == null) return;
+    try {
+      final tracker = UsageTracker(await StorageService().root);
+      await tracker.record(TokenUsage(
+        id: 'usage_${DateTime.now().microsecondsSinceEpoch}',
+        time: DateTime.now(),
+        model: profile.model,
+        provider: profile.interfaceType.name,
+        inputTokens: (usage['inputTokens'] as num?)?.toInt() ?? 0,
+        outputTokens: (usage['outputTokens'] as num?)?.toInt() ?? 0,
+        cacheReadTokens: (usage['cacheReadTokens'] as num?)?.toInt() ?? 0,
+        cacheCreationTokens: (usage['cacheCreationTokens'] as num?)?.toInt() ?? 0,
+        reasoningTokens: (usage['reasoningTokens'] as num?)?.toInt() ?? 0,
+        usedTools: response.hasToolCalls,
+      ));
+    } catch (_) {
+      // 用量记录失败不影响主流程
+    }
   }
 
   /// 从备选队列挑选下一个模型（跳过当前模型）
@@ -382,15 +400,7 @@ class AiRequestDispatcher {
         // 确定当前使用的 profile
         AiProfile? profile;
         if (currentModel != null) {
-          profile = AiProfile(
-            id: currentModel.modelId,
-            name: currentModel.modelName,
-            baseUrl: currentModel.apiBase,
-            apiKey: currentModel.apiKey,
-            model: currentModel.modelId,
-            apiPath: currentModel.apiPath,
-            useBearer: currentModel.useBearer,
-          );
+          profile = _profileFromModel(currentModel);
         } else if (preferredProfile != null) {
           profile = preferredProfile;
         }
@@ -509,8 +519,21 @@ class AiRequestDispatcher {
         .timeout(Duration(seconds: timeoutSeconds));
   }
 
-  String _buildMessagesString(List<Map<String, dynamic>> messages) {
-    final buf = StringBuffer();
+  /// 从模型实体构造 AiProfile（携带接口类型）
+  AiProfile _profileFromModel(AiModelEntity m) {
+    return AiProfile(
+      id: m.modelId,
+      name: m.modelName,
+      baseUrl: m.apiBase,
+      apiKey: m.apiKey,
+      model: m.modelId,
+      apiPath: m.apiPath,
+      useBearer: m.useBearer,
+      interfaceType: m.interfaceType,
+    );
+  }
+
+  String _buildMessagesString(List<Map<String, dynamic>> messages) {    final buf = StringBuffer();
     for (final m in messages) {
       final role = m['role'];
       if (role == 'system') continue; // system 单独传
@@ -540,15 +563,7 @@ class AiRequestDispatcher {
 
     AiProfile? profile;
     if (preferredModel != null) {
-      profile = AiProfile(
-        id: preferredModel.modelId,
-        name: preferredModel.modelName,
-        baseUrl: preferredModel.apiBase,
-        apiKey: preferredModel.apiKey,
-        model: preferredModel.modelId,
-        apiPath: preferredModel.apiPath,
-        useBearer: preferredModel.useBearer,
-      );
+      profile = _profileFromModel(preferredModel);
     }
 
     final toolRegistry = ToolRegistry();
@@ -580,6 +595,7 @@ class AiRequestDispatcher {
         toolRound: toolRound,
       );
       toolRound++;
+      await _recordUsage(profile, response);
 
       // 如果有工具调用
       if (response.hasToolCalls) {

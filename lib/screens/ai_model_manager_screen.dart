@@ -6,6 +6,7 @@ import '../core/ai/ai_session_manager.dart';
 import '../models/ai_profile.dart';
 import '../models/app_settings.dart';
 import '../services/ai_service.dart';
+import 'token_usage_screen.dart';
 
 /// 预置模型库
 class _ModelPreset {
@@ -667,6 +668,16 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
       appBar: AppBar(
         title: const Text('AI 模型管理'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.bar_chart),
+            tooltip: 'Token 用量',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const TokenUsageScreen()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.file_upload_outlined),
             tooltip: '导入',

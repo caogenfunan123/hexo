@@ -1,3 +1,5 @@
+import 'ai_provider.dart';
+
 /// AI 模型实体，用于中转站模型管理
 class AiModelEntity {
   final String modelId;
@@ -10,6 +12,12 @@ class AiModelEntity {
   final bool enable;
   final int priority;
   final String group; // 'code' | 'general' | 'longtext'
+  final ModelProvider provider;
+  final InterfaceType interfaceType;
+  final bool supportImage;
+  final bool thinkingEnabled;
+  final int contextLimit;
+  final int outputLimit;
   final DateTime createdAt;
 
   AiModelEntity({
@@ -23,8 +31,16 @@ class AiModelEntity {
     this.enable = true,
     this.priority = 0,
     this.group = 'general',
+    ModelProvider? provider,
+    InterfaceType? interfaceType,
+    this.supportImage = false,
+    this.thinkingEnabled = false,
+    this.contextLimit = 0,
+    this.outputLimit = 0,
     DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+  })  : provider = provider ?? ModelProvider.custom,
+        interfaceType = interfaceType ?? inferInterfaceType(modelId),
+        createdAt = createdAt ?? DateTime.now();
 
   AiModelEntity copyWith({
     String? modelId,
@@ -37,6 +53,12 @@ class AiModelEntity {
     bool? enable,
     int? priority,
     String? group,
+    ModelProvider? provider,
+    InterfaceType? interfaceType,
+    bool? supportImage,
+    bool? thinkingEnabled,
+    int? contextLimit,
+    int? outputLimit,
     DateTime? createdAt,
   }) {
     return AiModelEntity(
@@ -50,6 +72,12 @@ class AiModelEntity {
       enable: enable ?? this.enable,
       priority: priority ?? this.priority,
       group: group ?? this.group,
+      provider: provider ?? this.provider,
+      interfaceType: interfaceType ?? this.interfaceType,
+      supportImage: supportImage ?? this.supportImage,
+      thinkingEnabled: thinkingEnabled ?? this.thinkingEnabled,
+      contextLimit: contextLimit ?? this.contextLimit,
+      outputLimit: outputLimit ?? this.outputLimit,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -65,6 +93,12 @@ class AiModelEntity {
         'enable': enable,
         'priority': priority,
         'group': group,
+        'provider': provider.code,
+        'interfaceType': interfaceType.code,
+        'supportImage': supportImage,
+        'thinkingEnabled': thinkingEnabled,
+        'contextLimit': contextLimit,
+        'outputLimit': outputLimit,
         'createdAt': createdAt.toIso8601String(),
       };
 
@@ -79,6 +113,12 @@ class AiModelEntity {
         enable: j['enable'] != false,
         priority: (j['priority'] as num?)?.toInt() ?? 0,
         group: j['group']?.toString() ?? 'general',
+        provider: ModelProvider.fromCode(j['provider']?.toString()),
+        interfaceType: InterfaceType.fromCode(j['interfaceType']?.toString()),
+        supportImage: j['supportImage'] == true,
+        thinkingEnabled: j['thinkingEnabled'] == true,
+        contextLimit: (j['contextLimit'] as num?)?.toInt() ?? 0,
+        outputLimit: (j['outputLimit'] as num?)?.toInt() ?? 0,
         createdAt: DateTime.tryParse(j['createdAt']?.toString() ?? '') ??
             DateTime.now(),
       );

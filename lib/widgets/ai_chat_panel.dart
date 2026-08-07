@@ -14,6 +14,7 @@ import '../core/ai/ai_tool_manager.dart';
 import '../core/ai/token_vault.dart';
 import '../core/tools/instruction_parser.dart';
 import '../core/tools/mcp_runtime.dart';
+import '../core/tools/mcp_server.dart';
 import '../core/tools/skill_manager.dart';
 import '../core/tools/tool_registry.dart';
 import '../core/tools/builtin_tools.dart';
@@ -127,6 +128,9 @@ class AiChatPanelState extends State<AiChatPanel> {
   StringBuffer _streamBuffer = StringBuffer();
   int? _streamingMsgIndex;
 
+  /// 工具调用卡片展开状态（按 callId）
+  final Set<String> _expandedToolCalls = {};
+
   /// 工具系统
   late final SkillManager _skillManager;
   late final McpRuntime _mcpRuntime;
@@ -184,6 +188,13 @@ class AiChatPanelState extends State<AiChatPanel> {
     if (storage == null) return;
     try {
       await _skillManager.init(await storage.root);
+      // 同步外部 MCP 服务器远端工具到 ToolRegistry（对标 MonkeyCode mcphub）
+      final mcpManager = McpServerManager(root: await storage.root);
+      await mcpManager.load();
+      final errors = await mcpManager.syncAllTools();
+      if (errors.isNotEmpty) {
+        debugPrint('MCP 工具同步失败: $errors');
+      }
       _toolsInitialized = true;
     } catch (e) { debugPrint('AiChat: message send failed: $e'); }
   }
@@ -1135,6 +1146,11 @@ class AiChatPanelState extends State<AiChatPanel> {
               _buildThinkingAnimation(cs)
             else
               _buildMessageContent(msg, cs, isUser, isAssistant, isStreaming),
+            // 👇 工具调用卡片（结构化展示 assistant 的工具调用）
+            if (isAssistant && msg.toolCalls != null && msg.toolCalls!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ...msg.toolCalls!.map((tc) => _buildToolCallCard(tc, cs)),
+            ],
             // 👇 复制按钮（仅 AI 回复，且有内容）
             if (isAssistant && msg.content.isNotEmpty && !isThinkingBubble) ...[
               const SizedBox(height: 6),
@@ -1246,6 +1262,130 @@ class AiChatPanelState extends State<AiChatPanel> {
         ),
       ),
     );
+  }
+
+  /// 工具调用卡片：名称 + 参数摘要 + 展开详情（对标 MonkeyCode toolcalls 组件）
+  Widget _buildToolCallCard(Map<String, dynamic> tc, ColorScheme cs) {
+    final function = tc['function'] as Map<String, dynamic>? ?? {};
+    final name = function['name']?.toString() ?? tc['name']?.toString() ?? 'unknown';
+    final callId = tc['id']?.toString() ?? tc['call_id']?.toString() ?? name;
+    final isExpanded = _expandedToolCalls.contains(callId);
+
+    String argSummary = '';
+    final rawArgs = function['arguments'] ?? tc['arguments'] ?? tc['input'];
+    if (rawArgs is String && rawArgs.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawArgs);
+        if (decoded is Map) {
+          argSummary = decoded.entries
+              .map((e) => '${e.key}: ${_argValue(e.value)}')
+              .join('\n');
+        } else {
+          argSummary = rawArgs;
+        }
+      } catch (_) {
+        argSummary = rawArgs;
+      }
+    } else if (rawArgs is Map) {
+      argSummary = (rawArgs as Map)
+          .entries
+          .map((e) => '${e.key}: ${_argValue(e.value)}')
+          .join('\n');
+    }
+
+    final icon = _toolIcon(name);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.3)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => setState(() {
+          if (isExpanded) {
+            _expandedToolCalls.remove(callId);
+          } else {
+            _expandedToolCalls.add(callId);
+          }
+        }),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, size: 15, color: cs.primary),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      name,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'monospace',
+                        color: cs.onSurface,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Icon(
+                    isExpanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    size: 16,
+                    color: cs.outline,
+                  ),
+                ],
+              ),
+              if (isExpanded && argSummary.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    argSummary,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 参数值摘要（长文本截断，避免撑爆卡片）
+  String _argValue(dynamic v) {
+    if (v == null) return 'null';
+    final s = v.toString();
+    if (s.length > 80) return '${s.substring(0, 77)}...';
+    return s;
+  }
+
+  /// 按工具名返回图标
+  IconData _toolIcon(String name) {
+    if (name.contains('search') || name.contains('search_web')) return Icons.search;
+    if (name.contains('web') || name.contains('fetch') || name.contains('http')) return Icons.public;
+    if (name.contains('read')) return Icons.menu_book;
+    if (name.contains('write') || name.contains('edit') || name.contains('diff')) return Icons.edit_note;
+    if (name.contains('mcp') || name.contains('remote')) return Icons.dns;
+    if (name.contains('skill') || name.contains('load_skill')) return Icons.extension;
+    if (name.contains('bash') || name.contains('shell') || name.contains('terminal')) return Icons.terminal;
+    if (name.contains('site') || name.contains('health')) return Icons.monitor_heart;
+    return Icons.code;
   }
 }
 
