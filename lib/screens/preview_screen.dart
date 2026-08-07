@@ -30,12 +30,30 @@ class _PreviewScreenState extends State<PreviewScreen> {
       ..setNavigationDelegate(NavigationDelegate(
         onPageStarted: (_) => setState(() => _loading = true),
         onPageFinished: (_) => setState(() => _loading = false),
+        onWebResourceError: (error) {
+          if (mounted) setState(() => _loading = false);
+        },
       ));
     if (_currentUrl.isNotEmpty) {
-      _webCtrl.loadRequest(Uri.parse(_currentUrl));
+      _loadUrl(_currentUrl);
     } else {
       _loading = false;
     }
+  }
+
+  void _loadUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.isAbsolute || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('无效的网址')),
+        );
+      }
+      return;
+    }
+    _currentUrl = url;
+    _webCtrl.loadRequest(uri);
   }
 
   @override
@@ -47,8 +65,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
   void _navigate() {
     final url = _urlCtrl.text.trim();
     if (url.isEmpty) return;
-    _currentUrl = url;
-    _webCtrl.loadRequest(Uri.parse(url));
+    _loadUrl(url);
     FocusScope.of(context).unfocus();
   }
 

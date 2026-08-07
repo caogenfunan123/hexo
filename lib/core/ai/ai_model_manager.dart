@@ -296,6 +296,7 @@ class AiModelManager {
     required String model,
     InterfaceType interfaceType = InterfaceType.openaiChat,
     Duration timeout = const Duration(seconds: 30),
+    bool useBearer = false,
   }) async {
     final stopwatch = Stopwatch()..start();
     try {
@@ -305,6 +306,7 @@ class AiModelManager {
         model: model,
         interfaceType: interfaceType,
         timeout: timeout,
+        useBearer: useBearer,
       );
       stopwatch.stop();
       return ModelCheckResult(success: true, durationMs: stopwatch.elapsedMilliseconds);
@@ -324,12 +326,16 @@ class AiModelManager {
     required String model,
     required InterfaceType interfaceType,
     required Duration timeout,
+    bool useBearer = false,
   }) async {
     final client = HttpClient()
       ..connectionTimeout = timeout;
     try {
       var base = baseUrl.trim();
       while (base.endsWith('/')) base = base.substring(0, base.length - 1);
+      base = base.replaceAll(RegExp(r'/chat/completions$'), '')
+          .replaceAll(RegExp(r'/responses$'), '')
+          .replaceAll(RegExp(r'/messages$'), '');
       final uri = switch (interfaceType) {
         InterfaceType.anthropic => Uri.parse('$base/messages'),
         InterfaceType.openaiResponses => Uri.parse('$base/responses'),
@@ -345,6 +351,7 @@ class AiModelManager {
           },
         InterfaceType.openaiResponses => {
             'model': model,
+            'max_output_tokens': 1,
             'input': [
               {'role': 'user', 'content': 'hi'},
             ],
@@ -362,10 +369,18 @@ class AiModelManager {
       req.headers.set('Content-Type', 'application/json');
       req.headers.set('Accept', 'application/json');
       if (interfaceType == InterfaceType.anthropic) {
-        req.headers.set('x-api-key', apiKey);
+        if (useBearer) {
+          req.headers.set('Authorization', 'Bearer $apiKey');
+        } else {
+          req.headers.set('x-api-key', apiKey);
+        }
         req.headers.set('anthropic-version', '2023-06-01');
-      } else {
+      } else if (useBearer) {
         req.headers.set('Authorization', 'Bearer $apiKey');
+      } else {
+        req.headers.set('Authorization', apiKey);
+        req.headers.set('api-key', apiKey);
+        req.headers.set('x-api-key', apiKey);
       }
       final bytes = utf8.encode(jsonEncode(body));
       req.contentLength = bytes.length;

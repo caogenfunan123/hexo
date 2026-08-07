@@ -153,7 +153,6 @@ class AiChatPanelState extends State<AiChatPanel> {
     _mcpRuntime = McpRuntime(
       _skillManager,
       ToolRegistry(),
-      toolManager: _toolManager,
       siteId: widget.activeRepo?.id ?? '',
       allowAutoSave: widget.settings.ai.aiAllowAutoSaveTools,
     );
@@ -1287,7 +1286,7 @@ class AiChatPanelState extends State<AiChatPanel> {
         argSummary = rawArgs;
       }
     } else if (rawArgs is Map) {
-      argSummary = (rawArgs as Map)
+      argSummary = rawArgs
           .entries
           .map((e) => '${e.key}: ${_argValue(e.value)}')
           .join('\n');

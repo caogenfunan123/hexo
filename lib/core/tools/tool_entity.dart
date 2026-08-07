@@ -254,13 +254,12 @@ class ToolCallRequest {
 
   /// 从 OpenAI Responses 响应解析 function_call output
   factory ToolCallRequest.fromOpenAIResponses(Map<String, dynamic> out) {
-    final call = out['call'] as Map<String, dynamic>? ?? {};
-    final args = call['arguments'] is String
-        ? jsonDecode(call['arguments'] as String)
-        : call['arguments'];
+    final args = out['arguments'] is String
+        ? jsonDecode(out['arguments'] as String)
+        : out['arguments'];
     return ToolCallRequest(
-      toolId: call['name']?.toString() ?? out['name']?.toString() ?? '',
-      callId: out['call_id']?.toString() ?? call['call_id']?.toString() ?? '',
+      toolId: out['name']?.toString() ?? '',
+      callId: out['call_id']?.toString() ?? '',
       arguments: _parseArgs(args),
     );
   }

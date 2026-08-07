@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import '../ai/ai_tool_manager.dart';
 import 'builtin_tools.dart';
 import 'instruction_parser.dart';
 import 'skill_manager.dart';
@@ -28,7 +27,6 @@ class McpRuntime {
   final SkillManager _skillManager;
   final ToolRegistry _registry;
   final ToolSchemaValidator _validator;
-  final AiToolManager? _toolManager;
 
   /// 当前站点 ID（站点私有工具归属）
   String? siteId;
@@ -39,11 +37,9 @@ class McpRuntime {
   McpRuntime(
     this._skillManager,
     this._registry, {
-    AiToolManager? toolManager,
     String? siteId,
     this.allowAutoSave = true,
-  })  : _toolManager = toolManager,
-        _validator = ToolSchemaValidator(),
+  })  : _validator = ToolSchemaValidator(),
         siteId = siteId;
 
   /// 执行解析出的指令列表

@@ -1,9 +1,6 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 
 import '../core/tools/mcp_server.dart';
-import '../core/tools/tool_entity.dart';
 import '../core/tools/tool_registry.dart';
 import '../services/storage_service.dart';
 

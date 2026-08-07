@@ -104,7 +104,7 @@ class AiService {
     bool useBearer = true,
     Map<String, dynamic>? body,
   }) async {
-    final client = HttpClient();
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
     try {
       final uri = Uri.parse(url);
       final req = await client.openUrl(method, uri);
@@ -255,7 +255,7 @@ class AiService {
         {'role': 'user', 'content': userPrompt},
       ],
     };
-    final text = await _httpAnthropic(url, p.apiKey, body);
+    final text = await _httpAnthropic(url, p.apiKey, body, useBearer: p.useBearer);
     final data = jsonDecode(text);
     if (data is Map && data['content'] is List) {
       final buf = StringBuffer();
@@ -275,6 +275,7 @@ class AiService {
     final body = {
       'model': p.model,
       'temperature': temperature,
+      'max_output_tokens': 4096,
       'input': [
         {'role': 'system', 'content': systemPrompt},
         {'role': 'user', 'content': userPrompt},
@@ -310,8 +311,8 @@ class AiService {
   }
 
   /// Anthropic 专用 HTTP 请求（x-api-key header）
-  Future<String> _httpAnthropic(String url, String apiKey, Map<String, dynamic> body) async {
-    final client = HttpClient();
+  Future<String> _httpAnthropic(String url, String apiKey, Map<String, dynamic> body, {bool useBearer = false}) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
     try {
       final uri = Uri.parse(url);
       final req = await client.postUrl(uri);
@@ -491,7 +492,7 @@ class AiService {
       body['tools'] = toAnthropicTools(tools);
       body['tool_choice'] = {'type': 'auto'};
     }
-    final text = await _httpAnthropic(url, p.apiKey, body);
+    final text = await _httpAnthropic(url, p.apiKey, body, useBearer: p.useBearer);
     final data = jsonDecode(text);
     if (data is! Map) throw Exception('Anthropic 返回格式异常');
     final usage = UsageParser.fromAnthropic(data);
@@ -555,6 +556,7 @@ class AiService {
     final body = <String, dynamic>{
       'model': p.model,
       'temperature': temperature,
+      'max_output_tokens': 4096,
       'input': input,
     };
     if (tools != null && tools.isNotEmpty) {
@@ -567,6 +569,7 @@ class AiService {
           'parameters': fn['parameters'] ?? {'type': 'object', 'properties': {}},
         };
       }).toList();
+      body['tool_choice'] = 'auto';
     }
 
     final text = await _http(method: 'POST', url: url, apiKey: p.apiKey, useBearer: p.useBearer, body: body);

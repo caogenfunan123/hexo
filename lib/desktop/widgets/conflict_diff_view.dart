@@ -272,9 +272,6 @@ class _ConflictDiffViewState extends State<ConflictDiffView> {
         bgColor = Colors.transparent;
         prefix = '  ';
         break;
-      default:
-        bgColor = Colors.transparent;
-        prefix = '  ';
     }
 
     return Container(

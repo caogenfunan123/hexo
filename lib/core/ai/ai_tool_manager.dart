@@ -4,7 +4,6 @@ library;
 import '../../models/blog_site_config.dart';
 import '../../models/repo_config.dart';
 import '../site_manager.dart';
-import '../tools/skill_manager.dart';
 import '../tools/tool_entity.dart';
 import '../tools/tool_schema_validator.dart';
 import '../tools/toolbox_repository.dart';
@@ -105,7 +104,6 @@ class AiToolManager {
     final scopeRaw = meta?['scope']?.toString() ?? meta?['global_available']?.toString();
     final isPrivate = scopeRaw == 'site_private' || scopeRaw == 'false' || scopeRaw == 'site';
     final scope = isPrivate ? ToolScope.sitePrivate : ToolScope.global;
-    final source = ToolSource.ai;
     final riskLevel = meta?['risk_level']?.toString() ?? 'middle';
 
     // 自动保存总开关：关闭时仅返回校验通过的定义，不落库

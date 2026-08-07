@@ -262,8 +262,8 @@ class AiRequestDispatcher {
             : false;
         if (isVolcengine && toolRound == 0) {
           onModelSwitched?.call(SwitchEvent(
-            fromModel: preferredModel?.modelName ?? '当前模型',
-            toModel: preferredModel?.modelName ?? '当前模型',
+            fromModel: preferredModel.modelName,
+            toModel: preferredModel.modelName,
             reason: '火山方舟参数不兼容，降级为无工具模式重试',
             attempt: switchCount + 1,
           ));

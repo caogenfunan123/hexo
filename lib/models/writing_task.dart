@@ -4,8 +4,6 @@
 ///   topic（选题）→ outline（提纲）→ writing（草稿）→ published（已发布）
 /// 每个任务可携带选题描述、提纲、草稿内容，并关联到已生成的文章。
 
-import 'dart:convert';
-
 /// 写作任务状态
 enum WritingTaskStatus {
   topic,     // 选题阶段

@@ -95,7 +95,7 @@ class ToolExecutor {
       } catch (_) {}
     }
 
-    final client = HttpClient();
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
     try {
       final uri = Uri.parse(mcpTool.endpoint!);
       final httpReq = await client.postUrl(uri);
@@ -114,8 +114,8 @@ class ToolExecutor {
       });
       httpReq.write(body);
 
-      final response = await httpReq.close();
-      final text = await response.transform(utf8.decoder).join();
+      final response = await httpReq.close().timeout(const Duration(seconds: 30));
+      final text = await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 30));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(text) as Map<String, dynamic>;
