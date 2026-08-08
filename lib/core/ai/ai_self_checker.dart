@@ -16,6 +16,14 @@ class AiSelfChecker {
     required AiSessionType sessionType,
     String? blogFramework,
   }) async {
+    // 文章类会话且不含文件操作指令时，只做本地完整性检查，
+    // 不调用面向源码的 AI 深度自检（源码自检会对普通文章正文误判）
+    if ((sessionType == AiSessionType.article ||
+            sessionType == AiSessionType.page) &&
+        !generatedContent.contains('【文件路径】')) {
+      return _checkArticleContent(generatedContent);
+    }
+
     // 先做本地快速检查
     final localIssues = _localCheck(generatedContent, blogFramework: blogFramework);
 
@@ -64,6 +72,24 @@ $generatedContent
         issues: [...localIssues, '自检服务不可用，请手动检查代码'],
       );
     }
+  }
+
+  /// 文章内容的本地完整性检查（无需 AI 调用）
+  ///
+  /// 仅拦截空正文 / 明显异常的情况，避免源码类 AI 自检对普通文章误判。
+  static SelfCheckResult _checkArticleContent(String content) {
+    final text = content.trim();
+    if (text.isEmpty) {
+      return const SelfCheckResult(
+        level: CheckLevel.error,
+        message: '正文为空，无法发布空文章',
+        issues: ['❌ 正文为空，请先输入文章内容再发布'],
+      );
+    }
+    return const SelfCheckResult(
+      level: CheckLevel.pass,
+      message: '自检完成，正文内容完整，可正常发布',
+    );
   }
 
   /// 本地快速检查（无需 AI 调用）
