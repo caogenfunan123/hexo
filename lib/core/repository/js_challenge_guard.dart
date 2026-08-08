@@ -143,15 +143,17 @@ class JsChallengeHttp {
       req.headers.set('Cookie', '__test=$cookie');
     }
 
-    // Dart HttpClient 默认以 Latin-1 编码写入 body，中文内容会导致
-    // "Invalid argument(s): Contains invalid characters" 异常，必须使用 UTF-8。
-    req.encoding = utf8;
-
+    // 统一以 UTF-8 字节写入 body：
+    // 1. HttpClientRequest 的 encoding setter 在 headers 设置后可能不可变，
+    //    会抛 "IOSink encoding is not mutable"
+    // 2. 默认 latin1 编码无法处理中文，会抛 "Contains invalid characters"
     if (rawBody != null) {
       if (contentLength != null) req.contentLength = contentLength;
       req.add(rawBody);
     } else if (body != null) {
-      req.write(body);
+      final bytes = utf8.encode(body);
+      req.contentLength = bytes.length;
+      req.add(bytes);
     }
 
     final response = await req.close();

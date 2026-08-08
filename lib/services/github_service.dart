@@ -240,8 +240,19 @@ class GitHubService {
       'content': content,
       'branch': repo.branch,
     };
-    if (article.remoteSha != null && article.remoteSha!.isNotEmpty) {
-      body['sha'] = article.remoteSha;
+    var effectiveSha = article.remoteSha;
+    if (effectiveSha == null || effectiveSha.isEmpty) {
+      // 本地未记录 SHA 时先探测远程是否已存在同名文件，
+      // 已存在则必须带 sha 覆盖，否则 GitHub 返回 422 "sha wasn't supplied"
+      try {
+        final existing = await getRawFile(repo, path);
+        if (existing != null && existing['sha']?.isNotEmpty == true) {
+          effectiveSha = existing['sha'];
+        }
+      } catch (_) {/* 探测失败按新建处理 */}
+    }
+    if (effectiveSha != null && effectiveSha.isNotEmpty) {
+      body['sha'] = effectiveSha;
     }
     final url = '${repo.apiBase}/contents/${_encPath(path)}';
     final data = await _request('PUT', url, repo.token, body: body);
@@ -251,7 +262,7 @@ class GitHubService {
     }
     return article.copyWith(
       remotePath: path,
-      remoteSha: newSha ?? article.remoteSha,
+      remoteSha: newSha ?? effectiveSha,
       repoId: repo.id,
       isDraft: false,
       published: true,
