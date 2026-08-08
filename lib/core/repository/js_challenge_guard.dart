@@ -45,7 +45,7 @@ class JsChallengeGuard {
       ..init(false, ParametersWithIV(KeyParameter(key), iv));
 
     final out = Uint8List(ct.length);
-    cipher.processBytes(ct, 0, ct.length, out, 0);
+    cipher.processBlock(ct, 0, out, 0);
     return _bytesToHex(out);
   }
 
