@@ -63,7 +63,8 @@ class GitCommitItem {
       sha: j['sha']?.toString() ?? '',
       message: commit['message']?.toString() ?? '',
       author: author['name']?.toString() ?? '',
-      date: DateTime.tryParse(author['date']?.toString() ?? '') ?? DateTime.now(),
+      date:
+          DateTime.tryParse(author['date']?.toString() ?? '') ?? DateTime.now(),
       htmlUrl: j['html_url']?.toString() ?? '',
     );
   }
@@ -89,7 +90,8 @@ class GitHubService {
     String token, {
     Object? body,
   }) async {
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
     try {
       final req = await client.openUrl(method, Uri.parse(url));
       final headers = await _headers(token);
@@ -99,8 +101,11 @@ class GitHubService {
         req.headers.contentLength = bytes.length;
         req.add(bytes);
       }
-      final res = await req.close();
-      final text = await res.transform(utf8.decoder).join();
+      final res = await req.close().timeout(const Duration(seconds: 30));
+      final text = await res
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 30));
       if (res.statusCode >= 200 && res.statusCode < 300) {
         if (text.isEmpty) return null;
         return jsonDecode(text);
@@ -128,12 +133,14 @@ class GitHubService {
     try {
       final user = await getUser(token.trim());
       return user['login']?.toString().isNotEmpty == true;
-    } catch (e) { debugPrint('GitHub: listRepos failed: $e');
+    } catch (e) {
+      debugPrint('GitHub: listRepos failed: $e');
       return false;
     }
   }
 
-  Future<List<GitHubFileItem>> listPosts(RepoConfig repo, {String? path}) async {
+  Future<List<GitHubFileItem>> listPosts(RepoConfig repo,
+      {String? path}) async {
     final p = path ?? repo.postsPath;
     final url =
         '${repo.apiBase}/contents/${_encPath(p)}?ref=${Uri.encodeComponent(repo.branch)}';
@@ -146,16 +153,20 @@ class GitHubService {
           .toList();
       await Future.wait(items.map((item) async {
         try {
-          final curl = '${repo.apiBase}/commits?path=${_encPath(item.path)}&sha=${Uri.encodeComponent(repo.branch)}&per_page=1';
+          final curl =
+              '${repo.apiBase}/commits?path=${_encPath(item.path)}&sha=${Uri.encodeComponent(repo.branch)}&per_page=1';
           final cd = await _request('GET', curl, repo.token);
           if (cd is List && cd.isNotEmpty) {
             final cm = (cd[0] as Map)['commit'] as Map?;
             final au = cm?['author'] as Map?;
             if (au != null) {
-              item.lastModified = DateTime.tryParse(au['date']?.toString() ?? '');
+              item.lastModified =
+                  DateTime.tryParse(au['date']?.toString() ?? '');
             }
           }
-        } catch (e) { debugPrint('GitHub: get commit history failed: $e'); }
+        } catch (e) {
+          debugPrint('GitHub: get commit history failed: $e');
+        }
       }));
       items.sort((a, b) {
         final ad = a.lastModified;
@@ -170,7 +181,8 @@ class GitHubService {
 
   /// 列出仓库目录全部内容（含子目录与非 md 文件），供 AI 诊断仓库结构使用。
   /// 不做 commit 历史富化，仅按 目录在前、名称升序 排列。
-  Future<List<GitHubFileItem>> listDirContents(RepoConfig repo, {String? path}) async {
+  Future<List<GitHubFileItem>> listDirContents(RepoConfig repo,
+      {String? path}) async {
     final p = path?.replaceAll(RegExp(r'/+$'), '');
     final url =
         '${repo.apiBase}/contents/${_encPath(p ?? '')}?ref=${Uri.encodeComponent(repo.branch)}';
@@ -208,14 +220,16 @@ class GitHubService {
     );
   }
 
-  Future<Article> upsertArticle(RepoConfig repo, Article article, {String? commitMessage, List<TemplateItem>? templates}) async {
+  Future<Article> upsertArticle(RepoConfig repo, Article article,
+      {String? commitMessage, List<TemplateItem>? templates}) async {
     final isPage = article.articleType == ArticleType.page;
     final basePath = isPage
         ? repo.pagesPath.replaceAll(RegExp(r'/+$'), '')
         : repo.postsPath.replaceAll(RegExp(r'/+$'), '');
     final fileName = article.fileNameForRepo(repo);
     final path = article.remotePath ?? '$basePath/$fileName';
-    final md = article.toMarkdownWithFrontMatterForRepo(repo, templates: templates);
+    final md =
+        article.toMarkdownWithFrontMatterForRepo(repo, templates: templates);
     final content = base64Encode(utf8.encode(md));
     final message = commitMessage ??
         (article.remoteSha == null
@@ -273,7 +287,7 @@ class GitHubService {
         if (data != null) {
           result[file] = data['content'] ?? '';
         }
-      } catch (_) { /* 文件不存在，跳过 */ }
+      } catch (_) {/* 文件不存在，跳过 */}
     }
     // 读取 posts 目录下最近 2 篇文章的 FrontMatter
     try {
@@ -298,7 +312,8 @@ class GitHubService {
     return result;
   }
 
-  Future<void> deleteArticle(RepoConfig repo, Article article, {String? commitMessage}) async {
+  Future<void> deleteArticle(RepoConfig repo, Article article,
+      {String? commitMessage}) async {
     if (article.remotePath == null || article.remoteSha == null) {
       throw Exception('缺少远程路径或 SHA');
     }
@@ -313,22 +328,26 @@ class GitHubService {
 
   /// 获取仓库任意文件内容（文本），返回 {content, sha}
   Future<Map<String, String>?> getRawFile(RepoConfig repo, String path) async {
-    final url = '${repo.apiBase}/contents/${_encPath(path)}?ref=${Uri.encodeComponent(repo.branch)}';
+    final url =
+        '${repo.apiBase}/contents/${_encPath(path)}?ref=${Uri.encodeComponent(repo.branch)}';
     try {
       final data = await _request('GET', url, repo.token);
       if (data is! Map) return null;
-      final contentB64 = (data['content']?.toString() ?? '').replaceAll('\n', '');
+      final contentB64 =
+          (data['content']?.toString() ?? '').replaceAll('\n', '');
       if (contentB64.isEmpty) return null;
       final content = utf8.decode(base64Decode(contentB64));
       final sha = data['sha']?.toString();
       return {'content': content, 'sha': sha ?? ''};
-    } catch (e) { debugPrint('GitHub: getRawFile failed: $e');
+    } catch (e) {
+      debugPrint('GitHub: getRawFile failed: $e');
       return null;
     }
   }
 
   /// 写入仓库任意文件
-  Future<void> putRawFile(RepoConfig repo, String path, String content, {String? sha, String? commitMessage}) async {
+  Future<void> putRawFile(RepoConfig repo, String path, String content,
+      {String? sha, String? commitMessage}) async {
     final body = <String, dynamic>{
       'message': commitMessage ?? 'chore: update $path',
       'content': base64Encode(utf8.encode(content)),
@@ -342,7 +361,8 @@ class GitHubService {
   }
 
   /// 删除仓库任意文件
-  Future<void> deleteRawFile(RepoConfig repo, String path, String sha, {String? commitMessage}) async {
+  Future<void> deleteRawFile(RepoConfig repo, String path, String sha,
+      {String? commitMessage}) async {
     final body = <String, dynamic>{
       'message': commitMessage ?? 'chore: delete $path',
       'sha': sha,
@@ -352,7 +372,8 @@ class GitHubService {
     await _request('DELETE', url, repo.token, body: body);
   }
 
-  Future<List<GitCommitItem>> listCommits(RepoConfig repo, {int perPage = 30}) async {
+  Future<List<GitCommitItem>> listCommits(RepoConfig repo,
+      {int perPage = 30}) async {
     final url =
         '${repo.apiBase}/commits?sha=${Uri.encodeComponent(repo.branch)}&per_page=$perPage';
     final data = await _request('GET', url, repo.token);
@@ -387,7 +408,9 @@ class GitHubService {
         repo.token,
       );
       if (cur is Map) currentSha = cur['sha']?.toString();
-    } catch (e) { debugPrint('GitHub: rollback get SHA failed: $e'); }
+    } catch (e) {
+      debugPrint('GitHub: rollback get SHA failed: $e');
+    }
 
     final body = <String, dynamic>{
       'message': 'revert: restore $path to ${commitSha.substring(0, 7)}',
@@ -432,7 +455,9 @@ class GitHubService {
         token,
       );
       if (existing is Map) sha = existing['sha']?.toString();
-    } catch (e) { debugPrint('GitHub: uploadBinary get SHA failed: $e'); }
+    } catch (e) {
+      debugPrint('GitHub: uploadBinary get SHA failed: $e');
+    }
 
     final body = <String, dynamic>{
       'message': message,
@@ -493,8 +518,11 @@ class GitHubService {
     );
   }
 
-  String _encPath(String path) =>
-      path.split('/').where((e) => e.isNotEmpty).map(Uri.encodeComponent).join('/');
+  String _encPath(String path) => path
+      .split('/')
+      .where((e) => e.isNotEmpty)
+      .map(Uri.encodeComponent)
+      .join('/');
 
   /// 列出远程公开仓库目录内容，递归到指定深度/文件数上限
   Future<List<GitHubFileItem>> listRemoteDirContents({
@@ -511,7 +539,8 @@ class GitHubService {
 
     Future<void> recurse(String p) async {
       if (result.length >= maxFiles) return;
-      final url = '$baseUrl/contents/${_encPath(p)}?ref=${Uri.encodeComponent(branch)}';
+      final url =
+          '$baseUrl/contents/${_encPath(p)}?ref=${Uri.encodeComponent(branch)}';
       try {
         final data = await _request('GET', url, t);
         if (data is! List) return;
@@ -539,11 +568,13 @@ class GitHubService {
     String? token,
   }) async {
     final t = token ?? '';
-    final url = 'https://api.github.com/repos/$owner/$repo/contents/${_encPath(path)}?ref=${Uri.encodeComponent(branch)}';
+    final url =
+        'https://api.github.com/repos/$owner/$repo/contents/${_encPath(path)}?ref=${Uri.encodeComponent(branch)}';
     try {
       final data = await _request('GET', url, t);
       if (data is! Map) return null;
-      final contentB64 = (data['content']?.toString() ?? '').replaceAll('\n', '');
+      final contentB64 =
+          (data['content']?.toString() ?? '').replaceAll('\n', '');
       if (contentB64.isEmpty) return null;
       return utf8.decode(base64Decode(contentB64));
     } catch (_) {
@@ -612,4 +643,3 @@ class GitHubSearchHit {
         sha: sha,
       );
 }
-

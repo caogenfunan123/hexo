@@ -31,7 +31,8 @@ class BuiltinTools {
   static StorageService? storageService;
 
   /// 模板变更回调（供 update_template 持久化后刷新应用内模板列表）
-  static Future<void> Function(List<TemplateItem> templates)? onTemplatesChanged;
+  static Future<void> Function(List<TemplateItem> templates)?
+      onTemplatesChanged;
 
   /// 当前站点脱敏凭据（AI 可感知存在性，不含明文）
   static SiteCredentials? siteCredentials;
@@ -67,7 +68,8 @@ class BuiltinTools {
   static final ToolEntity webSearch = ToolEntity(
     id: 'web_search',
     name: '网页搜索',
-    description: '搜索互联网获取最新信息。当需要查找实时信息、最新文档、新闻事件时使用此工具。返回搜索结果列表（标题、URL、摘要）。',
+    description:
+        '搜索互联网获取最新信息。当需要查找实时信息、最新文档、新闻事件时使用此工具。系统会自动在 Bing、百度、DuckDuckGo、Startpage 之间轮换，无需指定引擎；若结果为空可换用更具体关键词或使用 web_fetch 抓取已知 URL。返回搜索结果列表（标题、URL）。',
     type: ToolType.builtin,
     builtinHandler: 'web_search',
     parameters: const [
@@ -261,7 +263,8 @@ class BuiltinTools {
   static final ToolEntity readAppConfig = ToolEntity(
     id: 'read_app_config',
     name: '读取应用设计配置',
-    description: '读取当前博客编辑器应用的 UI 设计配置，包括种子色、背景色、卡片色、圆角缩放、字号缩放、面板宽度、编辑器字号、视觉密度、毛玻璃效果等。用于了解当前界面状态后再做调整。',
+    description:
+        '读取当前博客编辑器应用的 UI 设计配置，包括种子色、背景色、卡片色、圆角缩放、字号缩放、面板宽度、编辑器字号、视觉密度、毛玻璃效果等。用于了解当前界面状态后再做调整。',
     type: ToolType.builtin,
     builtinHandler: 'read_app_config',
     parameters: const [],
@@ -273,26 +276,92 @@ class BuiltinTools {
   static final ToolEntity updateAppConfig = ToolEntity(
     id: 'update_app_config',
     name: '修改应用设计配置',
-    description: '修改博客编辑器应用的 UI 设计配置项，修改后界面实时更新。只传入需要修改的字段，未传字段保持原值。颜色值为 0xAARRGGBB 格式的整数。',
+    description:
+        '修改博客编辑器应用的 UI 设计配置项，修改后界面实时更新。只传入需要修改的字段，未传字段保持原值。颜色值为 0xAARRGGBB 格式的整数。',
     type: ToolType.builtin,
     builtinHandler: 'update_app_config',
     parameters: const [
-      ToolParam(name: 'seedColor', type: 'number', description: '种子色(0xAARRGGBB)，如 0xFF0EA5E9=天蓝, 0xFF8B5CF6=紫, 0xFF10B981=绿, 0xFFF59E0B=橙, 0xFFEF4444=红, 0xFFEC4899=粉', required: false),
-      ToolParam(name: 'lightBgColor', type: 'number', description: '浅色模式背景色', required: false),
-      ToolParam(name: 'lightCardColor', type: 'number', description: '浅色模式卡片色', required: false),
-      ToolParam(name: 'lightTextColor', type: 'number', description: '浅色模式文字色', required: false),
-      ToolParam(name: 'darkBgColor', type: 'number', description: '深色模式背景色', required: false),
-      ToolParam(name: 'darkCardColor', type: 'number', description: '深色模式卡片色', required: false),
-      ToolParam(name: 'borderRadiusScale', type: 'number', description: '圆角缩放(0.0~2.0)，1.0=默认', required: false),
-      ToolParam(name: 'paddingScale', type: 'number', description: '内边距缩放(0.5~2.0)，1.0=默认', required: false),
-      ToolParam(name: 'fontScale', type: 'number', description: '字号缩放(0.8~1.3)，1.0=默认', required: false),
-      ToolParam(name: 'leftPanelWidth', type: 'number', description: '左面板宽度(200~400px)', required: false),
-      ToolParam(name: 'editorFontSize', type: 'number', description: '编辑器字号(12~20px)', required: false),
-      ToolParam(name: 'editorLineHeight', type: 'number', description: '编辑器行高(1.2~2.0)', required: false),
-      ToolParam(name: 'density', type: 'number', description: '视觉密度: 0=紧凑, 1=标准, 2=舒适', required: false),
-      ToolParam(name: 'enableBlur', type: 'boolean', description: '是否启用毛玻璃效果', required: false),
-      ToolParam(name: 'editorTheme', type: 'string', description: '编辑器代码主题: auto/dark/light/dracula/monokai', required: false),
-      ToolParam(name: 'reset', type: 'boolean', description: '是否重置为默认配置', required: false),
+      ToolParam(
+          name: 'seedColor',
+          type: 'number',
+          description:
+              '种子色(0xAARRGGBB)，如 0xFF0EA5E9=天蓝, 0xFF8B5CF6=紫, 0xFF10B981=绿, 0xFFF59E0B=橙, 0xFFEF4444=红, 0xFFEC4899=粉',
+          required: false),
+      ToolParam(
+          name: 'lightBgColor',
+          type: 'number',
+          description: '浅色模式背景色',
+          required: false),
+      ToolParam(
+          name: 'lightCardColor',
+          type: 'number',
+          description: '浅色模式卡片色',
+          required: false),
+      ToolParam(
+          name: 'lightTextColor',
+          type: 'number',
+          description: '浅色模式文字色',
+          required: false),
+      ToolParam(
+          name: 'darkBgColor',
+          type: 'number',
+          description: '深色模式背景色',
+          required: false),
+      ToolParam(
+          name: 'darkCardColor',
+          type: 'number',
+          description: '深色模式卡片色',
+          required: false),
+      ToolParam(
+          name: 'borderRadiusScale',
+          type: 'number',
+          description: '圆角缩放(0.0~2.0)，1.0=默认',
+          required: false),
+      ToolParam(
+          name: 'paddingScale',
+          type: 'number',
+          description: '内边距缩放(0.5~2.0)，1.0=默认',
+          required: false),
+      ToolParam(
+          name: 'fontScale',
+          type: 'number',
+          description: '字号缩放(0.8~1.3)，1.0=默认',
+          required: false),
+      ToolParam(
+          name: 'leftPanelWidth',
+          type: 'number',
+          description: '左面板宽度(200~400px)',
+          required: false),
+      ToolParam(
+          name: 'editorFontSize',
+          type: 'number',
+          description: '编辑器字号(12~20px)',
+          required: false),
+      ToolParam(
+          name: 'editorLineHeight',
+          type: 'number',
+          description: '编辑器行高(1.2~2.0)',
+          required: false),
+      ToolParam(
+          name: 'density',
+          type: 'number',
+          description: '视觉密度: 0=紧凑, 1=标准, 2=舒适',
+          required: false),
+      ToolParam(
+          name: 'enableBlur',
+          type: 'boolean',
+          description: '是否启用毛玻璃效果',
+          required: false),
+      ToolParam(
+          name: 'editorTheme',
+          type: 'string',
+          description: '编辑器代码主题: auto/dark/light/dracula/monokai',
+          required: false),
+      ToolParam(
+          name: 'reset',
+          type: 'boolean',
+          description: '是否重置为默认配置',
+          required: false),
     ],
     createdAt: DateTime(2026, 1, 1),
     updatedAt: DateTime(2026, 1, 1),
@@ -302,14 +371,29 @@ class BuiltinTools {
   static final ToolEntity createSkill = ToolEntity(
     id: 'create_skill',
     name: '创建技能',
-    description: '创建一个新的自定义技能（Skill）。技能是一段可复用的 System Prompt，AI 在调用时会把技能内容注入上下文。技能可以有参数，AI 调用时传入参数值。',
+    description:
+        '创建一个新的自定义技能（Skill）。技能是一段可复用的 System Prompt，AI 在调用时会把技能内容注入上下文。技能可以有参数，AI 调用时传入参数值。',
     type: ToolType.builtin,
     builtinHandler: 'create_skill',
     parameters: const [
-      ToolParam(name: 'name', type: 'string', description: '技能名称', required: true),
-      ToolParam(name: 'description', type: 'string', description: '技能功能描述', required: true),
-      ToolParam(name: 'content', type: 'string', description: '技能内容（System Prompt），定义技能的完整行为指令', required: true),
-      ToolParam(name: 'parameters_json', type: 'string', description: '参数定义 JSON 数组，如 [{"name":"topic","type":"string","description":"主题","required":true}]', required: false),
+      ToolParam(
+          name: 'name', type: 'string', description: '技能名称', required: true),
+      ToolParam(
+          name: 'description',
+          type: 'string',
+          description: '技能功能描述',
+          required: true),
+      ToolParam(
+          name: 'content',
+          type: 'string',
+          description: '技能内容（System Prompt），定义技能的完整行为指令',
+          required: true),
+      ToolParam(
+          name: 'parameters_json',
+          type: 'string',
+          description:
+              '参数定义 JSON 数组，如 [{"name":"topic","type":"string","description":"主题","required":true}]',
+          required: false),
     ],
     createdAt: DateTime(2026, 1, 1),
     updatedAt: DateTime(2026, 1, 1),
@@ -323,12 +407,33 @@ class BuiltinTools {
     type: ToolType.builtin,
     builtinHandler: 'update_skill',
     parameters: const [
-      ToolParam(name: 'skill_id', type: 'string', description: '要更新的技能 ID', required: true),
-      ToolParam(name: 'name', type: 'string', description: '新名称', required: false),
-      ToolParam(name: 'description', type: 'string', description: '新描述', required: false),
-      ToolParam(name: 'content', type: 'string', description: '新技能内容', required: false),
-      ToolParam(name: 'parameters_json', type: 'string', description: '新参数定义 JSON 数组', required: false),
-      ToolParam(name: 'enabled', type: 'boolean', description: '是否启用', required: false),
+      ToolParam(
+          name: 'skill_id',
+          type: 'string',
+          description: '要更新的技能 ID',
+          required: true),
+      ToolParam(
+          name: 'name', type: 'string', description: '新名称', required: false),
+      ToolParam(
+          name: 'description',
+          type: 'string',
+          description: '新描述',
+          required: false),
+      ToolParam(
+          name: 'content',
+          type: 'string',
+          description: '新技能内容',
+          required: false),
+      ToolParam(
+          name: 'parameters_json',
+          type: 'string',
+          description: '新参数定义 JSON 数组',
+          required: false),
+      ToolParam(
+          name: 'enabled',
+          type: 'boolean',
+          description: '是否启用',
+          required: false),
     ],
     createdAt: DateTime(2026, 1, 1),
     updatedAt: DateTime(2026, 1, 1),
@@ -342,7 +447,11 @@ class BuiltinTools {
     type: ToolType.builtin,
     builtinHandler: 'delete_skill',
     parameters: const [
-      ToolParam(name: 'skill_id', type: 'string', description: '要删除的技能 ID', required: true),
+      ToolParam(
+          name: 'skill_id',
+          type: 'string',
+          description: '要删除的技能 ID',
+          required: true),
     ],
     createdAt: DateTime(2026, 1, 1),
     updatedAt: DateTime(2026, 1, 1),
@@ -364,7 +473,8 @@ class BuiltinTools {
   static final ToolEntity listTemplates = ToolEntity(
     id: 'list_templates',
     name: '列出文章模板',
-    description: '列出博客编辑器应用内已保存的全部文章/页面 FrontMatter 模板（含内置与自定义），包含模板 ID、名称、所属框架、类型。用于诊断发布文章不显示时的模板与博客框架匹配问题。',
+    description:
+        '列出博客编辑器应用内已保存的全部文章/页面 FrontMatter 模板（含内置与自定义），包含模板 ID、名称、所属框架、类型。用于诊断发布文章不显示时的模板与博客框架匹配问题。',
     type: ToolType.builtin,
     builtinHandler: 'list_templates',
     parameters: const [],
@@ -380,7 +490,11 @@ class BuiltinTools {
     type: ToolType.builtin,
     builtinHandler: 'read_template',
     parameters: const [
-      ToolParam(name: 'template_id', type: 'string', description: '模板 ID，可通过 list_templates 获取', required: true),
+      ToolParam(
+          name: 'template_id',
+          type: 'string',
+          description: '模板 ID，可通过 list_templates 获取',
+          required: true),
     ],
     createdAt: DateTime(2026, 1, 1),
     updatedAt: DateTime(2026, 1, 1),
@@ -390,15 +504,37 @@ class BuiltinTools {
   static final ToolEntity updateTemplate = ToolEntity(
     id: 'update_template',
     name: '修改/新建文章模板',
-    description: '新建或修改应用内的文章/页面 FrontMatter 模板。用于把模板字段调整为符合仓库博客框架的规范，修复文章发布后不显示的问题。修改后立即持久化，在编辑器模板下拉框中生效。',
+    description:
+        '新建或修改应用内的文章/页面 FrontMatter 模板。用于把模板字段调整为符合仓库博客框架的规范，修复文章发布后不显示的问题。修改后立即持久化，在编辑器模板下拉框中生效。',
     type: ToolType.builtin,
     builtinHandler: 'update_template',
     parameters: const [
-      ToolParam(name: 'template_id', type: 'string', description: '模板 ID；新建时自定义（如 fix_hugo_post，不要用 builtin_ 前缀）', required: true),
-      ToolParam(name: 'name', type: 'string', description: '模板显示名称', required: false),
-      ToolParam(name: 'front_matter', type: 'string', description: '完整 FrontMatter 模板（含 --- 围栏）。可使用的占位符：{{title}} {{date}} {{date_short}} {{tags}} {{categories}} {{slug}} {{draft}} {{cover}} {{year}} {{month}} {{day}}', required: true),
-      ToolParam(name: 'framework_id', type: 'string', description: '适配的博客框架 ID：hexo/hugo/jekyll/pelican/astro/vuepress/nextjs/gatsby/eleventy/custom。custom 表示通用模板', required: false, defaultValue: 'custom'),
-      ToolParam(name: 'is_post', type: 'boolean', description: 'true=博文模板，false=页面模板', required: false, defaultValue: 'true'),
+      ToolParam(
+          name: 'template_id',
+          type: 'string',
+          description: '模板 ID；新建时自定义（如 fix_hugo_post，不要用 builtin_ 前缀）',
+          required: true),
+      ToolParam(
+          name: 'name', type: 'string', description: '模板显示名称', required: false),
+      ToolParam(
+          name: 'front_matter',
+          type: 'string',
+          description:
+              '完整 FrontMatter 模板（含 --- 围栏）。可使用的占位符：{{title}} {{date}} {{date_short}} {{tags}} {{categories}} {{slug}} {{draft}} {{cover}} {{year}} {{month}} {{day}}',
+          required: true),
+      ToolParam(
+          name: 'framework_id',
+          type: 'string',
+          description:
+              '适配的博客框架 ID：hexo/hugo/jekyll/pelican/astro/vuepress/nextjs/gatsby/eleventy/custom。custom 表示通用模板',
+          required: false,
+          defaultValue: 'custom'),
+      ToolParam(
+          name: 'is_post',
+          type: 'boolean',
+          description: 'true=博文模板，false=页面模板',
+          required: false,
+          defaultValue: 'true'),
     ],
     createdAt: DateTime(2026, 1, 1),
     updatedAt: DateTime(2026, 1, 1),
@@ -408,12 +544,23 @@ class BuiltinTools {
   static final ToolEntity listPosts = ToolEntity(
     id: 'list_posts',
     name: '列出仓库文章',
-    description: '列出仓库文章目录下的 .md 文章文件及其 FrontMatter 片段，用于对比"已正常显示"与"不显示"的文章，诊断模板/框架适配问题。',
+    description:
+        '列出仓库文章目录下的 .md 文章文件及其 FrontMatter 片段，用于对比"已正常显示"与"不显示"的文章，诊断模板/框架适配问题。',
     type: ToolType.builtin,
     builtinHandler: 'list_posts',
     parameters: const [
-      ToolParam(name: 'path', type: 'string', description: '文章目录路径，默认使用仓库配置的文章目录', required: false, defaultValue: ''),
-      ToolParam(name: 'limit', type: 'string', description: '最多列出几篇（同时输出每篇 FrontMatter 前若干行），默认 10', required: false, defaultValue: '10'),
+      ToolParam(
+          name: 'path',
+          type: 'string',
+          description: '文章目录路径，默认使用仓库配置的文章目录',
+          required: false,
+          defaultValue: ''),
+      ToolParam(
+          name: 'limit',
+          type: 'string',
+          description: '最多列出几篇（同时输出每篇 FrontMatter 前若干行），默认 10',
+          required: false,
+          defaultValue: '10'),
     ],
     createdAt: DateTime(2026, 1, 1),
     updatedAt: DateTime(2026, 1, 1),
@@ -423,7 +570,8 @@ class BuiltinTools {
   static final ToolEntity gitClone = ToolEntity(
     id: 'git_clone',
     name: '克隆远程仓库文档',
-    description: '从公开 GitHub 仓库拉取指定目录下的文件内容到当前仓库目标位置。用于复制主题、模板、示例代码等。限制最多 200 个文件。',
+    description:
+        '从公开 GitHub 仓库拉取指定目录下的文件内容到当前仓库目标位置。用于复制主题、模板、示例代码等。限制最多 200 个文件。',
     type: ToolType.builtin,
     builtinHandler: 'git_clone',
     parameters: const [
@@ -571,10 +719,15 @@ class BuiltinTools {
     }
   }
 
-  /// 执行 Web 搜索（使用 DuckDuckGo Instant Answer API）
+  /// 执行 Web 搜索：按固定顺序尝试多个免费搜索引擎，失败则自动轮换
+  ///
+  /// 引擎顺序：Bing HTML → DuckDuckGo Instant Answer → Baidu HTML → Startpage HTML。
+  /// Bing 对中文与英文覆盖均衡、无需 JS，作为首选；Baidu 常触发安全验证（返回验证码页）
+  /// 且网络可达性要求更高，故排在较后；每个引擎仅当确实拿到结果时才返回，否则继续轮换。
   static Future<ToolCallResult> _executeWebSearch(ToolCallRequest req) async {
     final query = req.arguments['query']?.toString() ?? '';
-    final resultCount = (req.arguments['num'] as num?)?.toInt() ?? 5;
+    final resultCount =
+        (req.arguments['num'] as num?)?.toInt().clamp(1, 10) ?? 5;
 
     if (query.isEmpty) {
       return ToolCallResult(
@@ -585,79 +738,335 @@ class BuiltinTools {
       );
     }
 
+    final errors = <String>[];
+
+    // 1) Bing HTML（覆盖均衡，中文英文均可）
+    final bing = await _searchBingHtml(query, resultCount);
+    if (bing.$1.isNotEmpty) {
+      return ToolCallResult(
+        toolId: 'web_search',
+        content: bing.$1,
+        success: true,
+      );
+    }
+    errors.add('Bing: ${bing.$2}');
+
+    // 2) DuckDuckGo（先 Instant Answer，再 Result HTML 页）
+    final ddg = await _searchDuckDuckGo(query, resultCount);
+    if (ddg.$1.isNotEmpty) {
+      return ToolCallResult(
+        toolId: 'web_search',
+        content: ddg.$1,
+        success: true,
+      );
+    }
+    errors.add('DuckDuckGo: ${ddg.$2}');
+
+    final ddgHtml = await _searchDuckDuckGoHtml(query, resultCount);
+    if (ddgHtml.$1.isNotEmpty) {
+      return ToolCallResult(
+        toolId: 'web_search',
+        content: ddgHtml.$1,
+        success: true,
+      );
+    }
+    errors.add('DuckDuckGo(html): ${ddgHtml.$2}');
+
+    // 3) Baidu HTML（中文搜索；常返回安全验证页视作无结果）
+    final baidu = await _searchBaiduHtml(query, resultCount);
+    if (baidu.$1.isNotEmpty) {
+      return ToolCallResult(
+        toolId: 'web_search',
+        content: baidu.$1,
+        success: true,
+      );
+    }
+    errors.add('百度: ${baidu.$2}');
+
+    // 4) Startpage
+    final startpage = await _searchStartpageHtml(query, resultCount);
+    if (startpage.$1.isNotEmpty) {
+      return ToolCallResult(
+        toolId: 'web_search',
+        content: startpage.$1,
+        success: true,
+      );
+    }
+    errors.add('Startpage: ${startpage.$2}');
+
+    return ToolCallResult(
+      toolId: 'web_search',
+      content: '',
+      success: false,
+      error: '多个搜索引擎均未返回结果: ${errors.join('; ')}',
+    );
+  }
+
+  /// DuckDuckGo Instant Answer API（免费，无需 API Key，仅精确匹配时才有摘要）
+  static Future<(String, String)> _searchDuckDuckGo(
+      String query, int resultCount) async {
     try {
-      final client = HttpClient();
-      try {
-        // DuckDuckGo Instant Answer API (免费，无需 API Key)
-        final encodedQuery = Uri.encodeQueryComponent(query);
-        final uri = Uri.parse(
-          'https://api.duckduckgo.com/?q=$encodedQuery&format=json&no_html=1&skip_disambig=1',
-        );
-        final request = await client.getUrl(uri);
-        request.headers.set('User-Agent', 'HexoBlogManager/1.0');
-        final response = await request.close();
-        final text = await response.transform(utf8.decoder).join();
-        final data = jsonDecode(text) as Map<String, dynamic>;
+      final encodedQuery = Uri.encodeQueryComponent(query);
+      final uri = Uri.parse(
+        'https://api.duckduckgo.com/?q=$encodedQuery&format=json&no_html=1&skip_disambig=1',
+      );
+      final text = await _httpGet(uri,
+          accept: 'application/json', userAgent: 'HexoBlogManager/1.0');
+      final data = jsonDecode(text) as Map<String, dynamic>;
 
-        final buf = StringBuffer();
-        buf.writeln('=== 搜索结果: $query ===\n');
+      final buf = StringBuffer();
+      buf.writeln('=== 搜索结果: $query ===\n');
 
-        // Abstract
-        final abstract = data['AbstractText']?.toString();
-        if (abstract != null && abstract.isNotEmpty) {
-          buf.writeln('📌 摘要: $abstract');
-          final abstractUrl = data['AbstractURL']?.toString();
-          if (abstractUrl != null && abstractUrl.isNotEmpty) {
-            buf.writeln('   来源: $abstractUrl');
-          }
-          buf.writeln();
+      final abstract = data['AbstractText']?.toString();
+      final abstractUrl = data['AbstractURL']?.toString();
+      if (abstract != null && abstract.isNotEmpty) {
+        buf.writeln('📌 摘要: $abstract');
+        if (abstractUrl != null && abstractUrl.isNotEmpty) {
+          buf.writeln('   来源: $abstractUrl');
         }
+        buf.writeln();
+      }
 
-        // Related Topics
-        final relatedTopics = data['RelatedTopics'] as List?;
-        if (relatedTopics != null && relatedTopics.isNotEmpty) {
-          buf.writeln('🔗 相关结果:');
-          var count = 0;
-          for (final topic in relatedTopics) {
-            if (count >= resultCount) break;
-            if (topic is Map) {
-              final text = topic['Text']?.toString() ?? '';
-              final url = topic['FirstURL']?.toString() ?? '';
-              if (text.isNotEmpty) {
-                count++;
-                buf.writeln('$count. $text');
-                if (url.isNotEmpty) buf.writeln('   $url');
-                buf.writeln();
-              }
+      final relatedTopics = data['RelatedTopics'] as List?;
+      var count = 0;
+      if (relatedTopics != null) {
+        for (final topic in relatedTopics) {
+          if (count >= resultCount) break;
+          if (topic is Map) {
+            final t = topic['Text']?.toString() ?? '';
+            final u = topic['FirstURL']?.toString() ?? '';
+            if (t.isNotEmpty) {
+              count++;
+              buf.writeln('$count. $t');
+              if (u.isNotEmpty) buf.writeln('   $u');
+              buf.writeln();
             }
           }
         }
-
-        // 如果 DuckDuckGo 无结果，返回提示
-        if (buf.toString().trim().isEmpty || (abstract == null && (relatedTopics == null || relatedTopics.isEmpty))) {
-          buf.writeln('DuckDuckGo 未返回相关结果。');
-          buf.writeln('建议：');
-          buf.writeln('1. 尝试更具体的关键词');
-          buf.writeln('2. 使用英文关键词可能获得更好结果');
-          buf.writeln('3. 直接使用 web_fetch 工具抓取已知 URL');
-        }
-
-        return ToolCallResult(
-          toolId: 'web_search',
-          content: buf.toString(),
-          success: true,
-        );
-      } finally {
-        client.close(force: true);
       }
+
+      if (buf.toString().trim().isEmpty || (abstract == null && count == 0)) {
+        return ('', '无相关结果');
+      }
+      return (buf.toString(), '');
     } catch (e) {
-      return ToolCallResult(
-        toolId: 'web_search',
-        content: '',
-        success: false,
-        error: '搜索失败: $e',
-      );
+      return ('', '$e');
     }
+  }
+
+  /// DuckDuckGo 搜索结果页（HTML，兼容 Instant Answer 无结果的情况）
+  static Future<(String, String)> _searchDuckDuckGoHtml(
+      String query, int resultCount) async {
+    try {
+      final encodedQuery = Uri.encodeQueryComponent(query);
+      final uri = Uri.parse(
+          'https://html.duckduckgo.com/html/?q=$encodedQuery&kl=cn-zh');
+      final text = await _httpGet(uri,
+          userAgent:
+              'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36');
+      final buf = StringBuffer();
+      buf.writeln('=== DuckDuckGo 搜索结果: $query ===\n');
+
+      final linkRe = RegExp(
+          r"""href="([^"]*uddg=[^"]*|[^"]*)"[^>]*class="result__a"[^>]*>([\s\S]*?)</a>""",
+          caseSensitive: false);
+      final snippetRe = RegExp(r'class="result__snippet"[\s\S]*?>(.*?)</',
+          caseSensitive: false);
+
+      final links = linkRe
+          .allMatches(text)
+          .map((m) => (m.group(1) ?? '', m.group(2) ?? ''))
+          .toList();
+      final snippets =
+          snippetRe.allMatches(text).map((m) => m.group(1) ?? '').toList();
+
+      final seen = <String>{};
+      var count = 0;
+      for (var i = 0; i < links.length && count < resultCount; i++) {
+        final href = links[i].$1;
+        final title = _stripTags(links[i].$2).trim();
+        if (title.isEmpty) continue;
+
+        var display = href;
+        if (display.contains('uddg=')) {
+          final u = Uri.tryParse(display);
+          if (u != null) {
+            final target = u.queryParameters['uddg'];
+            if (target != null) display = target;
+          }
+        } else if (!display.startsWith('http')) {
+          continue;
+        }
+        if (seen.contains(display)) continue;
+        seen.add(display);
+
+        count++;
+        buf.writeln('$count. $title');
+        buf.writeln('   $display');
+        if (i < snippets.length) {
+          final s = _stripTags(snippets[i]).trim();
+          if (s.isNotEmpty) buf.writeln('   $s');
+        }
+        buf.writeln();
+      }
+
+      if (count == 0) return ('', '无结果或页面结构变化');
+      return (buf.toString(), '');
+    } catch (e) {
+      return ('', '$e');
+    }
+  }
+
+  /// Bing 搜索结果页（HTML）
+  static Future<(String, String)> _searchBingHtml(
+      String query, int resultCount) async {
+    try {
+      final encodedQuery = Uri.encodeQueryComponent(query);
+      final uri = Uri.parse(
+          'https://www.bing.com/search?q=$encodedQuery&count=$resultCount');
+      final text = await _httpGet(uri,
+          userAgent:
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36');
+      return (_parseSearchResultHtml(text, 'Bing', query, resultCount), '');
+    } catch (e) {
+      return ('', '$e');
+    }
+  }
+
+  /// Baidu 搜索结果页（HTML）
+  static Future<(String, String)> _searchBaiduHtml(
+      String query, int resultCount) async {
+    try {
+      final encodedQuery = Uri.encodeQueryComponent(query);
+      final uri =
+          Uri.parse('https://www.baidu.com/s?wd=$encodedQuery&rn=$resultCount');
+      final text = await _httpGet(uri,
+          userAgent:
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+          accept: 'text/html',
+          referer: 'https://www.baidu.com/');
+      return (_parseSearchResultHtml(text, '百度', query, resultCount), '');
+    } catch (e) {
+      return ('', '$e');
+    }
+  }
+
+  /// Startpage（Google 结果代理，HTML）
+  static Future<(String, String)> _searchStartpageHtml(
+      String query, int resultCount) async {
+    try {
+      final encodedQuery = Uri.encodeQueryComponent(query);
+      final uri = Uri.parse(
+          'https://www.startpage.com/sp/search?query=$encodedQuery&num=$resultCount');
+      final text = await _httpGet(uri,
+          userAgent:
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+          acceptWithLanguage: 'zh-CN,zh;q=0.9,en;q=0.8');
+      return (
+        _parseSearchResultHtml(text, 'Startpage', query, resultCount),
+        ''
+      );
+    } catch (e) {
+      return ('', '$e');
+    }
+  }
+
+  /// 通用 GET 请求，返回响应体字符串
+  static Future<String> _httpGet(
+    Uri uri, {
+    String? accept,
+    String userAgent = 'Mozilla/5.0 (compatible; HexoBlogManager/1.0)',
+    String? referer,
+    String? acceptWithLanguage,
+  }) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
+    try {
+      final request = await client.getUrl(uri);
+      request.headers.set('User-Agent', userAgent);
+      if (accept != null) request.headers.set('Accept', accept);
+      if (referer != null) request.headers.set('Referer', referer);
+      if (acceptWithLanguage != null) {
+        request.headers.set('Accept-Language', acceptWithLanguage);
+      }
+      final response =
+          await request.close().timeout(const Duration(seconds: 30));
+      final text = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 30));
+      if (response.statusCode < 200 || response.statusCode >= 400) {
+        throw Exception('HTTP ${response.statusCode}');
+      }
+      return text;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// 解析通用搜索结果页 HTML（Bing / Baidu / Startpage 均把结果放在 <a> 内）
+  static String _parseSearchResultHtml(
+      String html, String engine, String query, int resultCount) {
+    final buf = StringBuffer();
+    buf.writeln('=== $engine 搜索结果: $query ===\n');
+
+    // 提取所有 <a href="...">...</a>，并过滤导航/功能性链接
+    final linkRe = RegExp(
+        r"""<a[^>]*?\bhref=["']?([^"' >]+)["']?[^>]*>([\s\S]*?)</a>""",
+        caseSensitive: false);
+    final normalized = html.replaceAll('\n', ' ');
+    final links = linkRe.allMatches(normalized);
+
+    var count = 0;
+    final seen = <String>{};
+    for (final m in links) {
+      if (count >= resultCount) break;
+      var href = m.group(1) ?? '';
+      final title = _stripTags(m.group(2) ?? '').trim();
+
+      if (title.isEmpty) continue;
+      if (engine == 'Bing' && title.contains('转到主要内容和快捷键')) continue;
+      if (engine == 'Baidu' && href.contains('baidu.com')) continue;
+      if (!href.startsWith('http')) continue;
+
+      // 去掉跟踪跳转参数，保留真实地址
+      var display = href;
+      final redir = RegExp(r'^(?:https?://[^/]+/redirect\?[^ ]*url=)');
+      final bingJump = RegExp(r'^(https?://(?:www\.)?bing\.com/ck/a\?)');
+      if (redir.hasMatch(display)) {
+        display = display.replaceFirst(redir, '');
+        display = Uri.decodeFull(display.split('&').first);
+      } else if (bingJump.hasMatch(display)) {
+        final u = Uri.tryParse(display);
+        if (u != null) display = u.queryParameters['u'] ?? display;
+      }
+
+      final key = '$title|$display';
+      if (seen.contains(key)) continue;
+      seen.add(key);
+
+      count++;
+      buf.writeln('$count. $title');
+      buf.writeln('   $display');
+      buf.writeln();
+    }
+
+    if (buf.toString().trim().isEmpty) {
+      buf.writeln('$engine 未解析到有效结果。');
+    }
+    return buf.toString();
+  }
+
+  /// 去除 HTML 标签与常见实体，用于标题清洗
+  static String _stripTags(String html) {
+    var s = html.replaceAll(RegExp(r'<[^>]+>'), ' ');
+    s = s.replaceAll('&amp;', '&');
+    s = s.replaceAll('&lt;', '<');
+    s = s.replaceAll('&gt;', '>');
+    s = s.replaceAll('&quot;', '"');
+    s = s.replaceAll('&#39;', "'");
+    s = s.replaceAll('&nbsp;', ' ');
+    return s.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   /// 执行 Web 抓取
@@ -676,7 +1085,9 @@ class BuiltinTools {
 
     // 验证 URL 格式
     final uri = Uri.tryParse(url);
-    if (uri == null || !uri.hasScheme || (!uri.isScheme('http') && !uri.isScheme('https'))) {
+    if (uri == null ||
+        !uri.hasScheme ||
+        (!uri.isScheme('http') && !uri.isScheme('https'))) {
       return ToolCallResult(
         toolId: 'web_fetch',
         content: '',
@@ -686,13 +1097,16 @@ class BuiltinTools {
     }
 
     try {
-      final client = HttpClient();
+      final client = HttpClient()
+        ..connectionTimeout = const Duration(seconds: 15);
       try {
         final request = await client.getUrl(uri);
-        request.headers.set('User-Agent',
-            'Mozilla/5.0 (compatible; HexoBlogManager/1.0)');
-        request.headers.set('Accept', 'text/html,application/xhtml+xml,text/plain');
-        final response = await request.close();
+        request.headers
+            .set('User-Agent', 'Mozilla/5.0 (compatible; HexoBlogManager/1.0)');
+        request.headers
+            .set('Accept', 'text/html,application/xhtml+xml,text/plain');
+        final response =
+            await request.close().timeout(const Duration(seconds: 30));
 
         if (response.statusCode < 200 || response.statusCode >= 400) {
           return ToolCallResult(
@@ -703,7 +1117,10 @@ class BuiltinTools {
           );
         }
 
-        final raw = await response.transform(utf8.decoder).join();
+        final raw = await response
+            .transform(utf8.decoder)
+            .join()
+            .timeout(const Duration(seconds: 30));
 
         // 简单清洗 HTML
         final cleaned = _cleanHtml(raw, extractMode);
@@ -737,25 +1154,46 @@ class BuiltinTools {
     var text = html;
 
     // 移除 script 和 style 标签
-    text = text.replaceAll(RegExp(r'<script[^>]*>[\s\S]*?</script>', caseSensitive: false), '');
-    text = text.replaceAll(RegExp(r'<style[^>]*>[\s\S]*?</style>', caseSensitive: false), '');
-    text = text.replaceAll(RegExp(r'<noscript[^>]*>[\s\S]*?</noscript>', caseSensitive: false), '');
+    text = text.replaceAll(
+        RegExp(r'<script[^>]*>[\s\S]*?</script>', caseSensitive: false), '');
+    text = text.replaceAll(
+        RegExp(r'<style[^>]*>[\s\S]*?</style>', caseSensitive: false), '');
+    text = text.replaceAll(
+        RegExp(r'<noscript[^>]*>[\s\S]*?</noscript>', caseSensitive: false),
+        '');
 
     // 移除 HTML 注释
     text = text.replaceAll(RegExp(r'<!--[\s\S]*?-->'), '');
 
     if (mode == 'markdown') {
       // 保留部分格式
-      text = text.replaceAll(RegExp(r'<h1[^>]*>([\s\S]*?)</h1>', caseSensitive: false), '# \$1\n');
-      text = text.replaceAll(RegExp(r'<h2[^>]*>([\s\S]*?)</h2>', caseSensitive: false), '## \$1\n');
-      text = text.replaceAll(RegExp(r'<h3[^>]*>([\s\S]*?)</h3>', caseSensitive: false), '### \$1\n');
-      text = text.replaceAll(RegExp(r'<strong[^>]*>([\s\S]*?)</strong>', caseSensitive: false), '**\$1**');
-      text = text.replaceAll(RegExp(r'<b[^>]*>([\s\S]*?)</b>', caseSensitive: false), '**\$1**');
-      text = text.replaceAll(RegExp(r'<em[^>]*>([\s\S]*?)</em>', caseSensitive: false), '*\$1*');
-      text = text.replaceAll(RegExp(r'<code[^>]*>([\s\S]*?)</code>', caseSensitive: false), '`\$1`');
-      text = text.replaceAll(RegExp(r'<pre[^>]*>([\s\S]*?)</pre>', caseSensitive: false), '\n```\n\$1\n```\n');
-      text = text.replaceAll(RegExp(r'<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)</a>', caseSensitive: false), '[\$2](\$1)');
-      text = text.replaceAll(RegExp(r'<li[^>]*>([\s\S]*?)</li>', caseSensitive: false), '- \$1\n');
+      text = text.replaceAll(
+          RegExp(r'<h1[^>]*>([\s\S]*?)</h1>', caseSensitive: false), '# \$1\n');
+      text = text.replaceAll(
+          RegExp(r'<h2[^>]*>([\s\S]*?)</h2>', caseSensitive: false),
+          '## \$1\n');
+      text = text.replaceAll(
+          RegExp(r'<h3[^>]*>([\s\S]*?)</h3>', caseSensitive: false),
+          '### \$1\n');
+      text = text.replaceAll(
+          RegExp(r'<strong[^>]*>([\s\S]*?)</strong>', caseSensitive: false),
+          '**\$1**');
+      text = text.replaceAll(
+          RegExp(r'<b[^>]*>([\s\S]*?)</b>', caseSensitive: false), '**\$1**');
+      text = text.replaceAll(
+          RegExp(r'<em[^>]*>([\s\S]*?)</em>', caseSensitive: false), '*\$1*');
+      text = text.replaceAll(
+          RegExp(r'<code[^>]*>([\s\S]*?)</code>', caseSensitive: false),
+          '`\$1`');
+      text = text.replaceAll(
+          RegExp(r'<pre[^>]*>([\s\S]*?)</pre>', caseSensitive: false),
+          '\n```\n\$1\n```\n');
+      text = text.replaceAll(
+          RegExp(r'<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)</a>',
+              caseSensitive: false),
+          '[\$2](\$1)');
+      text = text.replaceAll(
+          RegExp(r'<li[^>]*>([\s\S]*?)</li>', caseSensitive: false), '- \$1\n');
       text = text.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
       text = text.replaceAll(RegExp(r'<p[^>]*>', caseSensitive: false), '\n');
     }
@@ -798,20 +1236,28 @@ class BuiltinTools {
     final path = req.arguments['path']?.toString() ?? '';
     final pathErr = _validatePath(path);
     if (pathErr != null) {
-      return ToolCallResult(toolId: 'file_read', content: '', success: false, error: pathErr);
+      return ToolCallResult(
+          toolId: 'file_read', content: '', success: false, error: pathErr);
     }
     if (gitHubService == null || activeRepo == null) {
-      return ToolCallResult(toolId: 'file_read', content: '', success: false, error: '未配置仓库连接');
+      return ToolCallResult(
+          toolId: 'file_read', content: '', success: false, error: '未配置仓库连接');
     }
     try {
       final result = await gitHubService!.getRawFile(activeRepo!, path);
       if (result == null) {
-        return ToolCallResult(toolId: 'file_read', content: '', success: false, error: '文件不存在: $path');
+        return ToolCallResult(
+            toolId: 'file_read',
+            content: '',
+            success: false,
+            error: '文件不存在: $path');
       }
       final content = result['content'] ?? '';
-      return ToolCallResult(toolId: 'file_read', content: content, success: true);
+      return ToolCallResult(
+          toolId: 'file_read', content: content, success: true);
     } catch (e) {
-      return ToolCallResult(toolId: 'file_read', content: '', success: false, error: '读取失败: $e');
+      return ToolCallResult(
+          toolId: 'file_read', content: '', success: false, error: '读取失败: $e');
     }
   }
 
@@ -819,16 +1265,23 @@ class BuiltinTools {
   static Future<ToolCallResult> _executeFileWrite(ToolCallRequest req) async {
     final path = req.arguments['path']?.toString() ?? '';
     final content = req.arguments['content']?.toString() ?? '';
-    final commitMsg = req.arguments['commit_message']?.toString() ?? 'AI: update $path';
+    final commitMsg =
+        req.arguments['commit_message']?.toString() ?? 'AI: update $path';
     final pathErr = _validatePath(path);
     if (pathErr != null) {
-      return ToolCallResult(toolId: 'file_write', content: '', success: false, error: pathErr);
+      return ToolCallResult(
+          toolId: 'file_write', content: '', success: false, error: pathErr);
     }
     if (path.isEmpty || content.isEmpty) {
-      return ToolCallResult(toolId: 'file_write', content: '', success: false, error: '路径和内容不能为空');
+      return ToolCallResult(
+          toolId: 'file_write',
+          content: '',
+          success: false,
+          error: '路径和内容不能为空');
     }
     if (gitHubService == null || activeRepo == null) {
-      return ToolCallResult(toolId: 'file_write', content: '', success: false, error: '未配置仓库连接');
+      return ToolCallResult(
+          toolId: 'file_write', content: '', success: false, error: '未配置仓库连接');
     }
     try {
       // 先获取文件sha（如果存在）
@@ -837,37 +1290,57 @@ class BuiltinTools {
         final existing = await gitHubService!.getRawFile(activeRepo!, path);
         sha = existing?['sha']?.toString();
       } catch (_) {}
-      await gitHubService!.putRawFile(activeRepo!, path, content, sha: sha, commitMessage: commitMsg);
-      return ToolCallResult(toolId: 'file_write', content: '文件已成功写入: $path', success: true);
+      await gitHubService!.putRawFile(activeRepo!, path, content,
+          sha: sha, commitMessage: commitMsg);
+      return ToolCallResult(
+          toolId: 'file_write', content: '文件已成功写入: $path', success: true);
     } catch (e) {
-      return ToolCallResult(toolId: 'file_write', content: '', success: false, error: '写入失败: $e');
+      return ToolCallResult(
+          toolId: 'file_write', content: '', success: false, error: '写入失败: $e');
     }
   }
 
   /// 删除仓库文件
   static Future<ToolCallResult> _executeFileDelete(ToolCallRequest req) async {
     final path = req.arguments['path']?.toString() ?? '';
-    final commitMsg = req.arguments['commit_message']?.toString() ?? 'AI: delete $path';
+    final commitMsg =
+        req.arguments['commit_message']?.toString() ?? 'AI: delete $path';
     final pathErr = _validatePath(path);
     if (pathErr != null) {
-      return ToolCallResult(toolId: 'file_delete', content: '', success: false, error: pathErr);
+      return ToolCallResult(
+          toolId: 'file_delete', content: '', success: false, error: pathErr);
     }
     if (path.isEmpty) {
-      return ToolCallResult(toolId: 'file_delete', content: '', success: false, error: '文件路径不能为空');
+      return ToolCallResult(
+          toolId: 'file_delete',
+          content: '',
+          success: false,
+          error: '文件路径不能为空');
     }
     if (gitHubService == null || activeRepo == null) {
-      return ToolCallResult(toolId: 'file_delete', content: '', success: false, error: '未配置仓库连接');
+      return ToolCallResult(
+          toolId: 'file_delete', content: '', success: false, error: '未配置仓库连接');
     }
     try {
       final existing = await gitHubService!.getRawFile(activeRepo!, path);
       final sha = existing?['sha']?.toString();
       if (sha == null) {
-        return ToolCallResult(toolId: 'file_delete', content: '', success: false, error: '文件不存在: $path');
+        return ToolCallResult(
+            toolId: 'file_delete',
+            content: '',
+            success: false,
+            error: '文件不存在: $path');
       }
-      await gitHubService!.deleteRawFile(activeRepo!, path, sha, commitMessage: commitMsg);
-      return ToolCallResult(toolId: 'file_delete', content: '文件已删除: $path', success: true);
+      await gitHubService!
+          .deleteRawFile(activeRepo!, path, sha, commitMessage: commitMsg);
+      return ToolCallResult(
+          toolId: 'file_delete', content: '文件已删除: $path', success: true);
     } catch (e) {
-      return ToolCallResult(toolId: 'file_delete', content: '', success: false, error: '删除失败: $e');
+      return ToolCallResult(
+          toolId: 'file_delete',
+          content: '',
+          success: false,
+          error: '删除失败: $e');
     }
   }
 
@@ -877,14 +1350,17 @@ class BuiltinTools {
     if (path.isNotEmpty) {
       final pathErr = _validatePath(path);
       if (pathErr != null) {
-        return ToolCallResult(toolId: 'list_dir', content: '', success: false, error: pathErr);
+        return ToolCallResult(
+            toolId: 'list_dir', content: '', success: false, error: pathErr);
       }
     }
     if (gitHubService == null || activeRepo == null) {
-      return ToolCallResult(toolId: 'list_dir', content: '', success: false, error: '未配置仓库连接');
+      return ToolCallResult(
+          toolId: 'list_dir', content: '', success: false, error: '未配置仓库连接');
     }
     try {
-      final items = await gitHubService!.listDirContents(activeRepo!, path: path.isEmpty ? null : path);
+      final items = await gitHubService!
+          .listDirContents(activeRepo!, path: path.isEmpty ? null : path);
       final buf = StringBuffer();
       buf.writeln('目录: ${path.isEmpty ? "/" : path}');
       buf.writeln('---');
@@ -893,9 +1369,11 @@ class BuiltinTools {
         buf.writeln('$typeIcon ${item.name}  (${item.path})');
       }
       if (items.isEmpty) buf.writeln('(空目录)');
-      return ToolCallResult(toolId: 'list_dir', content: buf.toString(), success: true);
+      return ToolCallResult(
+          toolId: 'list_dir', content: buf.toString(), success: true);
     } catch (e) {
-      return ToolCallResult(toolId: 'list_dir', content: '', success: false, error: '列目录失败: $e');
+      return ToolCallResult(
+          toolId: 'list_dir', content: '', success: false, error: '列目录失败: $e');
     }
   }
 
@@ -903,7 +1381,11 @@ class BuiltinTools {
   static Future<ToolCallResult> _executeGitSnapshot(ToolCallRequest req) async {
     final desc = req.arguments['description']?.toString() ?? 'AI snapshot';
     if (gitHubService == null || activeRepo == null) {
-      return ToolCallResult(toolId: 'git_snapshot', content: '', success: false, error: '未配置仓库连接');
+      return ToolCallResult(
+          toolId: 'git_snapshot',
+          content: '',
+          success: false,
+          error: '未配置仓库连接');
     }
     try {
       final timestamp = DateTime.now().toIso8601String();
@@ -913,9 +1395,14 @@ class BuiltinTools {
         'Snapshot: $desc\nTime: $timestamp',
         commitMessage: 'snapshot: $desc',
       );
-      return ToolCallResult(toolId: 'git_snapshot', content: '快照已创建: $desc', success: true);
+      return ToolCallResult(
+          toolId: 'git_snapshot', content: '快照已创建: $desc', success: true);
     } catch (e) {
-      return ToolCallResult(toolId: 'git_snapshot', content: '', success: false, error: '快照创建失败: $e');
+      return ToolCallResult(
+          toolId: 'git_snapshot',
+          content: '',
+          success: false,
+          error: '快照创建失败: $e');
     }
   }
 
@@ -925,33 +1412,56 @@ class BuiltinTools {
     final commitSha = req.arguments['commit_sha']?.toString();
     final pathErr = _validatePath(path);
     if (pathErr != null) {
-      return ToolCallResult(toolId: 'git_rollback', content: '', success: false, error: pathErr);
+      return ToolCallResult(
+          toolId: 'git_rollback', content: '', success: false, error: pathErr);
     }
     if (path.isEmpty) {
-      return ToolCallResult(toolId: 'git_rollback', content: '', success: false, error: '文件路径不能为空');
+      return ToolCallResult(
+          toolId: 'git_rollback',
+          content: '',
+          success: false,
+          error: '文件路径不能为空');
     }
     if (gitHubService == null || activeRepo == null) {
-      return ToolCallResult(toolId: 'git_rollback', content: '', success: false, error: '未配置仓库连接');
+      return ToolCallResult(
+          toolId: 'git_rollback',
+          content: '',
+          success: false,
+          error: '未配置仓库连接');
     }
     try {
       // 获取文件历史提交记录
       final commits = await gitHubService!.listCommits(activeRepo!);
       if (commits.isEmpty) {
-        return ToolCallResult(toolId: 'git_rollback', content: '', success: false, error: '仓库无提交记录');
+        return ToolCallResult(
+            toolId: 'git_rollback',
+            content: '',
+            success: false,
+            error: '仓库无提交记录');
       }
 
       // 如果指定了 commitSha，尝试从该 commit 恢复文件
       if (commitSha != null && commitSha.isNotEmpty) {
-        final targetCommit = commits.where((c) => c.sha.startsWith(commitSha) == true).firstOrNull;
+        final targetCommit = commits
+            .where((c) => c.sha.startsWith(commitSha) == true)
+            .firstOrNull;
         if (targetCommit == null) {
-          return ToolCallResult(toolId: 'git_rollback', content: '', success: false, error: '未找到指定commit: $commitSha');
+          return ToolCallResult(
+              toolId: 'git_rollback',
+              content: '',
+              success: false,
+              error: '未找到指定commit: $commitSha');
         }
       }
 
       // 先备份当前文件
       final current = await gitHubService!.getRawFile(activeRepo!, path);
       if (current == null) {
-        return ToolCallResult(toolId: 'git_rollback', content: '', success: false, error: '文件不存在: $path');
+        return ToolCallResult(
+            toolId: 'git_rollback',
+            content: '',
+            success: false,
+            error: '文件不存在: $path');
       }
       await gitHubService!.putRawFile(
         activeRepo!,
@@ -985,12 +1495,17 @@ class BuiltinTools {
         error: '无法获取历史版本',
       );
     } catch (e) {
-      return ToolCallResult(toolId: 'git_rollback', content: '', success: false, error: '回滚失败: $e');
+      return ToolCallResult(
+          toolId: 'git_rollback',
+          content: '',
+          success: false,
+          error: '回滚失败: $e');
     }
   }
 
   // ── 读取应用设计配置 ──
-  static Future<ToolCallResult> _executeReadAppConfig(ToolCallRequest req) async {
+  static Future<ToolCallResult> _executeReadAppConfig(
+      ToolCallRequest req) async {
     if (appSettings == null) {
       return ToolCallResult(
         toolId: 'read_app_config',
@@ -1008,7 +1523,8 @@ class BuiltinTools {
   }
 
   // ── 修改应用设计配置 ──
-  static Future<ToolCallResult> _executeUpdateAppConfig(ToolCallRequest req) async {
+  static Future<ToolCallResult> _executeUpdateAppConfig(
+      ToolCallRequest req) async {
     if (appSettings == null || onSettingsChanged == null) {
       return ToolCallResult(
         toolId: 'update_app_config',
@@ -1344,7 +1860,8 @@ class BuiltinTools {
         for (final s in skills) {
           buf.writeln('  • ${s.name} [${s.id}]');
           buf.writeln('    描述: ${s.description}');
-          buf.writeln('    参数: ${s.parameters.length} 个 | 状态: ${s.enabled ? "启用" : "禁用"}');
+          buf.writeln(
+              '    参数: ${s.parameters.length} 个 | 状态: ${s.enabled ? "启用" : "禁用"}');
         }
       }
       buf.writeln();
@@ -1385,7 +1902,8 @@ class BuiltinTools {
   }
 
   // ── 列出本地文章模板 ──
-  static Future<ToolCallResult> _executeListTemplates(ToolCallRequest req) async {
+  static Future<ToolCallResult> _executeListTemplates(
+      ToolCallRequest req) async {
     if (storageService == null) {
       return ToolCallResult(
         toolId: 'list_templates',
@@ -1405,7 +1923,8 @@ class BuiltinTools {
         buf.writeln('  类型: $type | 框架: ${t.frameworkId}');
       }
       buf.writeln('\n提示：内置模板由代码维护不可修改；需要修复模板时用 update_template 以自定义 ID 新建或更新。');
-      return ToolCallResult(toolId: 'list_templates', content: buf.toString(), success: true);
+      return ToolCallResult(
+          toolId: 'list_templates', content: buf.toString(), success: true);
     } catch (e) {
       return ToolCallResult(
         toolId: 'list_templates',
@@ -1417,7 +1936,8 @@ class BuiltinTools {
   }
 
   // ── 读取单个本地文章模板 ──
-  static Future<ToolCallResult> _executeReadTemplate(ToolCallRequest req) async {
+  static Future<ToolCallResult> _executeReadTemplate(
+      ToolCallRequest req) async {
     final templateId = req.arguments['template_id']?.toString() ?? '';
     if (storageService == null) {
       return ToolCallResult(
@@ -1453,7 +1973,8 @@ class BuiltinTools {
       buf.writeln('--- FrontMatter 开始 ---');
       buf.writeln(t.frontMatter);
       buf.writeln('--- FrontMatter 结束 ---');
-      return ToolCallResult(toolId: 'read_template', content: buf.toString(), success: true);
+      return ToolCallResult(
+          toolId: 'read_template', content: buf.toString(), success: true);
     } catch (e) {
       return ToolCallResult(
         toolId: 'read_template',
@@ -1465,7 +1986,8 @@ class BuiltinTools {
   }
 
   // ── 新建/更新本地文章模板 ──
-  static Future<ToolCallResult> _executeUpdateTemplate(ToolCallRequest req) async {
+  static Future<ToolCallResult> _executeUpdateTemplate(
+      ToolCallRequest req) async {
     if (storageService == null) {
       return ToolCallResult(
         toolId: 'update_template',
@@ -1478,7 +2000,9 @@ class BuiltinTools {
     final name = req.arguments['name']?.toString() ?? '';
     final frontMatter = req.arguments['front_matter']?.toString() ?? '';
     final frameworkId = req.arguments['framework_id']?.toString() ?? 'custom';
-    final isPost = (req.arguments['is_post']?.toString() ?? 'true').toLowerCase() == 'true';
+    final isPost =
+        (req.arguments['is_post']?.toString() ?? 'true').toLowerCase() ==
+            'true';
 
     if (templateId.isEmpty) {
       return ToolCallResult(
@@ -1493,7 +2017,8 @@ class BuiltinTools {
         toolId: 'update_template',
         content: '',
         success: false,
-        error: '内置模板(id 以 builtin_ 开头)由代码维护，无法修改。请改用自定义 ID 新建模板（如 fix_${frameworkId}_post）。',
+        error:
+            '内置模板(id 以 builtin_ 开头)由代码维护，无法修改。请改用自定义 ID 新建模板（如 fix_${frameworkId}_post）。',
       );
     }
     if (frontMatter.isEmpty) {
@@ -1531,7 +2056,8 @@ class BuiltinTools {
       final action = existing != null ? '已更新' : '已新建';
       return ToolCallResult(
         toolId: 'update_template',
-        content: '$action模板 [$templateId]（${updated.name}），框架: $frameworkId，类型: ${isPost ? "博文" : "页面"}。已持久化，可在编辑器模板下拉框中选用。',
+        content:
+            '$action模板 [$templateId]（${updated.name}），框架: $frameworkId，类型: ${isPost ? "博文" : "页面"}。已持久化，可在编辑器模板下拉框中选用。',
         success: true,
       );
     } catch (e) {
@@ -1555,15 +2081,18 @@ class BuiltinTools {
       );
     }
     final path = req.arguments['path']?.toString() ?? '';
-    final limit = (int.tryParse(req.arguments['limit']?.toString() ?? '') ?? 10).clamp(1, 20);
+    final limit = (int.tryParse(req.arguments['limit']?.toString() ?? '') ?? 10)
+        .clamp(1, 20);
     if (path.isNotEmpty) {
       final pathErr = _validatePath(path);
       if (pathErr != null) {
-        return ToolCallResult(toolId: 'list_posts', content: '', success: false, error: pathErr);
+        return ToolCallResult(
+            toolId: 'list_posts', content: '', success: false, error: pathErr);
       }
     }
     try {
-      final items = await gitHubService!.listPosts(activeRepo!, path: path.isEmpty ? null : path);
+      final items = await gitHubService!
+          .listPosts(activeRepo!, path: path.isEmpty ? null : path);
       final buf = StringBuffer();
       buf.writeln('=== 仓库文章列表 (共 ${items.length} 篇，展示前 $limit 篇) ===\n');
       var shown = 0;
@@ -1573,7 +2102,9 @@ class BuiltinTools {
         buf.writeln('$shown. ${item.name}  (${item.path})');
         try {
           final raw = await gitHubService!.getRawFile(activeRepo!, item.path);
-          final fmLines = raw == null ? const <String>[] : _extractFrontMatter(raw['content'] ?? '');
+          final fmLines = raw == null
+              ? const <String>[]
+              : _extractFrontMatter(raw['content'] ?? '');
           if (fmLines.isNotEmpty) {
             buf.writeln('   --- FrontMatter 片段 ---');
             for (final l in fmLines) {
@@ -1589,7 +2120,8 @@ class BuiltinTools {
         buf.writeln();
       }
       if (items.isEmpty) buf.writeln('(目录中暂无 .md 文章)');
-      return ToolCallResult(toolId: 'list_posts', content: buf.toString(), success: true);
+      return ToolCallResult(
+          toolId: 'list_posts', content: buf.toString(), success: true);
     } catch (e) {
       return ToolCallResult(
         toolId: 'list_posts',
@@ -1624,11 +2156,16 @@ class BuiltinTools {
         'AI: clone $owner/$repo/$branch/$remotePath';
 
     if (owner.isEmpty || repo.isEmpty) {
-      return ToolCallResult(toolId: 'git_clone', content: '', success: false, error: 'remote_owner 和 remote_repo 不能为空');
+      return ToolCallResult(
+          toolId: 'git_clone',
+          content: '',
+          success: false,
+          error: 'remote_owner 和 remote_repo 不能为空');
     }
 
     if (gitHubService == null || activeRepo == null) {
-      return ToolCallResult(toolId: 'git_clone', content: '', success: false, error: '未配置仓库连接');
+      return ToolCallResult(
+          toolId: 'git_clone', content: '', success: false, error: '未配置仓库连接');
     }
 
     try {
@@ -1642,14 +2179,16 @@ class BuiltinTools {
 
       final files = items.where((e) => e.type == 'file').toList();
       if (files.isEmpty) {
-        return ToolCallResult(toolId: 'git_clone', content: '', success: false, error: '远程目录中未找到文件');
+        return ToolCallResult(
+            toolId: 'git_clone',
+            content: '',
+            success: false,
+            error: '远程目录中未找到文件');
       }
 
       // 自动推断目标目录：remotePath 的最后一段，或仓库名
       if (targetPath.isEmpty) {
-        targetPath = remotePath.isNotEmpty
-            ? remotePath.split('/').last
-            : repo;
+        targetPath = remotePath.isNotEmpty ? remotePath.split('/').last : repo;
       }
 
       var successCount = 0;
@@ -1666,12 +2205,14 @@ class BuiltinTools {
             errors.add('${file.path}: 无法读取内容');
             continue;
           }
-final relativePath = _relativePath(remotePath, file.path);
-          final target = '$targetPath/$relativePath'.replaceAll(RegExp(r'/+'), '/');
+          final relativePath = _relativePath(remotePath, file.path);
+          final target =
+              '$targetPath/$relativePath'.replaceAll(RegExp(r'/+'), '/');
 
           String? existingSha;
           try {
-            final existing = await gitHubService!.getRawFile(activeRepo!, target);
+            final existing =
+                await gitHubService!.getRawFile(activeRepo!, target);
             existingSha = existing?['sha']?.toString();
           } catch (_) {}
 
@@ -1697,9 +2238,11 @@ final relativePath = _relativePath(remotePath, file.path);
           buf.writeln('  - $e');
         }
       }
-      return ToolCallResult(toolId: 'git_clone', content: buf.toString(), success: true);
+      return ToolCallResult(
+          toolId: 'git_clone', content: buf.toString(), success: true);
     } catch (e) {
-      return ToolCallResult(toolId: 'git_clone', content: '', success: false, error: '克隆失败: $e');
+      return ToolCallResult(
+          toolId: 'git_clone', content: '', success: false, error: '克隆失败: $e');
     }
   }
 
@@ -1710,14 +2253,17 @@ final relativePath = _relativePath(remotePath, file.path);
         'AI: create directory $path';
 
     if (path.isEmpty) {
-      return ToolCallResult(toolId: 'create_dir', content: '', success: false, error: '路径不能为空');
+      return ToolCallResult(
+          toolId: 'create_dir', content: '', success: false, error: '路径不能为空');
     }
     final pathErr = _validatePath(path);
     if (pathErr != null) {
-      return ToolCallResult(toolId: 'create_dir', content: '', success: false, error: pathErr);
+      return ToolCallResult(
+          toolId: 'create_dir', content: '', success: false, error: pathErr);
     }
     if (gitHubService == null || activeRepo == null) {
-      return ToolCallResult(toolId: 'create_dir', content: '', success: false, error: '未配置仓库连接');
+      return ToolCallResult(
+          toolId: 'create_dir', content: '', success: false, error: '未配置仓库连接');
     }
 
     try {
@@ -1734,9 +2280,14 @@ final relativePath = _relativePath(remotePath, file.path);
         sha: existingSha,
         commitMessage: commitMsg,
       );
-      return ToolCallResult(toolId: 'create_dir', content: '文件夹已创建: $path', success: true);
+      return ToolCallResult(
+          toolId: 'create_dir', content: '文件夹已创建: $path', success: true);
     } catch (e) {
-      return ToolCallResult(toolId: 'create_dir', content: '', success: false, error: '创建文件夹失败: $e');
+      return ToolCallResult(
+          toolId: 'create_dir',
+          content: '',
+          success: false,
+          error: '创建文件夹失败: $e');
     }
   }
 
@@ -1744,7 +2295,9 @@ final relativePath = _relativePath(remotePath, file.path);
   static String _relativePath(String remotePath, String filePath) {
     if (remotePath.isEmpty) return filePath;
     if (filePath.startsWith(remotePath)) {
-      return filePath.substring(remotePath.length).replaceFirst(RegExp(r'^/'), '');
+      return filePath
+          .substring(remotePath.length)
+          .replaceFirst(RegExp(r'^/'), '');
     }
     return filePath;
   }

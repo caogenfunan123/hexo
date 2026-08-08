@@ -68,17 +68,53 @@ class ProviderPreset {
 
 /// 预置 Provider 列表（添加模型时可快速选择）
 const providerPresets = <ProviderPreset>[
-  ProviderPreset(name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', interfaceType: InterfaceType.openaiChat, isOverseas: true),
-  ProviderPreset(name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', interfaceType: InterfaceType.openaiChat),
-  ProviderPreset(name: 'SiliconFlow', baseUrl: 'https://api.siliconflow.cn/v1', interfaceType: InterfaceType.openaiChat),
-  ProviderPreset(name: 'Moonshot', baseUrl: 'https://api.moonshot.cn/v1', interfaceType: InterfaceType.openaiChat),
-  ProviderPreset(name: 'Ollama', baseUrl: 'http://localhost:11434/v1', interfaceType: InterfaceType.openaiChat),
-  ProviderPreset(name: 'AzureOpenAI', baseUrl: '', interfaceType: InterfaceType.openaiChat, isOverseas: true),
-  ProviderPreset(name: 'Hunyuan', baseUrl: 'https://api.hunyuan.cloud.tencent.com/v1', interfaceType: InterfaceType.openaiChat),
-  ProviderPreset(name: 'BaiLian', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', interfaceType: InterfaceType.openaiChat),
-  ProviderPreset(name: 'Volcengine', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', interfaceType: InterfaceType.openaiChat),
-  ProviderPreset(name: 'Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', interfaceType: InterfaceType.openaiChat, isOverseas: true),
-  ProviderPreset(name: 'BaiZhiCloud', baseUrl: '', interfaceType: InterfaceType.openaiChat),
+  ProviderPreset(
+      name: 'OpenAI',
+      baseUrl: 'https://api.openai.com/v1',
+      interfaceType: InterfaceType.openaiChat,
+      isOverseas: true),
+  ProviderPreset(
+      name: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com/v1',
+      interfaceType: InterfaceType.openaiChat),
+  ProviderPreset(
+      name: 'SiliconFlow',
+      baseUrl: 'https://api.siliconflow.cn/v1',
+      interfaceType: InterfaceType.openaiChat),
+  ProviderPreset(
+      name: 'Moonshot',
+      baseUrl: 'https://api.moonshot.cn/v1',
+      interfaceType: InterfaceType.openaiChat),
+  ProviderPreset(
+      name: 'Ollama',
+      baseUrl: 'http://localhost:11434/v1',
+      interfaceType: InterfaceType.openaiChat),
+  ProviderPreset(
+      name: 'AzureOpenAI',
+      baseUrl: '',
+      interfaceType: InterfaceType.openaiChat,
+      isOverseas: true),
+  ProviderPreset(
+      name: 'Hunyuan',
+      baseUrl: 'https://api.hunyuan.cloud.tencent.com/v1',
+      interfaceType: InterfaceType.openaiChat),
+  ProviderPreset(
+      name: 'BaiLian',
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      interfaceType: InterfaceType.openaiChat),
+  ProviderPreset(
+      name: 'Volcengine',
+      baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+      interfaceType: InterfaceType.openaiChat),
+  ProviderPreset(
+      name: 'Gemini',
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+      interfaceType: InterfaceType.openaiChat,
+      isOverseas: true),
+  ProviderPreset(
+      name: 'BaiZhiCloud',
+      baseUrl: '',
+      interfaceType: InterfaceType.openaiChat),
 ];
 
 /// 根据模型名推断接口类型（未指定时）
@@ -89,7 +125,8 @@ InterfaceType inferInterfaceType(String model) {
 }
 
 /// 工具定义转换（供 function calling 使用）
-List<Map<String, dynamic>> toOpenAiTools(List<Map<String, dynamic>> tools) => tools;
+List<Map<String, dynamic>> toOpenAiTools(List<Map<String, dynamic>> tools) =>
+    tools;
 
 /// OpenAI 工具转 Anthropic tool 格式
 List<Map<String, dynamic>> toAnthropicTools(List<Map<String, dynamic>> tools) {

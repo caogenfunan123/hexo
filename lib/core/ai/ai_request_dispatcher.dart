@@ -35,6 +35,7 @@ class AiRequestDispatcher {
   final AiModelManager _modelManager;
   final AiModelProbeService _probeService;
   StreamController<StreamChunk>? _activeStreamController;
+  bool _cancelled = false;
 
   /// 模型切换事件回调（UI 展示提示条）
   void Function(SwitchEvent event)? onModelSwitched;
@@ -44,6 +45,7 @@ class AiRequestDispatcher {
 
   /// 取消当前正在进行的请求
   void cancelCurrent() {
+    _cancelled = true;
     _activeStreamController?.close();
     _activeStreamController = null;
   }
@@ -87,6 +89,7 @@ class AiRequestDispatcher {
   }) {
     // 取消之前的请求
     cancelCurrent();
+    _cancelled = false;
 
     addUserMessage(userMessage);
 
@@ -127,8 +130,7 @@ class AiRequestDispatcher {
       fallbacks = await _modelManager.getEnabled();
     }
 
-    final effectiveTimeout =
-        timeoutSeconds ?? settings.ai.aiRequestTimeoutSec;
+    final effectiveTimeout = timeoutSeconds ?? settings.ai.aiRequestTimeoutSec;
     final effectiveMaxSwitch = maxSwitchCount ?? settings.ai.aiMaxSwitchCount;
 
     await _runStream(
@@ -193,13 +195,23 @@ class AiRequestDispatcher {
         if (controller.isClosed) return;
 
         if (response.hasToolCalls && toolRound < maxToolRounds) {
+          if (_cancelled) {
+            if (!controller.isClosed) await controller.close();
+            return;
+          }
           final assistantMsg = response.allMessages.last;
-          if (assistantMsg['role'] == 'assistant' && assistantMsg['tool_calls'] != null) {
+          if (assistantMsg['role'] == 'assistant' &&
+              assistantMsg['tool_calls'] != null) {
             _chatHistory.add(Map<String, dynamic>.from(assistantMsg));
           }
 
           final toolExecutor = ToolExecutor();
           final results = await toolExecutor.executeAll(response.toolCalls!);
+
+          if (_cancelled) {
+            if (!controller.isClosed) await controller.close();
+            return;
+          }
 
           final toolResults = ToolExecutor.formatToolResultsForAi(
             response.toolCalls!,
@@ -234,6 +246,10 @@ class AiRequestDispatcher {
         if (response.content != null && response.content!.isNotEmpty) {
           fullContent.write(response.content);
           controller.add(StreamChunk(content: response.content!));
+        } else if (response.hasToolCalls && toolRound >= maxToolRounds) {
+          const tip = '已达最大工具调用轮次，未获得最终回复。';
+          fullContent.write(tip);
+          controller.add(StreamChunk(content: tip));
         }
 
         if (fullContent.isNotEmpty) {
@@ -256,7 +272,8 @@ class AiRequestDispatcher {
     } catch (e) {
       final errorMsg = e.toString();
 
-      if (errorMsg.contains('HTTP 400') || errorMsg.contains('InvalidParameter')) {
+      if (errorMsg.contains('HTTP 400') ||
+          errorMsg.contains('InvalidParameter')) {
         final isVolcengine = preferredModel != null
             ? VolcengineAdapter.isVolcengineArk(preferredModel.apiBase)
             : false;
@@ -315,7 +332,8 @@ class AiRequestDispatcher {
   }
 
   /// 记录单次流式调用（成功/失败）到模型管理器，供择优评分
-  void _recordStreamCall(    AiModelEntity? model,
+  void _recordStreamCall(
+    AiModelEntity? model,
     Stopwatch stopwatch,
     bool success,
   ) {
@@ -329,7 +347,8 @@ class AiRequestDispatcher {
   }
 
   /// 记录 token 用量（对标 MonkeyCode usage_capture）
-  Future<void> _recordUsage(AiProfile? profile, ToolCallResponse response) async {
+  Future<void> _recordUsage(
+      AiProfile? profile, ToolCallResponse response) async {
     final usage = response.usage;
     if (usage == null) return;
     if (profile == null) return;
@@ -343,7 +362,8 @@ class AiRequestDispatcher {
         inputTokens: (usage['inputTokens'] as num?)?.toInt() ?? 0,
         outputTokens: (usage['outputTokens'] as num?)?.toInt() ?? 0,
         cacheReadTokens: (usage['cacheReadTokens'] as num?)?.toInt() ?? 0,
-        cacheCreationTokens: (usage['cacheCreationTokens'] as num?)?.toInt() ?? 0,
+        cacheCreationTokens:
+            (usage['cacheCreationTokens'] as num?)?.toInt() ?? 0,
         reasoningTokens: (usage['reasoningTokens'] as num?)?.toInt() ?? 0,
         usedTools: response.hasToolCalls,
       ));
@@ -469,8 +489,9 @@ class AiRequestDispatcher {
           // 移除当前模型
           if (currentModel != null) {
             fallbackModels.removeWhere(
-              (m) => m.modelId == currentModel!.modelId &&
-                m.apiBase == currentModel.apiBase,
+              (m) =>
+                  m.modelId == currentModel!.modelId &&
+                  m.apiBase == currentModel.apiBase,
             );
           }
           if (fallbackModels.isEmpty) break;
@@ -533,17 +554,26 @@ class AiRequestDispatcher {
     );
   }
 
-  String _buildMessagesString(List<Map<String, dynamic>> messages) {    final buf = StringBuffer();
+  String _buildMessagesString(List<Map<String, dynamic>> messages) {
+    final buf = StringBuffer();
     for (final m in messages) {
       final role = m['role'];
       if (role == 'system') continue; // system 单独传
-      final content = m['content']?.toString();
+      final raw = m['content'];
+      final content = raw is String
+          ? raw
+          : (raw is List
+              ? raw
+                  .whereType<Map>()
+                  .map((b) => b['text']?.toString() ?? '')
+                  .join()
+              : '');
       if (role == 'user') {
-        if (content != null) buf.writeln(content);
+        if (content.isNotEmpty) buf.writeln(content);
       } else if (role == 'assistant') {
-        if (content != null) buf.writeln(content);
+        if (content.isNotEmpty) buf.writeln(content);
       } else if (role == 'tool') {
-        buf.writeln('[工具结果: ${content ?? ""}]');
+        buf.writeln('[工具结果: ${content.isEmpty ? "" : content}]');
       }
     }
     return buf.toString();
@@ -604,9 +634,8 @@ class AiRequestDispatcher {
         }
 
         // 添加到对话历史，确保上下文不丢失
-        final assistantMsg = response.allMessages.isNotEmpty
-            ? response.allMessages.last
-            : null;
+        final assistantMsg =
+            response.allMessages.isNotEmpty ? response.allMessages.last : null;
         if (assistantMsg != null &&
             assistantMsg['role'] == 'assistant' &&
             assistantMsg['tool_calls'] != null) {
@@ -627,7 +656,9 @@ class AiRequestDispatcher {
           _chatHistory.add(Map<String, dynamic>.from(tr));
         }
 
-        for (var i = 0; i < results.length && i < response.toolCalls!.length; i++) {
+        for (var i = 0;
+            i < results.length && i < response.toolCalls!.length;
+            i++) {
           final r = results[i];
           onToolStatus?.call(
             r.toolId,

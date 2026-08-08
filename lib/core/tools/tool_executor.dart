@@ -45,7 +45,8 @@ class ToolExecutor {
   }
 
   /// 批量执行多个工具调用
-  Future<List<ToolCallResult>> executeAll(List<ToolCallRequest> requests) async {
+  Future<List<ToolCallResult>> executeAll(
+      List<ToolCallRequest> requests) async {
     final results = <ToolCallResult>[];
     for (final req in requests) {
       results.add(await execute(req));
@@ -54,7 +55,8 @@ class ToolExecutor {
   }
 
   /// 执行自定义技能
-  Future<ToolCallResult> _executeSkill(ToolEntity skill, ToolCallRequest request) async {
+  Future<ToolCallResult> _executeSkill(
+      ToolEntity skill, ToolCallRequest request) async {
     if (skill.skillContent == null || skill.skillContent!.isEmpty) {
       return ToolCallResult(
         toolId: skill.id,
@@ -71,7 +73,8 @@ class ToolExecutor {
   }
 
   /// 执行 MCP 工具
-  Future<ToolCallResult> _executeMcp(ToolEntity mcpTool, ToolCallRequest request) async {
+  Future<ToolCallResult> _executeMcp(
+      ToolEntity mcpTool, ToolCallRequest request) async {
     if (mcpTool.endpoint == null || mcpTool.endpoint!.isEmpty) {
       return ToolCallResult(
         toolId: mcpTool.id,
@@ -95,7 +98,8 @@ class ToolExecutor {
       } catch (_) {}
     }
 
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
     try {
       final uri = Uri.parse(mcpTool.endpoint!);
       final httpReq = await client.postUrl(uri);
@@ -114,8 +118,12 @@ class ToolExecutor {
       });
       httpReq.write(body);
 
-      final response = await httpReq.close().timeout(const Duration(seconds: 30));
-      final text = await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 30));
+      final response =
+          await httpReq.close().timeout(const Duration(seconds: 30));
+      final text = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(text) as Map<String, dynamic>;
@@ -132,12 +140,16 @@ class ToolExecutor {
         // 解析 MCP 标准结构化内容数组
         String resultText;
         if (result is Map && result['content'] is List) {
-          final parts = (result['content'] as List).whereType<Map>().map((c) {
-            final ct = c['type']?.toString() ?? 'text';
-            if (ct == 'image') return '[图片]';
-            if (ct == 'resource') return c['text']?.toString() ?? '[资源]';
-            return c['text']?.toString() ?? '';
-          }).where((s) => s.isNotEmpty).join('\n');
+          final parts = (result['content'] as List)
+              .whereType<Map>()
+              .map((c) {
+                final ct = c['type']?.toString() ?? 'text';
+                if (ct == 'image') return '[图片]';
+                if (ct == 'resource') return c['text']?.toString() ?? '[资源]';
+                return c['text']?.toString() ?? '';
+              })
+              .where((s) => s.isNotEmpty)
+              .join('\n');
           final isError = (result['isError'] == true);
           if (parts.isEmpty && result['structuredContent'] != null) {
             resultText = jsonEncode(result['structuredContent']);
@@ -184,17 +196,19 @@ class ToolExecutor {
     List<ToolCallResult> results,
   ) {
     final messages = <Map<String, dynamic>>[];
+    final ts = DateTime.now().millisecondsSinceEpoch;
     for (var i = 0; i < results.length && i < requests.length; i++) {
       final result = results[i];
       final request = requests[i];
+      final detail = result.success
+          ? result.content
+          : '工具执行失败: ${result.error}${result.content.isNotEmpty ? '\n${result.content}' : ''}';
       messages.add({
         'role': 'tool',
         'tool_call_id': request.callId.isNotEmpty
             ? request.callId
-            : 'call_${result.toolId}_${DateTime.now().millisecondsSinceEpoch}',
-        'content': result.success
-            ? result.content
-            : '工具执行失败: ${result.error}',
+            : 'call_${result.toolId}_${ts}_$i',
+        'content': detail,
       });
     }
     return messages;

@@ -51,14 +51,16 @@ class AiModelManager {
   Future<void> addModel(AiModelEntity model) async {
     final all = await loadAll();
     // 去重：同 modelId + apiBase 只保留一份
-    all.removeWhere((m) => m.modelId == model.modelId && m.apiBase == model.apiBase);
+    all.removeWhere(
+        (m) => m.modelId == model.modelId && m.apiBase == model.apiBase);
     all.add(model);
     await saveAll(all);
   }
 
   Future<void> updateModel(AiModelEntity model) async {
     final all = await loadAll();
-    final idx = all.indexWhere((m) => m.modelId == model.modelId && m.apiBase == model.apiBase);
+    final idx = all.indexWhere(
+        (m) => m.modelId == model.modelId && m.apiBase == model.apiBase);
     if (idx >= 0) {
       all[idx] = model;
     } else {
@@ -88,7 +90,8 @@ class AiModelManager {
   Future<void> batchImport(List<AiModelEntity> models) async {
     final all = await loadAll();
     for (final model in models) {
-      all.removeWhere((m) => m.modelId == model.modelId && m.apiBase == model.apiBase);
+      all.removeWhere(
+          (m) => m.modelId == model.modelId && m.apiBase == model.apiBase);
       all.add(model);
     }
     await saveAll(all);
@@ -152,7 +155,8 @@ class AiModelManager {
     return stats['$apiBase|$modelId'];
   }
 
-  Future<void> recordCall(String modelId, String apiBase, int durationMs, bool success) async {
+  Future<void> recordCall(
+      String modelId, String apiBase, int durationMs, bool success) async {
     final stats = await loadStats();
     final key = '$apiBase|$modelId';
     final existing = stats[key];
@@ -185,10 +189,14 @@ class AiModelManager {
         }
         final data = jsonDecode(text);
         final models = data['models'] as List? ?? [];
-        return models.map((m) {
-          final name = (m as Map)['name']?.toString() ?? '';
-          return name;
-        }).where((n) => n.isNotEmpty).toList()..sort();
+        return models
+            .map((m) {
+              final name = (m as Map)['name']?.toString() ?? '';
+              return name;
+            })
+            .where((n) => n.isNotEmpty)
+            .toList()
+          ..sort();
       }
 
       final uri = Uri.parse('$base/models');
@@ -205,17 +213,22 @@ class AiModelManager {
       }
       final data = jsonDecode(text);
       final items = data['data'] as List? ?? data['models'] as List? ?? [];
-      return items.map((m) {
-        if (m is Map && m['id'] != null) return m['id'].toString();
-        return m.toString();
-      }).where((n) => n.isNotEmpty).toList()..sort();
+      return items
+          .map((m) {
+            if (m is Map && m['id'] != null) return m['id'].toString();
+            return m.toString();
+          })
+          .where((n) => n.isNotEmpty)
+          .toList()
+        ..sort();
     } finally {
       client.close(force: true);
     }
   }
 
   /// 批量拉取中转站模型列表
-  Future<List<AiModelEntity>> fetchModelsFromProxy({    required String apiBase,
+  Future<List<AiModelEntity>> fetchModelsFromProxy({
+    required String apiBase,
     required String apiKey,
     String? apiPath,
     bool useBearer = true,
@@ -234,15 +247,17 @@ class AiModelManager {
         apiPath: apiPath,
         useBearer: useBearer,
       );
-      return ids.map((id) => AiModelEntity(
-        modelId: id,
-        modelName: id,
-        apiBase: apiBase,
-        apiKey: apiKey,
-        apiPath: apiPath,
-        useBearer: useBearer,
-        group: group,
-      )).toList();
+      return ids
+          .map((id) => AiModelEntity(
+                modelId: id,
+                modelName: id,
+                apiBase: apiBase,
+                apiKey: apiKey,
+                apiPath: apiPath,
+                useBearer: useBearer,
+                group: group,
+              ))
+          .toList();
     }
     // 默认：尝试从 /v1/models 端点拉取模型列表
     try {
@@ -309,7 +324,8 @@ class AiModelManager {
         useBearer: useBearer,
       );
       stopwatch.stop();
-      return ModelCheckResult(success: true, durationMs: stopwatch.elapsedMilliseconds);
+      return ModelCheckResult(
+          success: true, durationMs: stopwatch.elapsedMilliseconds);
     } catch (e) {
       stopwatch.stop();
       return ModelCheckResult(
@@ -328,14 +344,17 @@ class AiModelManager {
     required Duration timeout,
     bool useBearer = false,
   }) async {
-    final client = HttpClient()
-      ..connectionTimeout = timeout;
+    final client = HttpClient()..connectionTimeout = timeout;
     try {
       var base = baseUrl.trim();
       while (base.endsWith('/')) base = base.substring(0, base.length - 1);
-      base = base.replaceAll(RegExp(r'/chat/completions$'), '')
+      base = base
+          .replaceAll(RegExp(r'/chat/completions$'), '')
           .replaceAll(RegExp(r'/responses$'), '')
-          .replaceAll(RegExp(r'/messages$'), '');
+          .replaceAll(RegExp(r'/messages$'), '')
+          .replaceAll(RegExp(r'/v\d+/chat/completions$'), '')
+          .replaceAll(RegExp(r'/v\d+/responses$'), '')
+          .replaceAll(RegExp(r'/v\d+/messages$'), '');
       final uri = switch (interfaceType) {
         InterfaceType.anthropic => Uri.parse('$base/messages'),
         InterfaceType.openaiResponses => Uri.parse('$base/responses'),
@@ -415,7 +434,8 @@ class AiModelManager {
 
   static const _checkFile = 'ai_model_checks.json';
 
-  Future<void> _saveCheckState(String modelId, String apiBase, Map<String, dynamic> check) async {
+  Future<void> _saveCheckState(
+      String modelId, String apiBase, Map<String, dynamic> check) async {
     final f = File('${(await _storage.root).path}/$_checkFile');
     Map<String, dynamic> all = {};
     if (await f.exists()) {
@@ -428,7 +448,8 @@ class AiModelManager {
     await f.writeAsString(const JsonEncoder.withIndent('  ').convert(all));
   }
 
-  Future<ModelCheckResult?> getCheckResult(String modelId, String apiBase) async {
+  Future<ModelCheckResult?> getCheckResult(
+      String modelId, String apiBase) async {
     try {
       final f = File('${(await _storage.root).path}/$_checkFile');
       if (!await f.exists()) return null;
@@ -467,8 +488,8 @@ class ModelCheckResult {
   factory ModelCheckResult.fromJson(Map<String, dynamic> j) => ModelCheckResult(
         success: j['success'] == true,
         error: j['error']?.toString(),
-        checkedAt:
-            DateTime.tryParse(j['checkedAt']?.toString() ?? '') ?? DateTime.now(),
+        checkedAt: DateTime.tryParse(j['checkedAt']?.toString() ?? '') ??
+            DateTime.now(),
         durationMs: (j['durationMs'] as num?)?.toInt() ?? 0,
       );
 }

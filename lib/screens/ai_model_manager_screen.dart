@@ -18,19 +18,31 @@ class _ModelPreset {
 }
 
 const _presetModels = [
-  _ModelPreset('deepseek-chat', 'DeepSeek V3', 'https://api.deepseek.com/v1', 'code'),
-  _ModelPreset('deepseek-reasoner', 'DeepSeek R1', 'https://api.deepseek.com/v1', 'code'),
-  _ModelPreset('qwen-max', '通义千问 Max', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'general'),
-  _ModelPreset('qwen-plus', '通义千问 Plus', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'general'),
-  _ModelPreset('glm-4', '智谱 GLM-4', 'https://open.bigmodel.cn/api/paas/v4', 'general'),
-  _ModelPreset('glm-4-flash', '智谱 GLM-4-Flash', 'https://open.bigmodel.cn/api/paas/v4', 'general'),
-  _ModelPreset('moonshot-v1-8k', '月之暗面 Kimi', 'https://api.moonshot.cn/v1', 'general'),
-  _ModelPreset('doubao-1-5-pro-32k-250115', '豆包 1.5 Pro', 'https://ark.cn-beijing.volces.com/api/v3', 'longtext'),
-  _ModelPreset('gpt-4o-mini', 'GPT-4o-mini', 'https://api.openai.com/v1', 'general'),
+  _ModelPreset(
+      'deepseek-chat', 'DeepSeek V3', 'https://api.deepseek.com/v1', 'code'),
+  _ModelPreset('deepseek-reasoner', 'DeepSeek R1',
+      'https://api.deepseek.com/v1', 'code'),
+  _ModelPreset('qwen-max', '通义千问 Max',
+      'https://dashscope.aliyuncs.com/compatible-mode/v1', 'general'),
+  _ModelPreset('qwen-plus', '通义千问 Plus',
+      'https://dashscope.aliyuncs.com/compatible-mode/v1', 'general'),
+  _ModelPreset(
+      'glm-4', '智谱 GLM-4', 'https://open.bigmodel.cn/api/paas/v4', 'general'),
+  _ModelPreset('glm-4-flash', '智谱 GLM-4-Flash',
+      'https://open.bigmodel.cn/api/paas/v4', 'general'),
+  _ModelPreset(
+      'moonshot-v1-8k', '月之暗面 Kimi', 'https://api.moonshot.cn/v1', 'general'),
+  _ModelPreset('doubao-1-5-pro-32k-250115', '豆包 1.5 Pro',
+      'https://ark.cn-beijing.volces.com/api/v3', 'longtext'),
+  _ModelPreset(
+      'gpt-4o-mini', 'GPT-4o-mini', 'https://api.openai.com/v1', 'general'),
   _ModelPreset('gpt-4o', 'GPT-4o', 'https://api.openai.com/v1', 'general'),
-  _ModelPreset('claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet', 'https://api.anthropic.com/v1', 'general'),
-  _ModelPreset('gemini-2.0-flash', 'Gemini 2.0 Flash', 'https://generativelanguage.googleapis.com/v1beta', 'general'),
+  _ModelPreset('claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet',
+      'https://api.anthropic.com/v1', 'general'),
+  _ModelPreset('gemini-2.0-flash', 'Gemini 2.0 Flash',
+      'https://generativelanguage.googleapis.com/v1beta', 'general'),
 ];
+
 class AiModelManagerScreen extends StatefulWidget {
   final AiModelManager modelManager;
   final AiService aiService;
@@ -165,7 +177,9 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
           apiKey: apiKeyCtrl.text.trim(),
           model: '',
         ),
-        customModelsUrl: customUrlCtrl.text.trim().isEmpty ? null : customUrlCtrl.text.trim(),
+        customModelsUrl: customUrlCtrl.text.trim().isEmpty
+            ? null
+            : customUrlCtrl.text.trim(),
       );
     } catch (e) {
       setState(() => _loading = false);
@@ -200,24 +214,32 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
         errorMsg = e.toString();
       }
 
-      final useFallback = showFallback && await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('拉取失败'),
-          content: Text('$errorMsg\n\n是否使用内置预设模型列表代替？'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('使用预设')),
-          ],
-        ),
-      ) == true;
+      final useFallback = showFallback &&
+          await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('拉取失败'),
+                  content: Text('$errorMsg\n\n是否使用内置预设模型列表代替？'),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('取消')),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('使用预设')),
+                  ],
+                ),
+              ) ==
+              true;
 
       if (useFallback) {
         modelIds = _presetModels.map((p) => p.modelId).toList();
-        await _showModelSelectionDialog(apiBaseCtrl.text.trim(), apiKeyCtrl.text.trim(), group, modelIds);
+        await _showModelSelectionDialog(
+            apiBaseCtrl.text.trim(), apiKeyCtrl.text.trim(), group, modelIds);
       } else if (!showFallback) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg)));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(errorMsg)));
         }
       }
       return;
@@ -225,12 +247,14 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
 
     if (mounted) setState(() => _loading = false);
     if (mounted) {
-      await _showModelSelectionDialog(apiBaseCtrl.text.trim(), apiKeyCtrl.text.trim(), group, modelIds);
+      await _showModelSelectionDialog(
+          apiBaseCtrl.text.trim(), apiKeyCtrl.text.trim(), group, modelIds);
     }
   }
 
   /// 展示模型选择列表（勾选 + 别名），选中后批量导入
-  Future<void> _showModelSelectionDialog(String apiBase, String apiKey, String group, List<String> modelIds) async {
+  Future<void> _showModelSelectionDialog(String apiBase, String apiKey,
+      String group, List<String> modelIds) async {
     final selected = Set<String>.from(modelIds);
     final aliases = <String, TextEditingController>{};
     final searchCtrl = TextEditingController();
@@ -247,7 +271,10 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
         builder: (ctx, setDlg) {
           final filtered = searchQuery.isEmpty
               ? modelIds
-              : modelIds.where((id) => id.toLowerCase().contains(searchQuery.toLowerCase())).toList();
+              : modelIds
+                  .where((id) =>
+                      id.toLowerCase().contains(searchQuery.toLowerCase()))
+                  .toList();
 
           return AlertDialog(
             title: const Text('选择要导入的模型'),
@@ -276,9 +303,11 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                             selected.addAll(filtered);
                           }
                         }),
-                        child: Text(selected.length == filtered.length ? '取消全选' : '全选'),
+                        child: Text(
+                            selected.length == filtered.length ? '取消全选' : '全选'),
                       ),
-                      Text('${selected.length}/${modelIds.length} 个选中', style: const TextStyle(fontSize: 12)),
+                      Text('${selected.length}/${modelIds.length} 个选中',
+                          style: const TextStyle(fontSize: 12)),
                     ],
                   ),
                   const Divider(height: 1),
@@ -307,7 +336,8 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                               decoration: const InputDecoration(
                                 hintText: '别名（可选）',
                                 isDense: true,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
                                 border: OutlineInputBorder(),
                               ),
                               style: const TextStyle(fontSize: 12),
@@ -321,15 +351,18 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
               FilledButton(
                 onPressed: () {
                   if (selected.isEmpty) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('请至少选择一个模型')));
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(content: Text('请至少选择一个模型')));
                     return;
                   }
                   Navigator.pop(ctx);
-                  _importSelectedModels(apiBase, apiKey, group, selected, aliases);
+                  _importSelectedModels(
+                      apiBase, apiKey, group, selected, aliases);
                 },
                 child: Text('导入 ${selected.length} 个'),
               ),
@@ -340,7 +373,12 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
     );
   }
 
-  Future<void> _importSelectedModels(String apiBase, String apiKey, String group, Set<String> selected, Map<String, TextEditingController> aliases) async {
+  Future<void> _importSelectedModels(
+      String apiBase,
+      String apiKey,
+      String group,
+      Set<String> selected,
+      Map<String, TextEditingController> aliases) async {
     setState(() {
       _loading = true;
       _error = null;
@@ -401,7 +439,8 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                 const SizedBox(height: 8),
                 TextField(
                   controller: idCtrl,
-                  decoration: const InputDecoration(labelText: '模型 ID', hintText: 'gpt-4o-mini'),
+                  decoration: const InputDecoration(
+                      labelText: '模型 ID', hintText: 'gpt-4o-mini'),
                 ),
                 const SizedBox(height: 8),
                 TextField(
@@ -429,8 +468,12 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('添加')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('添加')),
           ],
         ),
       ),
@@ -440,7 +483,9 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
 
     final model = AiModelEntity(
       modelId: idCtrl.text.trim(),
-      modelName: nameCtrl.text.trim().isEmpty ? idCtrl.text.trim() : nameCtrl.text.trim(),
+      modelName: nameCtrl.text.trim().isEmpty
+          ? idCtrl.text.trim()
+          : nameCtrl.text.trim(),
       apiBase: baseCtrl.text.trim(),
       apiKey: keyCtrl.text.trim(),
       group: group,
@@ -489,14 +534,16 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  const Text('选择模型：', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text('选择模型：',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
                   ..._presetModels.map((p) => CheckboxListTile(
                         contentPadding: EdgeInsets.zero,
                         dense: true,
                         title: Text('${p.modelName}（${p.modelId}）',
                             style: const TextStyle(fontSize: 13)),
-                        subtitle: Text(p.baseUrl, style: const TextStyle(fontSize: 11)),
+                        subtitle: Text(p.baseUrl,
+                            style: const TextStyle(fontSize: 11)),
                         value: selected.contains(p.modelId),
                         onChanged: (v) {
                           setDlg(() {
@@ -513,7 +560,9 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消')),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
               child: Text('导入 ${selected.length} 个'),
@@ -526,7 +575,9 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
 
     final key = apiKeyCtrl.text.trim();
     if (key.isEmpty) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请填写 API Key')));
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('请填写 API Key')));
       return;
     }
 
@@ -553,7 +604,8 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
   }
 
   Future<void> _toggleModel(AiModelEntity model) async {
-    await widget.modelManager.toggleModel(model.modelId, model.apiBase, !model.enable);
+    await widget.modelManager
+        .toggleModel(model.modelId, model.apiBase, !model.enable);
     await _loadModels();
   }
 
@@ -564,7 +616,9 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
         title: const Text('删除模型'),
         content: Text('确认删除「${model.displayLabel}」？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -641,6 +695,7 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
           model: model.modelId,
           apiPath: model.apiPath,
           useBearer: model.useBearer,
+          interfaceType: model.interfaceType,
         ),
       );
       if (mounted) {
@@ -665,188 +720,214 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
     return PopScope(
       canPop: true,
       child: Scaffold(
-      appBar: AppBar(
-        title: const Text('AI 模型管理'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.bar_chart),
-            tooltip: 'Token 用量',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const TokenUsageScreen()),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.file_upload_outlined),
-            tooltip: '导入',
-            onPressed: _importModels,
-          ),
-          IconButton(
-            icon: const Icon(Icons.file_download_outlined),
-            tooltip: '导出',
-            onPressed: _exportModels,
-          ),
-        ],
-      ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton.small(
-            heroTag: 'presets',
-            onPressed: _addPresetModels,
-            tooltip: '一键添加常用模型',
-            child: const Icon(Icons.library_books_outlined),
-          ),
-          const SizedBox(height: 8),
-          FloatingActionButton.small(
-            heroTag: 'fetch',
-            onPressed: _fetchFromProxy,
-            tooltip: '批量拉取',
-            child: const Icon(Icons.cloud_download_outlined),
-          ),
-          const SizedBox(height: 8),
-          FloatingActionButton(
-            heroTag: 'add',
-            onPressed: _addModel,
-            tooltip: '添加模型',
-            child: const Icon(Icons.add),
-          ),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.error_outline, size: 48, color: cs.error),
-                      const SizedBox(height: 12),
-                      Text(_error!, style: TextStyle(color: cs.error)),
-                      const SizedBox(height: 12),
-                      FilledButton(onPressed: _loadModels, child: const Text('重试')),
-                    ],
-                  ),
-                )
-              : _models.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.psychology_outlined, size: 64, color: cs.outline),
-                          const SizedBox(height: 16),
-                          Text('暂无模型', style: TextStyle(color: cs.outline, fontSize: 16)),
-                          const SizedBox(height: 8),
-                          Text('点击右下角按钮添加模型或批量拉取',
-                              style: TextStyle(color: cs.outline, fontSize: 13)),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.only(bottom: 100),
-                      itemCount: _models.length,
-                      itemBuilder: (ctx, i) {
-                        final m = _models[i];
-                        final statKey = '${m.apiBase}|${m.modelId}';
-                        final stat = _stats[statKey];
-                        return Card(
-                          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: m.enable
-                                  ? cs.primaryContainer
-                                  : cs.surfaceContainerHighest,
-                              child: Icon(
-                                m.group == 'code' ? Icons.code : Icons.chat_outlined,
-                                size: 20,
-                                color: m.enable ? cs.onPrimaryContainer : cs.outline,
-                              ),
-                            ),
-                            title: Text(
-                              m.modelName,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: m.enable ? null : cs.outline,
-                              ),
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  m.modelId,
-                                  style: TextStyle(fontSize: 12, color: cs.outline),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+        appBar: AppBar(
+          title: const Text('AI 模型管理'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.bar_chart),
+              tooltip: 'Token 用量',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const TokenUsageScreen()),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.file_upload_outlined),
+              tooltip: '导入',
+              onPressed: _importModels,
+            ),
+            IconButton(
+              icon: const Icon(Icons.file_download_outlined),
+              tooltip: '导出',
+              onPressed: _exportModels,
+            ),
+          ],
+        ),
+        floatingActionButton: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FloatingActionButton.small(
+              heroTag: 'presets',
+              onPressed: _addPresetModels,
+              tooltip: '一键添加常用模型',
+              child: const Icon(Icons.library_books_outlined),
+            ),
+            const SizedBox(height: 8),
+            FloatingActionButton.small(
+              heroTag: 'fetch',
+              onPressed: _fetchFromProxy,
+              tooltip: '批量拉取',
+              child: const Icon(Icons.cloud_download_outlined),
+            ),
+            const SizedBox(height: 8),
+            FloatingActionButton(
+              heroTag: 'add',
+              onPressed: _addModel,
+              tooltip: '添加模型',
+              child: const Icon(Icons.add),
+            ),
+          ],
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.error_outline, size: 48, color: cs.error),
+                        const SizedBox(height: 12),
+                        Text(_error!, style: TextStyle(color: cs.error)),
+                        const SizedBox(height: 12),
+                        FilledButton(
+                            onPressed: _loadModels, child: const Text('重试')),
+                      ],
+                    ),
+                  )
+                : _models.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.psychology_outlined,
+                                size: 64, color: cs.outline),
+                            const SizedBox(height: 16),
+                            Text('暂无模型',
+                                style:
+                                    TextStyle(color: cs.outline, fontSize: 16)),
+                            const SizedBox(height: 8),
+                            Text('点击右下角按钮添加模型或批量拉取',
+                                style:
+                                    TextStyle(color: cs.outline, fontSize: 13)),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.only(bottom: 100),
+                        itemCount: _models.length,
+                        itemBuilder: (ctx, i) {
+                          final m = _models[i];
+                          final statKey = '${m.apiBase}|${m.modelId}';
+                          final stat = _stats[statKey];
+                          return Card(
+                            margin: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 4),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: m.enable
+                                    ? cs.primaryContainer
+                                    : cs.surfaceContainerHighest,
+                                child: Icon(
+                                  m.group == 'code'
+                                      ? Icons.code
+                                      : Icons.chat_outlined,
+                                  size: 20,
+                                  color: m.enable
+                                      ? cs.onPrimaryContainer
+                                      : cs.outline,
                                 ),
-                                if (stat != null && stat.totalCalls > 0)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4),
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.speed, size: 12, color: cs.primary),
-                                        const SizedBox(width: 2),
-                                        Text(
-                                          '${stat.avgLabel}  ',
-                                          style: TextStyle(fontSize: 11, color: cs.primary),
-                                        ),
-                                        Icon(Icons.check_circle_outline, size: 12, color: Colors.green),
-                                        const SizedBox(width: 2),
-                                        Text(
-                                          stat.successLabel,
-                                          style: const TextStyle(fontSize: 11, color: Colors.green),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          '${stat.totalCalls}次',
-                                          style: TextStyle(fontSize: 11, color: cs.outline),
-                                        ),
-                                        if (stat.fastestMs > 0) ...[
+                              ),
+                              title: Text(
+                                m.modelName,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: m.enable ? null : cs.outline,
+                                ),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    m.modelId,
+                                    style: TextStyle(
+                                        fontSize: 12, color: cs.outline),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (stat != null && stat.totalCalls > 0)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.speed,
+                                              size: 12, color: cs.primary),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            '${stat.avgLabel}  ',
+                                            style: TextStyle(
+                                                fontSize: 11,
+                                                color: cs.primary),
+                                          ),
+                                          Icon(Icons.check_circle_outline,
+                                              size: 12, color: Colors.green),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            stat.successLabel,
+                                            style: const TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.green),
+                                          ),
                                           const SizedBox(width: 4),
                                           Text(
-                                            '最快${stat.fastestMs}ms',
-                                            style: TextStyle(fontSize: 11, color: cs.outline),
+                                            '${stat.totalCalls}次',
+                                            style: TextStyle(
+                                                fontSize: 11,
+                                                color: cs.outline),
                                           ),
+                                          if (stat.fastestMs > 0) ...[
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '最快${stat.fastestMs}ms',
+                                              style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: cs.outline),
+                                            ),
+                                          ],
                                         ],
-                                      ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: cs.primaryContainer,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      m.groupLabel,
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          color: cs.onPrimaryContainer),
                                     ),
                                   ),
-                              ],
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: cs.primaryContainer,
-                                    borderRadius: BorderRadius.circular(4),
+                                  IconButton(
+                                    icon: Icon(Icons.wifi_find,
+                                        size: 18, color: cs.primary),
+                                    tooltip: '测试连通性',
+                                    onPressed: () => _testModel(m),
                                   ),
-                                  child: Text(
-                                    m.groupLabel,
-                                    style: TextStyle(fontSize: 10, color: cs.onPrimaryContainer),
+                                  Switch(
+                                    value: m.enable,
+                                    onChanged: (_) => _toggleModel(m),
                                   ),
-                                ),
-                                IconButton(
-                                  icon: Icon(Icons.wifi_find, size: 18, color: cs.primary),
-                                  tooltip: '测试连通性',
-                                  onPressed: () => _testModel(m),
-                                ),
-                                Switch(
-                                  value: m.enable,
-                                  onChanged: (_) => _toggleModel(m),
-                                ),
-                                IconButton(
-                                  icon: Icon(Icons.delete_outline, size: 18, color: cs.error),
-                                  onPressed: () => _deleteModel(m),
-                                ),
-                              ],
+                                  IconButton(
+                                    icon: Icon(Icons.delete_outline,
+                                        size: 18, color: cs.error),
+                                    onPressed: () => _deleteModel(m),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
+                          );
+                        },
+                      ),
       ),
     );
   }
