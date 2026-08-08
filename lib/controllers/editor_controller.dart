@@ -114,6 +114,9 @@ class EditorController extends ChangeNotifier {
   Uint8List? _failedImageBytes;
   bool _useRelativeImagePath = false;
 
+  // ── 保存回调（由外部注入，flush 时真正执行落盘） ──
+  Future<bool> Function(SaveTask task)? onSaveTask;
+
   // ── 图片上传回调（由外部注入） ──
   Future<void> Function()? onRetryUploadImage;
   Future<void> Function()? onInsertImage;
@@ -298,8 +301,11 @@ class EditorController extends ChangeNotifier {
 
     for (final task in tasks) {
       try {
-        // 实际保存逻辑由外部注入，这里只管理队列
-      } catch (e) { debugPrint('EditorController: flush save failed (retry ${task.retryCount}/$_maxRetries): $e');
+        final ok = await onSaveTask?.call(task) ?? false;
+        if (!ok) throw Exception('save rejected');
+      } catch (e) {
+        debugPrint(
+            'EditorController: flush save failed (retry ${task.retryCount}/$_maxRetries): $e');
         if (task.retryCount < _maxRetries) {
           task.retryCount++;
           _saveQueue.add(task);
@@ -323,7 +329,14 @@ class EditorController extends ChangeNotifier {
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _debounceTimer = null;
     _autoSaveTimer?.cancel();
+    _autoSaveTimer = null;
+    _saveQueue.clear();
+    onRetryUploadImage = null;
+    onInsertImage = null;
+    onBatchInsertImages = null;
+    onSaveTask = null;
     super.dispose();
   }
 }

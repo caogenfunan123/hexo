@@ -141,11 +141,11 @@ class FrontMatterData {
           break;
         case 'tags':
           currentList = 'tags';
-          if (value.isNotEmpty) tags.add(value);
+          tags.addAll(_parseInlineList(value));
           break;
         case 'categories':
           currentList = 'categories';
-          if (value.isNotEmpty) categories.add(value);
+          categories.addAll(_parseInlineList(value));
           break;
         case 'cover':
           cover = value;
@@ -178,18 +178,69 @@ class FrontMatterData {
   }
 
   static String _escapeYaml(String value) {
+    // 含特殊字符（冒号、井号、引号、前后空格、换行、反斜杠等）时用双引号包裹
     if (value.contains(':') || value.contains('#') || value.contains('"') ||
-        value.contains("'") || value.startsWith(' ') || value.endsWith(' ') ||
+        value.contains("'") || value.contains('\\') || value.contains('\n') ||
+        value.contains('\t') || value.startsWith(' ') || value.endsWith(' ') ||
         value.isEmpty) {
-      return '"${value.replaceAll('"', '\\"')}"';
+      return '"${_escapeYamlString(value)}"';
     }
     return value;
   }
 
+  /// 对双引号包裹的 YAML 字符串内容做转义（反斜杠、双引号、换行）
+  static String _escapeYamlString(String value) {
+    final buf = StringBuffer();
+    for (final rune in value.runes) {
+      final c = String.fromCharCode(rune);
+      switch (c) {
+        case '\\':
+          buf.write('\\\\');
+        case '"':
+          buf.write('\\"');
+        case '\n':
+          buf.write('\\n');
+        case '\t':
+          buf.write('\\t');
+        case '\r':
+          buf.write('\\r');
+        default:
+          buf.write(c);
+      }
+    }
+    return buf.toString();
+  }
+
+  /// 解析行内列表形式，如 `tags: [a, b]`
+  static List<String> _parseInlineList(String value) {
+    final v = value.trim();
+    if (v.isEmpty) return const [];
+    if (v.startsWith('[') && v.endsWith(']')) {
+      return v
+          .substring(1, v.length - 1)
+          .split(',')
+          .map((e) => _stripQuotes(e.trim()))
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+    return [value];
+  }
+
   static String _stripQuotes(String value) {
-    if ((value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))) {
-      return value.substring(1, value.length - 1);
+    final v = value.trim();
+    if ((v.startsWith('"') && v.endsWith('"')) ||
+        (v.startsWith("'") && v.endsWith("'"))) {
+      final inner = v.substring(1, v.length - 1);
+      // 还原转义（双引号字符串）
+      if (v.startsWith('"')) {
+        return inner
+            .replaceAll('\\n', '\n')
+            .replaceAll('\\t', '\t')
+            .replaceAll('\\r', '\r')
+            .replaceAll('\\"', '"')
+            .replaceAll('\\\\', '\\');
+      }
+      return inner;
     }
     return value;
   }
@@ -338,12 +389,18 @@ class FrontMatterController extends ChangeNotifier {
 
   /// 从 Markdown 文本解析 FrontMatter 和正文
   static (FrontMatterData, String) parseMarkdown(String markdown) {
-    if (markdown.trimLeft().startsWith('---')) {
-      final endIndex = markdown.indexOf('---', 3);
-      if (endIndex > 0) {
-        final yaml = markdown.substring(3, endIndex).trim();
-        final content = markdown.substring(endIndex + 3).trimLeft();
-        return (FrontMatterData.fromYaml(yaml), content);
+    // 逐行解析，仅当结束 `---` 独占一行时才视为 FrontMatter 结束，
+    // 避免正文中的水平分割线 `---` 被误判
+    if (markdown.startsWith('---')) {
+      final lines = markdown.split('\n');
+      if (lines.length >= 2) {
+        for (var i = 1; i < lines.length; i++) {
+          if (lines[i].trimRight() == '---') {
+            final yaml = lines.sublist(1, i).join('\n').trim();
+            final content = lines.sublist(i + 1).join('\n').trimLeft();
+            return (FrontMatterData.fromYaml(yaml), content);
+          }
+        }
       }
     }
     return (const FrontMatterData(), markdown);

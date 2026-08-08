@@ -120,6 +120,12 @@ class SiteController extends ChangeNotifier {
         tokenId: site.tokenId,
       );
     }
+    // 若当前激活站点被取消默认（即之前激活的站点不是新默认站点），
+    // 保持激活状态不变即可；若默认站点是新设的且当前无激活站点，激活它
+    if (_activeSiteId == null &&
+        _staticSites.any((s) => s.isDefault)) {
+      _activeSiteId = _staticSites.firstWhere((s) => s.isDefault).id;
+    }
     // 动态站点不支持设为默认
     notifyListeners();
   }
@@ -131,10 +137,13 @@ class SiteController extends ChangeNotifier {
     notifyListeners();
 
     _activeSiteId = siteId;
-    await onSiteSwitch?.call(siteId);
-
-    _loading = false;
-    notifyListeners();
+    try {
+      await onSiteSwitch?.call(siteId);
+    } finally {
+      // 无论成功与否都复位 loading，避免异常导致 UI 永久卡 loading
+      _loading = false;
+      notifyListeners();
+    }
   }
 
   void setLoading(bool value) {
