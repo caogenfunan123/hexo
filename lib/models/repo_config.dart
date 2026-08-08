@@ -57,6 +57,10 @@ class RepoConfig {
   final String? defaultPageTemplateId; // 仓库默认页面模板ID
   final SyncType syncType; // 同步类型
 
+  // 发布时区偏移（分钟），默认 480 = 北京时间 UTC+8
+  // Cloudflare Pages 构建机为 UTC，front matter 日期需带正确偏移，避免日期偏移
+  final int publishTimeZoneOffsetMinutes;
+
   RepoConfig({
     required this.id,
     required this.name,
@@ -74,6 +78,7 @@ class RepoConfig {
     this.defaultPostTemplateId,
     this.defaultPageTemplateId,
     this.syncType = SyncType.gitRemote,
+    this.publishTimeZoneOffsetMinutes = 480,
   }) : fileNameRule = fileNameRule ??
             FileNameRule.fromFramework(frameworkId);
 
@@ -94,6 +99,7 @@ class RepoConfig {
     Object? defaultPostTemplateId = _sentinel,
     Object? defaultPageTemplateId = _sentinel,
     SyncType? syncType,
+    int? publishTimeZoneOffsetMinutes,
   }) {
     // 切换框架时，如果未显式传入 fileNameRule，自动从框架预设生成
     final effectiveFrameworkId = frameworkId ?? this.frameworkId;
@@ -122,6 +128,8 @@ class RepoConfig {
           ? this.defaultPageTemplateId
           : defaultPageTemplateId as String?,
       syncType: syncType ?? this.syncType,
+      publishTimeZoneOffsetMinutes:
+          publishTimeZoneOffsetMinutes ?? this.publishTimeZoneOffsetMinutes,
     );
   }
 
@@ -144,6 +152,7 @@ class RepoConfig {
         'defaultPostTemplateId': defaultPostTemplateId,
         'defaultPageTemplateId': defaultPageTemplateId,
         'syncType': syncType.name,
+        'publishTimeZoneOffsetMinutes': publishTimeZoneOffsetMinutes,
       };
 
   factory RepoConfig.fromJson(Map<String, dynamic> j) {
@@ -211,6 +220,8 @@ class RepoConfig {
       defaultPostTemplateId: postTplId,
       defaultPageTemplateId: pageTplId,
       syncType: st,
+      publishTimeZoneOffsetMinutes:
+          (j['publishTimeZoneOffsetMinutes'] as num?)?.toInt() ?? 480,
     );
   }
 

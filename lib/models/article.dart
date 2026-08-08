@@ -117,43 +117,50 @@ class Article {
 
   /// 用指定框架预设生成 FrontMatter + 正文
   /// 如果提供了 [templates] 且文章有 [templateId]，优先使用自定义模板
-  String toMarkdownWithFrontMatter({String frameworkId = 'hexo', List<TemplateItem>? templates}) {
+  String toMarkdownWithFrontMatter({String frameworkId = 'hexo', List<TemplateItem>? templates, int? timezoneOffsetMinutes}) {
     // 优先查找自定义模板
     if (templateId != null && templateId!.isNotEmpty && templates != null) {
       final customTemplate = templates.where((t) => t.id == templateId).firstOrNull;
       if (customTemplate != null) {
-        return _applyCustomTemplate(customTemplate);
+        return _applyCustomTemplate(customTemplate, repoFrameworkId: frameworkId, timezoneOffsetMinutes: timezoneOffsetMinutes);
       }
     }
 
     // 未来日期保护：如果 createdAt 在未来，使用当前日期
     // 避免因时区差异导致 Cloudflare 构建时文章被判定为"未来文章"而不显示
-    final effectiveDate = createdAt.isAfter(DateTime.now()) ? DateTime.now() : createdAt;
+    final now = DateTime.now();
+    final effectiveDate = createdAt.isAfter(now) ? now : createdAt;
+
+    // 按发布时区转换墙钟时间（默认北京时间 +08:00）
+    // Cloudflare Pages 构建机为 UTC，必须把设备本地时间映射到目标时区并带偏移，
+    // 否则构建机按 UTC 解析日期会导致文章日期偏移 8 小时
+    final offset = timezoneOffsetMinutes ?? 480;
+    final tzDate = effectiveDate.toUtc().add(Duration(minutes: offset));
 
     final dateFull =
-        '${effectiveDate.year.toString().padLeft(4, '0')}-${effectiveDate.month.toString().padLeft(2, '0')}-${effectiveDate.day.toString().padLeft(2, '0')} ${effectiveDate.hour.toString().padLeft(2, '0')}:${effectiveDate.minute.toString().padLeft(2, '0')}:${effectiveDate.second.toString().padLeft(2, '0')}';
+        '${tzDate.year.toString().padLeft(4, '0')}-${tzDate.month.toString().padLeft(2, '0')}-${tzDate.day.toString().padLeft(2, '0')} ${tzDate.hour.toString().padLeft(2, '0')}:${tzDate.minute.toString().padLeft(2, '0')}:${tzDate.second.toString().padLeft(2, '0')}';
     final dateShort =
-        '${effectiveDate.year.toString().padLeft(4, '0')}-${effectiveDate.month.toString().padLeft(2, '0')}-${effectiveDate.day.toString().padLeft(2, '0')}';
+        '${tzDate.year.toString().padLeft(4, '0')}-${tzDate.month.toString().padLeft(2, '0')}-${tzDate.day.toString().padLeft(2, '0')}';
     final timeFull =
-        '${effectiveDate.hour.toString().padLeft(2, '0')}:${effectiveDate.minute.toString().padLeft(2, '0')}:${effectiveDate.second.toString().padLeft(2, '0')}';
-    // 按框架生成日期格式：
-    // - Hugo: 纯日期，避免未来时间导致文章被跳过
+        '${tzDate.hour.toString().padLeft(2, '0')}:${tzDate.minute.toString().padLeft(2, '0')}:${tzDate.second.toString().padLeft(2, '0')}';
+    // 按框架生成日期格式（均带时区偏移，避免 Cloudflare UTC 构建机误解析）：
+    // - Hugo: RFC3339 含偏移，instant 明确
     // - Jekyll: 完整日期时间，模板中附加 +0800 时区
     // - Astro: ISO 8601 格式（含时区），符合 Zod schema 校验
-    // - 其他: 完整日期时间
+    // - 其他: 完整日期时间 + 偏移
     String dateForFramework;
     switch (frameworkId) {
       case 'hugo':
-        dateForFramework = dateShort;
+        dateForFramework = '${dateShort}T${timeFull}${_isoOffset(offset)}';
         break;
       case 'jekyll':
         dateForFramework = dateFull; // 模板中已有 +0800
         break;
       case 'astro':
-        dateForFramework = '${dateShort}T${timeFull}+08:00';
+        dateForFramework = '${dateShort}T${timeFull}${_isoOffset(offset)}';
         break;
       default:
-        dateForFramework = dateFull;
+        dateForFramework = '$dateFull ${_formatOffset(offset)}';
     }
     final tagsStr = tags.isEmpty
         ? '[]'
@@ -241,42 +248,52 @@ class Article {
         // 生成时日期等动态值必须跟随"仓库绑定的框架"，避免
         // 模板所属框架与目标框架不一致导致生成非法 FrontMatter、
         // 文章在博客上不显示（如 Hugo 误用 Hexo 模板的完整日期格式）。
-        return _applyCustomTemplate(customTemplate, repoFrameworkId: repo.frameworkId);
+        return _applyCustomTemplate(customTemplate,
+            repoFrameworkId: repo.frameworkId,
+            timezoneOffsetMinutes: repo.publishTimeZoneOffsetMinutes);
       }
     }
     // 2. 回退到框架预设
-    return toMarkdownWithFrontMatter(frameworkId: repo.frameworkId);
+    return toMarkdownWithFrontMatter(
+        frameworkId: repo.frameworkId,
+        timezoneOffsetMinutes: repo.publishTimeZoneOffsetMinutes);
   }
 
   /// 使用自定义模板生成 Markdown
   ///
   /// [repoFrameworkId] 为仓库绑定的博客框架 ID。模板仅决定 FrontMatter
   /// 的字段结构，日期 / 标签等动态值的格式一律跟随目标框架。
-  String _applyCustomTemplate(TemplateItem template, {String? repoFrameworkId}) {
+  String _applyCustomTemplate(TemplateItem template,
+      {String? repoFrameworkId, int? timezoneOffsetMinutes}) {
     // 未来日期保护
-    final effectiveDate = createdAt.isAfter(DateTime.now()) ? DateTime.now() : createdAt;
+    final now = DateTime.now();
+    final effectiveDate = createdAt.isAfter(now) ? now : createdAt;
+
+    // 按发布时区转换墙钟时间（默认北京时间 +08:00）
+    final offset = timezoneOffsetMinutes ?? 480;
+    final tzDate = effectiveDate.toUtc().add(Duration(minutes: offset));
 
     final dateFull =
-        '${effectiveDate.year.toString().padLeft(4, '0')}-${effectiveDate.month.toString().padLeft(2, '0')}-${effectiveDate.day.toString().padLeft(2, '0')} ${effectiveDate.hour.toString().padLeft(2, '0')}:${effectiveDate.minute.toString().padLeft(2, '0')}:${effectiveDate.second.toString().padLeft(2, '0')}';
+        '${tzDate.year.toString().padLeft(4, '0')}-${tzDate.month.toString().padLeft(2, '0')}-${tzDate.day.toString().padLeft(2, '0')} ${tzDate.hour.toString().padLeft(2, '0')}:${tzDate.minute.toString().padLeft(2, '0')}:${tzDate.second.toString().padLeft(2, '0')}';
     final dateShort =
-        '${effectiveDate.year.toString().padLeft(4, '0')}-${effectiveDate.month.toString().padLeft(2, '0')}-${effectiveDate.day.toString().padLeft(2, '0')}';
+        '${tzDate.year.toString().padLeft(4, '0')}-${tzDate.month.toString().padLeft(2, '0')}-${tzDate.day.toString().padLeft(2, '0')}';
     final timeFull =
-        '${effectiveDate.hour.toString().padLeft(2, '0')}:${effectiveDate.minute.toString().padLeft(2, '0')}:${effectiveDate.second.toString().padLeft(2, '0')}';
+        '${tzDate.hour.toString().padLeft(2, '0')}:${tzDate.minute.toString().padLeft(2, '0')}:${tzDate.second.toString().padLeft(2, '0')}';
     // 动态值格式跟随目标框架（仓库绑定框架优先）
     final targetFramework = repoFrameworkId ?? template.frameworkId;
     String dateForTemplate;
     switch (targetFramework) {
       case 'hugo':
-        dateForTemplate = dateShort;
+        dateForTemplate = '${dateShort}T${timeFull}${_isoOffset(offset)}';
         break;
       case 'jekyll':
         dateForTemplate = dateFull; // 模板中已有 +0800
         break;
       case 'astro':
-        dateForTemplate = '${dateShort}T${timeFull}+08:00';
+        dateForTemplate = '${dateShort}T${timeFull}${_isoOffset(offset)}';
         break;
       default:
-        dateForTemplate = dateFull;
+        dateForTemplate = '$dateFull ${_formatOffset(offset)}';
     }
     final tagsStr = tags.isEmpty
         ? '[]'
@@ -307,9 +324,9 @@ class Article {
         .replaceAll('{{categories}}', effectiveCatsStr)
         .replaceAll('{{slug}}', slug)
         .replaceAll('{{draft}}', isDraft.toString())
-        .replaceAll('{{year}}', effectiveDate.year.toString())
-        .replaceAll('{{month}}', effectiveDate.month.toString().padLeft(2, '0'))
-        .replaceAll('{{day}}', effectiveDate.day.toString().padLeft(2, '0'));
+        .replaceAll('{{year}}', tzDate.year.toString())
+        .replaceAll('{{month}}', tzDate.month.toString().padLeft(2, '0'))
+        .replaceAll('{{day}}', tzDate.day.toString().padLeft(2, '0'));
 
     if (cover != null && cover!.isNotEmpty) {
       fm = fm.replaceAll('{{cover}}', cover!);
@@ -500,6 +517,21 @@ class Article {
       out = out.substring(1, out.length - 1);
     }
     return out.trim();
+  }
+
+  /// 将分钟偏移格式化为 +0800 / -0530 形式
+  static String _formatOffset(int offsetMinutes) {
+    final sign = offsetMinutes < 0 ? '-' : '+';
+    final abs = offsetMinutes.abs();
+    final h = (abs ~/ 60).toString().padLeft(2, '0');
+    final m = (abs % 60).toString().padLeft(2, '0');
+    return '$sign$h$m';
+  }
+
+  /// 将分钟偏移格式化为 ISO 8601 的 +08:00 / -05:30 形式
+  static String _isoOffset(int offsetMinutes) {
+    final base = _formatOffset(offsetMinutes);
+    return '${base.substring(0, 3)}:${base.substring(3)}';
   }
 
   String fileName({bool postDatePrefix = false}) {

@@ -3430,6 +3430,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             : settings.effectiveGithubToken);
     String frameworkId = existing?.frameworkId ?? 'hexo';
     final String originalFrameworkId = existing?.frameworkId ?? 'hexo';
+    int publishTimeZoneOffsetMinutes =
+        existing?.publishTimeZoneOffsetMinutes ?? 480;
     bool postDatePrefix = existing?.fileNameRule.postDatePrefix ?? false;
     String? selectedTokenId = settings.activeGithubTokenId;
     if (existing?.token.isNotEmpty == true) {
@@ -3479,6 +3481,30 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                             }
                           }
                         });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    // ── 发布时区选择 ──
+                    DropdownButtonFormField<int>(
+                      value: publishTimeZoneOffsetMinutes,
+                      decoration: const InputDecoration(
+                        labelText: '发布时区',
+                        helperText: 'Front Matter 日期带该时区偏移，避免 Cloudflare(UTC) 构建日期错位',
+                        prefixIcon: Icon(Icons.schedule, size: 18),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 0, child: Text('UTC (UTC+0)')),
+                        DropdownMenuItem(value: 480, child: Text('北京 (UTC+8)')),
+                        DropdownMenuItem(value: 540, child: Text('东京 (UTC+9)')),
+                        DropdownMenuItem(value: 600, child: Text('悉尼 (UTC+10)')),
+                        DropdownMenuItem(value: -300, child: Text('纽约 (UTC-5)')),
+                        DropdownMenuItem(value: -480, child: Text('洛杉矶 (UTC-8)')),
+                        DropdownMenuItem(value: 330, child: Text('孟买 (UTC+5:30)')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) {
+                          setDlg(() => publishTimeZoneOffsetMinutes = v);
+                        }
                       },
                     ),
                     const SizedBox(height: 12),
@@ -3647,6 +3673,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       isDefault: existing?.isDefault ?? repos.isEmpty,
       defaultPostTemplateId: defaultPostId,
       defaultPageTemplateId: defaultPageId,
+      publishTimeZoneOffsetMinutes: publishTimeZoneOffsetMinutes,
     );
     if (existing == null) {
       repos.add(cfg);
