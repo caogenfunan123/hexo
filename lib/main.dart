@@ -858,7 +858,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     if (!settings.autoSaveEnabled) return;
     _autoSaveTimer = Timer.periodic(
       Duration(seconds: settings.autoSaveIntervalSeconds),
-      (_) => _autoSaveSnapshot(),
+      (_) {
+        // 定时自动保存：仅保存当前文章，防止串草稿
+        final current = _doc.contentCtrl.text;
+        _autoSaveSnapshot(
+          articleId: _doc.currentArticle.id,
+          content: current,
+          title: _doc.titleCtrl.text,
+        );
+      },
     );
   }
 
@@ -5634,4 +5642,6 @@ class _DebounceEntry {
     required this.title,
     required this.timer,
   });
+
+  void cancel() => timer.cancel();
 }
