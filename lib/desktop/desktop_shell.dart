@@ -49,7 +49,7 @@ import '../screens/dashboard_screen.dart';
 import '../screens/rss_screen.dart';
 import '../screens/history_screen.dart';
 import '../screens/folder_upload_screen.dart';
-// preview_screen 使用 WebView，桌面端不可用，改为系统浏览器打开
+import '../screens/preview_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/site_editor_screen.dart';
 import '../screens/site_management_screen.dart';
@@ -2936,7 +2936,18 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   void _openPreview() {
-    // 桌面端 WebView 不可用，直接在系统浏览器中打开
+    // flutter_inappwebview 不支持 Linux，回退到系统浏览器
+    if (Platform.isLinux) {
+      _openPreviewExternal();
+      return;
+    }
+    _openTab('preview', '网站预览', Icons.language, PreviewScreen(
+      activeRepo: activeRepo,
+      sitePreviewUrl: settings.sitePreviewUrl,
+    ));
+  }
+
+  void _openPreviewExternal() {
     final url = activeRepo?.siteUrl.isNotEmpty == true
         ? activeRepo!.siteUrl
         : (settings.sitePreviewUrl.isNotEmpty ? settings.sitePreviewUrl : '');
