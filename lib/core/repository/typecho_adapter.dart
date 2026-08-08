@@ -6,6 +6,7 @@ import '../../models/blog_post.dart';
 import '../../models/blog_site_config.dart';
 import '../../services/html_to_markdown.dart';
 import 'blog_repository.dart';
+import 'js_challenge_guard.dart';
 
 /// Typecho REST API 适配器
 ///
@@ -22,6 +23,7 @@ class TypechoAdapter implements BlogRepository {
   final BlogSiteConfig _config;
   final AppSettings _settings;
   HttpClient? _client;
+  JsChallengeHttp? _challengeHttp;
 
   /// 常见的 Typecho REST API 端点路径
   static const _commonEndpoints = [
@@ -43,6 +45,12 @@ class TypechoAdapter implements BlogRepository {
           ? (cert, host, port) => true
           : null;
     return _client!;
+  }
+
+  /// 带 slowAES 反爬挑战处理的请求客户端
+  JsChallengeHttp get _js {
+    _challengeHttp ??= JsChallengeHttp(_http);
+    return _challengeHttp!;
   }
 
   /// 获取 API 端点路径
@@ -67,40 +75,33 @@ class TypechoAdapter implements BlogRepository {
     Uri uri, {
     Map<String, dynamic>? body,
   }) async {
-    final client = _http;
-    final req = method == 'GET'
-        ? await client.getUrl(uri)
-        : method == 'POST'
-            ? await client.postUrl(uri)
-            : method == 'PUT'
-                ? await client.putUrl(uri)
-                : await client.deleteUrl(uri);
+    final resp = await _js.send(
+      method,
+      uri,
+      headers: _commonHeaders(json: body != null),
+      body: body != null ? jsonEncode(body) : null,
+    );
 
-    // Typecho 插件通常使用 Token 头部
-    req.headers.set('Token', _config.typechoToken ?? '');
-    req.headers.set('Authorization', 'Bearer ${_config.typechoToken ?? ''}');
-    req.headers.set('Content-Type', 'application/json');
-    req.headers.set('Accept', 'application/json');
-    req.headers.set('User-Agent', 'HexoBlogManager/1.0');
-
-    if (body != null) {
-      req.write(jsonEncode(body));
-    }
-
-    final response = await req.close();
-    final text = await response.transform(utf8.decoder).join();
-
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      if (text.isEmpty) return {};
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      if (resp.text.isEmpty) return {};
       try {
-        return jsonDecode(text);
+        return jsonDecode(resp.text);
       } catch (_) {
-        return {'raw': text};
+        return {'raw': resp.text};
       }
     }
 
-    _handleError(response.statusCode, text);
+    _handleError(resp.statusCode, resp.text);
   }
+
+  /// 公共请求头（Typecho 插件通常使用 Token 头部）
+  Map<String, String> _commonHeaders({bool json = false}) => {
+        'Token': _config.typechoToken ?? '',
+        'Authorization': 'Bearer ${_config.typechoToken ?? ''}',
+        if (json) 'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'HexoBlogManager/1.0',
+      };
 
   Never _handleError(int statusCode, String body) {
     String message;
@@ -129,15 +130,8 @@ class TypechoAdapter implements BlogRepository {
     for (final ep in _commonEndpoints) {
       try {
         final uri = _apiUri(ep, {'page': '1', 'perPage': '1'});
-        final client = _http;
-        final req = await client.getUrl(uri);
-        req.headers.set('Token', _config.typechoToken ?? '');
-        req.headers.set('Authorization', 'Bearer ${_config.typechoToken ?? ''}');
-        req.headers.set('Accept', 'application/json');
-        req.headers.set('User-Agent', 'HexoBlogManager/1.0');
-
-        final response = await req.close();
-        if (response.statusCode == 200) {
+        final resp = await _js.send('GET', uri, headers: _commonHeaders());
+        if (resp.statusCode == 200) {
           return ep;
         }
       } catch (_) {}
@@ -163,21 +157,13 @@ class TypechoAdapter implements BlogRepository {
       }
 
       final uri = _apiUri(ep, {'page': '1', 'perPage': '1'});
-      final client = _http;
-      final req = await client.getUrl(uri);
-      req.headers.set('Token', _config.typechoToken ?? '');
-      req.headers.set('Authorization', 'Bearer ${_config.typechoToken ?? ''}');
-      req.headers.set('Accept', 'application/json');
-      req.headers.set('User-Agent', 'HexoBlogManager/1.0');
+      final resp = await _js.send('GET', uri, headers: _commonHeaders());
 
-      final response = await req.close();
-      final text = await response.transform(utf8.decoder).join();
-
-      if (response.statusCode == 200) {
+      if (resp.statusCode == 200) {
         return ConnectionResult.ok('连接成功！API 端点：$ep');
       }
 
-      if (response.statusCode == 401 || response.statusCode == 403) {
+      if (resp.statusCode == 401 || resp.statusCode == 403) {
         return ConnectionResult.fail(
           '鉴权失败：Token 无效。请在 Typecho 插件设置页生成 Token。',
           detail: 'API 端点：$ep',
@@ -185,8 +171,8 @@ class TypechoAdapter implements BlogRepository {
       }
 
       return ConnectionResult.fail(
-        'HTTP ${response.statusCode}: 连接异常',
-        detail: 'API 端点：$ep\n$text',
+        'HTTP ${resp.statusCode}: 连接异常',
+        detail: 'API 端点：$ep\n${resp.text}',
       );
     } on SocketException catch (e) {
       return ConnectionResult.fail(
@@ -318,15 +304,10 @@ class TypechoAdapter implements BlogRepository {
   Future<MediaUploadResult> uploadMedia(String filePath) async {
     // Typecho 的媒体上传接口因插件而异，P0 提供基础实现
     try {
-      final client = _http;
       // 从端点路径提取 API 基础路径，避免使用 .. 拼接
       final ep = _endpoint;
       final basePath = ep.substring(0, ep.lastIndexOf('/'));
       final uri = _apiUri('$basePath/media/upload');
-      final req = await client.postUrl(uri);
-      req.headers.set('Token', _config.typechoToken ?? '');
-      req.headers.set('Authorization', 'Bearer ${_config.typechoToken ?? ''}');
-      req.headers.set('User-Agent', 'HexoBlogManager/1.0');
 
       final file = File(filePath);
       if (!await file.exists()) {
@@ -335,26 +316,29 @@ class TypechoAdapter implements BlogRepository {
 
       final bytes = await file.readAsBytes();
       final boundary = '----FormBoundary${DateTime.now().millisecondsSinceEpoch}';
-      req.headers.set('Content-Type', 'multipart/form-data; boundary=$boundary');
 
-      final body = utf8.encode(
+      final header = utf8.encode(
         '--$boundary\r\n'
         'Content-Disposition: form-data; name="file"; filename="${filePath.split('/').last}"\r\n'
         'Content-Type: image/${_extension(filePath)}\r\n\r\n',
       );
       final footer = utf8.encode('\r\n--$boundary--\r\n');
+      final bodyBytes = <int>[...header, ...bytes, ...footer];
 
-      req.contentLength = body.length + bytes.length + footer.length;
-      req.add(body);
-      req.add(bytes);
-      req.add(footer);
+      final resp = await _js.send(
+        'POST',
+        uri,
+        headers: {
+          ..._commonHeaders(),
+          'Content-Type': 'multipart/form-data; boundary=$boundary',
+        },
+        rawBody: bodyBytes,
+        contentLength: bodyBytes.length,
+      );
 
-      final response = await req.close();
-      final text = await response.transform(utf8.decoder).join();
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      if (resp.statusCode == 200 || resp.statusCode == 201) {
         try {
-          final data = jsonDecode(text);
+          final data = jsonDecode(resp.text);
           final url = data is Map
               ? (data['url'] ?? data['file'] ?? data['path'] ?? '').toString()
               : '';
@@ -367,7 +351,7 @@ class TypechoAdapter implements BlogRepository {
       return MediaUploadResult.failure(
         '媒体上传功能依赖 Typecho 插件支持。\n'
         '请确认插件版本支持文件上传接口。\n'
-        'HTTP ${response.statusCode}',
+        'HTTP ${resp.statusCode}',
       );
     } catch (e) {
       return MediaUploadResult.failure('上传失败: $e');
@@ -576,5 +560,6 @@ class TypechoAdapter implements BlogRepository {
   void dispose() {
     _client?.close(force: true);
     _client = null;
+    _challengeHttp = null;
   }
 }

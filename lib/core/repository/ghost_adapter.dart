@@ -8,6 +8,7 @@ import '../../models/blog_post.dart';
 import '../../models/blog_site_config.dart';
 import '../../services/html_to_markdown.dart';
 import 'blog_repository.dart';
+import 'js_challenge_guard.dart';
 
 /// Ghost Admin API 适配器
 ///
@@ -21,6 +22,7 @@ class GhostAdapter implements BlogRepository {
   final BlogSiteConfig _config;
   final AppSettings _settings;
   HttpClient? _client;
+  JsChallengeHttp? _challengeHttp;
   String? _jwtToken;
   DateTime? _tokenExpiry;
 
@@ -36,6 +38,12 @@ class GhostAdapter implements BlogRepository {
           ? (cert, host, port) => true
           : null;
     return _client!;
+  }
+
+  /// 带 slowAES 反爬挑战处理的请求客户端
+  JsChallengeHttp get _js {
+    _challengeHttp ??= JsChallengeHttp(_http);
+    return _challengeHttp!;
   }
 
   /// 解析 Admin API Key（"id:secret" 格式）
@@ -103,38 +111,32 @@ class GhostAdapter implements BlogRepository {
     Map<String, dynamic>? body,
   }) async {
     final token = await _getJwt();
-    final client = _http;
-    final req = method == 'GET'
-        ? await client.getUrl(uri)
-        : method == 'POST'
-            ? await client.postUrl(uri)
-            : method == 'PUT'
-                ? await client.putUrl(uri)
-                : await client.deleteUrl(uri);
+    final resp = await _js.send(
+      method,
+      uri,
+      headers: _commonHeaders(token, json: body != null),
+      body: body != null ? jsonEncode(body) : null,
+    );
 
-    req.headers.set('Authorization', 'Ghost $token');
-    req.headers.set('Content-Type', 'application/json');
-    req.headers.set('Accept-Version', 'v5.0');
-    req.headers.set('User-Agent', 'HexoBlogManager/1.0');
-
-    if (body != null) {
-      req.write(jsonEncode(body));
-    }
-
-    final response = await req.close();
-    final text = await response.transform(utf8.decoder).join();
-
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      if (text.isEmpty) return {};
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      if (resp.text.isEmpty) return {};
       try {
-        return jsonDecode(text);
+        return jsonDecode(resp.text);
       } catch (_) {
-        return {'raw': text};
+        return {'raw': resp.text};
       }
     }
 
-    _handleError(response.statusCode, text);
+    _handleError(resp.statusCode, resp.text);
   }
+
+  /// 公共请求头
+  Map<String, String> _commonHeaders(String token, {bool json = false}) => {
+        'Authorization': 'Ghost $token',
+        'Accept-Version': 'v5.0',
+        if (json) 'Content-Type': 'application/json',
+        'User-Agent': 'HexoBlogManager/1.0',
+      };
 
   Never _handleError(int statusCode, String body) {
     String message;
@@ -159,24 +161,17 @@ class GhostAdapter implements BlogRepository {
   Future<ConnectionResult> testConnection() async {
     try {
       final token = _createJwt();
-      final client = _http;
       final uri = _apiUri('/site/');
-      final req = await client.getUrl(uri);
-      req.headers.set('Authorization', 'Ghost $token');
-      req.headers.set('Accept-Version', 'v5.0');
-      req.headers.set('User-Agent', 'HexoBlogManager/1.0');
+      final resp = await _js.send('GET', uri, headers: _commonHeaders(token));
 
-      final response = await req.close();
-      final text = await response.transform(utf8.decoder).join();
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(text) as Map<String, dynamic>;
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.text) as Map<String, dynamic>;
         final site = data['site'] as Map<String, dynamic>?;
         final title = site?['title']?.toString() ?? 'Ghost 站点';
         return ConnectionResult.ok('连接成功！站点：$title');
       }
 
-      if (response.statusCode == 401) {
+      if (resp.statusCode == 401) {
         return ConnectionResult.fail(
           '鉴权失败：Admin API Key 无效。请确认格式为 "id:secret"。',
           detail: 'Ghost后台 → Settings → Integrations → Add custom integration 生成',
@@ -184,8 +179,8 @@ class GhostAdapter implements BlogRepository {
       }
 
       return ConnectionResult.fail(
-        'HTTP ${response.statusCode}: 连接异常',
-        detail: text,
+        'HTTP ${resp.statusCode}: 连接异常',
+        detail: resp.text,
       );
     } on SocketException catch (e) {
       return ConnectionResult.fail(
@@ -283,13 +278,8 @@ class GhostAdapter implements BlogRepository {
   @override
   Future<MediaUploadResult> uploadMedia(String filePath) async {
     try {
-      final client = _http;
       final token = await _getJwt();
       final uri = _apiUri('/images/upload/');
-      final req = await client.postUrl(uri);
-      req.headers.set('Authorization', 'Ghost $token');
-      req.headers.set('Accept-Version', 'v5.0');
-      req.headers.set('User-Agent', 'HexoBlogManager/1.0');
 
       final file = File(filePath);
       if (!await file.exists()) {
@@ -298,25 +288,28 @@ class GhostAdapter implements BlogRepository {
 
       final bytes = await file.readAsBytes();
       final boundary = '----FormBoundary${DateTime.now().millisecondsSinceEpoch}';
-      req.headers.set('Content-Type', 'multipart/form-data; boundary=$boundary');
 
-      final body = utf8.encode(
+      final header = utf8.encode(
         '--$boundary\r\n'
         'Content-Disposition: form-data; name="file"; filename="${filePath.split('/').last}"\r\n'
         'Content-Type: image/${_extension(filePath)}\r\n\r\n',
       );
       final footer = utf8.encode('\r\n--$boundary--\r\n');
+      final bodyBytes = <int>[...header, ...bytes, ...footer];
 
-      req.contentLength = body.length + bytes.length + footer.length;
-      req.add(body);
-      req.add(bytes);
-      req.add(footer);
+      final resp = await _js.send(
+        'POST',
+        uri,
+        headers: {
+          ..._commonHeaders(token),
+          'Content-Type': 'multipart/form-data; boundary=$boundary',
+        },
+        rawBody: bodyBytes,
+        contentLength: bodyBytes.length,
+      );
 
-      final response = await req.close();
-      final text = await response.transform(utf8.decoder).join();
-
-      if (response.statusCode == 201) {
-        final data = jsonDecode(text) as Map<String, dynamic>;
+      if (resp.statusCode == 201) {
+        final data = jsonDecode(resp.text) as Map<String, dynamic>;
         final images = data['images'] as List? ?? [];
         if (images.isNotEmpty) {
           final img = images.first as Map<String, dynamic>;
@@ -325,7 +318,7 @@ class GhostAdapter implements BlogRepository {
         }
       }
 
-      return MediaUploadResult.failure('上传失败: HTTP ${response.statusCode}');
+      return MediaUploadResult.failure('上传失败: HTTP ${resp.statusCode}');
     } catch (e) {
       return MediaUploadResult.failure('上传失败: $e');
     }
@@ -549,6 +542,7 @@ class GhostAdapter implements BlogRepository {
   void dispose() {
     _client?.close(force: true);
     _client = null;
+    _challengeHttp = null;
     _jwtToken = null;
     _tokenExpiry = null;
   }

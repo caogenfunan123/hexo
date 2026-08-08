@@ -6,6 +6,7 @@ import '../../models/blog_post.dart';
 import '../../models/blog_site_config.dart';
 import '../../services/html_to_markdown.dart';
 import 'blog_repository.dart';
+import 'js_challenge_guard.dart';
 
 /// WordPress REST API 适配器
 ///
@@ -18,6 +19,7 @@ class WordPressAdapter implements BlogRepository {
   final BlogSiteConfig _config;
   final AppSettings _settings;
   HttpClient? _client;
+  JsChallengeHttp? _challengeHttp;
 
   WordPressAdapter(this._config, this._settings);
 
@@ -31,6 +33,12 @@ class WordPressAdapter implements BlogRepository {
           ? (cert, host, port) => true
           : null;
     return _client!;
+  }
+
+  /// 带 slowAES 反爬挑战处理的请求客户端
+  JsChallengeHttp get _js {
+    _challengeHttp ??= JsChallengeHttp(_http);
+    return _challengeHttp!;
   }
 
   /// 构建 Basic Auth Header
@@ -57,38 +65,32 @@ class WordPressAdapter implements BlogRepository {
     Uri uri, {
     Map<String, dynamic>? body,
   }) async {
-    final client = _http;
-    final req = method == 'GET'
-        ? await client.getUrl(uri)
-        : method == 'POST'
-            ? await client.postUrl(uri)
-            : method == 'PUT'
-                ? await client.putUrl(uri)
-                : await client.deleteUrl(uri);
+    final resp = await _js.send(
+      method,
+      uri,
+      headers: _commonHeaders(json: body != null),
+      body: body != null ? jsonEncode(body) : null,
+    );
 
-    req.headers.set('Authorization', _authHeader);
-    req.headers.set('Content-Type', 'application/json');
-    req.headers.set('Accept', 'application/json');
-    req.headers.set('User-Agent', 'HexoBlogManager/1.0');
-
-    if (body != null) {
-      req.write(jsonEncode(body));
-    }
-
-    final response = await req.close();
-    final text = await response.transform(utf8.decoder).join();
-
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      if (text.isEmpty) return {};
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      if (resp.text.isEmpty) return {};
       try {
-        return jsonDecode(text) as Map<String, dynamic>;
+        return jsonDecode(resp.text) as Map<String, dynamic>;
       } catch (_) {
-        return {'raw': text};
+        return {'raw': resp.text};
       }
     }
 
-    _handleError(response.statusCode, text);
+    _handleError(resp.statusCode, resp.text);
   }
+
+  /// 公共请求头
+  Map<String, String> _commonHeaders({bool json = false}) => {
+        'Authorization': _authHeader,
+        if (json) 'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'HexoBlogManager/1.0',
+      };
 
   /// 分类 HTTP 错误，抛出友好提示
   Never _handleError(int statusCode, String body) {
@@ -119,30 +121,23 @@ class WordPressAdapter implements BlogRepository {
   @override
   Future<ConnectionResult> testConnection() async {
     try {
-      final client = _http;
       final uri = _apiUri('/users/me');
-      final req = await client.getUrl(uri);
-      req.headers.set('Authorization', _authHeader);
-      req.headers.set('Accept', 'application/json');
-      req.headers.set('User-Agent', 'HexoBlogManager/1.0');
+      final resp = await _js.send('GET', uri, headers: _commonHeaders());
 
-      final response = await req.close();
-      final text = await response.transform(utf8.decoder).join();
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(text) as Map<String, dynamic>;
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.text) as Map<String, dynamic>;
         final name = data['name']?.toString() ?? '未知';
         return ConnectionResult.ok('连接成功！已认证为：$name');
       }
 
-      if (response.statusCode == 401) {
+      if (resp.statusCode == 401) {
         return ConnectionResult.fail(
           '鉴权失败：应用密码错误。请确认使用 Application Password 而非登录密码。',
           detail: 'WP后台 → 用户 → 个人资料 → 底部「应用程序密码」生成',
         );
       }
 
-      if (response.statusCode == 404) {
+      if (resp.statusCode == 404) {
         return ConnectionResult.fail(
           '未找到 WordPress REST API。请确认站点是 WordPress 5.6+，且 REST API 未被禁用。',
           detail: '尝试访问: ${uri.toString()}',
@@ -150,8 +145,8 @@ class WordPressAdapter implements BlogRepository {
       }
 
       return ConnectionResult.fail(
-        'HTTP ${response.statusCode}: 连接异常',
-        detail: text,
+        'HTTP ${resp.statusCode}: 连接异常',
+        detail: resp.text,
       );
     } on SocketException catch (e) {
       return ConnectionResult.fail(
@@ -182,17 +177,10 @@ class WordPressAdapter implements BlogRepository {
       '_embed': 'true',
     });
 
-    final client = _http;
-    final req = await client.getUrl(uri);
-    req.headers.set('Authorization', _authHeader);
-    req.headers.set('Accept', 'application/json');
-    req.headers.set('User-Agent', 'HexoBlogManager/1.0');
+    final resp = await _js.send('GET', uri, headers: _commonHeaders());
 
-    final response = await req.close();
-    final text = await response.transform(utf8.decoder).join();
-
-    if (response.statusCode == 200) {
-      final list = jsonDecode(text) as List;
+    if (resp.statusCode == 200) {
+      final list = jsonDecode(resp.text) as List;
 
       return list.map((item) {
         final data = item as Map<String, dynamic>;
@@ -200,29 +188,22 @@ class WordPressAdapter implements BlogRepository {
       }).toList();
     }
 
-    _handleError(response.statusCode, text);
+    _handleError(resp.statusCode, resp.text);
   }
 
   @override
   Future<BlogPost?> getPostById(int id) async {
     final uri = _apiUri('/posts/$id', {'_embed': 'true'});
 
-    final client = _http;
-    final req = await client.getUrl(uri);
-    req.headers.set('Authorization', _authHeader);
-    req.headers.set('Accept', 'application/json');
-    req.headers.set('User-Agent', 'HexoBlogManager/1.0');
+    final resp = await _js.send('GET', uri, headers: _commonHeaders());
 
-    final response = await req.close();
-    final text = await response.transform(utf8.decoder).join();
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(text) as Map<String, dynamic>;
+    if (resp.statusCode == 200) {
+      final data = jsonDecode(resp.text) as Map<String, dynamic>;
       return _wpPostToBlogPost(data);
     }
-    if (response.statusCode == 404) return null;
+    if (resp.statusCode == 404) return null;
 
-    _handleError(response.statusCode, text);
+    _handleError(resp.statusCode, resp.text);
   }
 
   @override
@@ -286,34 +267,33 @@ class WordPressAdapter implements BlogRepository {
   @override
   Future<MediaUploadResult> uploadMedia(String filePath) async {
     try {
-      final client = _http;
       final uri = _apiUri('/media');
-      final req = await client.postUrl(uri);
-      req.headers.set('Authorization', _authHeader);
-      req.headers.set('Content-Disposition', 'attachment; filename="${filePath.split('/').last}"');
-      req.headers.set('User-Agent', 'HexoBlogManager/1.0');
-
       final file = File(filePath);
       if (!await file.exists()) {
         return MediaUploadResult.failure('文件不存在: $filePath');
       }
 
       final bytes = await file.readAsBytes();
-      req.headers.set('Content-Type', 'image/${_extension(filePath)}');
-      req.headers.set('Content-Length', bytes.length.toString());
-      req.add(bytes);
+      final resp = await _js.send(
+        'POST',
+        uri,
+        headers: {
+          ..._commonHeaders(),
+          'Content-Disposition': 'attachment; filename="${filePath.split('/').last}"',
+          'Content-Type': 'image/${_extension(filePath)}',
+        },
+        rawBody: bytes,
+        contentLength: bytes.length,
+      );
 
-      final response = await req.close();
-      final text = await response.transform(utf8.decoder).join();
-
-      if (response.statusCode == 201) {
-        final data = jsonDecode(text) as Map<String, dynamic>;
+      if (resp.statusCode == 201) {
+        final data = jsonDecode(resp.text) as Map<String, dynamic>;
         final id = (data['id'] as num?)?.toInt() ?? 0;
         final url = data['source_url']?.toString() ?? '';
         return MediaUploadResult.success(id, url);
       }
 
-      return MediaUploadResult.failure('上传失败: HTTP ${response.statusCode}');
+      return MediaUploadResult.failure('上传失败: HTTP ${resp.statusCode}');
     } catch (e) {
       return MediaUploadResult.failure('上传失败: $e');
     }
@@ -633,5 +613,6 @@ class WordPressAdapter implements BlogRepository {
   void dispose() {
     _client?.close(force: true);
     _client = null;
+    _challengeHttp = null;
   }
 }
