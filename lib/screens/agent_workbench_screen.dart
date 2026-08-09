@@ -61,9 +61,6 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
   // 附件列表
   final List<String> _attachments = [];
 
-  // 工作台底部标签
-  int _tabIndex = 0; // 0=对话, 1=工具时间线, 2=文件变更
-
   String get _siteId => widget.settings.effectiveActiveSiteId;
 
   @override
@@ -113,7 +110,14 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
 
   /// 恢复任务
   void _resumeTask(AgentTask task) {
-    setState(() => _task = task);
+    setState(() {
+      _task = task;
+      _titleCtrl.text = task.title;
+      _objectiveCtrl.text = task.objective;
+      _attachments
+        ..clear()
+        ..addAll(task.attachmentPaths);
+    });
   }
 
   /// 保存任务（断点）
@@ -124,7 +128,9 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
 
   /// 任务完成时保存
   Future<void> _markTaskDone(AgentTask task) async {
-    await _taskRepo.saveTask(task.copyWith(status: 'done'));
+    final updated = task.copyWith(status: 'done');
+    setState(() => _task = updated);
+    await _taskRepo.saveTask(updated);
     _loadRecentTasks();
   }
 
@@ -216,7 +222,7 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
               ),
               _chip(
                 icon: Icons.attach_file,
-                label: '附件 ${_attachments.length}',
+                label: '附件 ${task?.attachmentPaths.length ?? _attachments.length}',
               ),
               if (task != null)
                 _chip(
@@ -499,75 +505,77 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
   @override
   Widget build(BuildContext context) {
     final task = _task;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Agent 工作台'),
-        actions: [
-          if (task != null)
-            IconButton(
-              icon: const Icon(Icons.fact_check_outlined),
-              tooltip: '标记完成',
-              onPressed: () => _markTaskDone(task),
-            ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            tooltip: '清空对话',
-            onPressed: () async {
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('清空聊天记录'),
-                  content: const Text('确认清空所有聊天记录？此操作不可撤销。'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('取消'),
-                    ),
-                    FilledButton(
-                      style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: const Text('清空'),
-                    ),
-                  ],
-                ),
-              );
-              if (confirmed == true) {
-                _chatKey.currentState?.clearHistory();
-              }
-            },
-          ),
-        ],
-        bottom: task == null
-            ? null
-            : PreferredSize(
-                preferredSize: const Size.fromHeight(40),
-                child: TabBar(
-                  indicatorSize: TabBarIndicatorSize.label,
-                  tabs: const [
-                    Tab(text: '对话', icon: Icon(Icons.chat_bubble_outline, size: 18)),
-                    Tab(text: '工具', icon: Icon(Icons.handyman_outlined, size: 18)),
-                    Tab(text: '文件', icon: Icon(Icons.difference_outlined, size: 18)),
-                  ],
-                ),
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Agent 工作台'),
+          actions: [
+            if (task != null)
+              IconButton(
+                icon: const Icon(Icons.fact_check_outlined),
+                tooltip: '标记完成',
+                onPressed: () => _markTaskDone(task),
               ),
-      ),
-      body: task == null
-          ? _buildTaskSetup()
-          : Column(
-              children: [
-                _buildTaskHeader(),
-                Expanded(
-                  child: IndexedStack(
-                    index: _tabIndex,
-                    children: [
-                      _buildChatArea(task),
-                      _buildToolTimeline(),
-                      _buildFileChanges(),
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: '清空对话',
+              onPressed: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('清空聊天记录'),
+                    content: const Text('确认清空所有聊天记录？此操作不可撤销。'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('取消'),
+                      ),
+                      FilledButton(
+                        style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('清空'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirmed == true) {
+                  _chatKey.currentState?.clearHistory();
+                }
+              },
+            ),
+          ],
+          bottom: task == null
+              ? null
+              : const PreferredSize(
+                  preferredSize: Size.fromHeight(40),
+                  child: TabBar(
+                    indicatorSize: TabBarIndicatorSize.label,
+                    tabs: [
+                      Tab(text: '对话', icon: Icon(Icons.chat_bubble_outline, size: 18)),
+                      Tab(text: '工具', icon: Icon(Icons.handyman_outlined, size: 18)),
+                      Tab(text: '文件', icon: Icon(Icons.difference_outlined, size: 18)),
                     ],
                   ),
                 ),
-              ],
-            ),
+        ),
+        body: task == null
+            ? _buildTaskSetup()
+            : Column(
+                children: [
+                  _buildTaskHeader(),
+                  Expanded(
+                    child: TabBarView(
+                      children: [
+                        _buildChatArea(task),
+                        _buildToolTimeline(),
+                        _buildFileChanges(),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+      ),
     );
   }
 
@@ -588,6 +596,7 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
       gitHubService: widget.gitHubService,
       activeRepo: repo,
       storageService: widget.storageService,
+      historyKey: 'task_${task.id}',
       initialMessage: '欢迎使用 Agent 任务工作台！\n\n'
           '任务目标：${task.objective}\n'
           '${task.attachmentPaths.isNotEmpty ? '已附加 ${task.attachmentPaths.length} 个文件。\n' : ''}'

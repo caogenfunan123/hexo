@@ -157,10 +157,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   late final aiModelManager = AiModelManager(storage);
   late final siteDispatcherManager =
       SiteDispatcherManager(aiService, aiModelManager);
+  bool _siteDispatcherManagerUsed = false;
 
   /// 当前站点对应的调度器（站点隔离：每个站点独立上下文）
-  AiRequestDispatcher get aiDispatcher =>
-      siteDispatcherManager.forSite(settings.effectiveActiveSiteId);
+  AiRequestDispatcher get aiDispatcher {
+    _siteDispatcherManagerUsed = true;
+    return siteDispatcherManager.forSite(settings.effectiveActiveSiteId);
+  }
   late final themeMigrationService = ThemeMigrationService(aiService, github);
   late final aiSelfChecker = AiSelfChecker(aiService);
   final skillManager = SkillManager();
@@ -349,6 +352,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     templateSync?.dispose();
     siteIsolation.dispose();
     siteManager.disposeAll();
+    if (_siteDispatcherManagerUsed) {
+      siteDispatcherManager.disposeAll();
+    }
     cloudSyncService.dispose();
     cmsDraftService.close();
     _scheduledPublishTimer?.cancel();

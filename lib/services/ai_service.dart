@@ -188,7 +188,10 @@ class AiService {
         throw Exception('加载本地模型失败: $err');
       }
     }
-    return llama.complete(userPrompt, temperature: temperature);
+    final prompt = systemPrompt.trim().isEmpty
+        ? userPrompt
+        : '$systemPrompt\n\n$userPrompt';
+    return llama.complete(prompt, temperature: temperature);
   }
 
   /// 拉取 OpenAI 兼容 /models 列表，适配各类中转站。
@@ -539,7 +542,7 @@ class AiService {
     final p = resolveProfile(settings, override: profile);
     if (p.isLocalModel) {
       // 本地模型当前不支持函数调用：将消息拼接为提示词后生成。
-      final buf = StringBuffer('$systemPrompt\n\n');
+      final buf = StringBuffer();
       for (final m in messages) {
         final role = m['role']?.toString() ?? 'user';
         final content = _contentToText(m['content']);

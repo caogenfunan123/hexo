@@ -18,9 +18,9 @@ class LocalLlamaProvider {
 
   /// fcllama 上下文 id（double，>0 表示已成功 initContext）
   double? _contextId;
+  String? _loadedModelPath;
   String? _lastError;
-
-  StreamSubscription<Map<Object?, dynamic>>? _tokenSub;
+  Future<void> _completionQueue = Future<void>.value();
 
   /// 是否可在当前平台使用（仅 Android）。
   bool get isAvailable =>
@@ -51,13 +51,20 @@ class LocalLlamaProvider {
       _lastError = 'fcllama 插件未初始化';
       return _lastError;
     }
+    final normalizedPath = modelPath.trim();
+    if (_contextId != null && _loadedModelPath == normalizedPath) {
+      return null;
+    }
+    if (_contextId != null && _loadedModelPath != normalizedPath) {
+      await unload();
+    }
     try {
       final ctx = await llama.initContext(
-        modelPath,
+        normalizedPath,
         nCtx: contextSize,
-        nBatch: contextSize,
+        nBatch: contextSize > 512 ? 512 : contextSize,
         nThreads: 4,
-        useMlock: true,
+        useMlock: false,
         useMmap: true,
         emitLoadProgress: false,
       );
@@ -68,7 +75,7 @@ class LocalLlamaProvider {
         return _lastError;
       }
       _contextId = id;
-      _listenTokens();
+      _loadedModelPath = normalizedPath;
       return null;
     } catch (e) {
       _lastError = '加载本地模型失败: $e';
@@ -76,19 +83,11 @@ class LocalLlamaProvider {
     }
   }
 
-  /// 订阅流式 token（fcllama 通过 event channel 推送）。
-  void _listenTokens() {
-    _tokenSub?.cancel();
-    _tokenSub = FCllama.instance()?.onTokenStream?.listen((data) {
-      if (data['function'] != 'completion') return;
-      final res = data['result'];
-      if (res is Map && res['token'] != null) {
-        _tokenCtrl.add(res['token'].toString());
-      }
-    });
+  Future<T> _serializeCompletion<T>(Future<T> Function() action) {
+    final next = _completionQueue.then((_) => action());
+    _completionQueue = next.then<void>((_) {}, onError: (_) {});
+    return next;
   }
-
-  final _tokenCtrl = StreamController<String>.broadcast(sync: false);
 
   /// 每次 completion 生成的完整文本（流式聚合）。
   Future<String> _collectCompletion(
@@ -97,25 +96,43 @@ class LocalLlamaProvider {
     int maxTokens,
     double temperature,
   ) async {
-    final buf = StringBuffer();
-    final sub = _tokenCtrl.stream.listen(buf.write);
-    try {
-      await FCllama.instance()?.completion(
-        contextId,
-        prompt: prompt,
-        nPredict: maxTokens,
-        temperature: temperature,
-        topP: 0.9,
-        emitRealtimeCompletion: true,
-      );
-    } catch (e) {
-      buf.write('本地模型生成失败: $e');
-    } finally {
-      // 等事件通道 flush 一下
-      await Future<void>.delayed(const Duration(milliseconds: 60));
-      await sub.cancel();
-    }
-    return buf.toString();
+    return _serializeCompletion(() async {
+      final llama = FCllama.instance();
+      if (llama == null) {
+        return 'fcllama 插件未初始化';
+      }
+      final buf = StringBuffer();
+      StreamSubscription<Map<Object?, dynamic>>? sub;
+      try {
+        final stream = llama.onTokenStream;
+        if (stream != null) {
+          sub = stream.listen((data) {
+            if (data['function'] != 'completion') return;
+            final eventContextId =
+                double.tryParse(data['contextId']?.toString() ?? '');
+            if (eventContextId != null && eventContextId != contextId) return;
+            final res = data['result'];
+            if (res is Map && res['token'] != null) {
+              buf.write(res['token'].toString());
+            }
+          });
+        }
+        await llama.completion(
+          contextId,
+          prompt: prompt,
+          nPredict: maxTokens,
+          temperature: temperature,
+          topP: 0.9,
+          emitRealtimeCompletion: true,
+        );
+      } catch (e) {
+        return '本地模型生成失败: $e';
+      } finally {
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+        await sub?.cancel();
+      }
+      return buf.toString();
+    });
   }
 
   /// 单次完整生成（流式聚合，适合短文本）。
@@ -144,26 +161,9 @@ class LocalLlamaProvider {
       yield '本地模型未加载。请先在"AI 模型管理"中导入并加载 GGUF 模型。';
       return;
     }
-    // fcllama 通过 event channel 推流，这里直接监听 token 并透传
-    final buf = StringBuffer();
-    final sub = _tokenCtrl.stream.listen(buf.write);
-    try {
-      await FCllama.instance()?.completion(
-        id,
-        prompt: prompt,
-        nPredict: maxTokens,
-        temperature: temperature,
-        topP: 0.9,
-        emitRealtimeCompletion: true,
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 60));
-      // 吐出聚合结果（避免因未关闭广播流而死等）
-      if (buf.isEmpty) return;
-      yield buf.toString();
-    } catch (e) {
-      yield '本地模型生成失败: $e';
-    } finally {
-      await sub.cancel();
+    final text = await _collectCompletion(id, prompt, maxTokens, temperature);
+    if (text.isNotEmpty) {
+      yield text;
     }
   }
 
@@ -171,8 +171,7 @@ class LocalLlamaProvider {
   Future<void> unload() async {
     final id = _contextId;
     _contextId = null;
-    await _tokenSub?.cancel();
-    _tokenSub = null;
+    _loadedModelPath = null;
     if (id != null) {
       try {
         await FCllama.instance()?.releaseContext(id);

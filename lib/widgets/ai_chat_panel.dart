@@ -56,6 +56,7 @@ class AiChatPanel extends StatefulWidget {
 
   /// 👇 对话持久化：本地存储
   final StorageService? storageService;
+  final String? historyKey;
 
   /// 模板被 update_template 工具修改后的回调（宿主应用刷新模板列表）
   final Future<void> Function(List<TemplateItem> templates)? onTemplatesChanged;
@@ -84,6 +85,7 @@ class AiChatPanel extends StatefulWidget {
     this.gitHubService,
     this.activeRepo,
     this.storageService,
+    this.historyKey,
     this.onTemplatesChanged,
   });
 
@@ -161,6 +163,28 @@ class AiChatPanelState extends State<AiChatPanel> {
     _initSession();
     _loadHistory();
     _scrollCtrl.addListener(_onScroll);
+    _bindDispatcherCallbacks();
+  }
+
+  @override
+  void didUpdateWidget(covariant AiChatPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final historyScopeChanged =
+        oldWidget.historyKey != widget.historyKey ||
+        oldWidget.sessionType != widget.sessionType ||
+        oldWidget.settings.effectiveActiveSiteId !=
+            widget.settings.effectiveActiveSiteId;
+    final dispatcherChanged = oldWidget.dispatcher != widget.dispatcher;
+    if (dispatcherChanged) {
+      oldWidget.dispatcher.onModelSwitched = null;
+      _bindDispatcherCallbacks();
+    }
+    if (historyScopeChanged || dispatcherChanged) {
+      _reloadHistoryScope();
+    }
+  }
+
+  void _bindDispatcherCallbacks() {
     // 模型切换事件 → 提示条 + 更新实际模型
     widget.dispatcher.onModelSwitched = (event) {
       if (!mounted) return;
@@ -172,6 +196,18 @@ class AiChatPanelState extends State<AiChatPanel> {
       });
       _addSystemMessage('🔄 ${event.reason}\n已自动切换至「${event.toModel}」继续处理');
     };
+  }
+
+  Future<void> _reloadHistoryScope() async {
+    widget.dispatcher.clearHistory();
+    _parsedFiles.clear();
+    setState(() {
+      _messages.clear();
+      _streamBuffer = StringBuffer();
+      _streamingMsgIndex = null;
+    });
+    _initSession();
+    await _loadHistory();
   }
 
   void _onScroll() {
@@ -200,16 +236,29 @@ class AiChatPanelState extends State<AiChatPanel> {
 
   /// 对话历史文件键：按站点分区，避免多站点串场。
   /// 无站点时回退到旧的全局文件名（兼容迁移）。
+  String get _historyScopeKey {
+    final custom = widget.historyKey?.trim();
+    if (custom != null && custom.isNotEmpty) {
+      return custom;
+    }
+    return widget.sessionType.name;
+  }
+
   String get _chatFileKey {
     final siteId = widget.settings.effectiveActiveSiteId;
     if (siteId.isNotEmpty) {
-      return 'ai_chat_${siteId}_${widget.sessionType.name}.json';
+      return 'ai_chat_${siteId}_$_historyScopeKey.json';
     }
-    return 'ai_chat_${widget.sessionType.name}.json';
+    return 'ai_chat_$_historyScopeKey.json';
   }
 
   /// 旧版全局历史文件键（用于数据迁移）
   String get _legacyChatFileKey => 'ai_chat_${widget.sessionType.name}.json';
+
+  bool get _enableLegacyMigration {
+    final custom = widget.historyKey?.trim();
+    return custom == null || custom.isEmpty;
+  }
 
   /// 加载已保存的对话历史（含工具调用上下文）
   Future<void> _loadHistory() async {
@@ -224,7 +273,9 @@ class AiChatPanelState extends State<AiChatPanel> {
       final root = (await storage.root).path;
       var file = File('$root/$_chatFileKey');
       // 旧文件迁移：当前存在站点分区文件时优先；否则若存在旧全局文件则读取并迁移
-      if (!await file.exists() && _chatFileKey != _legacyChatFileKey) {
+      if (_enableLegacyMigration &&
+          !await file.exists() &&
+          _chatFileKey != _legacyChatFileKey) {
         final legacy = File('$root/$_legacyChatFileKey');
         if (await legacy.exists()) {
           file = legacy;
@@ -301,15 +352,6 @@ class AiChatPanelState extends State<AiChatPanel> {
     if (storage == null) return;
     try {
       final root = (await storage.root).path;
-      // 若读取时迁移了旧文件，保存时写入站点分区新文件并移除旧文件
-      if (_chatFileKey != _legacyChatFileKey) {
-        final legacy = File('$root/$_legacyChatFileKey');
-        if (await legacy.exists()) {
-          try {
-            await legacy.delete();
-          } catch (_) {}
-        }
-      }
       final file = File('$root/$_chatFileKey');
       final context = widget.dispatcher.chatHistory;
       final json = jsonEncode({'context': context});
@@ -828,6 +870,7 @@ class AiChatPanelState extends State<AiChatPanel> {
 
   @override
   void dispose() {
+    widget.dispatcher.onModelSwitched = null;
     _streamSub?.cancel();
     _chatCtrl.dispose();
     _scrollCtrl.dispose();

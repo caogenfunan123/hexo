@@ -800,11 +800,13 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
           id: model.modelId,
           name: model.modelName,
           baseUrl: model.apiBase,
-          apiKey: model.apiKey,
+          apiKey: model.effectiveKey,
           model: model.modelId,
           apiPath: model.apiPath,
           useBearer: model.useBearer,
           interfaceType: model.interfaceType,
+          localModelPath:
+              model.provider == ModelProvider.local ? model.apiBase : null,
         ),
       );
       if (mounted) {
