@@ -1,6 +1,8 @@
 import '../models/app_settings.dart';
 import '../models/blog_site_config.dart';
 import '../models/repo_config.dart';
+import '../services/github_service.dart';
+import '../services/log_service.dart';
 import 'repository/blog_repository.dart';
 import 'repository/ghost_adapter.dart';
 import 'repository/static_blog_repository.dart';

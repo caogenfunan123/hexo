@@ -161,9 +161,11 @@ class _BlogSiteEditorScreenState extends State<BlogSiteEditorScreen> {
       switch (_selectedType) {
         case BlogType.wordpress:
           adapter = WordPressAdapter(config, widget.appSettings);
+          break;
         case BlogType.ghost:
           adapter = GhostAdapter(config, widget.appSettings);
-case BlogType.typecho:
+          break;
+        case BlogType.typecho:
           // 根据插件类型选择适配器
           final pluginType = config.typechoPluginType ?? TypechoPluginType.secureApi;
           switch (pluginType) {
@@ -178,10 +180,6 @@ case BlogType.typecho:
               break;
           }
           break;
-            case TypechoPluginType.typechoFastApi:
-              adapter = TypechoFastApiAdapter(config, widget.appSettings);
-              break;
-          }
         default:
           setState(() {
             _testing = false;

@@ -907,19 +907,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _field({
     required String label,
     required String value,
-    required ValueChanged<String> onChanged,
+    ValueChanged<String>? onChanged,
     bool obscure = false,
+    bool readOnly = false,
+    VoidCallback? onTap,
     String? hint,
   }) {
     return TextFormField(
       initialValue: value,
       obscureText: obscure,
+      readOnly: readOnly,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
       ),
       onChanged: onChanged,
+      onTap: onTap,
     );
   }
 

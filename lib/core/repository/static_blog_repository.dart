@@ -6,8 +6,9 @@ import '../../models/blog_post.dart';
 import '../../models/blog_site_config.dart';
 import '../../models/repo_config.dart';
 import '../repository/blog_repository.dart';
-import '../services/github_service.dart';
-import '../services/log_service.dart';
+import '../../services/github_service.dart';
+import '../../services/log_service.dart';
+import '../../models/app_settings.dart';
 
 /// 静态博客仓库适配器
 /// 
@@ -62,26 +63,18 @@ class StaticBlogRepository implements BlogRepository {
       // 转换为 BlogPost 格式
       final blogPosts = posts.map((fileItem) {
         return BlogPost(
-          id: fileItem.sha ?? fileItem.path,
+          id: fileItem.sha != null ? int.tryParse(fileItem.sha!) : null,
           title: _extractTitleFromFileItem(fileItem),
           contentMd: '', // 实际内容在点击时加载
           contentHtml: '',
-          excerpt: _extractExcerptFromFileItem(fileItem),
-          author: 'Unknown',
+          date: fileItem.lastModified ?? DateTime.now(),
+          modifiedDate: fileItem.lastModified ?? DateTime.now(),
+          slug: _extractSlugFromFileItem(fileItem),
           tags: _extractTagsFromFileItem(fileItem),
           categories: [],
-          published: true,
-          isPublished: true,
-          createdDate: fileItem.lastModified ?? DateTime.now(),
-          modifiedDate: fileItem.lastModified ?? DateTime.now(),
-          date: fileItem.lastModified ?? DateTime.now(),
-          slug: _extractSlugFromFileItem(fileItem),
-          permalink: '${repoConfig.siteUrl}/${fileItem.path}',
+          status: 'publish',
           siteId: repoConfig.id,
-          templateId: repoConfig.defaultPostTemplateId,
-          status: 'published',
-          format: 'markdown',
-          media: [],
+          link: '${repoConfig.siteUrl}/${fileItem.path}',
         );
       }).toList();
 
@@ -107,16 +100,17 @@ class StaticBlogRepository implements BlogRepository {
   Future<BlogPost?> getPostById(int id) async {
     try {
       // 获取所有文章
-      final posts = await getPosts(perPage: 1000);
-      
+      final posts = await githubService.listPosts(repoConfig);
+
       // 根据ID查找文章（使用SHA或路径作为ID）
-      return posts.firstWhere(
-        (post) => post.id == id.toString(),
-        orElse: () => posts.firstWhere(
-          (post) => post.path.contains(id.toString()),
-          orElse: () => throw Exception('文章不存在'),
-        ),
-      );
+      for (final item in posts) {
+        if (item.sha == id.toString() ||
+            item.path.contains(id.toString()) ||
+            _extractTitleFromFileItem(item) == id.toString()) {
+          return await getPostContent(item.sha ?? item.path);
+        }
+      }
+      return null;
     } catch (e) {
       logService.add('获取静态博客文章详情失败', '$e', success: false);
       return null;
@@ -173,12 +167,6 @@ class StaticBlogRepository implements BlogRepository {
     return name.isNotEmpty ? name : '（无标题）';
   }
 
-  /// 从文件项中提取摘要
-  String _extractExcerptFromFileItem(GitHubFileItem fileItem) {
-    // 这里只是占位符，实际内容在点击文章时加载
-    return '点击查看文章内容';
-  }
-
   /// 从文件项中提取标签
   List<String> _extractTagsFromFileItem(GitHubFileItem fileItem) {
     // 静态博客的标签需要从文件内容中提取
@@ -227,26 +215,18 @@ class StaticBlogRepository implements BlogRepository {
       
       // 转换为 BlogPost
       return BlogPost(
-        id: fileItem.sha ?? fileItem.path,
+        id: fileItem.sha != null ? int.tryParse(fileItem.sha!) : null,
         title: article.title.isNotEmpty ? article.title : '（无标题）',
         contentMd: article.content,
         contentHtml: article.contentHtml,
-        excerpt: article.excerpt.isNotEmpty ? article.excerpt : article.content.replaceAll(RegExp(r'\s+'), ' ').trim().substring(0, min(200, article.content.length)),
-        author: article.author.isNotEmpty ? article.author : 'Unknown',
+        date: article.date,
+        modifiedDate: article.updatedAt,
+        slug: article.slug.isNotEmpty ? article.slug : _extractSlugFromFileItem(fileItem),
         tags: article.tags,
         categories: article.categories,
-        published: article.published,
-        isPublished: article.published,
-        createdDate: article.createdAt,
-        modifiedDate: article.updatedAt,
-        date: article.date,
-        slug: article.slug.isNotEmpty ? article.slug : _extractSlugFromFileItem(fileItem),
-        permalink: '${repoConfig.siteUrl}/${fileItem.path}',
         siteId: repoConfig.id,
-        templateId: repoConfig.defaultPostTemplateId,
-        status: article.published ? 'published' : 'draft',
-        format: 'markdown',
-        media: [],
+        status: article.published ? 'publish' : 'draft',
+        link: '${repoConfig.siteUrl}/${fileItem.path}',
       );
     } catch (e) {
       logService.add('获取文章内容失败', '$e', success: false);

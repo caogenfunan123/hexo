@@ -118,7 +118,10 @@ class TypechoRestfulAdapter implements BlogRepository {
     Object? jsonBody,
     Map<String, String>? queryParams,
   }) async {
-    final uri = _restfulUri(endpoint);
+    var uri = _restfulUri(endpoint);
+    if (queryParams != null && queryParams.isNotEmpty) {
+      uri = uri.replace(queryParameters: queryParams);
+    }
     final headers = _commonHeaders(json: jsonBody != null);
     String? body;
 
@@ -131,7 +134,6 @@ class TypechoRestfulAdapter implements BlogRepository {
       uri,
       headers: headers,
       body: body,
-      queryParameters: queryParams,
     );
 
     final decoded = _tryDecode(resp.text);
@@ -365,4 +367,18 @@ class TypechoRestfulAdapter implements BlogRepository {
     _client = null;
     _challengeHttp = null;
   }
+
+  /// 静态博客专用方法：Typecho 为动态 CMS，直接返回当前文章内容
+  @override
+  Future<BlogPost> getPostContent(String postId) async {
+    final id = int.tryParse(postId);
+    if (id == null) throw Exception('无效的文章 ID: $postId');
+    final post = await getPostById(id);
+    if (post == null) throw Exception('文章不存在: $postId');
+    return post;
+  }
+
+  /// 是否为静态博客适配器
+  @override
+  bool get isStatic => false;
 }

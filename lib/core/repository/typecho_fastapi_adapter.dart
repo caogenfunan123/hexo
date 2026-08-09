@@ -318,4 +318,18 @@ class TypechoFastApiAdapter implements BlogRepository {
     _client = null;
     _challengeHttp = null;
   }
+
+  /// 静态博客专用方法：Typecho 为动态 CMS，直接返回当前文章内容
+  @override
+  Future<BlogPost> getPostContent(String postId) async {
+    final id = int.tryParse(postId);
+    if (id == null) throw Exception('无效的文章 ID: $postId');
+    final post = await getPostById(id);
+    if (post == null) throw Exception('文章不存在: $postId');
+    return post;
+  }
+
+  /// 是否为静态博客适配器
+  @override
+  bool get isStatic => false;
 }
