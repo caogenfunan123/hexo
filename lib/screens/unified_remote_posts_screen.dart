@@ -1,72 +1,57 @@
 import 'package:flutter/material.dart';
 
 import '../core/repository/blog_repository.dart';
+import '../core/repository/static_blog_repository.dart';
 import '../core/site_manager.dart';
 import '../models/blog_post.dart';
 import '../models/repo_config.dart';
+import '../models/blog_site_config.dart';
 import '../services/log_service.dart';
 
-/// 远程文章浏览面板
+/// 统一的远程文章管理界面
 ///
-/// 从 CMS 站点和静态博客站点拉取文章列表，支持：
-/// - 分页浏览（单站点）、下拉刷新
-/// - 点击加载到编辑器（HTML→Markdown 转换已在适配器中完成）
-/// - 删除远程文章
-///
-/// 多站点模式（[allAdapters] 非空且多于一个站点）下支持：
-/// - 全部站点：聚合查看所有 CMS 站点和静态博客站点的文章
-/// - 自选站点：勾选已登录（已配置密钥）的站点，仅查看这些站点的文章
-class RemotePostsScreen extends StatefulWidget {
-  /// 当前（活跃）CMS 站点适配器
-  final BlogRepository adapter;
+/// 支持同时管理静态博客和动态CMS站点的文章
+/// 提供站点筛选、类型筛选、搜索等功能
+class UnifiedRemotePostsScreen extends StatefulWidget {
+  /// 站点管理器
+  final SiteManager siteManager;
 
-  /// 全部 CMS 站点适配器（用于全部站点 / 自选站点模式）
-  final List<BlogRepository>? allAdapters;
-
-  /// 站点管理器（用于获取站点信息）
-  final SiteManager? siteManager;
-
+  /// 日志服务
   final LogService logService;
+
+  /// 打开文章到编辑器的回调
   final void Function(BlogPost post) onOpenInEditor;
+
+  /// 删除文章的回调
   final Future<void> Function(BlogPost post) onDeletePost;
 
-  const RemotePostsScreen({
+  const UnifiedRemotePostsScreen({
     super.key,
-    required this.adapter,
-    this.allAdapters,
-    this.siteManager,
+    required this.siteManager,
     required this.logService,
     required this.onOpenInEditor,
     required this.onDeletePost,
   });
 
   @override
-  State<RemotePostsScreen> createState() => _RemotePostsScreenState();
+  State<UnifiedRemotePostsScreen> createState() => _UnifiedRemotePostsScreenState();
 }
 
-/// 查看范围
-enum _RemoteScope {
-  /// 当前站点
-  current,
-
-  /// 全部站点
+/// 站点类型筛选
+enum _SiteTypeFilter {
   all,
-
-  /// 自选站点（勾选的已登录站点）
-  selected,
-}
-
-/// 站点类型范围
-enum _SiteTypeScope {
-  /// 所有站点
-  all,
-  /// 静态博客站点
   static,
-  /// 动态CMS站点
   dynamic,
 }
 
-class _RemotePostsScreenState extends State<RemotePostsScreen> {
+/// 站点范围筛选
+enum _SiteScopeFilter {
+  current,
+  all,
+  selected,
+}
+
+class _UnifiedRemotePostsScreenState extends State<UnifiedRemotePostsScreen> {
   List<BlogPost> _posts = [];
   bool _loading = true;
   bool _loadingMore = false;
@@ -74,67 +59,27 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
   bool _hasMore = true;
   String? _error;
   late ScrollController _scrollController;
-
-  _RemoteScope _scope = _RemoteScope.current;
-  _SiteTypeScope _siteTypeScope = _SiteTypeScope.all;
-  final Set<String> _checkedSites = {};
-
-  bool get _multiSite => widget.allAdapters != null && widget.allAdapters!.length > 1;
-
-  List<BlogRepository> get _allAdapters =>
-      widget.allAdapters ?? <BlogRepository>[widget.adapter];
-
-  /// 当前生效的适配器列表
-  List<BlogRepository> get _activeAdapters {
-    if (!_multiSite || _scope == _RemoteScope.current) {
-      return [widget.adapter];
-    }
-    if (_scope == _RemoteScope.all) return _allAdapters;
-    return _allAdapters
-        .where((a) => _checkedSites.contains(a.config.id))
-        .toList();
-  }
-
-  /// 根据站点类型筛选适配器
-  List<BlogRepository> get _filteredAdapters {
-    if (!_multiSite || _siteTypeScope == _SiteTypeScope.all) {
-      return _activeAdapters;
-    }
-    
-    return _activeAdapters.where((adapter) {
-      final siteType = _getSiteType(adapter.config.id);
-      return switch (_siteTypeScope) {
-        _SiteTypeScope.static => siteType == SiteType.staticBlog,
-        _SiteTypeScope.dynamic => siteType == SiteType.dynamicCms,
-        _SiteTypeScope.all => true,
-      };
-    }).toList();
-  }
-
-  /// 获取站点类型（静态博客或动态CMS）
-  SiteType? _getSiteType(String siteId) {
-    if (widget.siteManager != null) {
-      final identity = widget.siteManager!.getSiteIdentity(siteId);
-      return identity?.type;
-    }
-    return null;
-  }
-
-  /// 判断是否为静态博客站点
-  bool _isStaticSite(String siteId) {
-    return _getSiteType(siteId) == SiteType.staticBlog;
-  }
-
-  /// 判断是否为动态CMS站点
-  bool _isDynamicSite(String siteId) {
-    return _getSiteType(siteId) == SiteType.dynamicCms;
-  }
-
-  String _siteName(String? siteId) {
-    for (final a in _allAdapters) {
-      if (a.config.id == siteId) return a.config.name;
-    }
-    return siteId ?? '';
+  
+  // 筛选相关
+  _SiteTypeFilter _siteTypeFilter = _SiteTypeFilter.all;
+  _SiteScopeFilter _siteScopeFilter = _SiteScopeFilter.current;
+  final Set<String> _selectedSites = {};
+  
+  // 搜索相关
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  
+  // 获取所有站点信息
+  List<SiteIdentity> get _allSites => widget.siteManager.allSites;
+  List<SiteIdentity> get _staticSites => widget.siteManager.staticSites;
+  List<SiteIdentity> get _dynamicSites => widget.siteManager.dynamicSitesList;
+  
+  // 当前活跃站点
+  SiteIdentity? get _currentSite => widget.siteManager.currentSiteIdentity;
+  
+  // 获取适配器
+  BlogRepository? _getAdapter(String siteId) {
+    return widget.siteManager.getAdapter(siteId);
   }
 
   @override
@@ -142,11 +87,42 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
     super.initState();
     _scrollController = ScrollController();
     _scrollController.addListener(_onScroll);
-    // 默认勾选已登录（已配置有效密钥）的站点
-    for (final a in _allAdapters) {
-      if (a.config.isValid) _checkedSites.add(a.config.id);
+    
+    // 默认选中已登录的站点
+    _initializeSelectedSites();
+    
+    // 加载文章列表
+    _loadPosts();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _initializeSelectedSites() {
+    // 默认选中已登录（已配置有效密钥）的站点
+    for (final site in _allSites) {
+      if (site.isStatic) {
+        // 静态站点检查是否有有效的token
+        final repo = widget.siteManager.staticRepos
+            .where((r) => r.id == site.id)
+            .firstOrNull;
+        if (repo?.token.isNotEmpty == true) {
+          _selectedSites.add(site.id);
+        }
+      } else {
+        // 动态站点检查配置是否有效
+        final config = widget.siteManager.dynamicSites
+            .where((c) => c.id == site.id)
+            .firstOrNull;
+        if (config?.isValid == true) {
+          _selectedSites.add(site.id);
+        }
+      }
     }
-    Future.microtask(() => _loadPosts());
   }
 
   void _onScroll() {
@@ -156,36 +132,48 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _changeScope(_RemoteScope scope) {
-    if (_scope == scope) return;
-    setState(() => _scope = scope);
-    _loadPosts(refresh: true);
-  }
-
-  void _changeSiteTypeScope(_SiteTypeScope scope) {
-    if (_siteTypeScope == scope) return;
-    setState(() => _siteTypeScope = scope);
-    _loadPosts(refresh: true);
-  }
-
-  void _toggleSite(String siteId) {
-    setState(() {
-      if (_checkedSites.contains(siteId)) {
-        _checkedSites.remove(siteId);
-      } else {
-        _checkedSites.add(siteId);
-      }
-    });
-    if (_scope == _RemoteScope.selected) {
-      _loadPosts(refresh: true);
+  List<BlogRepository> _getFilteredAdapters() {
+    List<BlogRepository> adapters = [];
+    
+    // 根据站点范围筛选
+    switch (_siteScopeFilter) {
+      case _SiteScopeFilter.current:
+        if (_currentSite != null) {
+          final adapter = _getAdapter(_currentSite!.id);
+          if (adapter != null) adapters.add(adapter);
+        }
+        break;
+        
+      case _SiteScopeFilter.all:
+        for (final site in _allSites) {
+          final adapter = _getAdapter(site.id);
+          if (adapter != null) adapters.add(adapter);
+        }
+        break;
+        
+      case _SiteScopeFilter.selected:
+        for (final siteId in _selectedSites) {
+          final adapter = _getAdapter(siteId);
+          if (adapter != null) adapters.add(adapter);
+        }
+        break;
     }
+    
+    // 根据站点类型筛选
+    if (_siteTypeFilter != _SiteTypeFilter.all) {
+      adapters = adapters.where((adapter) {
+        final site = _allSites.where((s) => s.id == adapter.config.id).firstOrNull;
+        if (site == null) return false;
+        
+        return switch (_siteTypeFilter) {
+          _SiteTypeFilter.static => site.isStatic,
+          _SiteTypeFilter.dynamic => site.isDynamic,
+          _SiteTypeFilter.all => true,
+        };
+      }).toList();
+    }
+    
+    return adapters;
   }
 
   Future<void> _loadPosts({bool refresh = false}) async {
@@ -200,31 +188,33 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
       });
     }
 
-    final adapters = _filteredAdapters;
+    final adapters = _getFilteredAdapters();
     if (adapters.isEmpty) {
       if (mounted) {
         setState(() {
           _loading = false;
           _posts = [];
-          _error = '请至少选择一个站点';
+          _error = '请选择至少一个站点';
         });
       }
       return;
     }
 
     try {
-      if (_multiSite && _scope != _RemoteScope.current) {
+      if (adapters.length > 1 && _siteScopeFilter != _SiteScopeFilter.current) {
         // ── 多站点聚合模式 ──
         final results = await Future.wait(adapters.map((a) async {
           try {
             return await a.getPosts(page: 1, perPage: 30);
           } catch (e) {
-            debugPrint('RemotePosts: load site ${a.config.name} failed: $e');
+            debugPrint('UnifiedRemotePosts: load site ${a.config.name} failed: $e');
             return <BlogPost>[];
           }
         }));
+        
         final merged = <BlogPost>[];
         final seen = <String>{};
+        
         for (var i = 0; i < results.length; i++) {
           final siteId = adapters[i].config.id;
           for (final p in results[i]) {
@@ -234,10 +224,23 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
             merged.add(p);
           }
         }
-        merged.sort((a, b) => b.modifiedDate.compareTo(a.modifiedDate));
+        
+        // 如果有搜索查询，进行过滤
+        List<BlogPost> filteredPosts = merged;
+        if (_searchQuery.isNotEmpty) {
+          filteredPosts = merged.where((post) {
+            final searchLower = _searchQuery.toLowerCase();
+            return post.title.toLowerCase().contains(searchLower) ||
+                   post.excerpt.toLowerCase().contains(searchLower) ||
+                   post.author.toLowerCase().contains(searchLower);
+          }).toList();
+        }
+        
+        filteredPosts.sort((a, b) => b.modifiedDate.compareTo(a.modifiedDate));
+        
         if (mounted) {
           setState(() {
-            _posts = merged;
+            _posts = filteredPosts;
             _hasMore = false;
             _loading = false;
             _loadingMore = false;
@@ -246,13 +249,28 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
         }
       } else {
         // ── 单站点分页模式 ──
-        final posts = await widget.adapter.getPosts(page: _page, perPage: 20);
+        if (adapters.isEmpty) return;
+        
+        final adapter = adapters.first;
+        final posts = await adapter.getPosts(page: _page, perPage: 20);
+        
+        // 如果有搜索查询，进行过滤
+        List<BlogPost> filteredPosts = posts;
+        if (_searchQuery.isNotEmpty) {
+          filteredPosts = posts.where((post) {
+            final searchLower = _searchQuery.toLowerCase();
+            return post.title.toLowerCase().contains(searchLower) ||
+                   post.excerpt.toLowerCase().contains(searchLower) ||
+                   post.author.toLowerCase().contains(searchLower);
+          }).toList();
+        }
+        
         if (mounted) {
           setState(() {
             if (refresh) {
-              _posts = posts;
+              _posts = filteredPosts;
             } else {
-              _posts.addAll(posts);
+              _posts.addAll(filteredPosts);
             }
             _hasMore = posts.length >= 20;
             _loading = false;
@@ -274,23 +292,25 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
 
   Future<void> _loadMore() async {
     if (_loadingMore || !_hasMore) return;
-    if (_multiSite && _scope != _RemoteScope.current) return; // 聚合模式不分页
     if (!mounted) return;
+    
     setState(() {
       _loadingMore = true;
       _page++;
     });
+    
     await _loadPosts();
   }
 
   Future<void> _deletePost(BlogPost post) async {
     if (post.id == null) return;
-    final siteLabel = _multiSite ? '（${_siteName(post.siteId)}）' : '';
+    
+    final siteLabel = _multiSite ? '（${_getSiteName(post.siteId)}）' : '';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认删除'),
-        content: Text('确定要删除远程文章「${post.title}」$siteLabel 吗？\n此操作不可撤销。'),
+        content: Text('确定要删除文章「${post.title}」$siteLabel 吗？\n此操作不可撤销。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -326,31 +346,33 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
     }
   }
 
-  String _formatDate(DateTime dt) {
-    final now = DateTime.now();
-    final diff = now.difference(dt);
-    if (diff.inMinutes < 1) return '刚刚';
-    if (diff.inHours < 1) return '${diff.inMinutes}分钟前';
-    if (diff.inDays < 1) return '${diff.inHours}小时前';
-    if (diff.inDays < 7) return '${diff.inDays}天前';
-    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+  String _getSiteName(String? siteId) {
+    for (final site in _allSites) {
+      if (site.id == siteId) return site.name;
+    }
+    return siteId ?? '';
   }
 
-  String get _headerTitle {
-    if (!_multiSite) {
-      final siteType = widget.siteManager?.currentSiteIdentity?.type;
-      final siteName = widget.adapter.config.name;
-      if (siteType == SiteType.staticBlog) {
-        return '静态博客 · $siteName';
-      } else {
-        return '${widget.adapter.config.type.name} 远程文章';
-      }
+  bool get _multiSite => _allSites.length > 1;
+
+  String _getHeaderTitle() {
+    if (!_multiSite && _currentSite != null) {
+      return '${_currentSite!.type == SiteType.staticBlog ? '静态博客' : '动态CMS'} · ${_currentSite!.name}';
     }
-    return switch (_scope) {
-      _RemoteScope.current => '当前站点 · ${widget.adapter.config.name}',
-      _RemoteScope.all => '全部站点文章',
-      _RemoteScope.selected => '自选站点文章',
+    
+    final typeFilter = switch (_siteTypeFilter) {
+      _SiteTypeFilter.all => '所有类型',
+      _SiteTypeFilter.static => '静态博客',
+      _SiteTypeFilter.dynamic => '动态CMS',
     };
+    
+    final scopeFilter = switch (_siteScopeFilter) {
+      _SiteScopeFilter.current => '当前站点',
+      _SiteScopeFilter.all => '全部站点',
+      _SiteScopeFilter.selected => '自选站点',
+    };
+    
+    return '$typeFilter · $scopeFilter';
   }
 
   @override
@@ -366,18 +388,22 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
               const Icon(Icons.cloud_outlined, size: 18, color: Color(0xFF64748B)),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  _headerTitle,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _getHeaderTitle(),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      '${_posts.length} 篇文章',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    ),
+                  ],
                 ),
               ),
-              Text(
-                '${_posts.length} 篇',
-                style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-              ),
-              const SizedBox(width: 8),
               IconButton(
                 icon: const Icon(Icons.refresh, size: 18),
                 onPressed: _loading ? null : () => _loadPosts(refresh: true),
@@ -388,93 +414,107 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
         ),
         const Divider(height: 1),
 
-        // ── 站点类型筛选器 ──
+        // ── 筛选器区域 ──
         if (_multiSite) ...[
+          // 站点类型筛选
           Container(
             color: Colors.white,
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-            child: SegmentedButton<_SiteTypeScope>(
+            child: SegmentedButton<_SiteTypeFilter>(
               segments: const [
                 ButtonSegment(
-                  value: _SiteTypeScope.all,
-                  label: Text('所有站点'),
+                  value: _SiteTypeFilter.all,
+                  label: Text('所有类型'),
                   icon: Icon(Icons.all_inclusive, size: 16),
                 ),
                 ButtonSegment(
-                  value: _SiteTypeScope.static,
+                  value: _SiteTypeFilter.static,
                   label: Text('静态博客'),
                   icon: Icon(Icons.code, size: 16),
                 ),
                 ButtonSegment(
-                  value: _SiteTypeScope.dynamic,
+                  value: _SiteTypeFilter.dynamic,
                   label: Text('动态CMS'),
                   icon: Icon(Icons.web, size: 16),
                 ),
               ],
-              selected: {_siteTypeScope},
+              selected: {_siteTypeFilter},
               showSelectedIcon: false,
               style: const ButtonStyle(
                 visualDensity: VisualDensity.compact,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              onSelectionChanged: (v) => _changeSiteTypeScope(v.first),
+              onSelectionChanged: (v) => setState(() {
+                _siteTypeFilter = v.first;
+                _loadPosts(refresh: true);
+              }),
             ),
           ),
           const Divider(height: 1),
-        ],
 
-        // ── 多站点范围选择 ──
-        if (_multiSite) ...[
+          // 站点范围筛选
           Container(
             color: Colors.white,
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-            child: SegmentedButton<_RemoteScope>(
+            child: SegmentedButton<_SiteScopeFilter>(
               segments: const [
                 ButtonSegment(
-                  value: _RemoteScope.current,
+                  value: _SiteScopeFilter.current,
                   label: Text('当前站点'),
                   icon: Icon(Icons.trip_origin, size: 16),
                 ),
                 ButtonSegment(
-                  value: _RemoteScope.all,
+                  value: _SiteScopeFilter.all,
                   label: Text('全部站点'),
                   icon: Icon(Icons.dns, size: 16),
                 ),
                 ButtonSegment(
-                  value: _RemoteScope.selected,
+                  value: _SiteScopeFilter.selected,
                   label: Text('自选站点'),
                   icon: Icon(Icons.checklist, size: 16),
                 ),
               ],
-              selected: {_scope},
+              selected: {_siteScopeFilter},
               showSelectedIcon: false,
               style: const ButtonStyle(
                 visualDensity: VisualDensity.compact,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              onSelectionChanged: (v) => _changeScope(v.first),
+              onSelectionChanged: (v) => setState(() {
+                _siteScopeFilter = v.first;
+                _loadPosts(refresh: true);
+              }),
             ),
           ),
           const Divider(height: 1),
+
           // 自选站点：站点勾选列表
-          if (_scope == _RemoteScope.selected) ...[
+          if (_siteScopeFilter == _SiteScopeFilter.selected) ...[
             Container(
               color: Colors.white,
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
               child: Wrap(
                 spacing: 6,
                 runSpacing: 4,
-                children: _allAdapters.map((a) {
-                  final checked = _checkedSites.contains(a.config.id);
-                  final siteType = _getSiteType(a.config.id);
+                children: _allSites.map((site) {
+                  final checked = _selectedSites.contains(site.id);
                   return FilterChip(
                     label: Text(
-                      a.config.name,
+                      site.name,
                       style: const TextStyle(fontSize: 12),
                     ),
                     selected: checked,
                     visualDensity: VisualDensity.compact,
-                    onSelected: (_) => _toggleSite(a.config.id),
+                    onSelected: (selected) {
+                      setState(() {
+                        if (selected) {
+                          _selectedSites.add(site.id);
+                        } else {
+                          _selectedSites.remove(site.id);
+                        }
+                      });
+                      _loadPosts(refresh: true);
+                    },
                   );
                 }).toList(),
               ),
@@ -490,6 +530,53 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
             const Divider(height: 1),
           ],
         ],
+
+        // ── 搜索栏 ──
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: '搜索文章标题、内容或作者...',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                    // 防抖搜索
+                    Future.delayed(const Duration(milliseconds: 500), () {
+                      if (_searchQuery == value) {
+                        _loadPosts(refresh: true);
+                      }
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (_searchQuery.isNotEmpty)
+                IconButton(
+                  icon: const Icon(Icons.clear, size: 20),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {
+                      _searchQuery = '';
+                    });
+                    _loadPosts(refresh: true);
+                  },
+                ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
 
         // ── 错误提示 ──
         if (_error != null)
@@ -526,12 +613,12 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
                         Icon(Icons.article_outlined, size: 64, color: Colors.grey.shade300),
                         const SizedBox(height: 16),
                         Text(
-                          '暂无远程文章',
+                          '暂无文章',
                           style: TextStyle(fontSize: 16, color: Colors.grey.shade500),
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '点击刷新按钮重新加载',
+                          '请检查站点配置或调整筛选条件',
                           style: TextStyle(fontSize: 13, color: Colors.grey.shade400),
                         ),
                       ]),
@@ -582,7 +669,7 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
-                                        // 站点类型标签（多站点模式）
+                                        // 站点类型标签
                                         if (_multiSite && post.siteId != null) ...[
                                           Container(
                                             padding: const EdgeInsets.symmetric(
@@ -590,19 +677,19 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
                                               vertical: 1,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: _isStaticSite(post.siteId!)
-                                                  ? const Color(0xFF10B981).withOpacity(0.1)
+                                              color: _getSiteType(post.siteId!) == SiteType.staticBlog
+                                                  ? const Color(0xFF059669).withOpacity(0.1)
                                                   : const Color(0xFF0EA5E9).withOpacity(0.1),
                                               borderRadius: BorderRadius.circular(6),
                                             ),
                                             child: Text(
-                                              _isStaticSite(post.siteId!)
+                                              _getSiteType(post.siteId!) == SiteType.staticBlog
                                                   ? '静态'
                                                   : 'CMS',
                                               style: TextStyle(
                                                 fontSize: 10,
                                                 fontWeight: FontWeight.w600,
-                                                color: _isStaticSite(post.siteId!)
+                                                color: _getSiteType(post.siteId!) == SiteType.staticBlog
                                                     ? const Color(0xFF059669)
                                                     : const Color(0xFF0E7490),
                                               ),
@@ -620,7 +707,7 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
                                               borderRadius: BorderRadius.circular(6),
                                             ),
                                             child: Text(
-                                              _siteName(post.siteId),
+                                              _getSiteName(post.siteId),
                                               style: const TextStyle(
                                                 fontSize: 10,
                                                 fontWeight: FontWeight.w600,
@@ -662,7 +749,7 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
                                           itemBuilder: (_) => const [
                                             PopupMenuItem(
                                               value: 'delete',
-                                              child: Text('删除远程文章'),
+                                              child: Text('删除文章'),
                                             ),
                                           ],
                                         ),
@@ -725,5 +812,22 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
         ),
       ],
     );
+  }
+
+  String _formatDate(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return '刚刚';
+    if (diff.inHours < 1) return '${diff.inMinutes}分钟前';
+    if (diff.inDays < 1) return '${diff.inHours}小时前';
+    if (diff.inDays < 7) return '${diff.inDays}天前';
+    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+  }
+
+  SiteType? _getSiteType(String siteId) {
+    for (final site in _allSites) {
+      if (site.id == siteId) return site.type;
+    }
+    return null;
   }
 }

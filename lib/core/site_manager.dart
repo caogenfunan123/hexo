@@ -3,7 +3,10 @@ import '../models/blog_site_config.dart';
 import '../models/repo_config.dart';
 import 'repository/blog_repository.dart';
 import 'repository/ghost_adapter.dart';
+import 'repository/static_blog_repository.dart';
 import 'repository/typecho_adapter.dart';
+import 'repository/typecho_fastapi_adapter.dart';
+import 'repository/typecho_restful_adapter.dart';
 import 'repository/wordpress_adapter.dart';
 
 /// 站点类型枚举（用于统一的站点标识）
@@ -251,15 +254,35 @@ class SiteManager {
 
   /// 获取当前活跃站点对应的 BlogRepository 适配器
   ///
-  /// 静态站点返回 null（因为静态站点不使用 BlogRepository 接口），
+  /// 静态站点返回对应的静态博客适配器，
   /// 动态站点根据 BlogType 返回对应的适配器实例。
   BlogRepository? get currentAdapter {
-    if (!isDynamicSite) return null;
     return getAdapter(_activeSiteId);
   }
 
   /// 获取指定站点 ID 对应的适配器
   BlogRepository? getAdapter(String siteId) {
+    // 首先检查是否为静态博客站点
+    final staticRepo = _getStaticRepo(siteId);
+    if (staticRepo != null) {
+      // 静态博客站点
+      if (_adapterCache.containsKey(siteId)) {
+        return _adapterCache[siteId];
+      }
+      
+      // 创建静态博客适配器
+      final adapter = StaticBlogRepository(
+        repoConfig: staticRepo,
+        appSettings: appSettings,
+        githubService: GitHubService(), // 需要注入GitHubService
+        logService: LogService(), // 需要注入LogService
+      );
+      
+      _adapterCache[siteId] = adapter;
+      return adapter;
+    }
+
+    // 动态站点
     final config = _getDynamicConfig(siteId);
     if (config == null) return null;
 
@@ -278,7 +301,19 @@ class SiteManager {
         adapter = GhostAdapter(config, appSettings);
         break;
       case BlogType.typecho:
-        adapter = TypechoAdapter(config, appSettings);
+        // 根据插件类型选择适配器
+        final pluginType = config.typechoPluginType ?? TypechoPluginType.secureApi;
+        switch (pluginType) {
+          case TypechoPluginType.secureApi:
+            adapter = TypechoAdapter(config, appSettings);
+            break;
+          case TypechoPluginType.typechoFastApi:
+            adapter = TypechoFastApiAdapter(config, appSettings);
+            break;
+          case TypechoPluginType.restful:
+            adapter = TypechoRestfulAdapter(config, appSettings);
+            break;
+        }
         break;
       default:
         return null;
@@ -292,6 +327,14 @@ class SiteManager {
   BlogSiteConfig? _getDynamicConfig(String siteId) {
     for (final site in dynamicSites) {
       if (site.id == siteId) return site;
+    }
+    return null;
+  }
+
+  /// 获取静态仓库配置
+  RepoConfig? _getStaticRepo(String siteId) {
+    for (final repo in staticRepos) {
+      if (repo.id == siteId) return repo;
     }
     return null;
   }
@@ -322,6 +365,8 @@ class SiteManager {
       case SiteOperation.gitPush:
       case SiteOperation.directoryTraversal:
       case SiteOperation.themeMigration:
+      case SiteOperation.staticPostList:
+      case SiteOperation.staticPostRead:
         return identity.isStatic;
 
       // 动态 CMS 专属操作
@@ -369,6 +414,10 @@ enum SiteOperation {
   directoryTraversal,
   /// 主题迁移
   themeMigration,
+  /// 静态文章列表
+  staticPostList,
+  /// 静态文章读取
+  staticPostRead,
 
   // ── 动态 CMS 专属 ──
   /// 远程文章创建

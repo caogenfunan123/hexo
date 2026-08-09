@@ -5,6 +5,8 @@ import '../models/repo_config.dart';
 import '../services/github_service.dart';
 import '../services/storage_service.dart';
 import '../services/webdav_service.dart';
+import '../l10n/app_localizations.dart';
+import '../l10n/app_localizations.dart';
 
 class SettingsScreen extends StatefulWidget {
   final AppSettings settings;
@@ -72,6 +74,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
+  /// 更新语言设置
+  Future<void> _updateLanguage(String languageCode) async {
+    final newSettings = widget.settings.copyWith(language: languageCode);
+    await widget.onSettingsChanged(newSettings);
+    widget.onShowToast('语言已更新');
+  }
+
+  /// 获取语言显示名称
+  String _getLanguageDisplayName(String languageCode) {
+    switch (languageCode) {
+      case 'zh-CN':
+        return '简体中文';
+      case 'en':
+        return 'English';
+      case 'ja':
+        return '日本語';
+      case 'ko':
+        return '한국어';
+      default:
+        return '简体中文';
+    }
+  }
+
+  /// 显示语言选择器
+  void _showLanguageSelector() {
+    final languages = [
+      {'code': 'zh-CN', 'name': '简体中文'},
+      {'code': 'en', 'name': 'English'},
+      {'code': 'ja', 'name': '日本語'},
+      {'code': 'ko', 'name': '한국어'},
+    ];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('选择语言'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: languages.map((lang) {
+            return RadioListTile<String>(
+              title: Text(lang['name'] as String),
+              value: lang['code'] as String,
+              groupValue: widget.settings.language,
+              onChanged: (value) {
+                if (value != null) {
+                  Navigator.of(context).pop();
+                  _updateLanguage(value);
+                }
+              },
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = widget.settings;
@@ -118,6 +182,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               final ns = s.copyWith(sitePreviewUrl: v);
               await widget.onSettingsChanged(ns);
             },
+          ),
+          const SizedBox(height: 12),
+          _field(
+            label: '应用语言',
+            value: _getLanguageDisplayName(s.language),
+            hint: '选择应用界面显示语言',
+            readOnly: true,
+            onTap: () => _showLanguageSelector(),
           ),
         ]),
 

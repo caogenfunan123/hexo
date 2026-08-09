@@ -29,6 +29,9 @@ class AppSettings {
   final List<BlogSiteConfig> blogSiteConfigs;
   final String activeSiteId;
   final String activeRepoId;
+  
+  // ── 应用设置 ──
+  final String language;
 
   const AppSettings({
     this.github = const GitHubSettings(),
@@ -39,6 +42,7 @@ class AppSettings {
     this.blogSiteConfigs = const [],
     this.activeSiteId = '',
     this.activeRepoId = '',
+    this.language = 'zh-CN',
   });
 
   // ============================================================
@@ -149,7 +153,6 @@ class AppSettings {
   // ============================================================
 
   AppSettings copyWith({
-    // ── 子对象（推荐） ──
     GitHubSettings? github,
     AiSettings? ai,
     ProxySettings? proxy,
@@ -158,73 +161,7 @@ class AppSettings {
     List<BlogSiteConfig>? blogSiteConfigs,
     String? activeSiteId,
     String? activeRepoId,
-    // ── 扁平参数（向后兼容旧代码） ──
-    // GitHubSettings
-    String? defaultToken,
-    List<GithubTokenProfile>? githubTokens,
-    String? activeGithubTokenId,
-    String? imageBedType,
-    String? imageBedToken,
-    String? imageBedOwner,
-    String? imageBedRepo,
-    String? imageBedBranch,
-    String? imageBedPath,
-    String? imageBedCdn,
-    bool? autoCompressImage,
-    int? compressQuality,
-    int? compressMaxWidth,
-    // AiSettings
-    String? aiProvider,
-    String? aiApiKey,
-    String? aiBaseUrl,
-    String? aiModel,
-    List<AiProfile>? aiProfiles,
-    String? activeAiProfileId,
-    String? defaultModelId,
-    String? defaultModelBase,
-    // ProxySettings
-    bool? proxyEnabled,
-    String? proxyHost,
-    int? proxyPort,
-    String? proxyUsername,
-    String? proxyPassword,
-    bool? proxyApplyToAi,
-    // SyncSettings
-    bool? autoSaveEnabled,
-    int? autoSaveIntervalSeconds,
-    String? autoSaveDir,
-    String? backupDir,
-    String? webdavUrl,
-    String? webdavUsername,
-    String? webdavPassword,
-    String? webdavFolder,
-    bool? webdavAutoSyncEnabled,
-    int? webdavAutoSyncIntervalSeconds,
-    bool? webdavSyncWifiOnly,
-    bool? restoreSession,
-    bool? offlineMode,
-    bool? draftSyncEnabled,
-    String? syncRepoOwner,
-    String? syncRepoName,
-    String? syncRepoBranch,
-    String? syncRepoToken,
-    // UiSettings
-    String? siteAvatar,
-    String? siteName,
-    String? siteBio,
-    String? siteHome,
-    String? siteAbout,
-    String? siteGuestbook,
-    String? siteNow,
-    String? siteWorks,
-    int? themeColor,
-    bool? nightEyeProtection,
-    double? nightEyeIntensity,
-    int? httpTimeoutSeconds,
-    bool? allowInsecureHttps,
-    List<String>? statusPresets,
-    String? sitePreviewUrl,
-    String? cloudflareDeployHook,
+    String? language,
   }) {
     // 如果有扁平参数传入，构建对应的子对象
     final bool hasGitHubFlat = githubTokens != null || activeGithubTokenId != null ||
@@ -351,6 +288,7 @@ class AppSettings {
       blogSiteConfigs: blogSiteConfigs ?? this.blogSiteConfigs,
       activeSiteId: activeSiteId ?? this.activeSiteId,
       activeRepoId: activeRepoId ?? this.activeRepoId,
+      language: language ?? this.language,
     );
   }
 
@@ -367,6 +305,7 @@ class AppSettings {
         'blogSiteConfigs': blogSiteConfigs.map((e) => e.toJson()).toList(),
         'activeSiteId': activeSiteId,
         'activeRepoId': activeRepoId,
+        'language': language,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) {
@@ -379,6 +318,7 @@ class AppSettings {
       blogSiteConfigs: _parseBlogSiteConfigs(j['blogSiteConfigs']),
       activeSiteId: j['activeSiteId']?.toString() ?? '',
       activeRepoId: j['activeRepoId']?.toString() ?? '',
+      language: j['language']?.toString() ?? 'zh-CN',
     );
   }
 

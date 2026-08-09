@@ -39,6 +39,13 @@ abstract class BlogRepository {
 
   /// 释放资源（关闭 HTTP 客户端等）
   void dispose();
+
+  /// 静态博客专用方法：获取文章完整内容
+  /// [postId] 文件ID（SHA或路径）
+  Future<BlogPost> getPostContent(String postId);
+
+  /// 判断是否为静态博客适配器
+  bool get isStatic;
 }
 
 /// 连通性测试结果

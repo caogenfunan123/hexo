@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../core/repository/blog_repository.dart';
 import '../core/repository/ghost_adapter.dart';
 import '../core/repository/typecho_adapter.dart';
+import '../core/repository/typecho_fastapi_adapter.dart';
+import '../core/repository/typecho_restful_adapter.dart';
 import '../core/repository/wordpress_adapter.dart';
 import '../models/app_settings.dart';
 import '../models/blog_site_config.dart';
@@ -42,8 +44,10 @@ class _BlogSiteEditorScreenState extends State<BlogSiteEditorScreen> {
   late TextEditingController _ghostApiKeyCtrl;
   late TextEditingController _typechoEndpointCtrl;
   late TextEditingController _typechoTokenCtrl;
+  late TextEditingController _previewUrlCtrl;
 
   BlogType _selectedType = BlogType.wordpress;
+  TypechoPluginType _selectedTypechoPluginType = TypechoPluginType.secureApi;
   bool _ignoreSsl = false;
   bool _testing = false;
   bool _saving = false;
@@ -63,10 +67,12 @@ class _BlogSiteEditorScreenState extends State<BlogSiteEditorScreen> {
     _ghostApiKeyCtrl = TextEditingController(text: cfg?.ghostAdminApiKey ?? '');
     _typechoEndpointCtrl = TextEditingController(text: cfg?.typechoApiEndpoint ?? '');
     _typechoTokenCtrl = TextEditingController(text: cfg?.typechoToken ?? '');
+    _previewUrlCtrl = TextEditingController(text: cfg?.previewUrl ?? '');
 
     if (cfg != null) {
       _selectedType = cfg.type;
       _ignoreSsl = cfg.ignoreSsl;
+      _selectedTypechoPluginType = cfg.typechoPluginType ?? TypechoPluginType.secureApi;
     }
   }
 
@@ -79,6 +85,7 @@ class _BlogSiteEditorScreenState extends State<BlogSiteEditorScreen> {
     _ghostApiKeyCtrl.dispose();
     _typechoEndpointCtrl.dispose();
     _typechoTokenCtrl.dispose();
+    _previewUrlCtrl.dispose();
     super.dispose();
   }
 
@@ -116,6 +123,9 @@ class _BlogSiteEditorScreenState extends State<BlogSiteEditorScreen> {
       ghostAdminApiKey: _selectedType == BlogType.ghost
           ? _ghostApiKeyCtrl.text.trim()
           : null,
+      typechoPluginType: _selectedType == BlogType.typecho
+          ? _selectedTypechoPluginType
+          : null,
       typechoApiEndpoint: _selectedType == BlogType.typecho
           ? (_typechoEndpointCtrl.text.trim().isNotEmpty
               ? _typechoEndpointCtrl.text.trim()
@@ -123,6 +133,9 @@ class _BlogSiteEditorScreenState extends State<BlogSiteEditorScreen> {
           : null,
       typechoToken: _selectedType == BlogType.typecho
           ? _typechoTokenCtrl.text.trim()
+          : null,
+      previewUrl: _previewUrlCtrl.text.trim().isNotEmpty
+          ? _previewUrlCtrl.text.trim()
           : null,
       isDefault: widget.existingConfig?.isDefault ?? false,
     );
@@ -150,8 +163,25 @@ class _BlogSiteEditorScreenState extends State<BlogSiteEditorScreen> {
           adapter = WordPressAdapter(config, widget.appSettings);
         case BlogType.ghost:
           adapter = GhostAdapter(config, widget.appSettings);
-        case BlogType.typecho:
-          adapter = TypechoAdapter(config, widget.appSettings);
+case BlogType.typecho:
+          // 根据插件类型选择适配器
+          final pluginType = config.typechoPluginType ?? TypechoPluginType.secureApi;
+          switch (pluginType) {
+            case TypechoPluginType.secureApi:
+              adapter = TypechoAdapter(config, widget.appSettings);
+              break;
+            case TypechoPluginType.typechoFastApi:
+              adapter = TypechoFastApiAdapter(config, widget.appSettings);
+              break;
+            case TypechoPluginType.restful:
+              adapter = TypechoRestfulAdapter(config, widget.appSettings);
+              break;
+          }
+          break;
+            case TypechoPluginType.typechoFastApi:
+              adapter = TypechoFastApiAdapter(config, widget.appSettings);
+              break;
+          }
         default:
           setState(() {
             _testing = false;
@@ -303,6 +333,23 @@ class _BlogSiteEditorScreenState extends State<BlogSiteEditorScreen> {
               onChanged: (v) => setState(() => _ignoreSsl = v),
               dense: true,
             ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _previewUrlCtrl,
+              decoration: const InputDecoration(
+                labelText: '预览 URL（可选）',
+                hintText: 'https://preview.example.com',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.preview),
+              ),
+              keyboardType: TextInputType.url,
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) return null; // 可选字段
+                final uri = Uri.tryParse(v.trim());
+                if (uri == null || !uri.hasScheme) return '请输入有效的 URL';
+                return null;
+              },
+            ),
             const SizedBox(height: 24),
 
             // 平台专属字段
@@ -443,23 +490,89 @@ class _BlogSiteEditorScreenState extends State<BlogSiteEditorScreen> {
 
       case BlogType.typecho:
         return [
+          // Typecho 插件类型选择
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '插件类型',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              RadioListTile<TypechoPluginType>(
+                title: const Text('SecureApi（增强版）'),
+                subtitle: const Text('支持读写操作（推荐用于文章发布）'),
+                value: TypechoPluginType.secureApi,
+                groupValue: _selectedTypechoPluginType,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      _selectedTypechoPluginType = value;
+                    });
+                  }
+                },
+                contentPadding: EdgeInsets.zero,
+              ),
+              RadioListTile<TypechoPluginType>(
+                title: const Text('TypechoFastApi'),
+                subtitle: const Text('只读接口，不支持文章发布'),
+                value: TypechoPluginType.typechoFastApi,
+                groupValue: _selectedTypechoPluginType,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      _selectedTypechoPluginType = value;
+                    });
+                  }
+                },
+                contentPadding: EdgeInsets.zero,
+              ),
+              RadioListTile<TypechoPluginType>(
+                title: const Text('Restful API'),
+                subtitle: const Text('完整 RESTful API，支持读写操作'),
+                value: TypechoPluginType.restful,
+                groupValue: _selectedTypechoPluginType,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      _selectedTypechoPluginType = value;
+                    });
+                  }
+                },
+                contentPadding: EdgeInsets.zero,
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+          const SizedBox(height: 16),
           TextFormField(
             controller: _typechoEndpointCtrl,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'API 端点（可选）',
-              hintText: '留空自动探测，如 /index.php/api',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.api),
+              hintText: switch (_selectedTypechoPluginType) {
+                TypechoPluginType.secureApi => '留空自动探测，如 /index.php/api',
+                TypechoPluginType.typechoFastApi => '留空自动探测，如 /api/v1',
+                TypechoPluginType.restful => '留空自动探测，如 /api/posts',
+              },
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.api),
             ),
           ),
           const SizedBox(height: 16),
           TextFormField(
             controller: _typechoTokenCtrl,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'API 密钥 (Token)',
-              hintText: 'SecureApi 插件设置页生成的密钥',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.token),
+              hintText: switch (_selectedTypechoPluginType) {
+                TypechoPluginType.secureApi => 'SecureApi 插件设置页生成的密钥',
+                TypechoPluginType.typechoFastApi => 'TypechoFastApi 插件设置的 API 密钥',
+                TypechoPluginType.restful => 'Restful 插件设置的 API Token',
+              },
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.token),
             ),
             obscureText: true,
             validator: (v) => (v == null || v.trim().isEmpty)
@@ -493,19 +606,47 @@ class _BlogSiteEditorScreenState extends State<BlogSiteEditorScreen> {
                 '5. 复制 Admin API Key（格式为 id:secret）\n\n'
                 '要求：Ghost 3.0+，请使用 Admin API Key 而非 Content API Key',
           ),
-      BlogType.typecho => (
-            '如何配置 Typecho（推荐 SecureApi 插件）？',
-            '1. 下载 SecureApi 插件（建议用增强版，支持文章发布）\n'
-                '   下载地址：https://gitee.com/nice_ch/typecho-plugin\n'
-                '   （增强版已随本 App 提供，见仓库 plugin/SecureApi）\n'
-                '2. 将 SecureApi 文件夹放入 usr/plugins/\n'
-                '3. 后台「插件管理」激活插件并进入设置：\n'
-                '   · 将「API开关」设为开启\n'
-                '   · 复制或修改「API密钥」\n'
-                '4. 端点留空自动探测\n'
-                '   （未开地址重写为 /index.php/api，伪静态为 /api）\n'
-                '5. 将 API 密钥粘贴到上方「API 密钥」输入框\n'
-                '6. 测试连接成功后即可发布 / 更新 / 删除文章',
+      BlogType.typecho => switch (_selectedTypechoPluginType) {
+            TypechoPluginType.secureApi => (
+              '如何配置 Typecho（推荐 SecureApi 插件）？',
+              '1. 下载 SecureApi 插件（增强版，支持文章发布）\n'
+                  '   下载地址：https://gitee.com/nice_ch/typecho-plugin\n'
+                  '   （增强版已随本 App 提供，见仓库 plugin/SecureApi）\n'
+                  '2. 将 SecureApi 文件夹放入 usr/plugins/\n'
+                  '3. 后台「插件管理」激活插件并进入设置：\n'
+                  '   · 将「API开关」设为开启\n'
+                  '   · 复制或修改「API密钥」\n'
+                  '4. 端点留空自动探测\n'
+                  '   （未开地址重写为 /index.php/api，伪静态为 /api）\n'
+                  '5. 将 API 密钥粘贴到上方「API 密钥」输入框\n'
+                  '6. 测试连接成功后即可发布 / 更新 / 删除文章',
+            ),
+            TypechoPluginType.typechoFastApi => (
+              '如何配置 Typecho（TypechoFastApi 插件）？',
+              '1. 下载 TypechoFastApi 插件（只读接口）\n'
+                  '   下载地址：https://github.com/s-Ruthless/TypechoFastApi\n'
+                  '2. 将 TypechoFastApi 文件夹放入 usr/plugins/\n'
+                  '3. 后台「插件管理」激活插件并进入设置：\n'
+                  '   · 设置「API密钥」\n'
+                  '   · 建议开启缓存以提高性能\n'
+                  '4. 端点留空自动探测\n'
+                  '   （未开地址重写为 /index.php/api/v1，伪静态为 /api/v1）\n'
+                  '5. 将 API 密钥粘贴到上方「API 密钥」输入框\n'
+                  '6. 注意：此插件为只读接口，不支持文章发布',
+            ),
+            TypechoPluginType.restful => (
+              '如何配置 Typecho（Restful API 插件）？',
+              '1. 下载 Restful API 插件\n'
+                  '   下载地址：https://github.com/moefront/typecho-plugin-Restful\n'
+                  '2. 将 Restful 文件夹放入 usr/plugins/\n'
+                  '3. 后台「插件管理」激活插件\n'
+                  '4. 在插件设置中配置 API Token\n'
+                  '5. 端点：/api/posts（文章）、/api/media（媒体）\n'
+                  '6. 鉴权方式：Authorization: Bearer <token>\n'
+                  '7. 将 API Token 粘贴到上方「API 密钥」输入框\n'
+                  '8. 测试连接成功后即可发布 / 更新 / 删除文章',
+            ),
+          },
           ),
       _ => ('', ''),
     };

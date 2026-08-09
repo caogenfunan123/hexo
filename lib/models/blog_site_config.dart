@@ -64,6 +64,48 @@ enum BlogType {
   }
 }
 
+/// Typecho 插件类型
+enum TypechoPluginType {
+  /// SecureApi 插件（增强版，支持读写）
+  /// 端点：/index.php/api 或 /api
+  /// 鉴权：token 参数或 X-API-Key 请求头
+  secureApi,
+
+  /// TypechoFastApi 插件（只读）
+  /// 端点：/api/v1 或 /index.php/api/v1
+  /// 鉴权：apiKey 参数或 api_key 请求头
+  typechoFastApi,
+
+  /// Restful 插件（完整 RESTful API，支持读写）
+  /// 端点：/api/posts, /api/media 等
+  /// 鉴权：Authorization: Bearer <token> 请求头
+  restful,
+  ;
+
+  /// 显示名称
+  String get displayName => switch (this) {
+        secureApi => 'SecureApi（增强版）',
+        typechoFastApi => 'TypechoFastApi',
+        restful => 'Restful API',
+      };
+
+  /// 是否支持写入操作
+  bool get supportsWrite => switch (this) {
+        secureApi => true,
+        typechoFastApi => false,
+        restful => true,
+      };
+
+  /// 从字符串解析
+  static TypechoPluginType fromString(String? s) {
+    if (s == null || s.isEmpty) return secureApi;
+    return TypechoPluginType.values.firstWhere(
+      (t) => t.name == s,
+      orElse: () => secureApi,
+    );
+  }
+}
+
 /// 动态 CMS 站点配置
 /// 与静态博客的 [RepoConfig] 并行，互不干扰
 class BlogSiteConfig {
@@ -86,6 +128,8 @@ class BlogSiteConfig {
   final String? ghostAdminApiKey;
 
   /// ── Typecho 专属 ──
+  /// Typecho 插件类型（SecureApi 或 TypechoFastApi）
+  final TypechoPluginType? typechoPluginType;
   /// 自定义 API 端点（如 /api/posts，默认自动探测）
   final String? typechoApiEndpoint;
   /// 插件生成的 Token
@@ -93,6 +137,10 @@ class BlogSiteConfig {
 
   /// 是否为默认站点
   final bool isDefault;
+
+  /// ── 预览配置 ──
+  /// 自定义预览 URL（如 https://preview.example.com），为空则使用默认预览服务
+  final String? previewUrl;
 
   /// ── 模板绑定 ──
   /// 默认文章模板 ID（CMS 站点也有模板概念）
@@ -111,11 +159,13 @@ class BlogSiteConfig {
     this.wpUsername,
     this.wpAppPassword,
     this.ghostAdminApiKey,
+    this.typechoPluginType,
     this.typechoApiEndpoint,
     this.typechoToken,
     this.isDefault = false,
     this.defaultPostTemplateId,
     this.defaultPageTemplateId,
+    this.previewUrl,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -151,11 +201,13 @@ class BlogSiteConfig {
     Object? wpUsername = _sentinel,
     Object? wpAppPassword = _sentinel,
     Object? ghostAdminApiKey = _sentinel,
+    Object? typechoPluginType = _sentinel,
     Object? typechoApiEndpoint = _sentinel,
     Object? typechoToken = _sentinel,
     bool? isDefault,
     Object? defaultPostTemplateId = _sentinel,
     Object? defaultPageTemplateId = _sentinel,
+    Object? previewUrl = _sentinel,
     DateTime? createdAt,
   }) {
     return BlogSiteConfig(
@@ -167,11 +219,13 @@ class BlogSiteConfig {
       wpUsername: identical(wpUsername, _sentinel) ? this.wpUsername : wpUsername as String?,
       wpAppPassword: identical(wpAppPassword, _sentinel) ? this.wpAppPassword : wpAppPassword as String?,
       ghostAdminApiKey: identical(ghostAdminApiKey, _sentinel) ? this.ghostAdminApiKey : ghostAdminApiKey as String?,
+      typechoPluginType: identical(typechoPluginType, _sentinel) ? this.typechoPluginType : typechoPluginType as TypechoPluginType?,
       typechoApiEndpoint: identical(typechoApiEndpoint, _sentinel) ? this.typechoApiEndpoint : typechoApiEndpoint as String?,
       typechoToken: identical(typechoToken, _sentinel) ? this.typechoToken : typechoToken as String?,
       isDefault: isDefault ?? this.isDefault,
       defaultPostTemplateId: identical(defaultPostTemplateId, _sentinel) ? this.defaultPostTemplateId : defaultPostTemplateId as String?,
       defaultPageTemplateId: identical(defaultPageTemplateId, _sentinel) ? this.defaultPageTemplateId : defaultPageTemplateId as String?,
+      previewUrl: identical(previewUrl, _sentinel) ? this.previewUrl : previewUrl as String?,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -187,12 +241,14 @@ class BlogSiteConfig {
         if (wpUsername != null) 'wpUsername': wpUsername,
         if (wpAppPassword != null) 'wpAppPassword': wpAppPassword,
         if (ghostAdminApiKey != null) 'ghostAdminApiKey': ghostAdminApiKey,
+        if (typechoPluginType != null) 'typechoPluginType': typechoPluginType!.name,
         if (typechoApiEndpoint != null) 'typechoApiEndpoint': typechoApiEndpoint,
         if (typechoToken != null) 'typechoToken': typechoToken,
         'isDefault': isDefault,
         'createdAt': createdAt.toIso8601String(),
         if (defaultPostTemplateId != null) 'defaultPostTemplateId': defaultPostTemplateId,
         if (defaultPageTemplateId != null) 'defaultPageTemplateId': defaultPageTemplateId,
+        if (previewUrl != null) 'previewUrl': previewUrl,
       };
 
   factory BlogSiteConfig.fromJson(Map<String, dynamic> j) {
@@ -205,13 +261,25 @@ class BlogSiteConfig {
       wpUsername: j['wpUsername']?.toString(),
       wpAppPassword: j['wpAppPassword']?.toString(),
       ghostAdminApiKey: j['ghostAdminApiKey']?.toString(),
+      typechoPluginType: j['typechoPluginType'] != null ? TypechoPluginType.fromString(j['typechoPluginType']?.toString()) : null,
       typechoApiEndpoint: j['typechoApiEndpoint']?.toString(),
       typechoToken: j['typechoToken']?.toString(),
       isDefault: j['isDefault'] == true,
       createdAt: DateTime.tryParse(j['createdAt']?.toString() ?? '') ?? DateTime.now(),
       defaultPostTemplateId: j['defaultPostTemplateId']?.toString(),
       defaultPageTemplateId: j['defaultPageTemplateId']?.toString(),
+      previewUrl: j['previewUrl']?.toString(),
     );
+  }
+
+  /// 获取预览URL
+  /// 如果设置了自定义预览URL则使用，否则返回默认预览服务
+  String get previewUrlOrDefault {
+    if (previewUrl?.isNotEmpty == true) {
+      return previewUrl!;
+    }
+    // 默认预览服务
+    return 'https://caogenfunan.me/preview/$id';
   }
 
   @override
