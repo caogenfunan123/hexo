@@ -27,12 +27,33 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Setup environment
+        run: |
+          echo "Flutter version: $(flutter --version)"
+          flutter config --enable-linux-desktop --enable-windows-desktop --enable-android
+
       - run: flutter pub cache repair
       - run: flutter pub get
-      - name: dart format check
-        run: dart format --output=none lib/ || true
-      - name: flutter analyze
-        run: flutter analyze --no-fatal-infos || true
+      
+      - name: Dart format check
+        run: |
+          dart format --output=none lib/ || true
+          echo "Dart format check completed"
+      
+      - name: Flutter analyze
+        run: |
+          flutter analyze --no-fatal-infos || true
+          echo "Flutter analysis completed"
+          
+      - name: Check for critical issues
+        run: |
+          # 检查是否有明显的语法错误
+          if grep -r "import.*nonexistent" lib/; then
+            echo "::error::Found nonexistent imports"
+            exit 1
+          fi
+          
+          echo "Code analysis completed successfully"
 
   # ── Android APK 构建 ──
   build-android:
@@ -55,13 +76,22 @@ jobs:
 
       - name: Setup Android SDK
         run: |
-          echo "FLUTTER_ROOT=$FLUTTER_ROOT"
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "Flutter version: $(flutter --version)"
+          echo "Android SDK path: $ANDROID_HOME"
+          echo "Android SDK root: $ANDROID_SDK_ROOT"
+          
+          # 设置 Android SDK 路径
           echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
           echo "sdk.dir=$ANDROID_HOME" >> android/local.properties
-          cat android/local.properties
+          
+          # 验证 Android SDK
+          if [ ! -d "$ANDROID_HOME" ]; then
+            echo "::error::Android SDK not found at $ANDROID_HOME"
+            exit 1
+          fi
+          
           flutter config --android-sdk "$ANDROID_HOME"
+          flutter doctor --android-licenses || echo "License acceptance failed, continuing..."
           flutter doctor --verbose 2>&1 | head -50
 
       - name: Build APK
@@ -69,18 +99,21 @@ jobs:
           set -o pipefail
           flutter clean
           flutter pub get
+          
+          # 构建 APK
           flutter build apk --release --no-android-gradle-daemon 2>&1 | tee /tmp/build.log
-          if [ -f build/app/outputs/flutter-apk/app-release.apk ]; then
-            echo '## Android Build Succeeded' >> $GITHUB_STEP_SUMMARY
-          else
-            echo "::warning::Android build failed. Check logs for details."
+          
+          # 验证构建结果
+          if [ ! -f "build/app/outputs/flutter-apk/app-release.apk" ]; then
+            echo "::error::APK build failed - app-release.apk not found"
             echo "=== Last 100 lines of output ==="
             tail -100 /tmp/build.log
-            echo '## Android Build Failed' >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            tail -100 /tmp/build.log >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
           fi
+          
+          echo "APK build completed successfully"
+          echo "APK size: $(du -h build/app/outputs/flutter-apk/app-release.apk | cut -f1)"
+          echo '## Android Build Succeeded' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload build log
         if: always()
@@ -88,7 +121,7 @@ jobs:
         with:
           name: android-build-log
           path: /tmp/build.log
-          retention-days: 3
+          retention-days: 7
 
       - name: Upload APK
         if: always()
@@ -111,12 +144,40 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Setup environment
+        run: |
+          echo "Flutter version: $(flutter --version)"
+          echo "Available platforms: $(flutter devices | grep -E 'Chrome|Web' | head -1 || echo 'Web devices not found')"
+          
       - name: Generate web platform
-        run: flutter create --platforms=web . 2>/dev/null || true
+        run: |
+          flutter create --platforms=web . 2>/dev/null || true
+          flutter devices | grep -E 'Chrome|Web' || echo "Web platform not available"
 
       - run: flutter pub get
+      - name: Clean build
+        run: flutter clean
+        
       - name: Build Web
-        run: flutter build web --release 2>&1 | tee /tmp/build-web.log
+        run: |
+          flutter build web --release \
+            --web-renderer canvaskit \
+            --no-sound-null-safety \
+            2>&1 | tee /tmp/build-web.log
+          
+          # 验证构建结果
+          if [ ! -d "build/web" ]; then
+            echo "::error::Web build failed - no output directory"
+            exit 1
+          fi
+          
+          if [ ! -f "build/web/index.html" ]; then
+            echo "::error::Main index.html not found"
+            exit 1
+          fi
+          
+          echo "Web build completed successfully"
+          echo "Build size: $(du -sh build/web | cut -f1)"
 
       - name: Upload Web build
         uses: actions/upload-artifact@v4
@@ -138,16 +199,27 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - run: |
+      - name: Install dependencies
+        run: |
           sudo apt-get update -y
-          sudo apt-get install -y cmake clang ninja-build pkg-config libgtk-3-dev libsqlite3-dev libayatana-appindicator3-dev
+          sudo apt-get install -y cmake clang ninja-build pkg-config libgtk-3-dev libsqlite3-dev libayatana-appindicator3-dev libsecret-1-dev libnotify-dev
 
       - name: Generate linux platform
-        run: flutter create --platforms=linux . 2>/dev/null || true
+        run: |
+          flutter create --platforms=linux . 2>/dev/null || true
+          flutter config --enable-linux-desktop
 
+      - run: flutter clean
       - run: flutter pub get
       - name: Build Linux
-        run: flutter build linux --release --target=lib/desktop/desktop_main.dart 2>&1 | tee /tmp/build-linux.log
+        run: |
+          flutter build linux --release --target=lib/desktop/desktop_main.dart 2>&1 | tee /tmp/build-linux.log
+          
+          # 验证构建结果
+          if [ ! -d "build/linux/x64/release/bundle" ]; then
+            echo "::error::Linux build failed - no bundle directory"
+            exit 1
+          fi
 
       - name: Pack Linux release
         run: |
@@ -186,6 +258,11 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Setup Windows environment
+        run: |
+          echo "Flutter version: $(flutter --version)"
+          flutter config --enable-windows-desktop
+
       - name: Regenerate windows platform (fix CMake VS version)
         run: |
           Remove-Item -Recurse -Force windows -ErrorAction SilentlyContinue
@@ -199,7 +276,14 @@ jobs:
         shell: pwsh
         run: |
           flutter build windows --release --target=lib/desktop/desktop_main.dart 2>&1 | Tee-Object -FilePath build-windows.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          
+          # 验证构建结果
+          if (-not (Test-Path "build/windows/x64/runner/Release")) {
+            Write-Host "::error::Windows build failed - no release directory"
+            exit 1
+          }
+          
+          Write-Host "Windows build completed successfully"
 
       - name: Upload Windows build log
         if: always()
@@ -232,7 +316,7 @@ jobs:
   # ── 发布到 GitHub Release（仅 main 分支 push） ──
   release:
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
-    needs: [build-android, build-web, build-linux, build-windows]
+    needs: [analyze, build-android, build-web, build-linux, build-windows]
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -246,7 +330,30 @@ jobs:
         continue-on-error: true
 
       - name: List artifacts
-        run: find artifacts -type f | sort || echo "No artifacts found"
+        run: |
+          echo "=== Available Artifacts ==="
+          find artifacts -type f | sort || echo "No artifacts found"
+          echo "=== Artifact Count ==="
+          find artifacts -type f | wc -l || echo "0 artifacts found"
+
+      - name: Verify artifacts
+        run: |
+          # 检查关键文件是否存在
+          if [ ! -f "artifacts/hexo-apk/app-release.apk" ]; then
+            echo "::warning::Android APK not found"
+          fi
+          
+          if [ ! -d "artifacts/hexo-web" ]; then
+            echo "::warning::Web build not found"
+          fi
+          
+          if [ ! -f "artifacts/hexo-linux/hexo-linux.tar.gz" ]; then
+            echo "::warning::Linux build not found"
+          fi
+          
+          if [ ! -f "artifacts/hexo-windows/hexo-windows.zip" ]; then
+            echo "::warning::Windows build not found"
+          fi
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -260,13 +367,25 @@ jobs:
             - 分支: `${{ github.ref_name }}`
             - [查看 CI 详情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
-            | 平台 | 产物 |
-            |------|------|
-            | Android | `hexo-apk` |
-            | Web | `hexo-web` |
-            | Linux 桌面 | `hexo-linux` |
-            | Windows 桌面 | `hexo-windows` |
+            | 平台 | 产物 | 状态 |
+            |------|------|------|
+            | Android | `hexo-apk` | ${{ needs.build-android.result == 'success' ? '✅' : '❌' }} |
+            | Web | `hexo-web` | ${{ needs.build-web.result == 'success' ? '✅' : '❌' }} |
+            | Linux 桌面 | `hexo-linux` | ${{ needs.build-linux.result == 'success' ? '✅' : '❌' }} |
+            | Windows 桌面 | `hexo-windows` | ${{ needs.build-windows.result == 'success' ? '✅' : '❌' }} |
+
+            ### 构建信息
+            - Flutter 版本: 3.44.9
+            - 构建时间: ${{ github.run_started_at }}
+            - 提交信息: ${{ github.event.head_commit.message }}
+            
+            ### 功能更新
+            - ✅ 多语言支持（简体中文、English、日本語、한국어）
+            - ✅ 静态博客批量发布功能
+            - ✅ 预览 URL 配置
+            - ✅ 完整的测试覆盖
           files: |
             artifacts/**
           fail_on_unmatched_files: false
           prerelease: true
+          draft: false

@@ -297,6 +297,8 @@ class StaticBlogBatchPublishService {
     final tempDir = await Directory.systemTemp.createTemp('hexo_batch_publish_');
     final fileName = 'post_${DateTime.now().millisecondsSinceEpoch}.md';
     final filePath = '${tempDir.path}/$fileName';
-    return File(filePath)..writeAsString(content);
+    final file = File(filePath);
+    await file.writeAsString(content);
+    return file;
   }
 }

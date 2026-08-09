@@ -54,6 +54,9 @@ class _StaticBlogPostsScreenState extends State<StaticBlogPostsScreen> {
   /// 选中的文章列表
   final Set<String> _selectedPostIds = {};
   
+  /// 选中的站点列表
+  final Set<String> _selectedSiteIds = {};
+  
   /// 批量发布服务
   late final StaticBlogBatchPublishService _batchPublishService;
   
