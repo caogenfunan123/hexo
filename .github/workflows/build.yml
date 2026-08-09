@@ -72,6 +72,15 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
       - run: flutter pub get
 
       - name: Setup Android SDK
@@ -91,17 +100,15 @@ jobs:
           fi
           
           flutter config --android-sdk "$ANDROID_HOME"
-          flutter doctor --android-licenses || echo "License acceptance failed, continuing..."
-          flutter doctor --verbose 2>&1 | head -50
+          yes | flutter doctor --android-licenses || echo "License acceptance failed, continuing..."
 
       - name: Build APK
         run: |
           set -o pipefail
-          flutter clean
           flutter pub get
           
           # 构建 APK
-          flutter build apk --release --no-android-gradle-daemon 2>&1 | tee /tmp/build.log
+          flutter build apk --release 2>&1 | tee /tmp/build.log
           
           # 验证构建结果
           if [ ! -f "build/app/outputs/flutter-apk/app-release.apk" ]; then
