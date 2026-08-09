@@ -645,7 +645,6 @@ class _BlogSiteEditorScreenState extends State<BlogSiteEditorScreen> {
                   '8. 测试连接成功后即可发布 / 更新 / 删除文章',
             ),
           },
-          ),
       _ => ('', ''),
     };
 

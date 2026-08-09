@@ -161,8 +161,6 @@ jobs:
       - name: Build Web
         run: |
           flutter build web --release \
-            --web-renderer canvaskit \
-            --no-sound-null-safety \
             2>&1 | tee /tmp/build-web.log
           
           # 验证构建结果
@@ -246,99 +244,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Build Windows
-        shell: pwsh
-        run: |
-          flutter build windows --release --target=lib/desktop/desktop_main.dart 2>&1 | Tee-Object -FilePath build-windows.log
-          
-          # 验证构建结果
-          if (-not (Test-Path "build/windows/x64/runner/Release")) {
-            Write-Host "::error::Windows build failed - no release directory"
-            exit 1
-          }
-          
-          Write-Host "Windows build completed successfully"
-
-      - name: Upload Windows build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-build-log
-          path: build-windows.log
-          retention-days: 7
-
-      - name: Pack Windows release
-        shell: pwsh
-        run: |
-          $src = "build/windows/x64/runner/Release"
-          $dest = "hexo-windows.zip"
-          if (Test-Path $src) {
-            Compress-Archive -Path "$src\*" -DestinationPath $dest -Force
-            Write-Host "Created $dest ($((Get-Item $dest).Length) bytes)"
-          } else {
-            Write-Host "::warning::Release directory not found, skipping"
-          }
-
-      - name: Upload Windows build
-        uses: actions/upload-artifact@v4
-        with:
-          name: hexo-windows
-          path: hexo-windows.zip
-          if-no-files-found: warn
-          retention-days: 30
-
-      - name: Build Android
-        run: |
-          flutter build apk --release --target=lib/desktop/desktop_main.dart 2>&1 | tee /tmp/build-android.log
-          
-          # 验证构建结果
-          if [ ! -f "build/app/outputs/flutter-apk/app-release.apk" ]; then
-            echo "::error::Android build failed - no APK file"
-            exit 1
-          fi
-
-      - name: Upload Android build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-build-log
-          path: /tmp/build-android.log
-          retention-days: 7
-
-      - name: Upload Android build
-        uses: actions/upload-artifact@v4
-        with:
-          name: hexo-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: warn
-          retention-days: 30
-
-      - name: Build Web
-        run: |
-          flutter build web --release --target=lib/desktop/desktop_main.dart 2>&1 | tee /tmp/build-web.log
-          
-          # 验证构建结果
-          if [ ! -d "build/web" ]; then
-            echo "::error::Web build failed - no web directory"
-            exit 1
-          fi
-
-      - name: Upload Web build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: web-build-log
-          path: /tmp/build-web.log
-          retention-days: 7
-
-      - name: Upload Web build
-        uses: actions/upload-artifact@v4
-        with:
-          name: hexo-web
-          path: build/web
-          if-no-files-found: warn
-          retention-days: 30
-
   # ── Windows 桌面构建 ──
   build-windows:
     runs-on: windows-2022
@@ -403,32 +308,6 @@ jobs:
         with:
           name: hexo-windows
           path: hexo-windows.zip
-          if-no-files-found: warn
-          retention-days: 30
-
-      - name: Build Web
-        run: |
-          flutter build web --release --target=lib/desktop/desktop_main.dart 2>&1 | tee /tmp/build-web.log
-          
-          # 验证构建结果
-          if [ ! -d "build/web" ]; then
-            echo "::error::Web build failed - no web directory"
-            exit 1
-          fi
-
-      - name: Upload Web build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: web-build-log
-          path: /tmp/build-web.log
-          retention-days: 7
-
-      - name: Upload Web build
-        uses: actions/upload-artifact@v4
-        with:
-          name: hexo-web
-          path: build/web
           if-no-files-found: warn
           retention-days: 30
 
