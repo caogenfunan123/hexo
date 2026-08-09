@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:fcllama/fllama.dart';
 import 'package:flutter/foundation.dart';
@@ -38,6 +39,16 @@ class LocalLlamaProvider {
   /// 是否已在 Android 上初始化过（有上下文）。
   bool get initialized => _contextId != null;
 
+  /// 动态线程数：取设备物理核心数，超出 8 核封顶（避免线程过度竞争）。
+  int get _dynamicThreads {
+    try {
+      if (kIsWeb) return 4;
+      final cores = Platform.numberOfProcessors;
+      if (cores > 0) return cores > 8 ? 8 : cores;
+    } catch (_) {}
+    return 4;
+  }
+
   /// 加载 GGUF 模型文件（fcllama initContext）。
   /// [modelPath] 为本地 .gguf 文件绝对路径，[contextSize] 为上下文长度。
   /// 返回 null 表示成功，否则返回错误信息。
@@ -68,7 +79,7 @@ class LocalLlamaProvider {
         normalizedPath,
         nCtx: contextSize,
         nBatch: contextSize > 512 ? 512 : contextSize,
-        nThreads: 4,
+        nThreads: _dynamicThreads,
         useMlock: false,
         useMmap: true,
         emitLoadProgress: false,
@@ -102,24 +113,52 @@ class LocalLlamaProvider {
     int maxTokens,
     double temperature,
   ) async {
-    return _serializeCompletion(() async {
+    final buf = StringBuffer();
+    await for (final token
+        in _streamCompletion(contextId, prompt, maxTokens, temperature)) {
+      buf.write(token);
+    }
+    return buf.toString();
+  }
+
+  /// 真流式：逐 token 从 onTokenStream 读取并产出。
+  ///
+  /// 返回 controller stream，内部在 `_completionQueue` 中串行执行
+  /// completion 并实时向 controller 推送 token；首个 token 到达前不做任何
+  /// 缓冲，调用方（UI）可实时展示，避免"长时间思考无输出"的假死感知。
+  /// 消费者取消订阅时自动停止原生生成。
+  Stream<String> _streamCompletion(
+    double contextId,
+    String prompt,
+    int maxTokens,
+    double temperature,
+  ) {
+    final controller = StreamController<String>();
+    controller.onCancel = () async {
+      await stopCompletion();
+      if (!controller.isClosed) await controller.close();
+    };
+    unawaited(_serializeCompletion(() async {
       final llama = FCllama.instance();
       if (llama == null) {
-        return 'fcllama 插件未初始化';
+        controller.addError(Exception('fcllama 插件未初始化'));
+        if (!controller.isClosed) await controller.close();
+        return;
       }
-      final buf = StringBuffer();
       StreamSubscription<Map<Object?, dynamic>>? sub;
+      var done = false;
       try {
         final stream = llama.onTokenStream;
         if (stream != null) {
           sub = stream.listen((data) {
+            if (done) return;
             if (data['function'] != 'completion') return;
             final eventContextId =
                 double.tryParse(data['contextId']?.toString() ?? '');
             if (eventContextId != null && eventContextId != contextId) return;
             final res = data['result'];
             if (res is Map && res['token'] != null) {
-              buf.write(res['token'].toString());
+              controller.add(res['token'].toString());
             }
           });
         }
@@ -132,13 +171,15 @@ class LocalLlamaProvider {
           emitRealtimeCompletion: true,
         );
       } catch (e) {
-        return '本地模型生成失败: $e';
+        controller.addError(Exception('本地模型生成失败: $e'));
       } finally {
+        done = true;
         await Future<void>.delayed(const Duration(milliseconds: 60));
         await sub?.cancel();
+        if (!controller.isClosed) await controller.close();
       }
-      return buf.toString();
-    });
+    }));
+    return controller.stream;
   }
 
   /// 单次完整生成（流式聚合，适合短文本）。
@@ -156,7 +197,7 @@ class LocalLlamaProvider {
     return _collectCompletion(id, prompt, maxTokens, temperature);
   }
 
-  /// 流式生成：逐 token 产出补全文本。
+  /// 流式生成：逐 token 产出补全文本（真流式）。
   Stream<String> generateStream(
     String prompt, {
     int maxTokens = 1024,
@@ -167,10 +208,16 @@ class LocalLlamaProvider {
       yield '本地模型未加载。请先在"AI 模型管理"中导入并加载 GGUF 模型。';
       return;
     }
-    final text = await _collectCompletion(id, prompt, maxTokens, temperature);
-    if (text.isNotEmpty) {
-      yield text;
-    }
+    yield* _streamCompletion(id, prompt, maxTokens, temperature);
+  }
+
+  /// 取消当前正在进行的生成（fcllama 原生 stop）。
+  Future<void> stopCompletion() async {
+    final id = _contextId;
+    if (id == null) return;
+    try {
+      await FCllama.instance()?.stopCompletion(contextId: id);
+    } catch (_) {}
   }
 
   /// 卸载当前模型，释放内存。

@@ -13,6 +13,7 @@ import 'ai_model_entity.dart';
 import 'ai_model_manager.dart';
 import 'ai_model_probe_service.dart';
 import 'ai_provider.dart';
+import 'local_llama_provider.dart';
 
 /// 模型切换事件（UI 提示条用）
 class SwitchEvent {
@@ -54,6 +55,8 @@ class AiRequestDispatcher {
     _cancelled = true;
     _activeStreamController?.close();
     _activeStreamController = null;
+    // 本地 GGUF 生成同步停止（fcllama stopCompletion）
+    unawaited(LocalLlamaProvider.instance.stopCompletion());
   }
 
   /// 上下文持有器：保存完整会话历史（含 tool_calls），保证切换模型时上下文不丢失
@@ -166,6 +169,17 @@ class AiRequestDispatcher {
     final fullContent = StringBuffer();
 
     try {
+      // ── 本地模型：走专用真流式路径，不受全局 50 秒硬超时限制 ──
+      if (preferredModel != null &&
+          preferredModel.provider == ModelProvider.local) {
+        await _runLocalStream(
+          controller,
+          preferredModel: preferredModel,
+          temperature: temperature,
+        );
+        return;
+      }
+
       AiProfile? profile;
       if (preferredModel != null) {
         profile = _profileFromModel(preferredModel);
@@ -345,6 +359,104 @@ class AiRequestDispatcher {
         controller.addError(Exception(errorMsg));
         await controller.close();
       }
+    }
+  }
+
+  /// 本地模型专用真流式路径。
+  ///
+  /// 与远端模型不同：
+  /// - 不受全局 [timeoutSeconds] 硬超时限制（本地 GGUF 首 token 预处理慢，
+  ///   固定 50 秒超时会直接掐死生成）
+  /// - 逐 token 实时推送，无 token 时给"仍在思考"提示而不是静默等待
+  /// - 超过 [firstTokenTimeoutSeconds] 仍无输出 → 提示可能卡死并结束
+  Future<void> _runLocalStream(
+    StreamController<StreamChunk> controller, {
+    required AiModelEntity preferredModel,
+    double temperature = 0.7,
+    int firstTokenTimeoutSeconds = 120,
+    int maxTokens = 2048,
+  }) async {
+    final fullContent = StringBuffer();
+    final profile = _profileFromModel(preferredModel);
+    final messages = <Map<String, dynamic>>[
+      {'role': 'system', 'content': _systemPrompt},
+      ..._chatHistory,
+    ];
+
+    // 首 token 等待超时计时器：本地模型预处理慢，超过阈值提示卡死
+    Timer? firstTokenTimer;
+    var gotFirstToken = false;
+    final stopwatch = Stopwatch()..start();
+
+    try {
+      final stream = _aiService.streamCompleteLocal(
+        p: profile,
+        systemPrompt: _systemPrompt,
+        messages: messages,
+        temperature: temperature,
+        maxTokens: maxTokens,
+      );
+
+      firstTokenTimer = Timer(Duration(seconds: firstTokenTimeoutSeconds), () {
+        if (gotFirstToken || controller.isClosed) return;
+        // 无 token 输出：停止生成并提示用户可能卡死
+        unawaited(LocalLlamaProvider.instance.stopCompletion());
+        final hint = '⚠️ 本地模型长时间未产生内容（> $firstTokenTimeoutSeconds 秒）。'
+            '可能原因：模型过大、上下文过长或内存不足。'
+            '建议降低上下文长度、换更小量化模型或检查模型文件完整性。';
+        if (!controller.isClosed) {
+          controller.add(StreamChunk(content: hint));
+        }
+      });
+
+      await for (final chunk in stream) {
+        if (_cancelled) break;
+        if (controller.isClosed) break;
+        if (chunk.isDone) break;
+        if (chunk.content.isNotEmpty) {
+          if (!gotFirstToken) {
+            gotFirstToken = true;
+            firstTokenTimer.cancel();
+          }
+          fullContent.write(chunk.content);
+          controller.add(chunk);
+        }
+      }
+    } catch (e) {
+      if (!controller.isClosed) {
+        controller.addError(Exception(e.toString()));
+      }
+      if (fullContent.isEmpty) {
+        await controller.close();
+        return;
+      }
+    } finally {
+      firstTokenTimer?.cancel();
+      stopwatch.stop();
+    }
+
+    if (_cancelled) {
+      if (!controller.isClosed) {
+        await controller.close();
+      }
+      return;
+    }
+
+    final text = fullContent.toString();
+    if (text.isNotEmpty) {
+      addAssistantMessage(text);
+      _modelManager.recordCall(
+        preferredModel.modelId,
+        preferredModel.apiBase,
+        stopwatch.elapsedMilliseconds,
+        true,
+      );
+      unawaited(_modelManager.recordKeySuccess(preferredModel));
+    }
+
+    if (!controller.isClosed) {
+      controller.add(const StreamChunk(content: '', isDone: true));
+      await controller.close();
     }
   }
 

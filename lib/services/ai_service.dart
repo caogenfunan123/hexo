@@ -197,6 +197,117 @@ class AiService {
     return llama.complete(prompt, temperature: temperature);
   }
 
+  /// 本地模型精简指令头：替代巨型全局内核 Prompt，降低小参数 GGUF 的
+  /// 预处理耗时（prompt evaluation 爆炸是"长时间思考无输出"的根因之一）。
+  static const _localSystemHint = '''
+你是本地运行的博客创作助手，只处理当前博客仓库相关的任务。
+直接给出简洁、可执行的结果；不要输出工具定义、脚本或未经请求的长篇规则。''';
+
+  /// 从原始 system prompt 中抽取「运行时动态上下文」（日期/框架/目录等
+  /// 有用信息），过滤掉 MCP/Skill/Agent 全量规则，供本地模型使用。
+  static String _extractLocalContext(String systemPrompt) {
+    final m = RegExp(
+      r'=====运行时动态上下文=====(.*?)=====上下文结束=====',
+      dotAll: true,
+    ).firstMatch(systemPrompt);
+    if (m != null) {
+      final ctx = m.group(1)!.trim();
+      if (ctx.isNotEmpty) return ctx;
+    }
+    return '';
+  }
+
+  /// 为本地模型构建精简 prompt：精简指令头 + 动态上下文 + 截断后的对话历史。
+  ///
+  /// 本地模型不支持工具调用，历史仅保留 user/assistant 文本；按 contextSize
+  /// 粗略估算（约 3 字符/token）丢弃最早的对话，防止上下文无限膨胀撑爆
+  /// KV 缓存导致卡死。
+  String buildLocalPrompt(
+    String systemPrompt,
+    List<Map<String, dynamic>> messages, {
+    int? contextSize,
+  }) {
+    final buf = StringBuffer();
+    buf.writeln(_localSystemHint);
+    final ctx = _extractLocalContext(systemPrompt);
+    if (ctx.isNotEmpty) {
+      buf.writeln();
+      buf.writeln(ctx);
+    }
+    buf.writeln();
+
+    final limit = (contextSize ?? 4096).clamp(512, 32768);
+    final history = <String>[];
+    for (final m in messages) {
+      final role = m['role']?.toString() ?? 'user';
+      if (role == 'system') continue;
+      final content = _contentToText(m['content']);
+      if (content.isEmpty) continue;
+      final line = role == 'user' ? '用户：$content' : '助手：$content';
+      history.add(line);
+    }
+    // 丢弃最早对话，保留最近能塞进上下文的部分
+    final budgetChars = limit * 3;
+    final keep = <String>[];
+    var total = 0;
+    for (final line in history.reversed) {
+      if (total + line.length > budgetChars && keep.isNotEmpty) break;
+      keep.add(line);
+      total += line.length;
+    }
+    if (keep.length < history.length) {
+      buf.writeln('（较早的对话已省略）');
+    }
+    for (final line in keep.reversed) {
+      buf.writeln(line);
+    }
+    return buf.toString();
+  }
+
+  /// 本地 GGUF 模型真流式生成（逐 token 推送）。
+  ///
+  /// [messages] 为完整消息列表（含 system），内部会精简 prompt 并截断历史。
+  /// 返回逐 token 的 [StreamChunk]，结束前发送 isDone 标记。
+  Stream<StreamChunk> streamCompleteLocal({
+    required AiProfile p,
+    required String systemPrompt,
+    required List<Map<String, dynamic>> messages,
+    double temperature = 0.7,
+    int maxTokens = 2048,
+  }) async* {
+    final llama = LocalLlamaProvider.instance;
+    if (!llama.isAvailable) {
+      yield StreamChunk(content: '本地模型仅在 Android 设备上可用', isDone: true);
+      return;
+    }
+    if (!llama.isModelLoaded) {
+      final modelPath = p.localModelPath;
+      if (modelPath == null || modelPath.isEmpty) {
+        yield StreamChunk(content: '本地模型未配置模型文件', isDone: true);
+        return;
+      }
+      final err = await llama.loadModel(
+        modelPath,
+        contextSize: p.localContextSize ?? 4096,
+      );
+      if (err != null) {
+        yield StreamChunk(content: '加载本地模型失败: $err', isDone: true);
+        return;
+      }
+    }
+    final prompt = buildLocalPrompt(
+      systemPrompt,
+      messages,
+      contextSize: p.localContextSize ?? 4096,
+    );
+    yield* llama.generateStream(
+      prompt,
+      maxTokens: maxTokens,
+      temperature: temperature,
+    ).map((t) => StreamChunk(content: t));
+    yield const StreamChunk(content: '', isDone: true);
+  }
+
   /// 拉取 OpenAI 兼容 /models 列表，适配各类中转站。
   /// 拉取模型列表
   ///
@@ -544,17 +655,16 @@ class AiService {
   }) async {
     final p = resolveProfile(settings, override: profile);
     if (p.isLocalModel) {
-      // 本地模型当前不支持函数调用：将消息拼接为提示词后生成。
-      final buf = StringBuffer();
-      for (final m in messages) {
-        final role = m['role']?.toString() ?? 'user';
-        final content = _contentToText(m['content']);
-        buf.writeln('[$role]: $content');
-      }
+      // 本地模型不支持函数调用：精简 prompt（去掉巨型内核、截断历史）。
+      final userPrompt = buildLocalPrompt(
+        systemPrompt,
+        messages,
+        contextSize: p.localContextSize ?? 4096,
+      );
       final text = await _completeLocal(
         p,
-        systemPrompt: systemPrompt,
-        userPrompt: buf.toString(),
+        systemPrompt: '',
+        userPrompt: userPrompt,
         temperature: temperature,
       );
       return ToolCallResponse(
