@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import '../core/ai/ai_model_entity.dart';
 import '../core/ai/ai_model_manager.dart';
+import '../core/ai/ai_provider.dart';
 import '../core/ai/ai_session_manager.dart';
 import '../models/ai_profile.dart';
 import '../models/app_settings.dart';
