@@ -8,29 +8,27 @@ import '../../services/html_to_markdown.dart';
 import 'blog_repository.dart';
 import 'js_challenge_guard.dart';
 
-/// Typecho REST API 适配器
+/// Typecho SecureApi 插件适配器
 ///
-/// Typecho 没有官方 REST API，依赖第三方插件。
-/// 常用插件：Typecho-Plugin-Restful、typecho-json-api
+/// 适配 [SecureApi](https://gitee.com/nice_ch/typecho-plugin) 插件
+/// （含增强版 createPost/updatePost/deletePost/uploadMedia 写接口）。
 ///
-/// 鉴权：插件生成的 Token
-///   - 用户操作：安装插件 → 插件设置页生成 Token → 粘贴到此处
-///   - 请求头：Token: {token} 或 Authorization: Bearer {token}
-///
-/// 注意：不同插件的 JSON 结构存在差异，本适配器尝试兼容常见格式，
-/// 如果遇到不兼容的插件，会返回友好提示让用户检查插件配置。
+/// 协议要点：
+/// - 端点：`/index.php/api`（未开启地址重写）或 `/api`（伪静态）
+/// - 鉴权：GET 参数 `token` 或请求头 `X-API-Key`
+/// - 读取：GET `?action=xxx`
+/// - 写入：POST（表单参数）+ `?action=xxx`
+/// - 响应：`{ success: true, data: {...} }` / `{ success: false, error: {...} }`
 class TypechoAdapter implements BlogRepository {
   final BlogSiteConfig _config;
   final AppSettings _settings;
   HttpClient? _client;
   JsChallengeHttp? _challengeHttp;
 
-  /// 常见的 Typecho REST API 端点路径
+  /// 常见的 SecureApi 插件端点路径
   static const _commonEndpoints = [
-    '/api/posts',
-    '/restful/posts',
-    '/json-api/posts',
-    '/action/posts',
+    '/index.php/api',
+    '/api',
   ];
 
   TypechoAdapter(this._config, this._settings);
@@ -53,87 +51,121 @@ class TypechoAdapter implements BlogRepository {
     return _challengeHttp!;
   }
 
-  /// 获取 API 端点路径
-  String get _endpoint {
-    if (_config.typechoApiEndpoint != null && _config.typechoApiEndpoint!.isNotEmpty) {
-      return _config.typechoApiEndpoint!;
-    }
-    return '/api/posts';
+  /// 站点根地址（去掉末尾斜杠）
+  String get _baseUrl {
+    final url = _config.siteUrl;
+    return url.endsWith('/') ? url.substring(0, url.length - 1) : url;
   }
 
-  /// 构建 Typecho API URL
-  Uri _apiUri(String path, [Map<String, String>? query]) {
-    final base = _config.siteUrl.endsWith('/')
-        ? _config.siteUrl.substring(0, _config.siteUrl.length - 1)
-        : _config.siteUrl;
-    return Uri.parse('$base$path').replace(queryParameters: query);
+  /// 获取 API 端点路径
+  String get _endpoint {
+    final configured = _config.typechoApiEndpoint;
+    if (configured != null && configured.isNotEmpty) {
+      return configured;
+    }
+    return '/index.php/api';
+  }
+
+  /// 构建 SecureApi 请求 URL
+  /// 所有请求都携带 action 与 token
+  Uri _apiUri(String action, {String? ep, Map<String, String>? query}) {
+    final params = <String, String>{
+      'action': action,
+      'token': _config.typechoToken ?? '',
+      ...?query,
+    };
+    return Uri.parse('$_baseUrl${ep ?? _endpoint}')
+        .replace(queryParameters: params);
+  }
+
+  /// 公共请求头（SecureApi 支持 X-API-Key 请求头鉴权，作为 token 的补充）
+  Map<String, String> _commonHeaders({bool json = false}) => {
+        'Accept': 'application/json',
+        'User-Agent': 'HexoBlogManager/1.0',
+        if (json) 'Content-Type': 'application/json',
+        if ((_config.typechoToken ?? '').isNotEmpty)
+          'X-API-Key': _config.typechoToken!,
+      };
+
+  /// 尝试解析 JSON，失败返回 null
+  dynamic _tryDecode(String text) {
+    if (text.isEmpty) return null;
+    try {
+      return jsonDecode(text);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 解包 SecureApi 统一响应
+  /// 成功返回 data 字段；失败抛出 [BlogRepositoryException]
+  dynamic _unwrap(dynamic decoded, String action) {
+    if (decoded is Map && decoded['success'] == true) {
+      return decoded['data'];
+    }
+    if (decoded is Map && decoded['success'] == false) {
+      final err = decoded['error'];
+      String message = '未知错误';
+      int code = 500;
+      if (err is Map) {
+        message = err['message']?.toString() ?? message;
+        code = (err['code'] as num?)?.toInt() ?? code;
+      } else if (err != null) {
+        message = err.toString();
+      }
+      throw BlogRepositoryException(code, 'Typecho SecureApi 错误：$message', jsonEncode(decoded));
+    }
+    throw BlogRepositoryException(
+      500,
+      'Typecho 返回了无法识别的响应（action=$action）。\n'
+      '请确认已安装 SecureApi 插件并开启 API。',
+      decoded is String ? decoded : jsonEncode(decoded),
+    );
   }
 
   /// 发送 HTTP 请求
+  /// [form] 非空时以 application/x-www-form-urlencoded 发送 POST
   Future<dynamic> _request(
     String method,
-    Uri uri, {
-    Map<String, dynamic>? body,
+    String action, {
+    String? ep,
+    Map<String, String>? query,
+    Map<String, String>? form,
   }) async {
+    final uri = _apiUri(action, ep: ep, query: query);
+    final headers = _commonHeaders();
+    String? body;
+    if (form != null) {
+      headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      body = Uri(queryParameters: form).query;
+    }
+
     final resp = await _js.send(
       method,
       uri,
-      headers: _commonHeaders(json: body != null),
-      body: body != null ? jsonEncode(body) : null,
+      headers: headers,
+      body: body,
     );
 
-    if (resp.statusCode >= 200 && resp.statusCode < 300) {
-      if (resp.text.isEmpty) return {};
-      try {
-        return jsonDecode(resp.text);
-      } catch (_) {
-        return {'raw': resp.text};
-      }
+    final decoded = _tryDecode(resp.text);
+    if (decoded == null) {
+      if (resp.statusCode >= 200 && resp.statusCode < 300) return {};
+      throw BlogRepositoryException(
+        resp.statusCode,
+        'Typecho 响应不是有效 JSON（HTTP ${resp.statusCode}）。\n'
+        '请确认 API 端点路径正确（当前：${ep ?? _endpoint}）',
+        resp.text,
+      );
     }
-
-    _handleError(resp.statusCode, resp.text);
-  }
-
-  /// 公共请求头（Typecho 插件通常使用 Token 头部）
-  Map<String, String> _commonHeaders({bool json = false}) => {
-        'Token': _config.typechoToken ?? '',
-        'Authorization': 'Bearer ${_config.typechoToken ?? ''}',
-        if (json) 'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': 'HexoBlogManager/1.0',
-      };
-
-  Never _handleError(int statusCode, String body) {
-    String message;
-    switch (statusCode) {
-      case 401:
-      case 403:
-        message = '鉴权失败：Token 无效或已过期。请在 Typecho 插件设置页重新生成 Token。';
-      case 404:
-        message = 'API 端点不存在。请确认：\n'
-            '1. 已安装 REST API 插件（推荐 Typecho-Plugin-Restful）\n'
-            '2. 插件已正确配置\n'
-            '3. API 端点路径正确（当前：$_endpoint）\n'
-            '4. 尝试切换其他端点路径';
-      case 500:
-        message = 'Typecho 服务器内部错误。请检查插件日志。';
-      case 0:
-        message = '无法连接到 Typecho 站点。请检查 URL 是否正确。';
-      default:
-        message = 'Typecho HTTP $statusCode: 请求失败。';
-    }
-    throw BlogRepositoryException(statusCode, message, body);
+    return _unwrap(decoded, action);
   }
 
   /// 自动探测可用端点
   Future<String?> _detectEndpoint() async {
     for (final ep in _commonEndpoints) {
       try {
-        final uri = _apiUri(ep, {'page': '1', 'perPage': '1'});
-        final resp = await _js.send('GET', uri, headers: _commonHeaders());
-        if (resp.statusCode == 200) {
-          return ep;
-        }
+        final data = await _request('GET', 'getWebInfo', ep: ep);
+        if (data is Map) return ep;
       } catch (_) {}
     }
     return null;
@@ -148,32 +180,19 @@ class TypechoAdapter implements BlogRepository {
         ep = await _detectEndpoint();
         if (ep == null) {
           return ConnectionResult.fail(
-            '未找到 Typecho REST API 端点。\n'
-            '请确认已安装 REST API 插件（推荐 Typecho-Plugin-Restful），\n'
-            '并在站点设置中手动指定 API 端点路径。',
+            '未找到 SecureApi 插件端点。\n'
+            '请确认已安装并激活 SecureApi 插件（建议使用增强版），\n'
+            '并开启「API 开关」、正确设置密钥。',
             detail: '尝试过的端点：${_commonEndpoints.join(', ')}',
           );
         }
       }
 
-      final uri = _apiUri(ep, {'page': '1', 'perPage': '1'});
-      final resp = await _js.send('GET', uri, headers: _commonHeaders());
-
-      if (resp.statusCode == 200) {
-        return ConnectionResult.ok('连接成功！API 端点：$ep');
-      }
-
-      if (resp.statusCode == 401 || resp.statusCode == 403) {
-        return ConnectionResult.fail(
-          '鉴权失败：Token 无效。请在 Typecho 插件设置页生成 Token。',
-          detail: 'API 端点：$ep',
-        );
-      }
-
-      return ConnectionResult.fail(
-        'HTTP ${resp.statusCode}: 连接异常',
-        detail: 'API 端点：$ep\n${resp.text}',
-      );
+      final data = await _request('GET', 'getWebInfo', ep: ep);
+      final siteTitle = data is Map ? (data['title'] ?? '').toString() : '';
+      return ConnectionResult.ok('连接成功！站点：$siteTitle（API：$ep）');
+    } on BlogRepositoryException catch (e) {
+      return ConnectionResult.fail(e.message, detail: e.body);
     } on SocketException catch (e) {
       return ConnectionResult.fail(
         '网络无法访问站点：${_config.siteUrl}',
@@ -194,13 +213,11 @@ class TypechoAdapter implements BlogRepository {
 
   @override
   Future<List<BlogPost>> getPosts({int page = 1, int perPage = 10}) async {
-    final uri = _apiUri(_endpoint, {
+    final data = await _request('GET', 'getPosts', query: {
       'page': page.toString(),
-      'perPage': perPage.toString(),
+      'limit': perPage.toString(),
     });
-    final data = await _request('GET', uri);
 
-    // 兼容不同插件返回格式
     List list;
     if (data is List) {
       list = data;
@@ -211,55 +228,37 @@ class TypechoAdapter implements BlogRepository {
     }
 
     return list.map((item) {
-      return _typechoPostToBlogPost(item as Map<String, dynamic>);
+      return _typechoPostToBlogPost(Map<String, dynamic>.from(item as Map));
     }).toList();
   }
 
   @override
   Future<BlogPost?> getPostById(int id) async {
-    final uri = _apiUri('$_endpoint/$id');
-    final data = await _request('GET', uri);
-
-    Map<String, dynamic> post;
+    final data = await _request('GET', 'getArticleContent', query: {
+      'cid': id.toString(),
+    });
     if (data is Map) {
-      post = Map<String, dynamic>.from(data);
-    } else if (data is List && data.isNotEmpty) {
-      post = Map<String, dynamic>.from(data.first as Map);
-    } else {
-      return null;
+      return _typechoPostToBlogPost(Map<String, dynamic>.from(data));
     }
-
-    return _typechoPostToBlogPost(post);
+    return null;
   }
 
   @override
   Future<BlogPost> createPost(BlogPost post) async {
-    // Markdown → HTML（Typecho 原生支持 Markdown 解析插件）
-    final html = _markdownToHtml(post.contentMd);
-
-    final body = <String, dynamic>{
+    final form = <String, String>{
       'title': post.title,
-      'text': html, // 或 'content'，兼容不同插件
-      'content': html,
+      'text': post.contentMd,
       'status': post.status == 'publish' ? 'publish' : 'draft',
-      if (post.slug != null && post.slug!.isNotEmpty) 'slug': post.slug,
-      if (post.tags.isNotEmpty) 'tags': post.tags.join(','),
-      if (post.categories.isNotEmpty) 'category': post.categories.join(','),
+      if (post.slug != null && post.slug!.isNotEmpty) 'slug': post.slug!,
+      'tags': post.tags.join(','),
+      'category': post.categories.join(','),
     };
 
-    final uri = _apiUri(_endpoint);
-    final data = await _request('POST', uri, body: body);
-
-    Map<String, dynamic> result;
-    if (data is Map) {
-      result = Map<String, dynamic>.from(data);
-    } else if (data is List && data.isNotEmpty) {
-      result = Map<String, dynamic>.from(data.first as Map);
-    } else {
+    final data = await _request('POST', 'createPost', form: form);
+    if (data is! Map) {
       throw BlogRepositoryException(500, 'Typecho 创建文章失败：未返回数据', '');
     }
-
-    return _typechoPostToBlogPost(result);
+    return _typechoPostToBlogPost(Map<String, dynamic>.from(data));
   }
 
   @override
@@ -268,63 +267,49 @@ class TypechoAdapter implements BlogRepository {
       throw BlogRepositoryException(400, '更新文章需要远程 ID，请先发布文章。', '');
     }
 
-    final html = _markdownToHtml(post.contentMd);
-
-    final body = <String, dynamic>{
-      'title': post.title,
-      'text': html,
-      'content': html,
+    final form = <String, String>{
+      'cid': '${post.id}',
       'status': post.status == 'publish' ? 'publish' : 'draft',
-      if (post.slug != null && post.slug!.isNotEmpty) 'slug': post.slug,
+      if (post.title.isNotEmpty) 'title': post.title,
+      if (post.contentMd.isNotEmpty) 'text': post.contentMd,
+      if (post.slug != null && post.slug!.isNotEmpty) 'slug': post.slug!,
+      'tags': post.tags.join(','),
+      'category': post.categories.join(','),
     };
 
-    final uri = _apiUri('$_endpoint/${post.id}');
-    final data = await _request('PUT', uri, body: body);
-
-    Map<String, dynamic> result;
-    if (data is Map) {
-      result = Map<String, dynamic>.from(data);
-    } else if (data is List && data.isNotEmpty) {
-      result = Map<String, dynamic>.from(data.first as Map);
-    } else {
+    final data = await _request('POST', 'updatePost', form: form);
+    if (data is! Map) {
       throw BlogRepositoryException(500, 'Typecho 更新文章失败：未返回数据', '');
     }
-
-    return _typechoPostToBlogPost(result);
+    return _typechoPostToBlogPost(Map<String, dynamic>.from(data));
   }
 
   @override
   Future<bool> deletePost(int postId) async {
-    final uri = _apiUri('$_endpoint/$postId');
-    await _request('DELETE', uri);
+    await _request('POST', 'deletePost', form: {'cid': '$postId'});
     return true;
   }
 
   @override
   Future<MediaUploadResult> uploadMedia(String filePath) async {
-    // Typecho 的媒体上传接口因插件而异，P0 提供基础实现
     try {
-      // 从端点路径提取 API 基础路径，避免使用 .. 拼接
-      final ep = _endpoint;
-      final basePath = ep.substring(0, ep.lastIndexOf('/'));
-      final uri = _apiUri('$basePath/media/upload');
-
       final file = File(filePath);
       if (!await file.exists()) {
         return MediaUploadResult.failure('文件不存在: $filePath');
       }
 
       final bytes = await file.readAsBytes();
-      final boundary = '----FormBoundary${DateTime.now().millisecondsSinceEpoch}';
+      final boundary = '----HexoBoundary${DateTime.now().millisecondsSinceEpoch}';
 
       final header = utf8.encode(
         '--$boundary\r\n'
         'Content-Disposition: form-data; name="file"; filename="${filePath.split('/').last}"\r\n'
-        'Content-Type: image/${_extension(filePath)}\r\n\r\n',
+        'Content-Type: application/octet-stream\r\n\r\n',
       );
       final footer = utf8.encode('\r\n--$boundary--\r\n');
       final bodyBytes = <int>[...header, ...bytes, ...footer];
 
+      final uri = _apiUri('uploadMedia');
       final resp = await _js.send(
         'POST',
         uri,
@@ -336,21 +321,22 @@ class TypechoAdapter implements BlogRepository {
         contentLength: bodyBytes.length,
       );
 
-      if (resp.statusCode == 200 || resp.statusCode == 201) {
-        try {
-          final data = jsonDecode(resp.text);
-          final url = data is Map
-              ? (data['url'] ?? data['file'] ?? data['path'] ?? '').toString()
-              : '';
-          if (url.isNotEmpty) {
-            return MediaUploadResult.success(0, url);
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        final decoded = _tryDecode(resp.text);
+        if (decoded != null) {
+          final data = _unwrap(decoded, 'uploadMedia');
+          if (data is Map) {
+            final url = (data['url'] ?? '').toString();
+            if (url.isNotEmpty) {
+              return MediaUploadResult.success(0, url);
+            }
           }
-        } catch (_) {}
+        }
       }
 
       return MediaUploadResult.failure(
-        '媒体上传功能依赖 Typecho 插件支持。\n'
-        '请确认插件版本支持文件上传接口。\n'
+        '媒体上传失败。\n'
+        '请确认 SecureApi 插件为增强版（支持 uploadMedia）。\n'
         'HTTP ${resp.statusCode}',
       );
     } catch (e) {
@@ -358,28 +344,31 @@ class TypechoAdapter implements BlogRepository {
     }
   }
 
-  /// Typecho 文章 → 统一 BlogPost 模型
+  /// SecureApi 文章 → 统一 BlogPost 模型
   BlogPost _typechoPostToBlogPost(Map<String, dynamic> data) {
-    // 兼容不同插件的字段名
     final title = data['title']?.toString() ?? '';
-    final contentHtml = data['text']?.toString() ?? data['content']?.toString() ?? '';
+    final contentHtml = data['content']?.toString() ?? data['text']?.toString() ?? '';
     final idStr = data['cid']?.toString() ?? data['id']?.toString() ?? '0';
     final id = int.tryParse(idStr) ?? 0;
 
     final tags = <String>[];
     final tagsRaw = data['tags'];
-    if (tagsRaw is String && tagsRaw.isNotEmpty) {
-      tags.addAll(tagsRaw.split(',').map((e) => e.trim()));
+    if (tagsRaw is String) {
+      tags.addAll(tagsRaw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty));
     } else if (tagsRaw is List) {
-      tags.addAll(tagsRaw.map((e) => e.toString()));
+      tags.addAll(tagsRaw
+          .map((e) => e is Map ? (e['name']?.toString() ?? '') : e.toString())
+          .where((e) => e.isNotEmpty));
     }
 
     final categories = <String>[];
-    final catsRaw = data['category'] ?? data['categories'];
-    if (catsRaw is String && catsRaw.isNotEmpty) {
-      categories.addAll(catsRaw.split(',').map((e) => e.trim()));
+    final catsRaw = data['categories'];
+    if (catsRaw is String) {
+      categories.addAll(catsRaw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty));
     } else if (catsRaw is List) {
-      categories.addAll(catsRaw.map((e) => e.toString()));
+      categories.addAll(catsRaw
+          .map((e) => e is Map ? (e['name']?.toString() ?? '') : e.toString())
+          .where((e) => e.isNotEmpty));
     }
 
     return BlogPost(
@@ -387,8 +376,11 @@ class TypechoAdapter implements BlogRepository {
       title: title,
       contentMd: HtmlToMarkdown.convert(contentHtml),
       contentHtml: contentHtml,
-      date: DateTime.tryParse(data['created']?.toString() ?? data['date']?.toString() ?? '') ?? DateTime.now(),
-      modifiedDate: DateTime.tryParse(data['modified']?.toString() ?? '') ?? DateTime.now(),
+      date: DateTime.tryParse(data['created']?.toString() ?? '') ?? DateTime.now(),
+      modifiedDate: DateTime.tryParse(
+            data['updated']?.toString() ?? data['modified']?.toString() ?? '',
+          ) ??
+          DateTime.now(),
       status: data['status']?.toString() == 'publish' ? 'publish' : 'draft',
       slug: data['slug']?.toString(),
       tags: tags,
@@ -397,163 +389,6 @@ class TypechoAdapter implements BlogRepository {
       siteType: BlogType.typecho,
       link: data['permalink']?.toString() ?? data['url']?.toString(),
     );
-  }
-
-  /// Markdown → HTML
-  /// Typecho 原生支持 Markdown 解析插件，这里做基础转换
-  static String _markdownToHtml(String md) {
-    final buf = StringBuffer();
-    final lines = md.split('\n');
-    bool inCodeBlock = false;
-    StringBuffer codeBuf = StringBuffer();
-    bool inTable = false;
-    StringBuffer tableBuf = StringBuffer();
-    bool inList = false;
-    bool orderedList = false;
-
-    void flushList() {
-      if (!inList) return;
-      if (orderedList) {
-        buf.writeln('</ol>');
-      } else {
-        buf.writeln('</ul>');
-      }
-      inList = false;
-      orderedList = false;
-    }
-
-    for (final line in lines) {
-      if (line.trim().startsWith('```')) {
-        flushList();
-        if (inCodeBlock) {
-          buf.writeln('<pre><code>${_escapeHtml(codeBuf.toString())}</code></pre>');
-          codeBuf.clear();
-          inCodeBlock = false;
-        } else {
-          inCodeBlock = true;
-        }
-        continue;
-      }
-
-      if (inCodeBlock) {
-        codeBuf.writeln(line);
-        continue;
-      }
-
-      // 表格
-      if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
-        flushList();
-        if (!inTable) {
-          inTable = true;
-          buf.writeln('<table>');
-        }
-        tableBuf.writeln(line);
-        continue;
-      } else if (inTable) {
-        _flushHtmlTable(buf, tableBuf.toString());
-        tableBuf.clear();
-        inTable = false;
-      }
-
-      // 图片
-      final imgMatch = RegExp(r'^!\[(.*?)\]\((.*?)\)$').firstMatch(line.trim());
-      if (imgMatch != null) {
-        flushList();
-        final alt = imgMatch.group(1) ?? '';
-        final src = imgMatch.group(2) ?? '';
-        buf.writeln('<img src="$src" alt="${_escapeHtml(alt)}" />');
-        continue;
-      }
-
-      // 标题
-      if (line.startsWith('# ')) {
-        flushList();
-        buf.writeln('<h1>${_processInline(line.substring(2))}</h1>');
-      } else if (line.startsWith('## ')) {
-        flushList();
-        buf.writeln('<h2>${_processInline(line.substring(3))}</h2>');
-      } else if (line.startsWith('### ')) {
-        flushList();
-        buf.writeln('<h3>${_processInline(line.substring(4))}</h3>');
-      } else if (line.startsWith('> ')) {
-        flushList();
-        buf.writeln('<blockquote><p>${_processInline(line.substring(2))}</p></blockquote>');
-      } else if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
-        if (inList && orderedList) flushList();
-        if (!inList) {
-          orderedList = false;
-          buf.writeln('<ul>');
-        }
-        inList = true;
-        buf.writeln('<li>${_processInline(line.trim().substring(2))}</li>');
-      } else if (RegExp(r'^\d+\. ').hasMatch(line.trim())) {
-        if (inList && !orderedList) flushList();
-        if (!inList) {
-          orderedList = true;
-          buf.writeln('<ol>');
-        }
-        inList = true;
-        final text = line.trim().replaceFirst(RegExp(r'^\d+\. '), '');
-        buf.writeln('<li>${_processInline(text)}</li>');
-      } else if (line.trim().isEmpty) {
-        flushList();
-        // skip empty lines
-      } else {
-        flushList();
-        buf.writeln('<p>${_processInline(line)}</p>');
-      }
-    }
-
-    // 收尾
-    if (inTable) {
-      _flushHtmlTable(buf, tableBuf.toString());
-    }
-    flushList();
-
-    return buf.toString().trim();
-  }
-
-  /// 输出 HTML 表格
-  static void _flushHtmlTable(StringBuffer buf, String tableText) {
-    final lines = tableText.trim().split('\n');
-    if (lines.length < 2) return;
-    for (var i = 0; i < lines.length; i++) {
-      final cells = lines[i].split('|').where((c) => c.trim().isNotEmpty).toList();
-      if (cells.isEmpty) continue;
-      final tag = i == 0 ? 'th' : 'td';
-      buf.write('<tr>');
-      for (final cell in cells) {
-        buf.write('<${tag}>${_processInline(cell.trim())}</${tag}>');
-      }
-      buf.writeln('</tr>');
-      if (i == 0 && lines.length > 1 && lines[1].contains('---')) {
-        i++;
-      }
-    }
-    buf.writeln('</table>');
-  }
-
-  static String _processInline(String text) {
-    var result = text;
-    result = result.replaceAllMapped(RegExp(r'`([^`]+)`'), (m) => '<code>${m.group(1)}</code>');
-    result = result.replaceAllMapped(RegExp(r'\[([^\]]+)\]\(([^)]+)\)'), (m) => '<a href="${m.group(2)}">${m.group(1)}</a>');
-    result = result.replaceAllMapped(RegExp(r'\*\*([^*]+)\*\*'), (m) => '<strong>${m.group(1)}</strong>');
-    result = result.replaceAllMapped(RegExp(r'\*([^*]+)\*'), (m) => '<em>${m.group(1)}</em>');
-    return result;
-  }
-
-  String _extension(String path) {
-    final dot = path.lastIndexOf('.');
-    if (dot < 0) return 'png';
-    return path.substring(dot + 1).toLowerCase();
-  }
-
-  static String _escapeHtml(String text) {
-    return text
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;');
   }
 
   @override

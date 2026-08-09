@@ -6,13 +6,21 @@ import '../services/log_service.dart';
 
 /// 远程文章浏览面板
 ///
-/// 从当前 CMS 站点拉取文章列表，支持：
-/// - 分页浏览
-/// - 下拉刷新
+/// 从 CMS 站点拉取文章列表，支持：
+/// - 分页浏览（单站点）、下拉刷新
 /// - 点击加载到编辑器（HTML→Markdown 转换已在适配器中完成）
 /// - 删除远程文章
+///
+/// 多站点模式（[allAdapters] 非空且多于一个站点）下支持：
+/// - 全部站点：聚合查看所有 CMS 站点的文章
+/// - 自选站点：勾选已登录（已配置密钥）的站点，仅查看这些站点的文章
 class RemotePostsScreen extends StatefulWidget {
+  /// 当前（活跃）CMS 站点适配器
   final BlogRepository adapter;
+
+  /// 全部 CMS 站点适配器（用于全部站点 / 自选站点模式）
+  final List<BlogRepository>? allAdapters;
+
   final LogService logService;
   final void Function(BlogPost post) onOpenInEditor;
   final Future<void> Function(BlogPost post) onDeletePost;
@@ -20,6 +28,7 @@ class RemotePostsScreen extends StatefulWidget {
   const RemotePostsScreen({
     super.key,
     required this.adapter,
+    this.allAdapters,
     required this.logService,
     required this.onOpenInEditor,
     required this.onDeletePost,
@@ -27,6 +36,18 @@ class RemotePostsScreen extends StatefulWidget {
 
   @override
   State<RemotePostsScreen> createState() => _RemotePostsScreenState();
+}
+
+/// 查看范围
+enum _RemoteScope {
+  /// 当前站点
+  current,
+
+  /// 全部站点
+  all,
+
+  /// 自选站点（勾选的已登录站点）
+  selected,
 }
 
 class _RemotePostsScreenState extends State<RemotePostsScreen> {
@@ -38,11 +59,41 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
   String? _error;
   late ScrollController _scrollController;
 
+  _RemoteScope _scope = _RemoteScope.current;
+  final Set<String> _checkedSites = {};
+
+  bool get _multiSite => widget.allAdapters != null && widget.allAdapters!.length > 1;
+
+  List<BlogRepository> get _allAdapters =>
+      widget.allAdapters ?? <BlogRepository>[widget.adapter];
+
+  /// 当前生效的适配器列表
+  List<BlogRepository> get _activeAdapters {
+    if (!_multiSite || _scope == _RemoteScope.current) {
+      return [widget.adapter];
+    }
+    if (_scope == _RemoteScope.all) return _allAdapters;
+    return _allAdapters
+        .where((a) => _checkedSites.contains(a.config.id))
+        .toList();
+  }
+
+  String _siteName(String? siteId) {
+    for (final a in _allAdapters) {
+      if (a.config.id == siteId) return a.config.name;
+    }
+    return siteId ?? '';
+  }
+
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
     _scrollController.addListener(_onScroll);
+    // 默认勾选已登录（已配置有效密钥）的站点
+    for (final a in _allAdapters) {
+      if (a.config.isValid) _checkedSites.add(a.config.id);
+    }
     Future.microtask(() => _loadPosts());
   }
 
@@ -60,6 +111,25 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
     super.dispose();
   }
 
+  void _changeScope(_RemoteScope scope) {
+    if (_scope == scope) return;
+    setState(() => _scope = scope);
+    _loadPosts(refresh: true);
+  }
+
+  void _toggleSite(String siteId) {
+    setState(() {
+      if (_checkedSites.contains(siteId)) {
+        _checkedSites.remove(siteId);
+      } else {
+        _checkedSites.add(siteId);
+      }
+    });
+    if (_scope == _RemoteScope.selected) {
+      _loadPosts(refresh: true);
+    }
+  }
+
   Future<void> _loadPosts({bool refresh = false}) async {
     if (refresh) {
       if (!mounted) return;
@@ -72,20 +142,66 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
       });
     }
 
-    try {
-      final posts = await widget.adapter.getPosts(page: _page, perPage: 20);
+    final adapters = _activeAdapters;
+    if (adapters.isEmpty) {
       if (mounted) {
         setState(() {
-          if (refresh) {
-            _posts = posts;
-          } else {
-            _posts.addAll(posts);
-          }
-          _hasMore = posts.length >= 20;
           _loading = false;
-          _loadingMore = false;
-          _error = null;
+          _posts = [];
+          _error = '请至少勾选一个站点';
         });
+      }
+      return;
+    }
+
+    try {
+      if (_multiSite && _scope != _RemoteScope.current) {
+        // ── 多站点聚合模式 ──
+        final results = await Future.wait(adapters.map((a) async {
+          try {
+            return await a.getPosts(page: 1, perPage: 30);
+          } catch (e) {
+            debugPrint('RemotePosts: load site ${a.config.name} failed: $e');
+            return <BlogPost>[];
+          }
+        }));
+        final merged = <BlogPost>[];
+        final seen = <String>{};
+        for (var i = 0; i < results.length; i++) {
+          final siteId = adapters[i].config.id;
+          for (final p in results[i]) {
+            final key = '${p.siteId ?? siteId}:${p.id}';
+            if (seen.contains(key)) continue;
+            seen.add(key);
+            merged.add(p);
+          }
+        }
+        merged.sort((a, b) => b.modifiedDate.compareTo(a.modifiedDate));
+        if (mounted) {
+          setState(() {
+            _posts = merged;
+            _hasMore = false;
+            _loading = false;
+            _loadingMore = false;
+            _error = null;
+          });
+        }
+      } else {
+        // ── 单站点分页模式 ──
+        final posts = await widget.adapter.getPosts(page: _page, perPage: 20);
+        if (mounted) {
+          setState(() {
+            if (refresh) {
+              _posts = posts;
+            } else {
+              _posts.addAll(posts);
+            }
+            _hasMore = posts.length >= 20;
+            _loading = false;
+            _loadingMore = false;
+            _error = null;
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -100,6 +216,7 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
 
   Future<void> _loadMore() async {
     if (_loadingMore || !_hasMore) return;
+    if (_multiSite && _scope != _RemoteScope.current) return; // 聚合模式不分页
     if (!mounted) return;
     setState(() {
       _loadingMore = true;
@@ -110,11 +227,12 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
 
   Future<void> _deletePost(BlogPost post) async {
     if (post.id == null) return;
+    final siteLabel = _multiSite ? '（${_siteName(post.siteId)}）' : '';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认删除'),
-        content: Text('确定要删除远程文章「${post.title}」吗？\n此操作不可撤销。'),
+        content: Text('确定要删除远程文章「${post.title}」$siteLabel 吗？\n此操作不可撤销。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -133,7 +251,7 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
 
     try {
       await widget.onDeletePost(post);
-      setState(() => _posts.removeWhere((p) => p.id == post.id));
+      setState(() => _posts.removeWhere((p) => p.id == post.id && p.siteId == post.siteId));
       widget.logService.add('删除远程文章', '标题: ${post.title}');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -160,6 +278,15 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
   }
 
+  String get _headerTitle {
+    if (!_multiSite) return '${widget.adapter.config.type.name} 远程文章';
+    return switch (_scope) {
+      _RemoteScope.current => '当前站点 · ${widget.adapter.config.name}',
+      _RemoteScope.all => '全部站点远程文章',
+      _RemoteScope.selected => '自选站点远程文章',
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -172,11 +299,14 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
             children: [
               const Icon(Icons.cloud_outlined, size: 18, color: Color(0xFF64748B)),
               const SizedBox(width: 8),
-              Text(
-                '${widget.adapter.config.type.displayName} 远程文章',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              Expanded(
+                child: Text(
+                  _headerTitle,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              const Spacer(),
               Text(
                 '${_posts.length} 篇',
                 style: TextStyle(fontSize: 12, color: Colors.grey[500]),
@@ -191,6 +321,73 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
           ),
         ),
         const Divider(height: 1),
+
+        // ── 多站点范围选择 ──
+        if (_multiSite) ...[
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+            child: SegmentedButton<_RemoteScope>(
+              segments: const [
+                ButtonSegment(
+                  value: _RemoteScope.current,
+                  label: Text('当前站点'),
+                  icon: Icon(Icons.trip_origin, size: 16),
+                ),
+                ButtonSegment(
+                  value: _RemoteScope.all,
+                  label: Text('全部站点'),
+                  icon: Icon(Icons.dns, size: 16),
+                ),
+                ButtonSegment(
+                  value: _RemoteScope.selected,
+                  label: Text('自选站点'),
+                  icon: Icon(Icons.checklist, size: 16),
+                ),
+              ],
+              selected: {_scope},
+              showSelectedIcon: false,
+              style: const ButtonStyle(
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onSelectionChanged: (v) => _changeScope(v.first),
+            ),
+          ),
+          const Divider(height: 1),
+          // 自选站点：站点勾选列表
+          if (_scope == _RemoteScope.selected) ...[
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: _allAdapters.map((a) {
+                  final checked = _checkedSites.contains(a.config.id);
+                  return FilterChip(
+                    label: Text(
+                      a.config.name,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    selected: checked,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) => _toggleSite(a.config.id),
+                  );
+                }).toList(),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+              color: Colors.white,
+              child: Text(
+                '仅展示已勾选站点的远程文章；默认勾选已登录（已配置密钥）的站点。',
+                style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+              ),
+            ),
+            const Divider(height: 1),
+          ],
+        ],
 
         // ── 错误提示 ──
         if (_error != null)
@@ -283,6 +480,28 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
+                                        // 站点标签（多站点模式）
+                                        if (_multiSite && post.siteId != null) ...[
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 1,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF0EA5E9).withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              _siteName(post.siteId),
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFF0E7490),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                        ],
                                         // 状态标签
                                         Container(
                                           padding: const EdgeInsets.symmetric(

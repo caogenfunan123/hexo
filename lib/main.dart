@@ -295,6 +295,16 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     RemoteCmsTools.siteManager = siteManager;
   }
 
+  /// 全部动态 CMS 站点适配器（用于远程文章多站点聚合查看）
+  List<BlogRepository> get _allCmsAdapters {
+    final result = <BlogRepository>[];
+    for (final site in siteManager.dynamicSites) {
+      final adapter = siteManager.getAdapter(site.id);
+      if (adapter != null) result.add(adapter);
+    }
+    return result;
+  }
+
   String get _pageTitle {
     switch (_currentPage) {
       case 0:
@@ -1021,9 +1031,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     final publishTarget = siteManager.isDynamicSite
         ? siteManager.currentBlogType.displayName
         : (_resolvedRepo?.fullName ?? 'GitHub');
+    final dynamicSiteCount = siteManager.dynamicSites.length;
     bool saveMdBackup = false;
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<int>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
@@ -1065,24 +1076,37 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
+              onPressed: () => Navigator.pop(ctx, 0),
               child: const Text('取消'),
             ),
+            // 多动态站点：一键发布到全部站点
+            if (siteManager.isDynamicSite && dynamicSiteCount > 1)
+              TextButton.icon(
+                icon: const Icon(Icons.cloud_done_outlined, size: 18),
+                label: Text('发布到全部站点 ($dynamicSiteCount)'),
+                onPressed: () => Navigator.pop(ctx, 2),
+              ),
             FilledButton.icon(
               icon: const Icon(Icons.cloud_upload_outlined, size: 18),
               label: const Text('确认发布'),
-              onPressed: () => Navigator.pop(ctx, true),
+              onPressed: () => Navigator.pop(ctx, 1),
             ),
           ],
         ),
       ),
     );
 
-    if (confirmed != true || !mounted) return;
+    if (confirmed == null || confirmed == 0 || !mounted) return;
 
     // ── 保存 MD 备份 ──
     if (saveMdBackup) {
       await _saveMdBackup();
+    }
+
+    // 一键发布到全部动态 CMS 站点
+    if (confirmed == 2) {
+      await _publishToAllCmsSites();
+      return;
     }
 
     // 动态 CMS 站点：推送到远程 CMS
@@ -1310,6 +1334,106 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       if (mounted) _showToast('发布失败: $e');
     } finally {
       if (mounted) setState(() => _editorBusy = false);
+    }
+  }
+
+  /// 一键发布当前文章到所有已保存的动态 CMS 站点
+  /// 每个站点使用其自身的适配器（Typecho/WordPress/Ghost 等）；
+  /// 若该站点已有映射（此前发布过），则更新，否则新建。
+  Future<void> _publishToAllCmsSites() async {
+    final adapters = _allCmsAdapters;
+    if (adapters.isEmpty) {
+      _showToast('没有已保存的动态 CMS 站点，请先在「设置」中添加');
+      return;
+    }
+
+    final a = _collect(draft: false);
+    if (a.title.trim().isEmpty) {
+      _showToast('请先填写文章标题');
+      return;
+    }
+    final slug = _generateSlug(a.title);
+
+    setState(() {
+      _editorBusy = true;
+      _editorStatus = '正在发布到 ${adapters.length} 个站点...';
+    });
+
+    int success = 0;
+    final details = <String, String>{};
+    try {
+      for (final adapter in adapters) {
+        final siteName = adapter.config.name;
+        if (mounted) setState(() => _editorStatus = '正在发布到 $siteName...');
+        try {
+          // 该站点已有远程映射 → 更新；否则新建
+          final existing = syncService.findByLocalId(adapter.config.id, a.id);
+          final post = BlogPost(
+            id: existing?.remotePostId,
+            title: a.title,
+            contentMd: a.content,
+            status: 'publish',
+            slug: slug,
+            tags: a.tags,
+            categories: a.categories,
+            date: DateTime.now(),
+            siteId: adapter.config.id,
+            siteType: adapter.config.type,
+          );
+          final result = existing != null
+              ? await adapter.updatePost(post)
+              : await adapter.createPost(post);
+          success++;
+          details[siteName] = '成功 (ID: ${result.id})';
+          await cmsDraftService.saveDraft(result);
+          if (result.id != null) {
+            syncService.setMapping(SyncMapping(
+              localArticleId: a.id,
+              remotePostId: result.id!,
+              siteId: adapter.config.id,
+              lastSyncAt: DateTime.now(),
+              localModifiedAt: a.updatedAt,
+              remoteModifiedAt: result.modifiedDate,
+            ));
+          }
+        } catch (e) {
+          final msg = e is BlogRepositoryException ? e.message : '$e';
+          details[siteName] = '失败: $msg';
+          logService.add('多站点发布失败', '$siteName: $msg', success: false);
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _editorBusy = false;
+          _editorStatus = '多站点发布完成: 成功 $success/${adapters.length}';
+        });
+      }
+    }
+
+    logService.add(
+        '多站点发布', '《${a.title}》成功 $success/${adapters.length} 个站点');
+    if (mounted) {
+      _showToast('多站点发布完成: 成功 $success/${adapters.length} 个站点');
+      final lines = details.entries.map((e) => '${e.key}: ${e.value}').join('\n');
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('发布结果 ($success/${adapters.length})'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Text(lines, style: const TextStyle(fontSize: 13)),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('确定'),
+            ),
+          ],
+        ),
+      );
     }
   }
 
@@ -3813,11 +3937,18 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   // ============ CMS Remote Post Operations ============
 
-  /// 将 CMS 远程文章加载到编辑器
+  /// 打开 CMS 远程文章到编辑器（多站点：先切换到文章所属站点）
   void _openRemotePostInEditor(BlogPost post) {
     // 关闭抽屉
     if (_scaffoldKey.currentState?.isDrawerOpen == true) {
       Navigator.pop(context);
+    }
+    // 多站点模式下，切换到文章所属站点，确保后续发布到正确站点
+    if (post.siteId != null && siteManager.activeSiteId != post.siteId) {
+      final identity = siteManager.getSiteIdentity(post.siteId!);
+      if (identity != null && identity.isDynamic) {
+        siteManager.setActiveSite(post.siteId!);
+      }
     }
     // 将 BlogPost 转为 Article 加载到编辑器
     final article = Article(
@@ -3844,13 +3975,18 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     if (mounted) _showToast('已加载远程文章: ${post.title}');
   }
 
-  /// 删除 CMS 远程文章
+  /// 删除 CMS 远程文章（多站点：按文章所属站点解析适配器）
   Future<void> _deleteRemoteCmsPost(BlogPost post) async {
-    final adapter = siteManager.currentAdapter;
-    if (adapter == null || post.id == null) return;
+    if (post.id == null) return;
+    BlogRepository? adapter;
+    if (post.siteId != null) {
+      adapter = siteManager.getAdapter(post.siteId!);
+    }
+    adapter ??= siteManager.currentAdapter;
+    if (adapter == null) return;
     try {
       await adapter.deletePost(post.id!);
-      logService.add('删除远程文章', '已从 ${adapter.config.type.displayName} 删除: ${post.title}');
+      logService.add('删除远程文章', '已从 ${adapter.config.type.name} 删除: ${post.title}');
       if (mounted) _showToast('已删除: ${post.title}');
     } catch (e) {
       logService.add('删除远程文章失败', '$e', success: false);
@@ -4434,6 +4570,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           }
           return RemotePostsScreen(
             adapter: adapter,
+            allAdapters: _allCmsAdapters,
             logService: logService,
             onOpenInEditor: (post) => _openRemotePostInEditor(post),
             onDeletePost: (post) => _deleteRemoteCmsPost(post),

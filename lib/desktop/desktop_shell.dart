@@ -23,6 +23,7 @@ import '../models/article_type.dart';
 import '../models/blog_framework.dart';
 import '../models/blog_site_config.dart';
 import '../models/blog_post.dart';
+import '../core/repository/blog_repository.dart';
 import '../models/github_token_profile.dart';
 import '../models/repo_config.dart';
 import '../models/session_state.dart';
@@ -170,6 +171,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   late final TemplateSyncService? templateSync;
   late final FullTextSearchIsolate? searchIsolate;
   late SiteManager siteManager;
+
+  /// 全部动态 CMS 站点适配器（用于远程文章多站点聚合查看）
+  List<BlogRepository> get _allCmsAdapters {
+    final result = <BlogRepository>[];
+    for (final site in siteManager.dynamicSites) {
+      final adapter = siteManager.getAdapter(site.id);
+      if (adapter != null) result.add(adapter);
+    }
+    return result;
+  }
 
   // ──────────────────────────────────────────────
   // 状态
@@ -878,9 +889,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final publishTarget = siteManager.isDynamicSite
         ? siteManager.currentBlogType.displayName
         : (_resolvedRepo?.fullName ?? 'GitHub');
+    final dynamicSiteCount = siteManager.dynamicSites.length;
     bool saveMdBackup = false;
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<int>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
@@ -909,15 +921,27 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            FilledButton.icon(icon: const Icon(Icons.cloud_upload_outlined, size: 18), label: const Text('确认发布'), onPressed: () => Navigator.pop(ctx, true)),
+            TextButton(onPressed: () => Navigator.pop(ctx, 0), child: const Text('取消')),
+            if (siteManager.isDynamicSite && dynamicSiteCount > 1)
+              TextButton.icon(
+                icon: const Icon(Icons.cloud_done_outlined, size: 18),
+                label: Text('发布到全部站点 ($dynamicSiteCount)'),
+                onPressed: () => Navigator.pop(ctx, 2),
+              ),
+            FilledButton.icon(icon: const Icon(Icons.cloud_upload_outlined, size: 18), label: const Text('确认发布'), onPressed: () => Navigator.pop(ctx, 1)),
           ],
         ),
       ),
     );
 
-    if (confirmed != true || !mounted) return;
+    if (confirmed == null || confirmed == 0 || !mounted) return;
     if (saveMdBackup) await _saveMdBackup();
+
+    // 一键发布到全部动态 CMS 站点
+    if (confirmed == 2) {
+      await _publishToAllCmsSites();
+      return;
+    }
 
     // FrontMatter 校验
     final article = _collect(draft: false);
@@ -1074,6 +1098,94 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       logService.add('CMS发布失败', '$e', success: false);
       if (mounted) _showToast('发布失败: $e');} finally {
       if (mounted) _editor.setEditorBusy(false);}
+  }
+
+  /// 一键发布当前文章到所有已保存的动态 CMS 站点
+  Future<void> _publishToAllCmsSites() async {
+    final adapters = _allCmsAdapters;
+    if (adapters.isEmpty) {
+      _showToast('没有已保存的动态 CMS 站点，请先在「设置」中添加');
+      return;
+    }
+
+    final a = _collect(draft: false);
+    if (a.title.trim().isEmpty) {
+      _showToast('请先填写文章标题');
+      return;
+    }
+    final slug = _generateSlug(a.title);
+
+    _editor.setEditorBusy(true);
+    _editor.setEditorStatus('正在发布到 ${adapters.length} 个站点...');
+
+    int success = 0;
+    final details = <String, String>{};
+    try {
+      for (final adapter in adapters) {
+        final siteName = adapter.config.name;
+        _editor.setEditorStatus('正在发布到 $siteName...');
+        try {
+          // 该站点已有远程映射 → 更新；否则新建
+          final existing = syncService.findByLocalId(adapter.config.id, a.id);
+          final post = BlogPost(
+            id: existing?.remotePostId,
+            title: a.title,
+            contentMd: a.content,
+            status: 'publish',
+            slug: slug,
+            tags: a.tags,
+            categories: a.categories,
+            date: DateTime.now(),
+            siteId: adapter.config.id,
+            siteType: adapter.config.type,
+          );
+          final result = existing != null
+              ? await adapter.updatePost(post)
+              : await adapter.createPost(post);
+          success++;
+          details[siteName] = '成功 (ID: ${result.id})';
+          await cmsDraftService.saveDraft(result);
+          if (result.id != null) {
+            syncService.setMapping(SyncMapping(
+              localArticleId: a.id,
+              remotePostId: result.id!,
+              siteId: adapter.config.id,
+              lastSyncAt: DateTime.now(),
+              localModifiedAt: a.updatedAt,
+              remoteModifiedAt: result.modifiedDate,
+            ));
+          }
+        } catch (e) {
+          final msg = e is BlogRepositoryException ? e.message : '$e';
+          details[siteName] = '失败: $msg';
+          logService.add('多站点发布失败', '$siteName: $msg', success: false);
+        }
+      }
+    } finally {
+      if (mounted) {
+        _editor.setEditorBusy(false);
+        _editor.setEditorStatus('多站点发布完成: 成功 $success/${adapters.length}');
+      }
+    }
+
+    logService.add('多站点发布', '《${a.title}》成功 $success/${adapters.length} 个站点');
+    if (mounted) {
+      _showToast('多站点发布完成: 成功 $success/${adapters.length} 个站点');
+      final lines = details.entries.map((e) => '${e.key}: ${e.value}').join('\n');
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('发布结果 ($success/${adapters.length})'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(child: Text(lines, style: const TextStyle(fontSize: 13))),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('确定')),
+          ],
+        ),
+      );
+    }
   }
 
   // ============================================================
@@ -2824,9 +2936,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       }
       _openTab('remote_posts', '远程文章', Icons.cloud_outlined, RemotePostsScreen(
         adapter: adapter,
+        allAdapters: _allCmsAdapters,
         logService: logService,
         onOpenInEditor: (post) {
-          // 打开远程文章到编辑器
+          // 打开远程文章到编辑器；多站点先切换到文章所属站点
+          if (post.siteId != null && siteManager.activeSiteId != post.siteId) {
+            final identity = siteManager.getSiteIdentity(post.siteId!);
+            if (identity != null && identity.isDynamic) {
+              siteManager.setActiveSite(post.siteId!);
+            }
+          }
           _openExistingArticle(Article(
             id: DateTime.now().millisecondsSinceEpoch.toString(),
             title: post.title, content: post.contentMd,
@@ -2836,7 +2955,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           ));
         },
         onDeletePost: (post) async {
-          try { await adapter.deletePost(post.id!); _showToast('已删除'); } catch (e) { _showToast('删除失败: $e'); }
+          if (post.id == null) return;
+          BlogRepository? target = post.siteId != null
+              ? siteManager.getAdapter(post.siteId!)
+              : null;
+          target ??= adapter;
+          try { await target.deletePost(post.id!); _showToast('已删除'); } catch (e) { _showToast('删除失败: $e'); }
         },
       ));
     } else {

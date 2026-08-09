@@ -447,7 +447,7 @@ class _BlogSiteEditorScreenState extends State<BlogSiteEditorScreen> {
             controller: _typechoEndpointCtrl,
             decoration: const InputDecoration(
               labelText: 'API 端点（可选）',
-              hintText: '留空自动探测，如 /api/posts',
+              hintText: '留空自动探测，如 /index.php/api',
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.api),
             ),
@@ -456,14 +456,14 @@ class _BlogSiteEditorScreenState extends State<BlogSiteEditorScreen> {
           TextFormField(
             controller: _typechoTokenCtrl,
             decoration: const InputDecoration(
-              labelText: 'Token',
-              hintText: 'Typecho 插件设置页生成的 Token',
+              labelText: 'API 密钥 (Token)',
+              hintText: 'SecureApi 插件设置页生成的密钥',
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.token),
             ),
             obscureText: true,
             validator: (v) => (v == null || v.trim().isEmpty)
-                ? '请输入 Token'
+                ? '请输入 API 密钥 (Token)'
                 : null,
           ),
         ];
@@ -494,13 +494,18 @@ class _BlogSiteEditorScreenState extends State<BlogSiteEditorScreen> {
                 '要求：Ghost 3.0+，请使用 Admin API Key 而非 Content API Key',
           ),
       BlogType.typecho => (
-            '如何获取 Typecho Token？',
-            '1. 安装 REST API 插件（推荐 Typecho-Plugin-Restful）\n'
-                '2. 进入插件设置页\n'
-                '3. 生成 API Token\n'
-                '4. 粘贴到此处\n\n'
-                '注意：不同插件的 JSON 结构存在差异，\n'
-                '如连接失败请尝试切换 API 端点路径',
+            '如何配置 Typecho（推荐 SecureApi 插件）？',
+            '1. 下载 SecureApi 插件（建议用增强版，支持文章发布）\n'
+                '   下载地址：https://gitee.com/nice_ch/typecho-plugin\n'
+                '   （增强版已随本 App 提供，见仓库 plugin/SecureApi）\n'
+                '2. 将 SecureApi 文件夹放入 usr/plugins/\n'
+                '3. 后台「插件管理」激活插件并进入设置：\n'
+                '   · 将「API开关」设为开启\n'
+                '   · 复制或修改「API密钥」\n'
+                '4. 端点留空自动探测\n'
+                '   （未开地址重写为 /index.php/api，伪静态为 /api）\n'
+                '5. 将 API 密钥粘贴到上方「API 密钥」输入框\n'
+                '6. 测试连接成功后即可发布 / 更新 / 删除文章',
           ),
       _ => ('', ''),
     };
