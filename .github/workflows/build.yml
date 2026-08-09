@@ -246,6 +246,32 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      - name: Build Android
+        run: |
+          flutter build apk --release --target=lib/desktop/desktop_main.dart 2>&1 | tee /tmp/build-android.log
+          
+          # 验证构建结果
+          if [ ! -f "build/app/outputs/flutter-apk/app-release.apk" ]; then
+            echo "::error::Android build failed - no APK file"
+            exit 1
+          fi
+
+      - name: Upload Android build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-log
+          path: /tmp/build-android.log
+          retention-days: 7
+
+      - name: Upload Android build
+        uses: actions/upload-artifact@v4
+        with:
+          name: hexo-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: warn
+          retention-days: 30
+
   # ── Windows 桌面构建 ──
   build-windows:
     runs-on: windows-2022
@@ -310,6 +336,32 @@ jobs:
         with:
           name: hexo-windows
           path: hexo-windows.zip
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Build Web
+        run: |
+          flutter build web --release --target=lib/desktop/desktop_main.dart 2>&1 | tee /tmp/build-web.log
+          
+          # 验证构建结果
+          if [ ! -d "build/web" ]; then
+            echo "::error::Web build failed - no web directory"
+            exit 1
+          fi
+
+      - name: Upload Web build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build-log
+          path: /tmp/build-web.log
+          retention-days: 7
+
+      - name: Upload Web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: hexo-web
+          path: build/web
           if-no-files-found: warn
           retention-days: 30
 
