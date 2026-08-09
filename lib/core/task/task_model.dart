@@ -12,7 +12,7 @@ class ToolExecRecord {
   final String status; // success / failed
   final DateTime time;
 
-  const ToolExecRecord({
+  ToolExecRecord({
     required this.toolName,
     required this.argsSummary,
     required this.resultSummary,
@@ -47,7 +47,7 @@ class FileChange {
   final String diffPreview;
   final DateTime time;
 
-  const FileChange({
+  FileChange({
     required this.path,
     required this.op,
     required this.diffPreview,

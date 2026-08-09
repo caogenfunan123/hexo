@@ -110,7 +110,6 @@ class AppLocalizations {
       'website_bio': '网站简介',
       'basic_info': '基本信息',
       'github_token': 'GitHub 登录令牌',
-      'about': '关于',
       'author': '作者',
       'contact_email': '联系邮箱',
       'repository': '仓库',

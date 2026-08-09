@@ -545,7 +545,7 @@ class AiService {
         final content = _contentToText(m['content']);
         buf.writeln('[$role]: $content');
       }
-      final text = _completeLocal(
+      final text = await _completeLocal(
         p,
         systemPrompt: systemPrompt,
         userPrompt: buf.toString(),
