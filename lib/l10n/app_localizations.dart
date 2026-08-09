@@ -1,4 +1,6 @@
 /// 应用语言支持
+import 'package:flutter/widgets.dart';
+
 enum AppLanguage {
   chinese('简体中文', 'zh-CN', 'zh'),
   english('English', 'en', 'en'),
@@ -16,18 +18,25 @@ enum AppLanguage {
   static AppLanguage fromCode(String? code) {
     if (code == null) return chinese;
     return AppLanguage.values.firstWhere(
-      (lang) => lang.code == code,
+      (lang) => lang.code == code || lang.locale == code,
       orElse: () => chinese,
     );
   }
 
+  /// 转换为 Flutter Locale
+  Locale toLocale() => Locale(code);
+
   /// 获取系统支持的语言列表
   static List<AppLanguage> get supportedLanguages => [
-    chinese,
-    english,
-    japanese,
-    korean,
-  ];
+        chinese,
+        english,
+        japanese,
+        korean,
+      ];
+
+  /// Flutter Locale 列表
+  static List<Locale> get supportedLocales =>
+      supportedLanguages.map((l) => Locale(l.code)).toList();
 }
 
 /// 语言资源管理
@@ -94,6 +103,28 @@ class AppLocalizations {
       'import_data': '导入数据',
       'reset_settings': '重置设置',
       'logout': '退出登录',
+      'language_updated': '语言已更新',
+      'select_language': '选择语言',
+      'site_preview_url': '站点预览 URL',
+      'website_name': '网站名称',
+      'website_bio': '网站简介',
+      'basic_info': '基本信息',
+      'github_token': 'GitHub 登录令牌',
+      'about': '关于',
+      'author': '作者',
+      'contact_email': '联系邮箱',
+      'repository': '仓库',
+      'export_dir': '导出目录',
+      'website_pages': '网站页面编辑',
+      'theme_color': '主题颜色',
+      'local_drafts': '本地草稿 · 离线编辑 · GitHub 发布 · 图床 · AI · RSS · 搜索 · 提交回滚',
+      'not_logged_in': '尚未登录 Token',
+      'token_configured': '已配置 Token',
+      'saved_tokens_reuse': '保存过的 Token 可复用到多个仓库',
+      'saved_tokens_count': '已保存 {count} 个 · 点此管理',
+      'current_token': '当前登录令牌',
+      'switched_to': '已切换到',
+      'language_selector_hint': '选择应用界面显示语言',
     },
     // English
     'en': {
@@ -156,6 +187,27 @@ class AppLocalizations {
       'import_data': 'Import Data',
       'reset_settings': 'Reset Settings',
       'logout': 'Logout',
+      'language_updated': 'Language updated',
+      'select_language': 'Select Language',
+      'site_preview_url': 'Site Preview URL',
+      'website_name': 'Site Name',
+      'website_bio': 'Site Bio',
+      'basic_info': 'Basic Info',
+      'github_token': 'GitHub Login Token',
+      'author': 'Author',
+      'contact_email': 'Contact Email',
+      'repository': 'Repository',
+      'export_dir': 'Export Directory',
+      'website_pages': 'Site Pages Editor',
+      'theme_color': 'Theme Color',
+      'local_drafts': 'Local drafts · Offline editing · GitHub publish · Image host · AI · RSS · Search · Commit rollback',
+      'not_logged_in': 'No token yet',
+      'token_configured': 'Token configured',
+      'saved_tokens_reuse': 'Saved tokens can be reused across repos',
+      'saved_tokens_count': '{count} saved · Tap to manage',
+      'current_token': 'Current Login Token',
+      'switched_to': 'Switched to',
+      'language_selector_hint': 'Select app interface language',
     },
     // Japanese
     'ja': {
@@ -218,6 +270,27 @@ class AppLocalizations {
       'import_data': 'データをインポート',
       'reset_settings': '設定をリセット',
       'logout': 'ログアウト',
+      'language_updated': '言語が更新されました',
+      'select_language': '言語を選択',
+      'site_preview_url': 'サイトプレビューURL',
+      'website_name': 'サイト名',
+      'website_bio': 'サイト紹介',
+      'basic_info': '基本情報',
+      'github_token': 'GitHub ログイントークン',
+      'author': '作者',
+      'contact_email': '連絡先メール',
+      'repository': 'リポジトリ',
+      'export_dir': 'エクスポートディレクトリ',
+      'website_pages': 'サイトページ編集',
+      'theme_color': 'テーマカラー',
+      'local_drafts': 'ローカル下書き · オフライン編集 · GitHub公開 · 画像ホスト · AI · RSS · 検索 · コミットロールバック',
+      'not_logged_in': 'トークン未設定',
+      'token_configured': 'トークン設定済み',
+      'saved_tokens_reuse': '保存済みトークンは複数リポジトリで再利用できます',
+      'saved_tokens_count': '{count} 個保存済み · タップして管理',
+      'current_token': '現在のログイントークン',
+      'switched_to': '切り替えました',
+      'language_selector_hint': 'アプリの表示言語を選択',
     },
     // Korean
     'ko': {
@@ -280,6 +353,27 @@ class AppLocalizations {
       'import_data': '데이터 가져오기',
       'reset_settings': '설정 초기화',
       'logout': '로그아웃',
+      'language_updated': '언어가 업데이트되었습니다',
+      'select_language': '언어 선택',
+      'site_preview_url': '사이트 미리보기 URL',
+      'website_name': '사이트 이름',
+      'website_bio': '사이트 소개',
+      'basic_info': '기본 정보',
+      'github_token': 'GitHub 로그인 토큰',
+      'author': '작성자',
+      'contact_email': '연락 이메일',
+      'repository': '저장소',
+      'export_dir': '내보내기 디렉터리',
+      'website_pages': '사이트 페이지 편집',
+      'theme_color': '테마 색상',
+      'local_drafts': '로컬 초안 · 오프라인 편집 · GitHub 게시 · 이미지 호스팅 · AI · RSS · 검색 · 커밋 롤백',
+      'not_logged_in': '토큰 없음',
+      'token_configured': '토큰 설정됨',
+      'saved_tokens_reuse': '저장된 토큰은 여러 저장소에서 재사용할 수 있습니다',
+      'saved_tokens_count': '{count}개 저장됨 · 탭하여 관리',
+      'current_token': '현재 로그인 토큰',
+      'switched_to': '전환됨',
+      'language_selector_hint': '앱 인터페이스 언어 선택',
     },
   };
 
@@ -481,8 +575,111 @@ class AppLocalizations {
   /// 获取退出登录文本
   String get logout => translate('logout');
 
+  /// 获取语言已更新文本
+  String get languageUpdated => translate('language_updated');
+
+  /// 获取选择语言文本
+  String get selectLanguage => translate('select_language');
+
+  /// 获取站点预览URL文本
+  String get sitePreviewUrl => translate('site_preview_url');
+
+  /// 获取网站名称文本
+  String get websiteName => translate('website_name');
+
+  /// 获取网站简介文本
+  String get websiteBio => translate('website_bio');
+
+  /// 获取基本信息文本
+  String get basicInfo => translate('basic_info');
+
+  /// 获取GitHub令牌文本
+  String get githubToken => translate('github_token');
+
+  /// 获取作者文本
+  String get author => translate('author');
+
+  /// 获取联系邮箱文本
+  String get contactEmail => translate('contact_email');
+
+  /// 获取仓库文本
+  String get repository => translate('repository');
+
+  /// 获取导出目录文本
+  String get exportDir => translate('export_dir');
+
+  /// 获取网站页面编辑文本
+  String get websitePages => translate('website_pages');
+
+  /// 获取主题颜色文本
+  String get themeColor => translate('theme_color');
+
+  /// 获取本地功能描述文本
+  String get localDrafts => translate('local_drafts');
+
+  /// 获取未登录文本
+  String get notLoggedIn => translate('not_logged_in');
+
+  /// 获取已配置文本
+  String get tokenConfigured => translate('token_configured');
+
+  /// 获取保存令牌复用文本
+  String get savedTokensReuse => translate('saved_tokens_reuse');
+
+  /// 获取已保存令牌数量文本
+  String savedTokensCount(int count) => translate('saved_tokens_count').replaceAll('{count}', '$count');
+
+  /// 获取当前令牌文本
+  String get currentToken => translate('current_token');
+
+  /// 获取已切换文本
+  String get switchedTo => translate('switched_to');
+
+  /// 获取语言选择提示文本
+  String get languageSelectorHint => translate('language_selector_hint');
+
   /// 创建本地化实例
   static AppLocalizations? of(String locale) {
     return AppLocalizations(locale);
   }
+
+  /// 从 BuildContext 获取当前语言的本地化实例
+  /// 需在 MaterialApp 配置 [delegate] 后使用
+  static AppLocalizations ofContext(BuildContext context) {
+    return Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+        AppLocalizations('zh-CN');
+  }
+
+  /// 当前语言代码
+  String get locale => _locale;
+
+  /// MaterialApp 本地化代理
+  static const LocalizationsDelegate<AppLocalizations> delegate =
+      _AppLocalizationsDelegate();
+
+  /// 应用支持的语言列表
+  static const List<Locale> supportedLocales = [
+    Locale('zh'),
+    Locale('en'),
+    Locale('ja'),
+    Locale('ko'),
+  ];
+}
+
+/// 本地化代理，负责按系统/应用语言加载对应翻译
+class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
+  const _AppLocalizationsDelegate();
+
+  @override
+  bool isSupported(Locale locale) => AppLanguage.supportedLocales
+      .any((l) => l.languageCode == locale.languageCode);
+
+  @override
+  Future<AppLocalizations> load(Locale locale) async {
+    final lang = AppLanguage.fromCode(locale.languageCode);
+    return AppLocalizations(lang.locale);
+  }
+
+  @override
+  bool shouldReload(_AppLocalizationsDelegate old) => false;
 }

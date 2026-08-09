@@ -5,7 +5,7 @@ class ParsedInstruction {
   final InstructionType type;
   final String? rawContent;
   final Map<String, dynamic>? jsonData;
-  final Map<String, String>? params;
+  final Map<String, dynamic>? params;
   final String? queryText;
 
   const ParsedInstruction({
@@ -130,16 +130,21 @@ class InstructionParser {
     for (final m in _skillRunRegex.allMatches(text)) {
       final skillId = m.group(1)?.trim() ?? '';
       final varsStr = m.group(2)?.trim() ?? '{}';
-      Map<String, String> params = {'skill_id': skillId};
+      Map<String, String> vars = {};
       try {
         final parsed = jsonDecode(varsStr);
         if (parsed is Map) {
-          params.addAll(parsed.map((k, v) => MapEntry(k.toString(), v.toString())));
+          vars = parsed.map((k, v) => MapEntry(k.toString(), v.toString()));
         }
       } catch (_) {}
       instructions.add(ParsedInstruction(
         type: InstructionType.skillRun,
-        params: params,
+        // 变量统一存放于 params['vars']，
+        // 与 mcp_runtime._handleSkillRun 的读取约定一致
+        params: {
+          'skill_id': skillId,
+          'vars': vars,
+        },
       ));
     }
 

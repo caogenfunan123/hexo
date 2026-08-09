@@ -20,9 +20,14 @@ class _PreviewScreenState extends State<PreviewScreen> {
   bool _canGoBack = false;
   bool _canGoForward = false;
 
-  String get _initialUrl => widget.activeRepo?.siteUrl.isNotEmpty == true
-      ? widget.activeRepo!.siteUrl
-      : (widget.sitePreviewUrl?.isNotEmpty == true ? widget.sitePreviewUrl! : '');
+  /// 初始 URL 优先级：
+  /// 1. 设置中的站点预览 URL（settings.sitePreviewUrl）
+  /// 2. 当前仓库的 siteUrl
+  String get _initialUrl => widget.sitePreviewUrl?.isNotEmpty == true
+      ? widget.sitePreviewUrl!
+      : (widget.activeRepo?.siteUrl.isNotEmpty == true
+          ? widget.activeRepo!.siteUrl
+          : '');
 
   @override
   void initState() {

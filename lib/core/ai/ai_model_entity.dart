@@ -16,9 +16,23 @@ class AiModelEntity {
   final InterfaceType interfaceType;
   final bool supportImage;
   final bool thinkingEnabled;
+  final String reasoningEffort;
+  final int reasoningBudgetTokens;
   final int contextLimit;
   final int outputLimit;
   final DateTime createdAt;
+
+  /// 备用密钥池（不含主密钥 [apiKey]）。
+  final List<String> keyPool;
+
+  /// 当前使用的密钥索引（0 = 主密钥 apiKey，1..n = keyPool 元素）。
+  final int keyPoolIndex;
+
+  /// 当前密钥连续失败次数（达到阈值后轮转到下一个密钥）。
+  final int consecutiveFailures;
+
+  /// 连续失败多少次后轮换密钥。
+  static const int keyFailThreshold = 3;
 
   AiModelEntity({
     required this.modelId,
@@ -35,12 +49,31 @@ class AiModelEntity {
     InterfaceType? interfaceType,
     this.supportImage = false,
     this.thinkingEnabled = false,
+    this.reasoningEffort = 'medium',
+    this.reasoningBudgetTokens = 1024,
     this.contextLimit = 0,
     this.outputLimit = 0,
+    this.keyPool = const [],
+    this.keyPoolIndex = 0,
+    this.consecutiveFailures = 0,
     DateTime? createdAt,
   })  : provider = provider ?? ModelProvider.custom,
         interfaceType = interfaceType ?? inferInterfaceType(modelId),
         createdAt = createdAt ?? DateTime.now();
+
+  /// 合并后的全部密钥（主密钥 + 池内备用）。
+  List<String> get allKeys => [apiKey, ...keyPool];
+
+  /// 当前生效的密钥（按索引回绕）。
+  String get effectiveKey {
+    final keys = allKeys.where((k) => k.isNotEmpty).toList();
+    if (keys.isEmpty) return apiKey;
+    final idx = keyPoolIndex % keys.length;
+    return keys[idx];
+  }
+
+  /// 是否有备用密钥。
+  bool get hasKeyPool => keyPool.isNotEmpty;
 
   AiModelEntity copyWith({
     String? modelId,
@@ -57,8 +90,13 @@ class AiModelEntity {
     InterfaceType? interfaceType,
     bool? supportImage,
     bool? thinkingEnabled,
+    String? reasoningEffort,
+    int? reasoningBudgetTokens,
     int? contextLimit,
     int? outputLimit,
+    List<String>? keyPool,
+    int? keyPoolIndex,
+    int? consecutiveFailures,
     DateTime? createdAt,
   }) {
     return AiModelEntity(
@@ -76,8 +114,14 @@ class AiModelEntity {
       interfaceType: interfaceType ?? this.interfaceType,
       supportImage: supportImage ?? this.supportImage,
       thinkingEnabled: thinkingEnabled ?? this.thinkingEnabled,
+      reasoningEffort: reasoningEffort ?? this.reasoningEffort,
+      reasoningBudgetTokens:
+          reasoningBudgetTokens ?? this.reasoningBudgetTokens,
       contextLimit: contextLimit ?? this.contextLimit,
       outputLimit: outputLimit ?? this.outputLimit,
+      keyPool: keyPool ?? this.keyPool,
+      keyPoolIndex: keyPoolIndex ?? this.keyPoolIndex,
+      consecutiveFailures: consecutiveFailures ?? this.consecutiveFailures,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -97,8 +141,13 @@ class AiModelEntity {
         'interfaceType': interfaceType.code,
         'supportImage': supportImage,
         'thinkingEnabled': thinkingEnabled,
+        'reasoningEffort': reasoningEffort,
+        'reasoningBudgetTokens': reasoningBudgetTokens,
         'contextLimit': contextLimit,
         'outputLimit': outputLimit,
+        'keyPool': keyPool,
+        'keyPoolIndex': keyPoolIndex,
+        'consecutiveFailures': consecutiveFailures,
         'createdAt': createdAt.toIso8601String(),
       };
 
@@ -117,8 +166,14 @@ class AiModelEntity {
         interfaceType: InterfaceType.fromCode(j['interfaceType']?.toString()),
         supportImage: j['supportImage'] == true,
         thinkingEnabled: j['thinkingEnabled'] == true,
+        reasoningEffort: j['reasoningEffort']?.toString() ?? 'medium',
+        reasoningBudgetTokens: j['reasoningBudgetTokens'] as int? ?? 1024,
         contextLimit: (j['contextLimit'] as num?)?.toInt() ?? 0,
         outputLimit: (j['outputLimit'] as num?)?.toInt() ?? 0,
+        keyPool:
+            (j['keyPool'] as List?)?.whereType<String>().toList() ?? const [],
+        keyPoolIndex: (j['keyPoolIndex'] as num?)?.toInt() ?? 0,
+        consecutiveFailures: (j['consecutiveFailures'] as num?)?.toInt() ?? 0,
         createdAt: DateTime.tryParse(j['createdAt']?.toString() ?? '') ??
             DateTime.now(),
       );

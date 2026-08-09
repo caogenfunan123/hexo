@@ -10,6 +10,10 @@ class AiProfile {
   final bool useBearer;
   final InterfaceType interfaceType;
   final List<String> cachedModels;
+  final bool thinkingEnabled;
+  final String reasoningEffort;
+  final int reasoningBudgetTokens;
+  final String? localModelPath;
 
   const AiProfile({
     required this.id,
@@ -21,7 +25,13 @@ class AiProfile {
     this.useBearer = true,
     this.interfaceType = InterfaceType.openaiChat,
     this.cachedModels = const [],
+    this.thinkingEnabled = false,
+    this.reasoningEffort = 'medium',
+    this.reasoningBudgetTokens = 1024,
+    this.localModelPath,
   });
+
+  bool get isLocalModel => localModelPath != null && localModelPath!.isNotEmpty;
 
   AiProfile copyWith({
     String? id,
@@ -33,6 +43,11 @@ class AiProfile {
     bool? useBearer,
     InterfaceType? interfaceType,
     List<String>? cachedModels,
+    bool? thinkingEnabled,
+    String? reasoningEffort,
+    int? reasoningBudgetTokens,
+    String? localModelPath,
+    bool clearLocalModel = false,
   }) {
     return AiProfile(
       id: id ?? this.id,
@@ -44,6 +59,12 @@ class AiProfile {
       useBearer: useBearer ?? this.useBearer,
       interfaceType: interfaceType ?? this.interfaceType,
       cachedModels: cachedModels ?? this.cachedModels,
+      thinkingEnabled: thinkingEnabled ?? this.thinkingEnabled,
+      reasoningEffort: reasoningEffort ?? this.reasoningEffort,
+      reasoningBudgetTokens:
+          reasoningBudgetTokens ?? this.reasoningBudgetTokens,
+      localModelPath:
+          clearLocalModel ? null : (localModelPath ?? this.localModelPath),
     );
   }
 
@@ -57,26 +78,28 @@ class AiProfile {
         'useBearer': useBearer,
         'interfaceType': interfaceType.code,
         'cachedModels': cachedModels,
+        'thinkingEnabled': thinkingEnabled,
+        'reasoningEffort': reasoningEffort,
+        'reasoningBudgetTokens': reasoningBudgetTokens,
+        'localModelPath': localModelPath,
       };
 
   factory AiProfile.fromJson(Map<String, dynamic> j) {
-    final raw = j['cachedModels'];
-    final models = <String>[];
-    if (raw is List) {
-      for (final e in raw) {
-        if (e != null) models.add(e.toString());
-      }
-    }
     return AiProfile(
-      id: j['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      name: j['name']?.toString() ?? '未命名',
-      baseUrl: j['baseUrl']?.toString() ?? 'https://api.openai.com/v1',
+      id: j['id']?.toString() ?? '',
+      name: j['name']?.toString() ?? '',
+      baseUrl: j['baseUrl']?.toString() ?? '',
       apiKey: j['apiKey']?.toString() ?? '',
-      model: j['model']?.toString() ?? 'gpt-4o-mini',
+      model: j['model']?.toString() ?? '',
       apiPath: j['apiPath']?.toString(),
-      useBearer: j['useBearer'] != false,
-      interfaceType: InterfaceType.fromCode(j['interfaceType']?.toString()),
-      cachedModels: models,
+      useBearer: j['useBearer'] as bool? ?? true,
+      interfaceType:
+          InterfaceType.fromCode(j['interfaceType']?.toString() ?? ''),
+      cachedModels: (j['cachedModels'] as List?)?.cast<String>() ?? const [],
+      thinkingEnabled: j['thinkingEnabled'] as bool? ?? false,
+      reasoningEffort: j['reasoningEffort']?.toString() ?? 'medium',
+      reasoningBudgetTokens: j['reasoningBudgetTokens'] as int? ?? 1024,
+      localModelPath: j['localModelPath']?.toString(),
     );
   }
 

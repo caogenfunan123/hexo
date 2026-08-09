@@ -1,143 +1,165 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hexo_app/services/static_blog_batch_publish_service.dart';
 import 'package:hexo_app/services/template_service.dart';
+import 'package:hexo_app/services/github_service.dart';
 import 'package:hexo_app/models/blog_post.dart';
 import 'package:hexo_app/models/repo_config.dart';
+import 'package:hexo_app/models/app_settings.dart';
 import 'package:hexo_app/core/site_manager.dart';
 
 void main() {
   group('StaticBlogBatchPublishService Tests', () {
     late StaticBlogBatchPublishService service;
-    late TemplateService templateService;
     late MockSiteManager siteManager;
-    late MockGitService gitService;
+    late MockGitHubService githubService;
 
     setUp(() {
-      templateService = TemplateService();
       siteManager = MockSiteManager();
-      gitService = MockGitService();
+      githubService = MockGitHubService();
       service = StaticBlogBatchPublishService(
-        settings: MockAppSettings(),
+        settings: const AppSettings(),
         siteManager: siteManager,
-        gitService: gitService,
-        templateService: templateService,
+        githubService: githubService,
+        templateService: TemplateService(),
       );
     });
 
-    test('Should convert content for Hexo framework', () async {
+    test('Should publish a post to all static repos', () async {
       final post = BlogPost(
-        id: '1',
         title: 'Test Post',
         contentMd: 'This is a test post content.',
-        date: DateTime.now(),
+        date: DateTime(2026, 1, 2, 10, 30),
         tags: ['test', 'demo'],
         categories: ['general'],
         status: 'publish',
+        slug: 'test-post',
       );
 
-      final repoConfig = RepoConfig(
-        id: '1',
-        name: 'Test Blog',
-        repoUrl: 'https://github.com/test/blog',
-        localPath: '/tmp/test-blog',
-        frameworkId: 'hexo',
-        isStatic: true,
+      bool completed = false;
+      String? message;
+      bool? success;
+      Map<String, dynamic>? results;
+
+      await service.batchPublishToStaticBlogs(
+        post,
+        onProgress: (_, __, ___) {},
+        onComplete: (s, m, r) {
+          completed = true;
+          success = s;
+          message = m;
+          results = r;
+        },
       );
 
-      final converted = await service._convertContentForSite(post, repoConfig, siteManager.getSite('1')!);
-
-      expect(converted, contains('---'));
-      expect(converted, contains('title: "Test Post"'));
-      expect(converted, contains('tags: [test, demo]'));
-      expect(converted, contains('categories: [general]'));
-      expect(converted, contains('status: publish'));
-      expect(converted, contains('This is a test post content.'));
+      expect(completed, isTrue);
+      expect(success, isTrue);
+      expect(githubService.writtenPaths.length, 2);
+      expect(githubService.writtenPaths.every((p) => p.endsWith('.md')), isTrue);
+      // Hexo 仓库的文章内容包含 frontmatter 与正文
+      final hexoContent = githubService.writtenContents.first;
+      expect(hexoContent, contains('---'));
+      expect(hexoContent, contains('title: "Test Post"'));
+      expect(hexoContent, contains('tags:'));
+      expect(hexoContent, contains('This is a test post content.'));
+      // 默认仓库排在前面
+      expect(results!.values.where((r) => r['success'] == true).length, 2);
     });
 
-    test('Should generate frontmatter correctly', () {
-      final frontmatter = {
-        'title': 'Test Post',
-        'date': '2023-01-01T00:00:00.000',
-        'tags': ['test', 'demo'],
-        'categories': ['general'],
-        'status': 'publish',
-      };
-
-      final result = service._generateFrontmatter(frontmatter);
-
-      expect(result, contains('---'));
-      expect(result, contains('title: "Test Post"'));
-      expect(result, contains('date: "2023-01-01T00:00:00.000"'));
-      expect(result, contains('tags: [test, demo]'));
-      expect(result, contains('categories: [general]'));
-      expect(result, contains('status: "publish"'));
-    });
-
-    test('Should create temporary file', () async {
-      final repoConfig = RepoConfig(
-        id: '1',
-        name: 'Test Blog',
-        repoUrl: 'https://github.com/test/blog',
-        localPath: '/tmp/test-blog',
-        frameworkId: 'hexo',
-        isStatic: true,
+    test('Should only publish to selected sites when specified', () async {
+      final post = BlogPost(
+        title: 'Selected Post',
+        contentMd: 'Content',
+        date: DateTime(2026, 1, 2),
+        status: 'publish',
       );
 
-      final tempFile = await service._createTempFile('test content', repoConfig);
-      
-      expect(tempFile, isNotNull);
-      expect(await tempFile.readAsString(), 'test content');
-      expect(tempFile.path, endsWith('.md'));
-      
-      // Clean up
-      await tempFile.delete();
+      bool? success;
+      await service.batchPublishToStaticBlogs(
+        post,
+        selectedSiteIds: ['2'],
+        onComplete: (s, m, r) => success = s,
+      );
+
+      expect(success, isTrue);
+      expect(githubService.writtenPaths, hasLength(1));
+    });
+
+    test('Should report failure when repo has no token', () async {
+      final post = BlogPost(
+        title: 'No Token Post',
+        contentMd: 'Content',
+        date: DateTime(2026, 1, 2),
+        status: 'publish',
+      );
+      siteManager.noTokenRepos = true;
+
+      bool? success;
+      Map<String, dynamic>? results;
+      await service.batchPublishToStaticBlogs(
+        post,
+        onComplete: (s, m, r) {
+          success = s;
+          results = r;
+        },
+      );
+
+      expect(success, isFalse);
+      expect(results!.values.where((r) => r['success'] == false).length, 2);
     });
   });
 }
 
-class MockSiteManager implements SiteManager {
-  @override
-  List<SiteIdentity> get staticSites => [
-    SiteIdentity(
-      id: '1',
-      name: 'Test Blog',
-      type: 'hexo',
-      isStatic: true,
-      siteUrl: 'https://test-blog.com',
-      previewUrl: 'https://preview.test-blog.com',
-    ),
-  ];
+class MockGitHubService extends GitHubService {
+  final List<String> writtenPaths = [];
+  final List<String> writtenContents = [];
 
   @override
-  SiteIdentity? get currentStaticRepo => staticSites.first;
-
-  @override
-  List<SiteIdentity> get dynamicSites => [];
-
-  @override
-  SiteIdentity? get currentDynamicSite => null;
-
-  SiteIdentity? getSite(String id) {
-    return staticSites.firstWhere((site) => site.id == id);
+  Future<Map<String, String>?> getRawFile(RepoConfig repo, String path) async {
+    return null;
   }
-}
 
-class MockAppSettings {
-  String get language => 'zh-CN';
-}
-
-class MockGitService {
-  Future<void> commitFile({
-    required RepoConfig repoConfig,
-    required String filePath,
-    required String commitMessage,
-    String authorName = 'Hexo Blog Manager',
-    String authorEmail = 'noreply@hexo.blog',
+  @override
+  Future<void> putRawFile(
+    RepoConfig repo,
+    String path,
+    String content, {
+    String? sha,
+    String? commitMessage,
   }) async {
-    // Mock implementation
+    writtenPaths.add(path);
+    writtenContents.add(content);
   }
+}
 
-  Future<void> push(RepoConfig repoConfig) async {
-    // Mock implementation
-  }
+class MockSiteManager extends SiteManager {
+  bool noTokenRepos = false;
+
+  MockSiteManager()
+      : super(
+          staticRepos: const [],
+          dynamicSites: const [],
+          appSettings: const AppSettings(),
+          activeSiteId: '1',
+        );
+
+  @override
+  List<RepoConfig> get staticRepos => [
+        RepoConfig(
+          id: '1',
+          name: 'Hexo Blog',
+          owner: 'owner',
+          repo: 'hexo-blog',
+          frameworkId: 'hexo',
+          token: noTokenRepos ? '' : 'token1',
+          isDefault: true,
+        ),
+        RepoConfig(
+          id: '2',
+          name: 'Hugo Blog',
+          owner: 'owner',
+          repo: 'hugo-blog',
+          frameworkId: 'hugo',
+          token: noTokenRepos ? '' : 'token2',
+        ),
+      ];
 }

@@ -20,14 +20,17 @@ import 'models/github_token_profile.dart';
 import 'models/repo_config.dart';
 import 'models/session_state.dart';
 import 'models/template_item.dart';
+import 'l10n/app_localizations.dart';
 import 'core/ai/ai_model_manager.dart';
 import 'core/ai/ai_request_dispatcher.dart';
+import 'core/ai/site_dispatcher_manager.dart';
 import 'core/ai/ai_self_checker.dart';
 import 'core/ai/ai_session_manager.dart';
 import 'core/ai/theme_migration_service.dart';
 import 'core/template_engine/template_resolver.dart';
 import 'screens/ai_article_chat_screen.dart';
 import 'screens/ai_audit_screen.dart';
+import 'screens/agent_workbench_screen.dart';
 import 'screens/ai_model_manager_screen.dart';
 import 'screens/ai_template_chat_screen.dart';
 import 'screens/ai_theme_chat_screen.dart';
@@ -158,6 +161,11 @@ class _HexoAppState extends State<HexoApp> {
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Hexo 写作',
+        locale: AppLanguage.fromCode(_settings.language).toLocale(),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
         theme: AppTheme.lightFromConfig(_settings.ui.designConfig),
         darkTheme: AppTheme.darkFromConfig(_settings.ui.designConfig),
         home: RootShell(
@@ -189,7 +197,12 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   late final imageService = ImageService(github);
   final aiService = AiService();
   late final aiModelManager = AiModelManager(storage);
-  late final aiDispatcher = AiRequestDispatcher(aiService, aiModelManager);
+  late final siteDispatcherManager =
+      SiteDispatcherManager(aiService, aiModelManager);
+
+  /// 当前站点对应的调度器（站点隔离：每个站点独立上下文）
+  AiRequestDispatcher get aiDispatcher =>
+      siteDispatcherManager.forSite(settings.effectiveActiveSiteId);
   late final themeMigrationService = ThemeMigrationService(aiService, github);
   late final aiSelfChecker = AiSelfChecker(aiService);
   final skillManager = SkillManager();
@@ -4392,6 +4405,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   _drawerAction(Icons.swap_horiz, 'AI批量迁移', _showMigrationTool),
                   const SizedBox(height: 8),
                   _drawerSection('AI 工具'),
+                  _drawerAction(Icons.assignment_outlined, 'Agent 任务工作台', _showAgentWorkbench),
                   _drawerAction(Icons.article_outlined, 'AI 博文创作', _showAiArticleChat),
                   _drawerAction(Icons.web_outlined, 'AI 页面创作', _showAiPageChat),
                   _drawerAction(Icons.palette_outlined, 'AI 主题开发', _showAiThemeChat),
@@ -5672,6 +5686,24 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     _navigateTo(10);
   }
 
+  void _showAgentWorkbench() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AgentWorkbenchScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          aiService: aiService,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          selfChecker: aiSelfChecker,
+          onSettingsChanged: _updateSettings,
+          gitHubService: github,
+          storageService: storage,
+        ),
+      ),
+    );
+  }
+
   void _showAiArticleChat() {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -5777,6 +5809,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           aiService: aiService,
           settings: settings,
           onSettingsChanged: _updateSettings,
+          storageService: storage,
         ),
       ),
     );

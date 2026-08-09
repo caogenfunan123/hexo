@@ -17,6 +17,8 @@ dependencies:
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.3.0
   path: ^1.8.0
+  # 本地 GGUF 模型推理（仅 Android/iOS，构建期自动编译 llama.cpp）
+  fcllama: ^0.0.3
   markdown: ^7.1.0
   # 桌面端专用
   window_manager: ^0.3.8

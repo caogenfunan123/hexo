@@ -273,13 +273,17 @@ class BlogSiteConfig {
   }
 
   /// 获取预览URL
-  /// 如果设置了自定义预览URL则使用，否则返回默认预览服务
-  String get previewUrlOrDefault {
+  /// 优先使用站点自定义预览URL，否则回退到全局设置的预览URL（[defaultPreviewUrl]）
+  /// [defaultPreviewUrl] 通常来自 AppSettings.ui.sitePreviewUrl
+  String previewUrlOrDefault([String defaultPreviewUrl = '']) {
     if (previewUrl?.isNotEmpty == true) {
       return previewUrl!;
     }
-    // 默认预览服务
-    return 'https://caogenfunan.me/preview/$id';
+    if (defaultPreviewUrl.isNotEmpty) {
+      return defaultPreviewUrl;
+    }
+    // 最后回退到站点自身 URL
+    return siteUrl;
   }
 
   @override

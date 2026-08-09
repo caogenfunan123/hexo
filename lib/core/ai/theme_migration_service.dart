@@ -10,7 +10,7 @@ import 'ai_session_manager.dart';
 class ThemeMigrationService {
   final AiService _aiService;
 
-  ThemeMigrationService(this._aiService, GitHubService _);
+  ThemeMigrationService(this._aiService, [GitHubService? _]);
 
   /// 分析主题源码，识别源框架
   Future<ThemeAnalysis> analyzeSource({

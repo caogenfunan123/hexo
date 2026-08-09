@@ -131,9 +131,9 @@ draft: {{#if draft}}true{{else}}false{{/if}}
     // 替换简单变量
     data.forEach((key, value) {
       if (value is List) {
-        content = content.replaceAll('{{{$key}}}', value.join(', '));
+        content = content.replaceAll('{{$key}}', value.join(', '));
       } else {
-        content = content.replaceAll('{{{$key}}}', value.toString());
+        content = content.replaceAll('{{$key}}', value.toString());
       }
     });
     

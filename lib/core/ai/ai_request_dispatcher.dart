@@ -11,6 +11,7 @@ import '../tools/tool_registry.dart';
 import 'ai_model_entity.dart';
 import 'ai_model_manager.dart';
 import 'ai_model_probe_service.dart';
+import 'ai_provider.dart';
 
 /// 模型切换事件（UI 提示条用）
 class SwitchEvent {
@@ -205,6 +206,13 @@ class AiRequestDispatcher {
             _chatHistory.add(Map<String, dynamic>.from(assistantMsg));
           }
 
+          if (response.reasoningContent != null &&
+              response.reasoningContent!.isNotEmpty) {
+            controller.add(StreamChunk(
+                content: '',
+                reasoningContent: response.reasoningContent));
+          }
+
           final toolExecutor = ToolExecutor();
           final results = await toolExecutor.executeAll(response.toolCalls!);
 
@@ -245,11 +253,14 @@ class AiRequestDispatcher {
 
         if (response.content != null && response.content!.isNotEmpty) {
           fullContent.write(response.content);
-          controller.add(StreamChunk(content: response.content!));
+          controller.add(StreamChunk(
+              content: response.content!,
+              reasoningContent: response.reasoningContent));
         } else if (response.hasToolCalls && toolRound >= maxToolRounds) {
           const tip = '已达最大工具调用轮次，未获得最终回复。';
           fullContent.write(tip);
-          controller.add(StreamChunk(content: tip));
+          controller.add(StreamChunk(
+              content: tip, reasoningContent: response.reasoningContent));
         }
 
         if (fullContent.isNotEmpty) {
@@ -344,6 +355,12 @@ class AiRequestDispatcher {
       stopwatch.elapsedMilliseconds,
       success,
     );
+    // 密钥池：成功清零失败计数，失败累计（达到阈值自动轮换）
+    if (success) {
+      unawaited(_modelManager.recordKeySuccess(model));
+    } else {
+      unawaited(_modelManager.recordKeyFailure(model));
+    }
   }
 
   /// 记录 token 用量（对标 MonkeyCode usage_capture）
@@ -454,6 +471,7 @@ class AiRequestDispatcher {
             stopwatch.elapsedMilliseconds,
             true,
           );
+          unawaited(_modelManager.recordKeySuccess(currentModel));
         }
 
         addAssistantMessage(result);
@@ -477,6 +495,7 @@ class AiRequestDispatcher {
             stopwatch.elapsedMilliseconds,
             false,
           );
+          unawaited(_modelManager.recordKeyFailure(currentModel));
         }
 
         // 判断是否可重试
@@ -546,11 +565,15 @@ class AiRequestDispatcher {
       id: m.modelId,
       name: m.modelName,
       baseUrl: m.apiBase,
-      apiKey: m.apiKey,
+      apiKey: m.effectiveKey,
       model: m.modelId,
       apiPath: m.apiPath,
       useBearer: m.useBearer,
       interfaceType: m.interfaceType,
+      thinkingEnabled: m.thinkingEnabled,
+      reasoningEffort: m.reasoningEffort,
+      reasoningBudgetTokens: m.reasoningBudgetTokens,
+      localModelPath: m.provider == ModelProvider.local ? m.apiBase : null,
     );
   }
 

@@ -6,7 +6,6 @@ import '../services/github_service.dart';
 import '../services/storage_service.dart';
 import '../services/webdav_service.dart';
 import '../l10n/app_localizations.dart';
-import '../l10n/app_localizations.dart';
 
 class SettingsScreen extends StatefulWidget {
   final AppSettings settings;
@@ -78,44 +77,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _updateLanguage(String languageCode) async {
     final newSettings = widget.settings.copyWith(language: languageCode);
     await widget.onSettingsChanged(newSettings);
-    widget.onShowToast('语言已更新');
+    widget.onShowToast(
+        AppLocalizations.ofContext(context).translate('language_updated'));
   }
 
   /// 获取语言显示名称
   String _getLanguageDisplayName(String languageCode) {
-    switch (languageCode) {
-      case 'zh-CN':
-        return '简体中文';
-      case 'en':
-        return 'English';
-      case 'ja':
-        return '日本語';
-      case 'ko':
-        return '한국어';
-      default:
-        return '简体中文';
-    }
+    return AppLanguage.fromCode(languageCode).displayName;
   }
 
   /// 显示语言选择器
   void _showLanguageSelector() {
-    final languages = [
-      {'code': 'zh-CN', 'name': '简体中文'},
-      {'code': 'en', 'name': 'English'},
-      {'code': 'ja', 'name': '日本語'},
-      {'code': 'ko', 'name': '한국어'},
-    ];
+    final l10n = AppLocalizations.ofContext(context);
+    final languages = AppLanguage.supportedLanguages;
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('选择语言'),
+        title: Text(l10n.translate('select_language')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: languages.map((lang) {
             return RadioListTile<String>(
-              title: Text(lang['name'] as String),
-              value: lang['code'] as String,
+              title: Text(lang.displayName),
+              value: lang.locale,
               groupValue: widget.settings.language,
               onChanged: (value) {
                 if (value != null) {
@@ -129,7 +114,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
+            child: Text(l10n.translate('cancel')),
           ),
         ],
       ),

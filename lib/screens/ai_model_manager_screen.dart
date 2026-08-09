@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import '../core/ai/ai_model_entity.dart';
 import '../core/ai/ai_model_manager.dart';
 import '../core/ai/ai_session_manager.dart';
 import '../models/ai_profile.dart';
 import '../models/app_settings.dart';
 import '../services/ai_service.dart';
+import '../services/gguf_model_service.dart';
+import '../services/storage_service.dart';
 import 'token_usage_screen.dart';
 
 /// 预置模型库
@@ -48,6 +51,7 @@ class AiModelManagerScreen extends StatefulWidget {
   final AiService aiService;
   final AppSettings settings;
   final Future<void> Function(AppSettings) onSettingsChanged;
+  final StorageService? storageService;
 
   const AiModelManagerScreen({
     super.key,
@@ -55,6 +59,7 @@ class AiModelManagerScreen extends StatefulWidget {
     required this.aiService,
     required this.settings,
     required this.onSettingsChanged,
+    this.storageService,
   });
 
   @override
@@ -680,6 +685,110 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
     }
   }
 
+  Future<void> _importLocalGguf() async {
+    final storage = widget.storageService;
+    if (storage == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('本地模型导入暂不可用（缺少存储服务）')),
+        );
+      }
+      return;
+    }
+    final res = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['gguf'],
+      allowMultiple: true,
+    );
+    if (res == null || res.files.isEmpty) return;
+    try {
+      final service = GgufModelService(storage, widget.modelManager);
+      var count = 0;
+      for (final f in res.files) {
+        final path = f.path;
+        if (path == null) continue;
+        await service.importGguf(path);
+        count++;
+      }
+      await _loadModels();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('成功导入 $count 个本地 GGUF 模型')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导入本地模型失败: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _manageKeyPool(AiModelEntity model) async {
+    final ctrl = TextEditingController(
+      text: [model.apiKey, ...model.keyPool].join('\n'),
+    );
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('密钥池 · ${model.modelName}'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('每行一个密钥，第一行为当前主密钥。'
+                  '请求连续失败 3 次后自动轮换到下一个密钥。'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: ctrl,
+                maxLines: 8,
+                minLines: 4,
+                decoration: const InputDecoration(
+                  hintText: 'sk-...\nsk-...',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final keys = ctrl.text
+        .split('\n')
+        .map((k) => k.trim())
+        .where((k) => k.isNotEmpty)
+        .toList();
+    try {
+      await widget.modelManager.setKeyPool(model, keys);
+      await _loadModels();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('密钥池已更新（共 ${keys.length} 个密钥）')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('更新密钥池失败: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _testModel(AiModelEntity model) async {
     setState(() => _loading = true);
     try {
@@ -732,6 +841,11 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                   MaterialPageRoute(builder: (_) => const TokenUsageScreen()),
                 );
               },
+            ),
+            IconButton(
+              icon: const Icon(Icons.memory_outlined),
+              tooltip: '导入本地 GGUF 模型',
+              onPressed: _importLocalGguf,
             ),
             IconButton(
               icon: const Icon(Icons.file_upload_outlined),
@@ -846,6 +960,25 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
+                                  if (m.hasKeyPool)
+                                    Padding(
+                                      padding:
+                                          const EdgeInsets.only(top: 4),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.vpn_key_outlined,
+                                              size: 12, color: cs.tertiary),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            '密钥池 ${m.allKeys.where((k) => k.isNotEmpty).length} 个 · 当前第${m.keyPoolIndex + 1}个'
+                                            '${m.consecutiveFailures > 0 ? ' · 连续失败${m.consecutiveFailures}次' : ''}',
+                                            style: TextStyle(
+                                                fontSize: 11,
+                                                color: cs.tertiary),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   if (stat != null && stat.totalCalls > 0)
                                     Padding(
                                       padding: const EdgeInsets.only(top: 4),
@@ -906,6 +1039,12 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                                           fontSize: 10,
                                           color: cs.onPrimaryContainer),
                                     ),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(Icons.vpn_key,
+                                        size: 18, color: cs.tertiary),
+                                    tooltip: '管理密钥池',
+                                    onPressed: () => _manageKeyPool(m),
                                   ),
                                   IconButton(
                                     icon: Icon(Icons.wifi_find,

@@ -7,9 +7,11 @@ import '../core/site_manager.dart';
 import '../models/blog_post.dart';
 import '../models/repo_config.dart';
 import '../models/blog_site_config.dart';
+import '../models/app_settings.dart';
 import '../screens/unified_remote_posts_screen.dart';
 import '../screens/static_blog_posts_screen.dart';
 import '../services/log_service.dart';
+import '../services/github_service.dart';
 
 /// 静态博客文章管理示例
 /// 
@@ -359,6 +361,8 @@ class _StaticBlogManagementExampleState extends State<StaticBlogManagementExampl
         builder: (context) => StaticBlogPostsScreen(
           repoConfig: repo,
           siteManager: widget.siteManager,
+          settings: const AppSettings(),
+          githubService: GitHubService(),
           logService: widget.logService,
           onOpenInEditor: (post) {
             _showSnackBar('打开文章: ${post.title}');

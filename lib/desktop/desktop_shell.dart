@@ -30,11 +30,13 @@ import '../models/session_state.dart';
 import '../models/template_item.dart';
 import '../core/ai/ai_model_manager.dart';
 import '../core/ai/ai_request_dispatcher.dart';
+import '../core/ai/site_dispatcher_manager.dart';
 import '../core/ai/ai_self_checker.dart';
 import '../core/ai/ai_session_manager.dart';
 import '../core/ai/theme_migration_service.dart';
 import '../core/template_engine/template_resolver.dart';
 import '../screens/ai_article_chat_screen.dart';
+import '../screens/agent_workbench_screen.dart';
 import '../screens/ai_audit_screen.dart';
 import '../screens/ai_app_design_screen.dart';
 import '../screens/ai_model_manager_screen.dart';
@@ -130,12 +132,14 @@ class DesktopShell extends StatefulWidget {
   final VoidCallback? onToggleAppTheme;
   final VoidCallback? onShortcutsChanged;
   final ValueChanged<DesignConfig>? onDesignConfigChanged;
+  final ValueChanged<String>? onLanguageChanged;
 
   const DesktopShell({
     super.key,
     this.onToggleAppTheme,
     this.onShortcutsChanged,
     this.onDesignConfigChanged,
+    this.onLanguageChanged,
   });
 
   @override
@@ -151,7 +155,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   late final imageService = ImageService(github);
   final aiService = AiService();
   late final aiModelManager = AiModelManager(storage);
-  late final aiDispatcher = AiRequestDispatcher(aiService, aiModelManager);
+  late final siteDispatcherManager =
+      SiteDispatcherManager(aiService, aiModelManager);
+
+  /// 当前站点对应的调度器（站点隔离：每个站点独立上下文）
+  AiRequestDispatcher get aiDispatcher =>
+      siteDispatcherManager.forSite(settings.effectiveActiveSiteId);
   late final themeMigrationService = ThemeMigrationService(aiService, github);
   late final aiSelfChecker = AiSelfChecker(aiService);
   final skillManager = SkillManager();
@@ -456,6 +465,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       templates = t;
       snippets = sn;
     });
+    // 初始语言同步给 DesktopApp
+    widget.onLanguageChanged?.call(s.language);
     _ui.setLoading(false);
     _updateSiteManager();
     if (s.restoreSession) {
@@ -1203,7 +1214,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   Future<void> _refreshRss() async {
-    final url = activeRepo?.siteUrl.isNotEmpty == true ? activeRepo!.siteUrl : (settings.sitePreviewUrl.isNotEmpty ? settings.sitePreviewUrl : '');
+    final url = settings.sitePreviewUrl.isNotEmpty
+        ? settings.sitePreviewUrl
+        : (activeRepo?.siteUrl.isNotEmpty == true ? activeRepo!.siteUrl : '');
     try { rssItems = await rssService.fetch(url); } catch (e) {
       debugPrint('RSS fetch error: $e');
     }
@@ -1223,6 +1236,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   Future<void> _updateSettings(AppSettings s) async {
     final oldDc = settings.ui.designConfig;
+    final oldLang = settings.language;
     setState(() => settings = s);
     _updateSiteManager();
     _startAutoSync();
@@ -1230,6 +1244,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     // 如果 DesignConfig 发生变化，通知 DesktopApp 重建主题
     if (widget.onDesignConfigChanged != null && oldDc != s.ui.designConfig) {
       widget.onDesignConfigChanged!(s.ui.designConfig);
+    }
+    // 如果语言发生变化，通知 DesktopApp 重建 MaterialApp locale
+    if (widget.onLanguageChanged != null && oldLang != s.language) {
+      widget.onLanguageChanged!(s.language);
     }
   }
 
@@ -3072,9 +3090,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   void _openPreviewExternal() {
-    final url = activeRepo?.siteUrl.isNotEmpty == true
-        ? activeRepo!.siteUrl
-        : (settings.sitePreviewUrl.isNotEmpty ? settings.sitePreviewUrl : '');
+    final url = settings.sitePreviewUrl.isNotEmpty
+        ? settings.sitePreviewUrl
+        : (activeRepo?.siteUrl.isNotEmpty == true ? activeRepo!.siteUrl : '');
     if (url.isEmpty) return;
     try {
       if (Platform.isWindows) {
@@ -4903,6 +4921,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // AI 功能入口
   // ============================================================
 
+  void _showAgentWorkbench() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => AgentWorkbenchScreen(
+        settings: settings, activeRepo: effectiveRepo, aiService: aiService,
+        modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
+        onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
+      ),
+    ));
+  }
+
   void _showAiArticleChat() {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => AiArticleChatScreen(
@@ -4972,7 +5000,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => AiModelManagerScreen(
         modelManager: aiModelManager, aiService: aiService, settings: settings,
-        onSettingsChanged: _updateSettings,
+        onSettingsChanged: _updateSettings, storageService: storage,
       ),
     ));
   }
@@ -6476,6 +6504,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       CommandItem(label: '插入表格', category: '编辑', shortcut: '', icon: Icons.table_chart, onExecute: () => _insertTable()),
       CommandItem(label: '文档格式化', category: '编辑', shortcut: '', icon: Icons.cleaning_services, onExecute: () => _formatDocument()),
       CommandItem(label: '粘贴图片', category: '编辑', shortcut: 'Ctrl+Shift+V', icon: Icons.image, onExecute: () => _pasteImageFromClipboard()),
+      CommandItem(label: 'Agent 任务工作台', category: 'AI', shortcut: '', icon: Icons.assignment_outlined, onExecute: () => _showAgentWorkbench()),
       CommandItem(label: 'AI 博文创作', category: 'AI', shortcut: '', icon: Icons.article_outlined, onExecute: () => _showAiArticleChat()),
       CommandItem(label: 'AI 站点巡检', category: 'AI', shortcut: '', icon: Icons.fact_check_outlined, onExecute: () => _showAiAudit()),
       CommandItem(label: 'AI 模板与博客框架', category: 'AI', shortcut: '', icon: Icons.view_quilt_outlined, onExecute: () => _showAiTemplateChat()),

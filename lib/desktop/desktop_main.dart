@@ -17,6 +17,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../theme/app_theme.dart';
 import '../models/design_config.dart';
+import '../l10n/app_localizations.dart';
 import '../controllers/controllers.dart';
 import 'desktop_shell.dart';
 
@@ -65,6 +66,9 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
   // ── 主题 ──
   ThemeMode _themeMode = ThemeMode.system;
   DesignConfig _designConfig = const DesignConfig();
+
+  // ── 语言 ──
+  Locale _locale = const Locale('zh');
 
   // ── 控制器（全局单例，注入到 Provider 树） ──
   final DocumentController _docCtrl = DocumentController();
@@ -492,6 +496,11 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
           child: MaterialApp(
             debugShowCheckedModeBanner: false,
             title: 'AI 博客编辑器',
+            locale: _locale,
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+            ],
+            supportedLocales: AppLocalizations.supportedLocales,
             theme: AppTheme.lightFromConfig(_designConfig),
             darkTheme: AppTheme.darkFromConfig(_designConfig),
             themeMode: _themeMode,
@@ -499,6 +508,11 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
               key: DesktopApp.shellKey,
               onToggleAppTheme: _toggleAppTheme,
               onShortcutsChanged: _rebuildShortcuts,
+              onLanguageChanged: (code) {
+                setState(() {
+                  _locale = AppLanguage.fromCode(code).toLocale();
+                });
+              },
               onDesignConfigChanged: (dc) {
                 setState(() => _designConfig = dc);
               },

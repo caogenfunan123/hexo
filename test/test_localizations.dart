@@ -4,15 +4,15 @@ import 'package:hexo_app/l10n/app_localizations.dart';
 void main() {
   group('AppLocalizations Tests', () {
     test('Should return correct display name for languages', () {
-      expect(AppLocalizations.fromCode('zh-CN')?.displayName, '简体中文');
-      expect(AppLocalizations.fromCode('en')?.displayName, 'English');
-      expect(AppLocalizations.fromCode('ja')?.displayName, '日本語');
-      expect(AppLocalizations.fromCode('ko')?.displayName, '한국어');
-      expect(AppLocalizations.fromCode(null)?.displayName, '简体中文');
+      expect(AppLanguage.fromCode('zh-CN').displayName, '简体中文');
+      expect(AppLanguage.fromCode('en').displayName, 'English');
+      expect(AppLanguage.fromCode('ja').displayName, '日本語');
+      expect(AppLanguage.fromCode('ko').displayName, '한국어');
+      expect(AppLanguage.fromCode(null).displayName, '简体中文');
     });
 
     test('Should return fallback to Chinese for unknown language codes', () {
-      expect(AppLocalizations.fromCode('unknown')?.displayName, '简体中文');
+      expect(AppLanguage.fromCode('unknown').displayName, '简体中文');
     });
 
     test('Should provide translations for all supported languages', () {

@@ -97,6 +97,63 @@ class AiModelManager {
     await saveAll(all);
   }
 
+  // ── 密钥池轮转 ──
+
+  /// 记录一次失败：连续失败达到阈值后轮转到下一个密钥，并清零计数。
+  Future<void> recordKeyFailure(AiModelEntity model) async {
+    if (!model.hasKeyPool) return;
+    final all = await loadAll();
+    final idx = all.indexWhere(
+        (m) => m.modelId == model.modelId && m.apiBase == model.apiBase);
+    if (idx < 0) return;
+    final failures = model.consecutiveFailures + 1;
+    if (failures >= AiModelEntity.keyFailThreshold) {
+      final keys = model.allKeys.where((k) => k.isNotEmpty).toList();
+      final nextIdx = keys.isEmpty
+          ? 0
+          : (model.keyPoolIndex + 1) % keys.length;
+      all[idx] = model.copyWith(
+        keyPoolIndex: nextIdx,
+        consecutiveFailures: 0,
+      );
+    } else {
+      all[idx] = model.copyWith(consecutiveFailures: failures);
+    }
+    await saveAll(all);
+  }
+
+  /// 记录一次成功，清零连续失败计数。
+  Future<void> recordKeySuccess(AiModelEntity model) async {
+    if (model.consecutiveFailures == 0) return;
+    final all = await loadAll();
+    final idx = all.indexWhere(
+        (m) => m.modelId == model.modelId && m.apiBase == model.apiBase);
+    if (idx < 0) return;
+    all[idx] = model.copyWith(consecutiveFailures: 0);
+    await saveAll(all);
+  }
+
+  /// 设置密钥池（主密钥保留在 [model.apiKey]，其余进入备用池）。
+  Future<void> setKeyPool(AiModelEntity model, List<String> keys) async {
+    final clean =
+        keys.map((k) => k.trim()).where((k) => k.isNotEmpty).toSet().toList();
+    String mainKey = model.apiKey;
+    if (clean.isNotEmpty && clean.first != mainKey) {
+      mainKey = clean.removeAt(0);
+    }
+    final all = await loadAll();
+    final idx = all.indexWhere(
+        (m) => m.modelId == model.modelId && m.apiBase == model.apiBase);
+    if (idx < 0) return;
+    all[idx] = model.copyWith(
+      apiKey: mainKey,
+      keyPool: clean,
+      keyPoolIndex: 0,
+      consecutiveFailures: 0,
+    );
+    await saveAll(all);
+  }
+
   Future<List<AiModelEntity>> exportModels() async {
     return await loadAll();
   }

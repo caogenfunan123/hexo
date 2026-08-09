@@ -394,7 +394,11 @@ class McpRuntime {
     try {
       final skillJson = jsonDecode(skill.skillContent!) as Map<String, dynamic>;
       final steps = skillJson['steps'] as List? ?? [];
-      final vars = inst.params?['vars'] as Map<String, dynamic>? ?? {};
+      final rawVars = inst.params?['vars'];
+      final vars = <String, String>{
+        if (rawVars is Map)
+          for (final e in rawVars.entries) e.key.toString(): e.value.toString(),
+      };
       final results = <String>[];
       String? rollbackStep;
 
@@ -411,7 +415,7 @@ class McpRuntime {
         String resolveVars(String text) {
           var resolved = text;
           for (final e in vars.entries) {
-            resolved = resolved.replaceAll('{{${e.key}}}', e.value?.toString() ?? '');
+            resolved = resolved.replaceAll('{{${e.key}}}', e.value.toString());
           }
           return resolved;
         }
@@ -426,10 +430,18 @@ class McpRuntime {
               if (mcpName.isEmpty) {
                 stepResult = '步骤 $stepId: mcp_call 缺少 mcp_name';
               } else {
+                // 将步骤参数（去除 mcp_name/name）合并进调用参数，
+                // 并先解析其中的 {{var}} 占位符
+                final callParams = <String, dynamic>{};
+                for (final e in stepParams.entries) {
+                  if (e.key == 'mcp_name' || e.key == 'name') continue;
+                  final v = e.value;
+                  callParams[e.key] = v is String ? resolveVars(v) : v;
+                }
                 final subInst = ParsedInstruction(
                   type: InstructionType.mcpCall,
                   rawContent: '【MCP_CALL】name=$mcpName',
-                  params: {'name': mcpName},
+                  params: {'name': mcpName, ...callParams},
                   jsonData: stepParams,
                 );
                 final mcpResult = await _handleMcpCall(subInst);

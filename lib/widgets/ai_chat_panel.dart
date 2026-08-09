@@ -198,7 +198,18 @@ class AiChatPanelState extends State<AiChatPanel> {
     } catch (e) { debugPrint('AiChat: message send failed: $e'); }
   }
 
-  String get _chatFileKey => 'ai_chat_${widget.sessionType.name}.json';
+  /// 对话历史文件键：按站点分区，避免多站点串场。
+  /// 无站点时回退到旧的全局文件名（兼容迁移）。
+  String get _chatFileKey {
+    final siteId = widget.settings.effectiveActiveSiteId;
+    if (siteId.isNotEmpty) {
+      return 'ai_chat_${siteId}_${widget.sessionType.name}.json';
+    }
+    return 'ai_chat_${widget.sessionType.name}.json';
+  }
+
+  /// 旧版全局历史文件键（用于数据迁移）
+  String get _legacyChatFileKey => 'ai_chat_${widget.sessionType.name}.json';
 
   /// 加载已保存的对话历史（含工具调用上下文）
   Future<void> _loadHistory() async {
@@ -210,7 +221,15 @@ class AiChatPanelState extends State<AiChatPanel> {
       return;
     }
     try {
-      final file = File('${(await storage.root).path}/$_chatFileKey');
+      final root = (await storage.root).path;
+      var file = File('$root/$_chatFileKey');
+      // 旧文件迁移：当前存在站点分区文件时优先；否则若存在旧全局文件则读取并迁移
+      if (!await file.exists() && _chatFileKey != _legacyChatFileKey) {
+        final legacy = File('$root/$_legacyChatFileKey');
+        if (await legacy.exists()) {
+          file = legacy;
+        }
+      }
       if (!await file.exists()) {
         if (widget.initialMessage != null) {
           _addSystemMessage(widget.initialMessage!);
@@ -281,7 +300,17 @@ class AiChatPanelState extends State<AiChatPanel> {
     final storage = widget.storageService;
     if (storage == null) return;
     try {
-      final file = File('${(await storage.root).path}/$_chatFileKey');
+      final root = (await storage.root).path;
+      // 若读取时迁移了旧文件，保存时写入站点分区新文件并移除旧文件
+      if (_chatFileKey != _legacyChatFileKey) {
+        final legacy = File('$root/$_legacyChatFileKey');
+        if (await legacy.exists()) {
+          try {
+            await legacy.delete();
+          } catch (_) {}
+        }
+      }
+      final file = File('$root/$_chatFileKey');
       final context = widget.dispatcher.chatHistory;
       final json = jsonEncode({'context': context});
       await file.writeAsString(json);
@@ -422,6 +451,21 @@ class AiChatPanelState extends State<AiChatPanel> {
             _finishStreaming();
             return;
           }
+          final reasoning = chunk.reasoningContent;
+          if (reasoning != null && reasoning.isNotEmpty) {
+            final idx = _streamingMsgIndex;
+            if (idx != null && idx < _messages.length) {
+              setState(() {
+                _messages[idx] = ChatMessage(
+                  role: 'assistant',
+                  content: _messages[idx].content,
+                  time: _messages[idx].time,
+                  reasoningContent: reasoning,
+                );
+              });
+              _scrollToBottom();
+            }
+          }
           if (chunk.content.isNotEmpty) {
             _streamBuffer.write(chunk.content);
             final idx = _streamingMsgIndex;
@@ -433,6 +477,7 @@ class AiChatPanelState extends State<AiChatPanel> {
                   role: 'assistant',
                   content: _streamBuffer.toString(),
                   time: _messages[idx].time,
+                  reasoningContent: _messages[idx].reasoningContent,
                 );
               });
               _scrollToBottom();
@@ -893,6 +938,7 @@ class AiChatPanelState extends State<AiChatPanel> {
                   aiService: widget.aiService,
                   settings: widget.settings,
                   onSettingsChanged: widget.onSettingsChanged,
+                  storageService: widget.storageService,
                 ),
               ),
             ).then((_) => _loadModels());
@@ -1090,6 +1136,45 @@ class AiChatPanelState extends State<AiChatPanel> {
     return _ThinkingDots(color: cs.primary);
   }
 
+  /// 推理过程渲染：可折叠的思考区块（与正文视觉区分）
+  Widget _buildReasoningBlock(String reasoning, ColorScheme cs) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.psychology_outlined, size: 14, color: cs.outline),
+              const SizedBox(width: 6),
+              Text('思考过程',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: cs.outline)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            reasoning,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontStyle: FontStyle.italic,
+              color: cs.outline,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 消息内容：支持流式光标
   Widget _buildMessageContent(ChatMessage msg, ColorScheme cs, bool isUser, bool isAssistant, bool isStreaming) {
     if (isStreaming && isAssistant) {
@@ -1143,8 +1228,16 @@ class AiChatPanelState extends State<AiChatPanel> {
               Text(msg.content, style: TextStyle(fontSize: 13, color: cs.outline))
             else if (isThinkingBubble)
               _buildThinkingAnimation(cs)
-            else
+            else ...[
+              // 👇 思考过程（推理内容独立渲染，与正文区分）
+              if (isAssistant &&
+                  msg.reasoningContent != null &&
+                  msg.reasoningContent!.isNotEmpty) ...[
+                _buildReasoningBlock(msg.reasoningContent!, cs),
+                const SizedBox(height: 8),
+              ],
               _buildMessageContent(msg, cs, isUser, isAssistant, isStreaming),
+            ],
             // 👇 工具调用卡片（结构化展示 assistant 的工具调用）
             if (isAssistant && msg.toolCalls != null && msg.toolCalls!.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -1394,6 +1487,7 @@ class ChatMessage {
   final DateTime time;
   final List<Map<String, dynamic>>? toolCalls;   // assistant 消息携带的工具调用
   final String? toolCallId;                      // tool 消息携带的调用 ID
+  final String? reasoningContent;                // assistant 消息的推理过程
 
   ChatMessage({
     required this.role,
@@ -1401,6 +1495,7 @@ class ChatMessage {
     DateTime? time,
     this.toolCalls,
     this.toolCallId,
+    this.reasoningContent,
   }) : time = time ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
@@ -1409,6 +1504,7 @@ class ChatMessage {
         'time': time.toIso8601String(),
         if (toolCalls != null) 'toolCalls': toolCalls,
         if (toolCallId != null) 'toolCallId': toolCallId,
+        if (reasoningContent != null) 'reasoningContent': reasoningContent,
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
@@ -1420,6 +1516,7 @@ class ChatMessage {
             .map((e) => Map<String, dynamic>.from(e))
             .toList(),
         toolCallId: j['toolCallId']?.toString(),
+        reasoningContent: j['reasoningContent']?.toString(),
       );
 
   /// 是否能在 UI 中显示（system / user / assistant 可显示，tool 不可显示）
@@ -1434,6 +1531,8 @@ class ChatMessage {
             .map((e) => Map<String, dynamic>.from(e))
             .toList(),
         toolCallId: m['tool_call_id']?.toString(),
+        reasoningContent: m['reasoning_content']?.toString() ??
+            m['reasoningContent']?.toString(),
       );
 }
 

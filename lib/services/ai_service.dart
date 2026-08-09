@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../core/ai/ai_provider.dart';
+import '../core/ai/local_llama_provider.dart';
 import '../core/tools/tool_entity.dart';
 import '../core/ai/ai_session_manager.dart';
 import '../models/ai_profile.dart';
@@ -16,12 +17,15 @@ class StreamChunk {
   final bool isDone;
   final String? finishReason;
   final List<Map<String, dynamic>>? toolCalls;
+  final String? reasoningContent;
 
-  const StreamChunk(
-      {required this.content,
-      this.isDone = false,
-      this.finishReason,
-      this.toolCalls});
+  const StreamChunk({
+    required this.content,
+    this.isDone = false,
+    this.finishReason,
+    this.toolCalls,
+    this.reasoningContent,
+  });
 }
 
 /// 拉取模型列表错误类型
@@ -98,8 +102,8 @@ class AiService {
     final path = (profile.apiPath == null || profile.apiPath!.trim().isEmpty)
         ? '/chat/completions'
         : (profile.apiPath!.startsWith('/')
-            ? profile.apiPath!.trim()
-            : '/${profile.apiPath!.trim()}');
+              ? profile.apiPath!.trim()
+              : '/${profile.apiPath!.trim()}');
     return _joinUrl(root, path);
   }
 
@@ -163,12 +167,39 @@ class AiService {
     );
   }
 
+  /// 本地 GGUF 模型生成（fcllama，完全离线，仅 Android）。
+  Future<String> _completeLocal(
+    AiProfile p, {
+    required String systemPrompt,
+    required String userPrompt,
+    double temperature = 0.7,
+  }) async {
+    final llama = LocalLlamaProvider.instance;
+    if (!llama.isAvailable) {
+      throw Exception('本地模型仅在 Android 设备上可用');
+    }
+    if (!llama.isModelLoaded) {
+      final modelPath = p.localModelPath;
+      if (modelPath == null || modelPath.isEmpty) {
+        throw Exception('本地模型未配置模型文件');
+      }
+      final err = await llama.loadModel(modelPath);
+      if (err != null) {
+        throw Exception('加载本地模型失败: $err');
+      }
+    }
+    return llama.complete(userPrompt, temperature: temperature);
+  }
+
   /// 拉取 OpenAI 兼容 /models 列表，适配各类中转站。
   /// 拉取模型列表
   ///
   /// [customModelsUrl] 可选，当服务商不遵循标准 /v1/models 时，传入完整地址
-  Future<List<String>> listModels(AppSettings settings,
-      {AiProfile? profile, String? customModelsUrl}) async {
+  Future<List<String>> listModels(
+    AppSettings settings, {
+    AiProfile? profile,
+    String? customModelsUrl,
+  }) async {
     final p = resolveProfile(settings, override: profile);
     if (p.apiKey.isEmpty) {
       throw Exception('请先填写 API Key');
@@ -214,27 +245,37 @@ class AiService {
       final list = ids.toList()..sort();
       if (list.isEmpty) {
         throw const FetchModelException(
-            FetchModelError.emptyList, '密钥未开通可用模型，请检查账号额度，或手动填写模型 ID');
+          FetchModelError.emptyList,
+          '密钥未开通可用模型，请检查账号额度，或手动填写模型 ID',
+        );
       }
       return list;
     } on TimeoutException {
       throw const FetchModelException(
-          FetchModelError.timeout, '拉取模型列表超时，请检查网络与 API 地址');
+        FetchModelError.timeout,
+        '拉取模型列表超时，请检查网络与 API 地址',
+      );
     } on FetchModelException {
       rethrow;
     } catch (e) {
       final msg = e.toString();
       if (msg.contains('HTTP 404') || msg.contains('404')) {
         throw const FetchModelException(
-            FetchModelError.notImplemented, '该服务商未实现标准模型列表接口，请手动填写模型 ID');
+          FetchModelError.notImplemented,
+          '该服务商未实现标准模型列表接口，请手动填写模型 ID',
+        );
       }
       if (msg.contains('HTTP 401') || msg.contains('401')) {
         throw const FetchModelException(
-            FetchModelError.tokenInvalid, 'API Token 鉴权失败，请核对密钥');
+          FetchModelError.tokenInvalid,
+          'API Token 鉴权失败，请核对密钥',
+        );
       }
       if (msg.contains('HTTP 403') || msg.contains('403')) {
         throw const FetchModelException(
-            FetchModelError.forbidden, '该密钥被禁止访问模型列表接口，请手动填写模型 ID');
+          FetchModelError.forbidden,
+          '该密钥被禁止访问模型列表接口，请手动填写模型 ID',
+        );
       }
       throw FetchModelException(FetchModelError.unknown, '获取模型列表失败（$url）: $e');
     }
@@ -248,6 +289,14 @@ class AiService {
     double temperature = 0.7,
   }) async {
     final p = resolveProfile(settings, override: profile);
+    if (p.isLocalModel) {
+      return _completeLocal(
+        p,
+        systemPrompt: systemPrompt,
+        userPrompt: userPrompt,
+        temperature: temperature,
+      );
+    }
     if (p.apiKey.isEmpty) {
       throw Exception('请先在设置中配置 AI 中转站并填写 API Key');
     }
@@ -256,28 +305,36 @@ class AiService {
     }
     switch (p.interfaceType) {
       case InterfaceType.anthropic:
-        return _completeAnthropic(p,
-            systemPrompt: systemPrompt,
-            userPrompt: userPrompt,
-            temperature: temperature);
+        return _completeAnthropic(
+          p,
+          systemPrompt: systemPrompt,
+          userPrompt: userPrompt,
+          temperature: temperature,
+        );
       case InterfaceType.openaiResponses:
-        return _completeOpenAIResponses(p,
-            systemPrompt: systemPrompt,
-            userPrompt: userPrompt,
-            temperature: temperature);
+        return _completeOpenAIResponses(
+          p,
+          systemPrompt: systemPrompt,
+          userPrompt: userPrompt,
+          temperature: temperature,
+        );
       case InterfaceType.openaiChat:
-        return _completeOpenAIChat(p,
-            systemPrompt: systemPrompt,
-            userPrompt: userPrompt,
-            temperature: temperature);
+        return _completeOpenAIChat(
+          p,
+          systemPrompt: systemPrompt,
+          userPrompt: userPrompt,
+          temperature: temperature,
+        );
     }
   }
 
   /// Anthropic Messages 协议请求
-  Future<String> _completeAnthropic(AiProfile p,
-      {required String systemPrompt,
-      required String userPrompt,
-      double temperature = 0.7}) async {
+  Future<String> _completeAnthropic(
+    AiProfile p, {
+    required String systemPrompt,
+    required String userPrompt,
+    double temperature = 0.7,
+  }) async {
     final url = _joinUrl(_normalizeBase(p.baseUrl), '/messages');
     final body = {
       'model': p.model,
@@ -288,8 +345,12 @@ class AiService {
         {'role': 'user', 'content': userPrompt},
       ],
     };
-    final text =
-        await _httpAnthropic(url, p.apiKey, body, useBearer: p.useBearer);
+    final text = await _httpAnthropic(
+      url,
+      p.apiKey,
+      body,
+      useBearer: p.useBearer,
+    );
     final data = jsonDecode(text);
     if (data is Map && data['content'] is List) {
       final buf = StringBuffer();
@@ -301,14 +362,17 @@ class AiService {
       if (buf.isNotEmpty) return buf.toString();
     }
     throw Exception(
-        'Anthropic 返回格式异常: ${text.length > 300 ? text.substring(0, 300) : text}');
+      'Anthropic 返回格式异常: ${text.length > 300 ? text.substring(0, 300) : text}',
+    );
   }
 
   /// OpenAI Responses 协议请求
-  Future<String> _completeOpenAIResponses(AiProfile p,
-      {required String systemPrompt,
-      required String userPrompt,
-      double temperature = 0.7}) async {
+  Future<String> _completeOpenAIResponses(
+    AiProfile p, {
+    required String systemPrompt,
+    required String userPrompt,
+    double temperature = 0.7,
+  }) async {
     final url = _joinUrl(_normalizeBase(p.baseUrl), '/responses');
     final body = {
       'model': p.model,
@@ -361,13 +425,17 @@ class AiService {
       }
     }
     throw Exception(
-        'OpenAI Responses 返回格式异常: ${text.length > 300 ? text.substring(0, 300) : text}');
+      'OpenAI Responses 返回格式异常: ${text.length > 300 ? text.substring(0, 300) : text}',
+    );
   }
 
   /// Anthropic 专用 HTTP 请求（x-api-key header）
   Future<String> _httpAnthropic(
-      String url, String apiKey, Map<String, dynamic> body,
-      {bool useBearer = false}) async {
+    String url,
+    String apiKey,
+    Map<String, dynamic> body, {
+    bool useBearer = false,
+  }) async {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 30);
     try {
@@ -398,10 +466,12 @@ class AiService {
     }
   }
 
-  Future<String> _completeOpenAIChat(AiProfile p,
-      {required String systemPrompt,
-      required String userPrompt,
-      double temperature = 0.7}) async {
+  Future<String> _completeOpenAIChat(
+    AiProfile p, {
+    required String systemPrompt,
+    required String userPrompt,
+    double temperature = 0.7,
+  }) async {
     final url = _chatUrl(p);
     final body = {
       'model': p.model,
@@ -451,7 +521,8 @@ class AiService {
       return data['output_text'].toString();
     }
     throw Exception(
-        'AI 返回格式异常: ${text.length > 300 ? text.substring(0, 300) : text}');
+      'AI 返回格式异常: ${text.length > 300 ? text.substring(0, 300) : text}',
+    );
   }
 
   /// 带工具调用的请求（支持 Function Calling）
@@ -466,6 +537,27 @@ class AiService {
     int toolRound = 0,
   }) async {
     final p = resolveProfile(settings, override: profile);
+    if (p.isLocalModel) {
+      // 本地模型当前不支持函数调用：将消息拼接为提示词后生成。
+      final buf = StringBuffer('$systemPrompt\n\n');
+      for (final m in messages) {
+        final role = m['role']?.toString() ?? 'user';
+        final content = _contentToText(m['content']);
+        buf.writeln('[$role]: $content');
+      }
+      final text = _completeLocal(
+        p,
+        systemPrompt: systemPrompt,
+        userPrompt: buf.toString(),
+        temperature: temperature,
+      );
+      return ToolCallResponse(
+        content: text,
+        allMessages: [
+          {'role': 'assistant', 'content': text},
+        ],
+      );
+    }
     if (p.apiKey.isEmpty) {
       throw Exception('请先在设置中配置 AI 中转站并填写 API Key');
     }
@@ -474,24 +566,30 @@ class AiService {
     }
     switch (p.interfaceType) {
       case InterfaceType.anthropic:
-        return _completeWithToolsAnthropic(p,
-            systemPrompt: systemPrompt,
-            messages: messages,
-            tools: tools,
-            temperature: temperature);
+        return _completeWithToolsAnthropic(
+          p,
+          systemPrompt: systemPrompt,
+          messages: messages,
+          tools: tools,
+          temperature: temperature,
+        );
       case InterfaceType.openaiResponses:
-        return _completeWithToolsOpenAIResponses(p,
-            systemPrompt: systemPrompt,
-            messages: messages,
-            tools: tools,
-            temperature: temperature);
+        return _completeWithToolsOpenAIResponses(
+          p,
+          systemPrompt: systemPrompt,
+          messages: messages,
+          tools: tools,
+          temperature: temperature,
+        );
       case InterfaceType.openaiChat:
-        return _completeWithToolsOpenAIChat(p,
-            systemPrompt: systemPrompt,
-            messages: messages,
-            tools: tools,
-            temperature: temperature,
-            toolRound: toolRound);
+        return _completeWithToolsOpenAIChat(
+          p,
+          systemPrompt: systemPrompt,
+          messages: messages,
+          tools: tools,
+          temperature: temperature,
+          toolRound: toolRound,
+        );
     }
   }
 
@@ -517,7 +615,8 @@ class AiService {
               final fn = tc['function'] as Map<String, dynamic>? ?? {};
               blocks.add({
                 'type': 'tool_use',
-                'id': tc['id']?.toString() ??
+                'id':
+                    tc['id']?.toString() ??
                     'toolu_${DateTime.now().microsecondsSinceEpoch}',
                 'name': fn['name']?.toString() ?? '',
                 'input': _parseJsonArg(fn['arguments']),
@@ -592,8 +691,10 @@ class AiService {
     for (final m in messages) {
       final role = m['role']?.toString() ?? 'user';
       if (role == 'system') {
-        input
-            .add({'role': 'system', 'content': m['content']?.toString() ?? ''});
+        input.add({
+          'role': 'system',
+          'content': m['content']?.toString() ?? '',
+        });
         continue;
       }
       if (role == 'assistant') {
@@ -655,12 +756,22 @@ class AiService {
       'system': systemPrompt,
       'messages': _toAnthropicMessages(messages),
     };
+    if (p.thinkingEnabled) {
+      body['thinking'] = {
+        'type': 'enabled',
+        'budget_tokens': p.reasoningBudgetTokens,
+      };
+    }
     if (tools != null && tools.isNotEmpty) {
       body['tools'] = toAnthropicTools(tools);
       body['tool_choice'] = {'type': 'auto'};
     }
-    final text =
-        await _httpAnthropic(url, p.apiKey, body, useBearer: p.useBearer);
+    final text = await _httpAnthropic(
+      url,
+      p.apiKey,
+      body,
+      useBearer: p.useBearer,
+    );
     final data = jsonDecode(text);
     if (data is! Map) throw Exception('Anthropic 返回格式异常');
     final usage = UsageParser.fromAnthropic(data);
@@ -668,6 +779,7 @@ class AiService {
     final content = data['content'] as List? ?? [];
     final allMessages = <Map<String, dynamic>>[];
     final textBuf = StringBuffer();
+    final reasoningBuf = StringBuffer();
     final toolCalls = <ToolCallRequest>[];
     final contentBlocks = <Map<String, dynamic>>[];
 
@@ -678,27 +790,37 @@ class AiService {
         final t = part['text']?.toString() ?? '';
         textBuf.write(t);
         contentBlocks.add({'type': 'text', 'text': t});
+      } else if (type == 'thinking' || type == 'redacted_thinking') {
+        final t = part['thinking']?.toString() ?? '';
+        if (t.isNotEmpty) {
+          reasoningBuf.write(t);
+        }
       } else if (type == 'tool_use') {
-        final tc =
-            ToolCallRequest.fromAnthropic(Map<String, dynamic>.from(part));
+        final tc = ToolCallRequest.fromAnthropic(
+          Map<String, dynamic>.from(part),
+        );
         toolCalls.add(tc);
         contentBlocks.add(Map<String, dynamic>.from(part));
       }
     }
+
+    final reasoningText = reasoningBuf.isEmpty ? null : reasoningBuf.toString();
 
     final assistantMsg = {
       'role': 'assistant',
       if (contentBlocks.isNotEmpty) 'content': contentBlocks,
       if (toolCalls.isNotEmpty)
         'tool_calls': toolCalls
-            .map((tc) => {
-                  'id': tc.callId,
-                  'type': 'function',
-                  'function': {
-                    'name': tc.toolId,
-                    'arguments': jsonEncode(tc.arguments)
-                  },
-                })
+            .map(
+              (tc) => {
+                'id': tc.callId,
+                'type': 'function',
+                'function': {
+                  'name': tc.toolId,
+                  'arguments': jsonEncode(tc.arguments),
+                },
+              },
+            )
             .toList(),
     };
     allMessages.addAll(messages);
@@ -706,15 +828,21 @@ class AiService {
 
     if (toolCalls.isNotEmpty) {
       return ToolCallResponse(
-          content: textBuf.isEmpty ? null : textBuf.toString(),
-          toolCalls: toolCalls,
-          allMessages: allMessages,
-          usage: usage);
+        content: textBuf.isEmpty ? null : textBuf.toString(),
+        toolCalls: toolCalls,
+        allMessages: allMessages,
+        usage: usage,
+        reasoningContent: reasoningText,
+      );
     }
     final textContent = textBuf.toString();
     if (textContent.isNotEmpty)
       return ToolCallResponse(
-          content: textContent, allMessages: allMessages, usage: usage);
+        content: textContent,
+        allMessages: allMessages,
+        usage: usage,
+        reasoningContent: reasoningText,
+      );
     throw Exception('Anthropic 返回空内容');
   }
 
@@ -734,6 +862,9 @@ class AiService {
       'max_output_tokens': 4096,
       'input': input,
     };
+    if (p.thinkingEnabled) {
+      body['reasoning'] = {'effort': p.reasoningEffort};
+    }
     if (tools != null && tools.isNotEmpty) {
       body['tools'] = tools.map((t) {
         final fn = t['function'] as Map<String, dynamic>? ?? {};
@@ -749,17 +880,19 @@ class AiService {
     }
 
     final text = await _http(
-        method: 'POST',
-        url: url,
-        apiKey: p.apiKey,
-        useBearer: p.useBearer,
-        body: body);
+      method: 'POST',
+      url: url,
+      apiKey: p.apiKey,
+      useBearer: p.useBearer,
+      body: body,
+    );
     final data = jsonDecode(text);
     if (data is! Map) throw Exception('OpenAI Responses 返回格式异常');
     final usage = UsageParser.fromOpenAiResponses(data);
 
     final outputs = data['output'] as List? ?? [];
     final textBuf = StringBuffer();
+    final reasoningBuf = StringBuffer();
     final toolCalls = <ToolCallRequest>[];
     final outBlocks = <Map<String, dynamic>>[];
 
@@ -774,45 +907,62 @@ class AiService {
               final t = part['text']?.toString() ?? '';
               textBuf.write(t);
               outBlocks.add({'type': 'output_text', 'text': t});
+            } else if (pt == 'reasoning') {
+              final t =
+                  part['summary']?.toString() ?? part['text']?.toString() ?? '';
+              if (t.isNotEmpty) reasoningBuf.write(t);
             }
           }
         }
+      } else if (type == 'reasoning') {
+        final t = out['summary']?.toString() ?? '';
+        if (t.isNotEmpty) reasoningBuf.write(t);
       } else if (type == 'function_call') {
         if (out['name']?.toString().isNotEmpty == true) {
-          toolCalls.add(ToolCallRequest.fromOpenAIResponses(
-              Map<String, dynamic>.from(out)));
+          toolCalls.add(
+            ToolCallRequest.fromOpenAIResponses(Map<String, dynamic>.from(out)),
+          );
         }
       }
     }
+    final reasoningText = reasoningBuf.isEmpty ? null : reasoningBuf.toString();
 
     final assistantMsg = <String, dynamic>{
       'role': 'assistant',
       if (textBuf.isNotEmpty) 'content': textBuf.toString(),
       if (toolCalls.isNotEmpty)
         'tool_calls': toolCalls
-            .map((tc) => {
-                  'id': tc.callId,
-                  'type': 'function',
-                  'function': {
-                    'name': tc.toolId,
-                    'arguments': jsonEncode(tc.arguments)
-                  },
-                })
+            .map(
+              (tc) => {
+                'id': tc.callId,
+                'type': 'function',
+                'function': {
+                  'name': tc.toolId,
+                  'arguments': jsonEncode(tc.arguments),
+                },
+              },
+            )
             .toList(),
     };
     final allMessages = <Map<String, dynamic>>[...messages, assistantMsg];
 
     if (toolCalls.isNotEmpty) {
       return ToolCallResponse(
-          content: textBuf.isEmpty ? null : textBuf.toString(),
-          toolCalls: toolCalls,
-          allMessages: allMessages,
-          usage: usage);
+        content: textBuf.isEmpty ? null : textBuf.toString(),
+        toolCalls: toolCalls,
+        allMessages: allMessages,
+        usage: usage,
+        reasoningContent: reasoningText,
+      );
     }
     final content = textBuf.toString();
     if (content.isNotEmpty)
       return ToolCallResponse(
-          content: content, allMessages: allMessages, usage: usage);
+        content: content,
+        allMessages: allMessages,
+        usage: usage,
+        reasoningContent: reasoningText,
+      );
     throw Exception('OpenAI Responses 返回空内容');
   }
 
@@ -840,6 +990,14 @@ class AiService {
       'stream': false,
     };
 
+    if (p.thinkingEnabled) {
+      if (VolcengineAdapter.isVolcengineArk(p.baseUrl)) {
+        // 火山方舟不支持 reasoning_effort 参数
+      } else {
+        body['reasoning_effort'] = p.reasoningEffort;
+      }
+    }
+
     if (tools != null && tools.isNotEmpty) {
       body['tools'] = tools;
       body['tool_choice'] = 'auto';
@@ -848,7 +1006,9 @@ class AiService {
     final isVolcengine = VolcengineAdapter.isVolcengineArk(p.baseUrl);
     final finalBody = isVolcengine
         ? VolcengineAdapter.transformRequest(
-            originBody: body, toolRound: toolRound)
+            originBody: body,
+            toolRound: toolRound,
+          )
         : body;
 
     final text = await _http(
@@ -879,16 +1039,21 @@ class AiService {
         return ToolCallResponse(content: choice['text'].toString());
       }
       throw Exception(
-          'AI 返回格式异常: ${text.length > 300 ? text.substring(0, 300) : text}');
+        'AI 返回格式异常: ${text.length > 300 ? text.substring(0, 300) : text}',
+      );
     }
 
     // 检查是否有 tool_calls
     final toolCallsRaw = message['tool_calls'];
+    final reasoning =
+        message['reasoning_content']?.toString() ??
+        message['reasoning']?.toString();
     if (toolCallsRaw is List && toolCallsRaw.isNotEmpty) {
       final toolCalls = toolCallsRaw
           .whereType<Map>()
           .map(
-              (tc) => ToolCallRequest.fromOpenAi(Map<String, dynamic>.from(tc)))
+            (tc) => ToolCallRequest.fromOpenAi(Map<String, dynamic>.from(tc)),
+          )
           .toList();
 
       // 将 assistant 消息（含 tool_calls）加入历史
@@ -899,6 +1064,7 @@ class AiService {
         toolCalls: toolCalls,
         allMessages: allMessages,
         usage: usage,
+        reasoningContent: reasoning,
       );
     }
 
@@ -906,14 +1072,22 @@ class AiService {
     final content = message['content']?.toString();
     if (content != null && content.isNotEmpty) {
       return ToolCallResponse(
-          content: content, allMessages: allMessages, usage: usage);
+        content: content,
+        allMessages: allMessages,
+        usage: usage,
+        reasoningContent: reasoning,
+      );
     }
 
     // 如果 content 为空且没有 tool_calls，可能是结束了
     final finishReason = choice['finish_reason']?.toString();
     if (finishReason == 'stop') {
       return ToolCallResponse(
-          content: '', allMessages: allMessages, usage: usage);
+        content: '',
+        allMessages: allMessages,
+        usage: usage,
+        reasoningContent: reasoning,
+      );
     }
 
     throw Exception('AI 返回空内容');
@@ -950,42 +1124,44 @@ class AiService {
   }
 
   Future<String> polish(AppSettings s, String content) => complete(
-        settings: s,
-        systemPrompt: AiSessionManager.polishPrompt,
-        userPrompt: content,
-      );
+    settings: s,
+    systemPrompt: AiSessionManager.polishPrompt,
+    userPrompt: content,
+  );
 
   Future<String> continueWrite(AppSettings s, String content) => complete(
-        settings: s,
-        systemPrompt: AiSessionManager.continueWritePrompt,
-        userPrompt: content,
-      );
+    settings: s,
+    systemPrompt: AiSessionManager.continueWritePrompt,
+    userPrompt: content,
+  );
 
   Future<String> summarize(AppSettings s, String content) => complete(
-        settings: s,
-        systemPrompt: AiSessionManager.summarizePrompt,
-        userPrompt: content,
-      );
+    settings: s,
+    systemPrompt: AiSessionManager.summarizePrompt,
+    userPrompt: content,
+  );
 
   Future<String> generateOutline(AppSettings s, String topic) => complete(
-        settings: s,
-        systemPrompt: AiSessionManager.generateOutlinePrompt,
-        userPrompt: topic,
-      );
+    settings: s,
+    systemPrompt: AiSessionManager.generateOutlinePrompt,
+    userPrompt: topic,
+  );
 
   Future<String> generateCode(AppSettings s, String prompt) => complete(
-        settings: s,
-        systemPrompt: AiSessionManager.generateCodePrompt,
-        userPrompt: prompt,
-      );
+    settings: s,
+    systemPrompt: AiSessionManager.generateCodePrompt,
+    userPrompt: prompt,
+  );
 
   Future<String> rewriteSelection(
-          AppSettings s, String selection, String instruction) =>
-      complete(
-        settings: s,
-        systemPrompt: AiSessionManager.rewriteSelectionPrompt,
-        userPrompt: '指令: $instruction\n\n原文:\n$selection',
-      );
+    AppSettings s,
+    String selection,
+    String instruction,
+  ) => complete(
+    settings: s,
+    systemPrompt: AiSessionManager.rewriteSelectionPrompt,
+    userPrompt: '指令: $instruction\n\n原文:\n$selection',
+  );
 
   /// AI 生成 FrontMatter 模板
   Future<String> generateTemplate({
@@ -1013,7 +1189,9 @@ class AiService {
       settings: settings,
       profile: profile,
       systemPrompt: AiSessionManager.migrateFrontMatterPrompt(
-          sourceFramework, targetFramework),
+        sourceFramework,
+        targetFramework,
+      ),
       userPrompt: '请转换以下 FrontMatter：\n\n$frontMatter',
     );
   }
@@ -1051,13 +1229,15 @@ class ToolCallResponse {
   final List<ToolCallRequest>? toolCalls;
   final List<Map<String, dynamic>> allMessages;
   final Map<String, dynamic>?
-      usage; // token 用量（inputTokens/outputTokens/cacheReadTokens...）
+  usage; // token 用量（inputTokens/outputTokens/cacheReadTokens...）
+  final String? reasoningContent; // 推理过程文本（thinking/reasoning_content）
 
   const ToolCallResponse({
     this.content,
     this.toolCalls,
     this.allMessages = const [],
     this.usage,
+    this.reasoningContent,
   });
 
   bool get hasToolCalls => toolCalls != null && toolCalls!.isNotEmpty;
