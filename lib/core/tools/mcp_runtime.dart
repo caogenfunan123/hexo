@@ -60,6 +60,8 @@ class McpRuntime {
         return await _handleNewMcp(inst);
       case InstructionType.newSkill:
         return _handleNewSkill(inst);
+      case InstructionType.newAgent:
+        return _handleNewAgent(inst);
       case InstructionType.mcpCall:
         return _handleMcpCall(inst);
       case InstructionType.skillRun:
@@ -147,6 +149,7 @@ class McpRuntime {
         name: displayName,
         description: description,
         endpoint: name,
+        customId: 'mcp_$name',
         parameters: paramsList,
         rawDefinition: jsonEncode(json),
         scope: scope,
@@ -222,6 +225,7 @@ class McpRuntime {
       await _skillManager.createSkill(
         name: displayName,
         description: description,
+        customId: name,
         content: const JsonEncoder.withIndent('  ').convert(json),
         scope: scope,
         source: ToolSource.ai,
@@ -240,6 +244,69 @@ class McpRuntime {
         error: e.toString(),
       );
     }
+  }
+
+  /// 处理【NEW_AGENT】—— 保存新的 Agent 脚本（以 Skill 形式持久化）
+  Future<McpRuntimeResult> _handleNewAgent(ParsedInstruction inst) async {
+    if (inst.jsonData == null) {
+      return const McpRuntimeResult(
+        success: false,
+        message: 'Agent JSON 解析失败',
+        error: 'JSON 格式无效',
+      );
+    }
+
+    final json = Map<String, dynamic>.from(inst.jsonData!);
+    final meta = json['meta'] as Map<String, dynamic>?;
+    if (meta == null) {
+      return const McpRuntimeResult(
+        success: false,
+        message: 'Agent 定义缺少 meta 字段',
+        error: '格式不符合规范',
+      );
+    }
+
+    final description = meta['description']?.toString() ?? '';
+    final systemPrompt = json['system_prompt']?.toString() ?? json['prompt']?.toString() ?? '';
+    final tools = (json['tools'] as List?)?.map((e) => e.toString()).where((e) => e.isNotEmpty).toList() ?? const <String>[];
+    final steps = (json['steps'] as List?)?.whereType<Map>().toList();
+
+    if (steps == null || steps.isEmpty) {
+      json['steps'] = [
+        {
+          'step_id': 'agent_bootstrap',
+          'type': 'ai_task',
+          'prompt': systemPrompt.isNotEmpty
+              ? systemPrompt
+              : '按 Agent 定义执行任务，并优先复用已保存的工具链。',
+        },
+      ];
+    }
+
+    if (description.isEmpty) {
+      meta['description'] = 'AI 自动生成的 Agent 脚本';
+    }
+    if (tools.isNotEmpty) {
+      json['agent_tools'] = tools;
+    }
+    meta['generated_from'] = 'agent';
+    json['meta'] = meta;
+
+    final normalized = ParsedInstruction(
+      type: InstructionType.newSkill,
+      rawContent: const JsonEncoder.withIndent('  ').convert(json),
+      jsonData: json,
+    );
+    final result = await _handleNewSkill(normalized);
+    if (!result.success) return result;
+    return McpRuntimeResult(
+      success: true,
+      message: result.message.replaceFirst('Skill', 'Agent'),
+      data: {
+        ...?result.data,
+        'agent_tools': tools,
+      },
+    );
   }
 
   /// 解析工具作用域：AI 标记 site_private 或 global_available=false 时为站点私有

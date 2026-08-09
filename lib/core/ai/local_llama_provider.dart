@@ -19,6 +19,7 @@ class LocalLlamaProvider {
   /// fcllama 上下文 id（double，>0 表示已成功 initContext）
   double? _contextId;
   String? _loadedModelPath;
+  int? _loadedContextSize;
   String? _lastError;
   Future<void> _completionQueue = Future<void>.value();
 
@@ -52,10 +53,14 @@ class LocalLlamaProvider {
       return _lastError;
     }
     final normalizedPath = modelPath.trim();
-    if (_contextId != null && _loadedModelPath == normalizedPath) {
+    if (_contextId != null &&
+        _loadedModelPath == normalizedPath &&
+        _loadedContextSize == contextSize) {
       return null;
     }
-    if (_contextId != null && _loadedModelPath != normalizedPath) {
+    if (_contextId != null &&
+        (_loadedModelPath != normalizedPath ||
+            _loadedContextSize != contextSize)) {
       await unload();
     }
     try {
@@ -76,6 +81,7 @@ class LocalLlamaProvider {
       }
       _contextId = id;
       _loadedModelPath = normalizedPath;
+      _loadedContextSize = contextSize;
       return null;
     } catch (e) {
       _lastError = '加载本地模型失败: $e';
@@ -172,6 +178,7 @@ class LocalLlamaProvider {
     final id = _contextId;
     _contextId = null;
     _loadedModelPath = null;
+    _loadedContextSize = null;
     if (id != null) {
       try {
         await FCllama.instance()?.releaseContext(id);

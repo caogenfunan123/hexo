@@ -46,6 +46,7 @@ class SkillManager {
   Future<ToolEntity> createSkill({
     required String name,
     required String description,
+    String? customId,
     String? content,
     List<ToolParam> parameters = const [],
     ToolScope scope = ToolScope.global,
@@ -54,7 +55,9 @@ class SkillManager {
     String? riskLevel,
   }) async {
     final now = DateTime.now();
-    final id = 'skill_${now.millisecondsSinceEpoch}';
+    final id = customId?.trim().isNotEmpty == true
+        ? customId!.trim()
+        : 'skill_${now.millisecondsSinceEpoch}';
     final skill = ToolEntity(
       id: id,
       name: name,
@@ -120,6 +123,7 @@ class SkillManager {
     required String name,
     required String description,
     required String endpoint,
+    String? customId,
     List<ToolParam> parameters = const [],
     String? rawDefinition,
     ToolScope scope = ToolScope.global,
@@ -128,7 +132,9 @@ class SkillManager {
     String? riskLevel,
   }) async {
     final now = DateTime.now();
-    final id = 'mcp_${now.millisecondsSinceEpoch}';
+    final id = customId?.trim().isNotEmpty == true
+        ? customId!.trim()
+        : 'mcp_${now.millisecondsSinceEpoch}';
     final tool = ToolEntity(
       id: id,
       name: name,

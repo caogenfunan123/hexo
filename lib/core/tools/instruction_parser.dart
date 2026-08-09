@@ -23,6 +23,7 @@ enum InstructionType {
   none,
   newMcp,        // 【NEW_MCP】
   newSkill,      // 【NEW_SKILL】
+  newAgent,      // 【NEW_AGENT】
   mcpCall,       // 【MCP_CALL】
   skillRun,      // 【SKILL_RUN】
   webSearch,     // 【联网搜索】
@@ -44,6 +45,12 @@ class InstructionParser {
   /// 匹配 【NEW_SKILL】 + JSON代码块
   static final RegExp _newSkillRegex = RegExp(
     r'【NEW_SKILL】\s*```json\s*([\s\S]*?)```',
+    multiLine: true,
+  );
+
+  /// 匹配 【NEW_AGENT】 + JSON代码块
+  static final RegExp _newAgentRegex = RegExp(
+    r'【NEW_AGENT】\s*```json\s*([\s\S]*?)```',
     multiLine: true,
   );
 
@@ -104,6 +111,20 @@ class InstructionParser {
       } catch (_) {}
       instructions.add(ParsedInstruction(
         type: InstructionType.newSkill,
+        rawContent: jsonStr,
+        jsonData: jsonData,
+      ));
+    }
+
+    // NEW_AGENT
+    for (final m in _newAgentRegex.allMatches(text)) {
+      final jsonStr = m.group(1)?.trim() ?? '';
+      Map<String, dynamic>? jsonData;
+      try {
+        jsonData = jsonDecode(jsonStr) as Map<String, dynamic>;
+      } catch (_) {}
+      instructions.add(ParsedInstruction(
+        type: InstructionType.newAgent,
         rawContent: jsonStr,
         jsonData: jsonData,
       ));
@@ -187,6 +208,7 @@ class InstructionParser {
   static bool hasInstructions(String text) {
     return _newMcpRegex.hasMatch(text) ||
         _newSkillRegex.hasMatch(text) ||
+        _newAgentRegex.hasMatch(text) ||
         _mcpCallRegex.hasMatch(text) ||
         _skillRunRegex.hasMatch(text) ||
         _webSearchRegex.hasMatch(text) ||
@@ -200,6 +222,7 @@ class InstructionParser {
     var result = text;
     result = result.replaceAll(_newMcpRegex, '');
     result = result.replaceAll(_newSkillRegex, '');
+    result = result.replaceAll(_newAgentRegex, '');
     result = result.replaceAll(_mcpCallRegex, '');
     result = result.replaceAll(_skillRunRegex, '');
     result = result.replaceAll(_webSearchRegex, '');

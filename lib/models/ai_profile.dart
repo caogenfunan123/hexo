@@ -14,6 +14,7 @@ class AiProfile {
   final String reasoningEffort;
   final int reasoningBudgetTokens;
   final String? localModelPath;
+  final int? localContextSize;
 
   const AiProfile({
     required this.id,
@@ -29,6 +30,7 @@ class AiProfile {
     this.reasoningEffort = 'medium',
     this.reasoningBudgetTokens = 1024,
     this.localModelPath,
+    this.localContextSize,
   });
 
   bool get isLocalModel => localModelPath != null && localModelPath!.isNotEmpty;
@@ -47,6 +49,7 @@ class AiProfile {
     String? reasoningEffort,
     int? reasoningBudgetTokens,
     String? localModelPath,
+    int? localContextSize,
     bool clearLocalModel = false,
   }) {
     return AiProfile(
@@ -65,6 +68,7 @@ class AiProfile {
           reasoningBudgetTokens ?? this.reasoningBudgetTokens,
       localModelPath:
           clearLocalModel ? null : (localModelPath ?? this.localModelPath),
+      localContextSize: localContextSize ?? this.localContextSize,
     );
   }
 
@@ -82,6 +86,7 @@ class AiProfile {
         'reasoningEffort': reasoningEffort,
         'reasoningBudgetTokens': reasoningBudgetTokens,
         'localModelPath': localModelPath,
+        'localContextSize': localContextSize,
       };
 
   factory AiProfile.fromJson(Map<String, dynamic> j) {
@@ -100,6 +105,7 @@ class AiProfile {
       reasoningEffort: j['reasoningEffort']?.toString() ?? 'medium',
       reasoningBudgetTokens: j['reasoningBudgetTokens'] as int? ?? 1024,
       localModelPath: j['localModelPath']?.toString(),
+      localContextSize: (j['localContextSize'] as num?)?.toInt(),
     );
   }
 

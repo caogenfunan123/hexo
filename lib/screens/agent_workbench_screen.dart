@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import '../core/ai/ai_request_dispatcher.dart';
 import '../core/ai/ai_self_checker.dart';
 import '../core/ai/ai_session_manager.dart';
 import '../core/task/task_model.dart';
+import '../core/tools/tool_entity.dart';
 import '../models/app_settings.dart';
 import '../models/repo_config.dart';
 import '../services/ai_service.dart';
@@ -122,7 +124,18 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
 
   /// 保存任务（断点）
   Future<void> _saveTask(AgentTask task) async {
-    await _taskRepo.saveTask(task);
+    final current = task.copyWith(
+      title: _titleCtrl.text.trim().isEmpty ? task.title : _titleCtrl.text.trim(),
+      objective:
+          _objectiveCtrl.text.trim().isEmpty ? task.objective : _objectiveCtrl.text.trim(),
+      attachmentPaths: List<String>.from(_attachments),
+      workspacePath: widget.activeRepo?.fullName ?? task.workspacePath,
+      messages: List<Map<String, dynamic>>.from(widget.dispatcher.chatHistory),
+    );
+    await _taskRepo.saveTask(current);
+    if (mounted && _task?.id == current.id) {
+      setState(() => _task = current);
+    }
     _loadRecentTasks();
   }
 
@@ -130,8 +143,102 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
   Future<void> _markTaskDone(AgentTask task) async {
     final updated = task.copyWith(status: 'done');
     setState(() => _task = updated);
-    await _taskRepo.saveTask(updated);
-    _loadRecentTasks();
+    await _saveTask(updated);
+  }
+
+  void _recordToolExecutions(
+    List<ToolCallRequest> requests,
+    List<ToolCallResult> results,
+  ) {
+    final current = _task;
+    if (current == null || requests.isEmpty || results.isEmpty) return;
+    final records = List<ToolExecRecord>.from(current.toolRecords);
+    for (var i = 0; i < requests.length; i++) {
+      final request = requests[i];
+      final result = i < results.length ? results[i] : null;
+      final argsSummary = request.arguments.isEmpty
+          ? '{}'
+          : const JsonEncoder.withIndent('  ').convert(request.arguments);
+      final resultSummary = result == null
+          ? '工具未返回结果'
+          : result.success
+              ? _truncateText(result.content)
+              : _truncateText(result.error ?? result.content);
+      records.add(
+        ToolExecRecord(
+          toolName: request.toolId,
+          argsSummary: argsSummary,
+          resultSummary: resultSummary,
+          durationMs: result?.durationMs ?? 0,
+          status: result?.success == false ? 'failed' : 'success',
+        ),
+      );
+    }
+    final updated = current.copyWith(toolRecords: records);
+    setState(() => _task = updated);
+    _saveTask(updated);
+  }
+
+  void _recordParsedFileOps(List<ParsedFileOp> files) {
+    final current = _task;
+    if (current == null || files.isEmpty) return;
+    final changes = List<FileChange>.from(current.fileChanges);
+    for (final file in files) {
+      _upsertFileChange(
+        changes,
+        FileChange(
+          path: file.path,
+          op: 'modify',
+          diffPreview: _buildFilePreview(file),
+        ),
+      );
+    }
+    final updated = current.copyWith(fileChanges: changes);
+    setState(() => _task = updated);
+    _saveTask(updated);
+  }
+
+  void _recordWrittenFiles(List<ParsedFileOp> files) {
+    final current = _task;
+    if (current == null || files.isEmpty) return;
+    final changes = List<FileChange>.from(current.fileChanges);
+    for (final file in files) {
+      final op = file.written ? 'modify' : 'failed';
+      final preview = file.written
+          ? _buildFilePreview(file)
+          : '${_buildFilePreview(file)}\n\n写入失败: ${file.writeError ?? '未知错误'}';
+      _upsertFileChange(
+        changes,
+        FileChange(path: file.path, op: op, diffPreview: preview),
+      );
+    }
+    final updated = current.copyWith(fileChanges: changes);
+    setState(() => _task = updated);
+    _saveTask(updated);
+  }
+
+  void _upsertFileChange(List<FileChange> changes, FileChange change) {
+    final index = changes.lastIndexWhere((item) => item.path == change.path);
+    if (index >= 0) {
+      changes[index] = change;
+    } else {
+      changes.add(change);
+    }
+  }
+
+  String _buildFilePreview(ParsedFileOp file) {
+    final content = file.content.trim();
+    if (content.isEmpty) return '${file.path}\n<empty>';
+    final lines = content.split('\n');
+    final previewLines = lines.take(12).join('\n');
+    final suffix = lines.length > 12 ? '\n...' : '';
+    return '${file.path}\n$previewLines$suffix';
+  }
+
+  String _truncateText(String text, {int max = 300}) {
+    final normalized = text.trim();
+    if (normalized.length <= max) return normalized;
+    return '${normalized.substring(0, max)}...';
   }
 
   /// 选择附件（复制到任务附件目录）
@@ -603,6 +710,9 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
           '${repo != null ? '工作区：${repo.owner}/${repo.repo}（${fw ?? "未知框架"}）\n' : ''}'
           '请开始执行任务，可调用工具读取仓库、分析内容并产出结果。',
       onSettingsChanged: widget.onSettingsChanged,
+      onToolsExecuted: _recordToolExecutions,
+      onFileOpsParsed: _recordParsedFileOps,
+      onFilesWritten: _recordWrittenFiles,
     );
   }
 }

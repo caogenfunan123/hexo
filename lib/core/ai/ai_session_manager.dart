@@ -134,10 +134,8 @@ class AiSessionManager {
 1. 你可以根据用户需求，自主设计、编写【MCP工具定义】或者【Skill自动化脚本】
 - MCP：结构化工具调用协议，用于文件操作、Git操作、仓库处理、批量任务
 - Skill：可复用自动化任务脚本，一连串固定操作封装
-2. 当你设计出可用MCP/Skill之后，主动询问用户：
-"是否将该工具持久保存至本地工具库，后续所有会话可以直接调用？"
-3. 用户确认保存后，标准化输出工具完整定义，程序自动入库；
-后续任意会话，你可以直接调用库内已保存工具，无需重复从头编写。
+2. 当你设计出可用 MCP/Skill/Agent 之后，直接输出标准化定义并自动入库。
+3. 工具校验通过后程序立即保存；后续任意会话，你可以直接调用库内已保存工具，无需重复从头编写。
 4. 调用已有工具格式：
 【调用工具】工具名称 | 参数xxx
 禁止重复实现已存在工具，优先复用本地工具库资源。
@@ -148,7 +146,9 @@ class AiSessionManager {
 - 高危操作自动设置 need_confirm=true
 - 重复执行超过两次的任务，主动提议封装Skill
 - 调用工具严格使用【MCP_CALL】【SKILL_RUN】固定标记，方便程序解析
+- 创建可复用代理时使用【NEW_AGENT】输出标准化 Agent 脚本，程序按可执行流水线保存
 - Skill编写必须设计失败兜底策略，重要操作前置快照，支持回滚
+- 缺少工具、适配器或模板时，优先从公开 Git 仓库拉取标准模板，再生成适配后的 MCP / Skill / Agent
 
 ### MCP 标准 JSON Schema（必须遵守）
 ```json
@@ -184,7 +184,7 @@ class AiSessionManager {
 ```json
 （粘贴完整JSON）
 ```
-是否保存该MCP至本地工具库？保存后所有会话均可直接调用。
+程序会在校验通过后自动保存该 MCP 到本地工具库。
 
 ### 调用已有MCP格式
 【MCP_CALL】name=工具名;params={"key":"value"}
@@ -216,7 +216,26 @@ class AiSessionManager {
 ```json
 （完整skill json内容）
 ```
-是否持久保存这条自动化Skill到工具库？
+
+### AI创建Agent标准输出格式
+【NEW_AGENT】
+```json
+{
+  "meta": {
+    "name": "agent_unique_id",
+    "display_name": "代理名称",
+    "description": "代理职责说明",
+    "version": "1.0.0",
+    "risk_level": "low|middle|high"
+  },
+  "system_prompt": "代理执行准则",
+  "tools": ["web_search", "git_clone", "file_write"],
+  "steps": [
+    {"step_id": "step_1", "type": "ai_task", "prompt": "执行初始化分析"}
+  ]
+}
+```
+程序会在校验通过后自动保存该 Skill 或 Agent 到工具库。
 
 ### 启动Skill调用格式
 【SKILL_RUN】skill_id=工具ID;vars={"key":"value"}
@@ -398,13 +417,13 @@ Skill 脚本中的步骤现在可以实际执行：
 6. 禁止向对话输出任何密钥明文：Git Token、WebDAV 密钥、WordPress 应用密码、Ghost Admin API Key、Typecho Token 一律不得出现在回复、代码、工具参数或日志中。鉴权由系统在服务层自动注入，你只需要调用工具，无需也不得要求用户提供或复述令牌。
 
 ## 七、用户引导策略
-如果你发现重复执行同类任务3次以上，主动建议：
-"该操作重复度很高，我可以封装为Skill保存到工具库，后续一键执行，是否创建？"
+如果你发现重复执行同类任务3次以上，直接封装为可复用 Skill 或 Agent，并在回复中说明已生成并保存。
 
 ## 八、程序指令拦截规则（你只需按格式输出，程序自动解析执行）
 程序会通过正则捕获以下指令并自动执行：
 - 【NEW_MCP】+ JSON代码块 → 程序解析并保存MCP工具
 - 【NEW_SKILL】+ JSON代码块 → 程序解析并保存Skill脚本
+- 【NEW_AGENT】+ JSON代码块 → 程序解析并保存Agent脚本
 - 【MCP_CALL】name=xxx;params={...} → 程序执行MCP工具
 - 【SKILL_RUN】skill_id=xxx;vars={...} → 程序启动Skill流水线
 - 【联网搜索】关键词 → 程序执行网页搜索并返回结果

@@ -49,11 +49,13 @@ class GgufModelService {
     var added = 0;
     for (final f in files) {
       final modelId = 'local:${f.path.split('/').last.split('\\').last}';
+      final contextLimit = await getContextSize(modelId);
       final idx = all.indexWhere((m) => m.modelId == modelId);
       if (idx >= 0) {
         all[idx] = all[idx].copyWith(
           modelName: _displayName(f.path),
           apiBase: f.path,
+          contextLimit: contextLimit,
         );
       } else {
         all.add(AiModelEntity(
@@ -63,7 +65,7 @@ class GgufModelService {
           apiKey: '',
           provider: ModelProvider.local,
           group: 'general',
-          contextLimit: 0,
+          contextLimit: contextLimit,
           priority: 0,
         ));
         added++;
@@ -88,12 +90,14 @@ class GgufModelService {
       await src.copy(dest.path);
     }
     final modelId = 'local:$fileName';
+    final contextLimit = await getContextSize(modelId);
     final all = await _modelManager.loadAll();
     final idx = all.indexWhere((m) => m.modelId == modelId);
     if (idx >= 0) {
       all[idx] = all[idx].copyWith(
         modelName: _displayName(dest.path),
         apiBase: dest.path,
+        contextLimit: contextLimit,
       );
     } else {
       all.add(AiModelEntity(
@@ -103,7 +107,7 @@ class GgufModelService {
         apiKey: '',
         provider: ModelProvider.local,
         group: 'general',
-        contextLimit: 0,
+        contextLimit: contextLimit,
         priority: 0,
       ));
     }

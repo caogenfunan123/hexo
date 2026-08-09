@@ -282,11 +282,31 @@ class ToolCallResult {
   final String content;
   final bool success;
   final String? error;
+  final int durationMs;
 
   const ToolCallResult({
     required this.toolId,
     required this.content,
     this.success = true,
     this.error,
+    this.durationMs = 0,
   });
+
+  ToolCallResult copyWith({
+    String? toolId,
+    String? content,
+    bool? success,
+    Object? error = _toolResultSentinel,
+    int? durationMs,
+  }) {
+    return ToolCallResult(
+      toolId: toolId ?? this.toolId,
+      content: content ?? this.content,
+      success: success ?? this.success,
+      error: identical(error, _toolResultSentinel) ? this.error : error as String?,
+      durationMs: durationMs ?? this.durationMs,
+    );
+  }
 }
+
+const _toolResultSentinel = Object();

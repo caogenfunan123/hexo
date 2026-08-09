@@ -285,8 +285,8 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
             title: const Text('选择要导入的模型'),
             content: SizedBox(
               width: 450,
+              height: 520,
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
                     controller: searchCtrl,
@@ -725,6 +725,66 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
     }
   }
 
+  Future<void> _editLocalContextSize(AiModelEntity model) async {
+    final storage = widget.storageService;
+    if (storage == null || model.provider != ModelProvider.local) return;
+    final ctrl = TextEditingController(
+      text: (model.contextLimit > 0 ? model.contextLimit : 4096).toString(),
+    );
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('上下文长度 · ${model.modelName}'),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Context Size',
+            hintText: '4096',
+            helperText: '建议 2048-8192，数值越大占用内存越高。',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final value = int.tryParse(ctrl.text.trim());
+    if (value == null || value < 512) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('上下文长度需为不小于 512 的整数')),
+        );
+      }
+      return;
+    }
+    try {
+      final service = GgufModelService(storage, widget.modelManager);
+      await service.setContextSize(model.modelId, value);
+      await widget.modelManager.updateModel(model.copyWith(contextLimit: value));
+      await _loadModels();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${model.modelName} 上下文长度已更新为 $value')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('更新上下文长度失败: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _manageKeyPool(AiModelEntity model) async {
     final ctrl = TextEditingController(
       text: [model.apiKey, ...model.keyPool].join('\n'),
@@ -807,6 +867,10 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
           interfaceType: model.interfaceType,
           localModelPath:
               model.provider == ModelProvider.local ? model.apiBase : null,
+          localContextSize:
+              model.provider == ModelProvider.local && model.contextLimit > 0
+                  ? model.contextLimit
+                  : null,
         ),
       );
       if (mounted) {
@@ -1023,6 +1087,23 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                                         ],
                                       ),
                                     ),
+                                  if (m.provider == ModelProvider.local)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.memory_outlined,
+                                              size: 12, color: cs.secondary),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            '上下文 ${m.contextLimit > 0 ? m.contextLimit : 4096}',
+                                            style: TextStyle(
+                                                fontSize: 11,
+                                                color: cs.secondary),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                 ],
                               ),
                               trailing: Row(
@@ -1054,6 +1135,13 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                                     tooltip: '测试连通性',
                                     onPressed: () => _testModel(m),
                                   ),
+                                  if (m.provider == ModelProvider.local)
+                                    IconButton(
+                                      icon: Icon(Icons.memory,
+                                          size: 18, color: cs.secondary),
+                                      tooltip: '设置上下文长度',
+                                      onPressed: () => _editLocalContextSize(m),
+                                    ),
                                   Switch(
                                     value: m.enable,
                                     onChanged: (_) => _toggleModel(m),

@@ -183,7 +183,10 @@ class AiService {
       if (modelPath == null || modelPath.isEmpty) {
         throw Exception('本地模型未配置模型文件');
       }
-      final err = await llama.loadModel(modelPath);
+      final err = await llama.loadModel(
+        modelPath,
+        contextSize: p.localContextSize ?? 4096,
+      );
       if (err != null) {
         throw Exception('加载本地模型失败: $err');
       }

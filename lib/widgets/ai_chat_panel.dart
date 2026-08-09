@@ -16,6 +16,7 @@ import '../core/tools/instruction_parser.dart';
 import '../core/tools/mcp_runtime.dart';
 import '../core/tools/mcp_server.dart';
 import '../core/tools/skill_manager.dart';
+import '../core/tools/tool_entity.dart';
 import '../core/tools/tool_registry.dart';
 import '../core/tools/builtin_tools.dart';
 import '../models/app_settings.dart';
@@ -49,6 +50,9 @@ class AiChatPanel extends StatefulWidget {
   final Future<void> Function(AppSettings) onSettingsChanged;
   final List<Widget> Function(BuildContext, AiChatPanelState)? headerBuilder;
   final void Function(String content)? onContentGenerated;
+  final void Function(List<ToolCallRequest> requests, List<ToolCallResult> results)? onToolsExecuted;
+  final void Function(List<ParsedFileOp> files)? onFileOpsParsed;
+  final void Function(List<ParsedFileOp> files)? onFilesWritten;
 
   /// 👇 文件执行能力：Git 服务 + 仓库配置
   final GitHubService? gitHubService;
@@ -82,6 +86,9 @@ class AiChatPanel extends StatefulWidget {
     required this.onSettingsChanged,
     this.headerBuilder,
     this.onContentGenerated,
+    this.onToolsExecuted,
+    this.onFileOpsParsed,
+    this.onFilesWritten,
     this.gitHubService,
     this.activeRepo,
     this.storageService,
@@ -108,6 +115,14 @@ class ParsedFileOp {
     this.written = false,
     this.writeError,
   });
+
+  ParsedFileOp copy() => ParsedFileOp(
+        path: path,
+        content: content,
+        language: language,
+        written: written,
+        writeError: writeError,
+      );
 }
 
 class AiChatPanelState extends State<AiChatPanel> {
@@ -177,6 +192,7 @@ class AiChatPanelState extends State<AiChatPanel> {
     final dispatcherChanged = oldWidget.dispatcher != widget.dispatcher;
     if (dispatcherChanged) {
       oldWidget.dispatcher.onModelSwitched = null;
+      oldWidget.dispatcher.onToolsExecuted = null;
       _bindDispatcherCallbacks();
     }
     if (historyScopeChanged || dispatcherChanged) {
@@ -195,6 +211,9 @@ class AiChatPanelState extends State<AiChatPanel> {
         }
       });
       _addSystemMessage('🔄 ${event.reason}\n已自动切换至「${event.toModel}」继续处理');
+    };
+    widget.dispatcher.onToolsExecuted = (requests, results) {
+      widget.onToolsExecuted?.call(requests, results);
     };
   }
 
@@ -595,6 +614,7 @@ class AiChatPanelState extends State<AiChatPanel> {
       final files = _parseFileOps(content);
       if (files.isNotEmpty) {
         _parsedFiles[idx] = files;
+        widget.onFileOpsParsed?.call(files.map((f) => f.copy()).toList());
       }
       // 解析指令（【NEW_MCP】【NEW_SKILL】【联网搜索】等）
       _handleInstructions(content, idx);
@@ -666,6 +686,15 @@ class AiChatPanelState extends State<AiChatPanel> {
           break;
 
         case InstructionType.newSkill:
+          final result = await _mcpRuntime.executeInstruction(inst);
+          if (result.success) {
+            _addSystemMessage('✅ ${result.message}');
+          } else {
+            _addSystemMessage('❌ ${result.message}: ${result.error}');
+          }
+          break;
+
+        case InstructionType.newAgent:
           final result = await _mcpRuntime.executeInstruction(inst);
           if (result.success) {
             _addSystemMessage('✅ ${result.message}');
@@ -866,11 +895,13 @@ class AiChatPanelState extends State<AiChatPanel> {
     } else {
       _addAssistantMessage('⚠️ 写入完成：$success 成功 / $fail 失败\n\n${errors.map((e) => '• $e').join('\n')}');
     }
+    widget.onFilesWritten?.call(files.map((f) => f.copy()).toList());
   }
 
   @override
   void dispose() {
     widget.dispatcher.onModelSwitched = null;
+    widget.dispatcher.onToolsExecuted = null;
     _streamSub?.cancel();
     _chatCtrl.dispose();
     _scrollCtrl.dispose();

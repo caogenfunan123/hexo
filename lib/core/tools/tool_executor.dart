@@ -15,6 +15,7 @@ class ToolExecutor {
 
   /// 执行单个工具调用
   Future<ToolCallResult> execute(ToolCallRequest request) async {
+    final stopwatch = Stopwatch()..start();
     final tool = _registry.get(request.toolId);
     if (tool == null) {
       return ToolCallResult(
@@ -22,6 +23,7 @@ class ToolExecutor {
         content: '',
         success: false,
         error: '未找到工具: ${request.toolId}',
+        durationMs: stopwatch.elapsedMilliseconds,
       );
     }
 
@@ -31,17 +33,24 @@ class ToolExecutor {
         content: '',
         success: false,
         error: '工具已禁用: ${tool.name}',
+        durationMs: stopwatch.elapsedMilliseconds,
       );
     }
 
+    ToolCallResult result;
     switch (tool.type) {
       case ToolType.builtin:
-        return BuiltinTools.execute(request);
+        result = await BuiltinTools.execute(request);
+        break;
       case ToolType.skill:
-        return _executeSkill(tool, request);
+        result = await _executeSkill(tool, request);
+        break;
       case ToolType.mcp:
-        return _executeMcp(tool, request);
+        result = await _executeMcp(tool, request);
+        break;
     }
+    stopwatch.stop();
+    return result.copyWith(durationMs: stopwatch.elapsedMilliseconds);
   }
 
   /// 批量执行多个工具调用

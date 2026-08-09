@@ -6,6 +6,7 @@ import '../../services/ai_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/usage_tracker.dart';
 import '../../services/volcengine_adapter.dart';
+import '../tools/tool_entity.dart';
 import '../tools/tool_executor.dart';
 import '../tools/tool_registry.dart';
 import 'ai_model_entity.dart';
@@ -40,6 +41,10 @@ class AiRequestDispatcher {
 
   /// 模型切换事件回调（UI 展示提示条）
   void Function(SwitchEvent event)? onModelSwitched;
+
+  /// 工具执行结果回调（工作台时间线/审计）
+  void Function(List<ToolCallRequest> requests, List<ToolCallResult> results)?
+      onToolsExecuted;
 
   AiRequestDispatcher(this._aiService, this._modelManager)
       : _probeService = AiModelProbeService(_modelManager);
@@ -215,6 +220,7 @@ class AiRequestDispatcher {
 
           final toolExecutor = ToolExecutor();
           final results = await toolExecutor.executeAll(response.toolCalls!);
+          onToolsExecuted?.call(response.toolCalls!, results);
 
           if (_cancelled) {
             if (!controller.isClosed) await controller.close();
@@ -574,6 +580,8 @@ class AiRequestDispatcher {
       reasoningEffort: m.reasoningEffort,
       reasoningBudgetTokens: m.reasoningBudgetTokens,
       localModelPath: m.provider == ModelProvider.local ? m.apiBase : null,
+      localContextSize:
+          m.provider == ModelProvider.local && m.contextLimit > 0 ? m.contextLimit : null,
     );
   }
 
@@ -667,6 +675,7 @@ class AiRequestDispatcher {
 
         // 执行工具
         final results = await toolExecutor.executeAll(response.toolCalls!);
+        onToolsExecuted?.call(response.toolCalls!, results);
 
         // 格式化工具结果
         final toolResults = ToolExecutor.formatToolResultsForAi(
