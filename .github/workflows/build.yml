@@ -488,10 +488,10 @@ jobs:
 
             | 平台 | 产物 | 状态 |
             |------|------|------|
-            | Android | `hexo-apk` | ${{ needs.build-android.result == 'success' ? '✅' : '❌' }} |
-            | Web | `hexo-web` | ${{ needs.build-web.result == 'success' ? '✅' : '❌' }} |
-            | Linux 桌面 | `hexo-linux` | ${{ needs.build-linux.result == 'success' ? '✅' : '❌' }} |
-            | Windows 桌面 | `hexo-windows` | ${{ needs.build-windows.result == 'success' ? '✅' : '❌' }} |
+            | Android | `hexo-apk` | ${{ needs.build-android.result == 'success' }} |
+            | Web | `hexo-web` | ${{ needs.build-web.result == 'success' }} |
+            | Linux 桌面 | `hexo-linux` | ${{ needs.build-linux.result == 'success' }} |
+            | Windows 桌面 | `hexo-windows` | ${{ needs.build-windows.result == 'success' }} |
 
             ### 构建信息
             - Flutter 版本: 3.44.9
