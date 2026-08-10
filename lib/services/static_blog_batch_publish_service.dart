@@ -72,6 +72,10 @@ class StaticBlogBatchPublishService {
   final TemplateService _templateService;
   final StorageService _storage;
 
+  /// 登录态缓存：按 token 缓存校验结果，避免逐站/逐篇重复 GET /user
+  final Map<String, _LoginCacheEntry> _loginCache = {};
+  static const _loginCacheTtl = Duration(minutes: 5);
+
   StaticBlogBatchPublishService({
     required AppSettings settings,
     required SiteManager siteManager,
@@ -87,46 +91,41 @@ class StaticBlogBatchPublishService {
   /// 生成批量发布预览（只读，不产生任何 GitHub 写入）。
   ///
   /// [post] 要发布的文章；[selectedSiteIds] 为空则覆盖全部静态仓库。
-  /// 逐站校验登录态、按每站默认模板渲染、拉取远程旧内容并计算行级差异。
+  /// 登录态校验与远程旧内容拉取均以有界并发执行（默认 4 路），登录态带
+  /// 5 分钟缓存；逐站按每站默认模板渲染并计算行级差异。
   Future<MultiSitePublishPreview> buildPreview(
     BlogPost post, {
     List<String>? selectedSiteIds,
   }) async {
     final templates = await _storage.loadAllTemplates();
     final targetRepos = _targetRepos(selectedSiteIds);
-    final sites = <SitePublishPreview>[];
 
-    for (final repo in targetRepos) {
+    // 并发校验登录态（带缓存）
+    final logins = await _runPool(targetRepos, _checkLogin);
+
+    // 并发拉取远程旧内容（仅已登录站点）
+    final remotes = await _runPool(
+      targetRepos.indexed.toList(),
+      (entry) async {
+        final repo = entry.$2;
+        if (!logins[entry.$1].verified) {
+          return const _RemoteContent(null, null);
+        }
+        final existing =
+            await _githubService.getRawFile(repo, _pathFor(post, repo));
+        return _RemoteContent(existing?['content'], existing?['sha']);
+      },
+    );
+
+    final sites = <SitePublishPreview>[];
+    for (var i = 0; i < targetRepos.length; i++) {
+      final repo = targetRepos[i];
+      final login = logins[i];
+      final remote = remotes[i];
       final path = _pathFor(post, repo);
       final newContent = _renderForRepo(post, repo, templates);
       final tpl = TemplateResolver.resolvePostTemplate(repo, templates);
-
-      // 登录态：token 非空且 GitHub /user 校验通过
-      var loggedIn = repo.token.isNotEmpty;
-      String? loginError;
-      if (loggedIn) {
-        try {
-          loggedIn = await _githubService.verifyToken(repo.token);
-          if (!loggedIn) loginError = 'GitHub Token 校验失败';
-        } catch (e) {
-          loggedIn = false;
-          loginError = 'Token 校验异常: $e';
-        }
-      } else {
-        loginError = '未配置 GitHub Token';
-      }
-
-      // 拉取远程旧内容（失败按新建处理）
-      String? oldContent;
-      String? remoteSha;
-      if (loggedIn) {
-        final existing = await _githubService.getRawFile(repo, path);
-        if (existing != null) {
-          oldContent = existing['content'];
-          remoteSha = existing['sha'];
-        }
-      }
-
+      final oldContent = remote.content;
       final diff = oldContent != null
           ? MarkdownDiff.diffText(oldContent, newContent)
           : MarkdownDiff.diffText('', newContent);
@@ -136,10 +135,10 @@ class StaticBlogBatchPublishService {
         path: path,
         newContent: newContent,
         oldContent: oldContent,
-        remoteSha: remoteSha,
+        remoteSha: remote.sha,
         templateName: tpl?.name,
-        loggedIn: loggedIn,
-        loginError: loginError,
+        loggedIn: login.verified,
+        loginError: login.error,
         diff: diff,
       ));
     }
@@ -273,6 +272,56 @@ class StaticBlogBatchPublishService {
         : staticRepos;
   }
 
+  /// 校验单仓库登录态（带 5 分钟 TTL 缓存，按 token 复用）
+  Future<_LoginResult> _checkLogin(RepoConfig repo) async {
+    final token = repo.token.trim();
+    if (token.isEmpty) {
+      return const _LoginResult(false, '未配置 GitHub Token');
+    }
+    final now = DateTime.now();
+    final cached = _loginCache[token];
+    if (cached != null && now.difference(cached.at) < _loginCacheTtl) {
+      return _LoginResult(cached.verified,
+          cached.verified ? null : 'GitHub Token 校验失败');
+    }
+    var verified = false;
+    String? error;
+    try {
+      verified = await _githubService.verifyToken(token);
+      if (!verified) error = 'GitHub Token 校验失败';
+    } catch (e) {
+      error = 'Token 校验异常: $e';
+    }
+    _loginCache[token] = _LoginCacheEntry(verified, now);
+    return _LoginResult(verified, error);
+  }
+
+  /// 有界并发执行 [fn]，保持输入顺序返回结果。
+  ///
+  /// 默认 4 路并发，避免站点过多时一次性打满 GitHub API 连接。
+  Future<List<R>> _runPool<I, R>(
+    List<I> inputs,
+    Future<R> Function(I) fn, {
+    int maxConcurrent = 4,
+  }) async {
+    if (inputs.isEmpty) return const [];
+    final results = List<R?>.filled(inputs.length, null);
+    var next = 0;
+    Future<void> worker() async {
+      while (true) {
+        final i = next++;
+        if (i >= inputs.length) return;
+        results[i] = await fn(inputs[i]);
+      }
+    }
+
+    final workers = maxConcurrent < inputs.length
+        ? maxConcurrent
+        : inputs.length;
+    await Future.wait(List.generate(workers, (_) => worker()));
+    return results.cast<R>();
+  }
+
   /// 目标文件完整路径
   String _pathFor(BlogPost post, RepoConfig repo) {
     final fileName = _fileNameFor(post, repo);
@@ -346,4 +395,25 @@ class StaticBlogBatchPublishService {
     }
     return '$title.md';
   }
+}
+
+/// 单仓库登录态校验结果
+class _LoginResult {
+  final bool verified;
+  final String? error;
+  const _LoginResult(this.verified, this.error);
+}
+
+/// 登录态缓存条目
+class _LoginCacheEntry {
+  final bool verified;
+  final DateTime at;
+  const _LoginCacheEntry(this.verified, this.at);
+}
+
+/// 远程文件探测结果
+class _RemoteContent {
+  final String? content;
+  final String? sha;
+  const _RemoteContent(this.content, this.sha);
 }
