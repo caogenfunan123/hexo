@@ -203,9 +203,110 @@ class AiService {
 
   /// 本地模型精简指令头：替代巨型全局内核 Prompt，降低小参数 GGUF 的
   /// 预处理耗时（prompt evaluation 爆炸是"长时间思考无输出"的根因之一）。
+  ///
+  /// 与中转站模型的差异：本地 GGUF 没有原生 function calling，改用
+  /// 「文本式工具调用」协议（【TOOL_CALL】...【END_TOOL】），工具清单在
+  /// [buildLocalPrompt] 中紧凑注入，行为对齐中转站模型。
   static const _localSystemHint = '''
-你是本地运行的博客创作助手，只处理当前博客仓库相关的任务。
-直接给出简洁、可执行的结果；不要输出工具定义、脚本或未经请求的长篇规则。''';
+你是本地运行的博客助手，负责当前博客仓库相关的写作、修改、查询任务。
+直接给出简洁、可执行的结果；不要输出工具定义、脚本或未经请求的长篇规则。
+运行时动态上下文中已提供的信息（当前日期、站点类型、框架、目录路径等）直接使用，无需再调用工具获取。''';
+
+  /// 本地模型工具调用标记（与 UI 指令解析体系同源风格）
+  static const _toolCallStart = '【TOOL_CALL】';
+  static const _toolCallEnd = '【END_TOOL】';
+
+  /// 匹配本地模型输出的工具调用块：`【TOOL_CALL】{json}【END_TOOL】`
+  static final RegExp _localToolCallRegex = RegExp(
+    r'【TOOL_CALL】\s*([\s\S]*?)【END_TOOL】',
+  );
+
+  /// 为本地模型构建紧凑工具清单（OpenAI tools 格式 → 文本）。
+  ///
+  /// 小参数 GGUF 对超长描述不敏感且上下文有限，因此截断描述、限制工具
+  /// 数量，只保留名字、短描述与参数名，降低模型误用与 prompt 超限风险。
+  static String buildLocalToolList(List<Map<String, dynamic>> tools) {
+    const maxTools = 12;
+    const maxDesc = 120;
+    final buf = StringBuffer();
+    final visible = tools.take(maxTools).toList();
+    for (final t in visible) {
+      final fn = t['function'] as Map<String, dynamic>? ?? {};
+      final name = fn['name']?.toString() ?? 'unknown';
+      final desc = (fn['description']?.toString() ?? '').trim();
+      final params = fn['parameters'] as Map<String, dynamic>? ?? {};
+      final props = params['properties'] as Map<String, dynamic>? ?? {};
+      final required = (params['required'] as List?)
+              ?.whereType<String>()
+              .toList() ??
+          const <String>[];
+      buf.writeln('- $name');
+      if (desc.isNotEmpty) {
+        buf.writeln('  描述：${desc.length > maxDesc ? '${desc.substring(0, maxDesc)}…' : desc}');
+      }
+      if (props.isNotEmpty) {
+        final argDesc = props.entries.map((e) {
+          final p = e.value as Map<String, dynamic>? ?? {};
+          final type = p['type']?.toString() ?? 'string';
+          final mark = required.contains(e.key) ? '*' : '';
+          return '${e.key}$mark($type)';
+        }).join(', ');
+        buf.writeln('  参数：$argDesc');
+      }
+    }
+    if (tools.length > maxTools) {
+      buf.writeln('- （其余 ${tools.length - maxTools} 个工具已省略）');
+    }
+    return buf.toString();
+  }
+
+  /// 从本地模型输出中解析文本式工具调用。
+  ///
+  /// 返回 `(工具调用列表, 去掉标记后的纯文本正文)`。若模型输出了一段
+  /// `【TOOL_CALL】{json}【END_TOOL】`，则解析为 [ToolCallRequest] 并返回
+  /// 正文；没有工具调用时返回空列表与原文本。
+  static (List<ToolCallRequest>, String) parseLocalToolCalls(String text) {
+    final calls = <ToolCallRequest>[];
+    if (text.isEmpty) return (calls, text);
+    var body = text;
+    var index = 0;
+    for (final m in _localToolCallRegex.allMatches(text)) {
+      final jsonStr = m.group(1)?.trim() ?? '';
+      Map<String, dynamic>? parsed;
+      if (jsonStr.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(jsonStr);
+          if (decoded is Map) {
+            parsed = Map<String, dynamic>.from(decoded);
+          }
+        } catch (_) {}
+      }
+      if (parsed != null) {
+        final name =
+            parsed['name']?.toString() ?? parsed['tool']?.toString() ?? '';
+        final argsRaw = parsed['arguments'] ?? parsed['params'] ?? {};
+        Map<String, dynamic> args = {};
+        if (argsRaw is Map) {
+          args = Map<String, dynamic>.from(argsRaw);
+        } else if (argsRaw is String && argsRaw.trim().isNotEmpty) {
+          try {
+            final d = jsonDecode(argsRaw);
+            if (d is Map) args = Map<String, dynamic>.from(d);
+          } catch (_) {}
+        }
+        if (name.isNotEmpty) {
+          calls.add(ToolCallRequest(
+            toolId: name,
+            callId:
+                'local_${DateTime.now().microsecondsSinceEpoch}_${index++}',
+            arguments: args,
+          ));
+        }
+      }
+      body = body.replaceFirst(m.group(0)!, '');
+    }
+    return (calls, body.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim());
+  }
 
   /// 从原始 system prompt 中抽取「运行时动态上下文」（日期/框架/目录等
   /// 有用信息），过滤掉 MCP/Skill/Agent 全量规则，供本地模型使用。
@@ -221,19 +322,32 @@ class AiService {
     return '';
   }
 
-  /// 为本地模型构建精简 prompt：精简指令头 + 动态上下文 + 截断后的对话历史。
+  /// 为本地模型构建精简 prompt：精简指令头 + 工具清单 + 动态上下文 + 截断后的对话历史。
   ///
-  /// 本地模型不支持工具调用，历史仅保留 user/assistant 文本；按 contextSize
-  /// 粗略估算（约 3 字符/token）丢弃最早的对话，防止上下文无限膨胀撑爆
-  /// KV 缓存导致卡死。
+  /// 本地模型没有原生函数调用，通过 [tools]（OpenAI 格式）注入紧凑工具
+  /// 清单与【TOOL_CALL】协议；历史仅保留 user/assistant/tool 文本；按
+  /// contextSize 粗略估算（约 2 字符/token）丢弃最早的对话，防止上下文
+  /// 无限膨胀撑爆 KV 缓存导致卡死。
   String buildLocalPrompt(
     String systemPrompt,
     List<Map<String, dynamic>> messages, {
     int? contextSize,
     int maxTokens = 2048,
+    List<Map<String, dynamic>>? tools,
   }) {
     final buf = StringBuffer();
     buf.writeln(_localSystemHint);
+    if (tools != null && tools.isNotEmpty) {
+      buf.writeln();
+      buf.writeln('=====可用工具=====');
+      buf.write(buildLocalToolList(tools));
+      buf.writeln();
+      buf.writeln('=====工具调用协议=====');
+      buf.writeln('需要执行文件/仓库/搜索等操作时，先单独输出一行工具调用，然后停止等待结果：');
+      buf.writeln(
+          '$_toolCallStart{"name":"工具名","arguments":{"参数key":"值"}}$_toolCallEnd');
+      buf.writeln('收到【工具结果】后，基于结果继续回答。无需工具时直接正常回答，不要输出该标记。');
+    }
     final ctx = _extractLocalContext(systemPrompt);
     if (ctx.isNotEmpty) {
       buf.writeln();
@@ -248,7 +362,11 @@ class AiService {
       if (role == 'system') continue;
       final content = _contentToText(m['content']);
       if (content.isEmpty) continue;
-      final line = role == 'user' ? '用户：$content' : '助手：$content';
+      final line = switch (role) {
+        'user' => '用户：$content',
+        'tool' => '[工具结果] $content',
+        _ => '助手：$content',
+      };
       history.add(line);
     }
     // 为输出预留 maxTokens + 余量，再按 ~2 字符/token 保守估算历史字符
@@ -275,6 +393,8 @@ class AiService {
   /// 本地 GGUF 模型真流式生成（逐 token 推送）。
   ///
   /// [messages] 为完整消息列表（含 system），内部会精简 prompt 并截断历史。
+  /// [tools] 非空时注入紧凑工具清单与【TOOL_CALL】调用协议，使本地模型
+  /// 具备与中转站模型一致的工具调用能力（文本式协议）。
   /// 返回逐 token 的 [StreamChunk]，结束前发送 isDone 标记。
   Stream<StreamChunk> streamCompleteLocal({
     required AiProfile p,
@@ -282,6 +402,7 @@ class AiService {
     required List<Map<String, dynamic>> messages,
     double temperature = 0.7,
     int maxTokens = 2048,
+    List<Map<String, dynamic>>? tools,
   }) async* {
     final llama = LocalLlamaProvider.instance;
     if (!llama.isAvailable) {
@@ -311,6 +432,7 @@ class AiService {
       messages,
       contextSize: contextSize,
       maxTokens: maxTokens,
+      tools: tools,
     );
     yield* llama.generateStream(
       prompt,
@@ -668,12 +790,14 @@ class AiService {
   }) async {
     final p = resolveProfile(settings, override: profile);
     if (p.isLocalModel) {
-      // 本地模型不支持函数调用：精简 prompt（去掉巨型内核、截断历史）。
+      // 本地模型走「文本式工具调用」：紧凑工具清单注入 prompt，输出用
+      // 【TOOL_CALL】...【END_TOOL】标记解析，行为对齐中转站模型。
       final userPrompt = buildLocalPrompt(
         systemPrompt,
         messages,
         contextSize:
             p.localSettings?.effectiveContextSize ?? p.localContextSize ?? 2048,
+        tools: tools,
       );
       final text = await _completeLocal(
         p,
@@ -681,9 +805,12 @@ class AiService {
         userPrompt: userPrompt,
         temperature: temperature,
       );
+      final (calls, body) = parseLocalToolCalls(text);
       return ToolCallResponse(
-        content: text,
+        content: calls.isNotEmpty ? body : text,
+        toolCalls: calls.isNotEmpty ? calls : null,
         allMessages: [
+          ...messages,
           {'role': 'assistant', 'content': text},
         ],
       );

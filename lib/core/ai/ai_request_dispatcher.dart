@@ -170,6 +170,7 @@ class AiRequestDispatcher {
 
     try {
       // ── 本地模型：走专用真流式路径，不受全局 50 秒硬超时限制 ──
+      // 工具走「文本式工具调用」协议，与中转站模型同样具备工具执行能力
       if (preferredModel != null &&
           preferredModel.provider == ModelProvider.local) {
         await _runLocalStream(
@@ -177,6 +178,8 @@ class AiRequestDispatcher {
           preferredModel: preferredModel,
           temperature: temperature,
           maxTokens: preferredModel.localSettings?.maxTokens ?? 2048,
+          toolRound: toolRound,
+          tools: disableTools ? null : _localEnabledTools(),
         );
         return;
       }
@@ -363,6 +366,13 @@ class AiRequestDispatcher {
     }
   }
 
+  /// 本地模型可用的工具列表（OpenAI 格式）。无启用的工具时返回 null。
+  List<Map<String, dynamic>>? _localEnabledTools() {
+    final registry = ToolRegistry();
+    if (registry.enabledTools.isEmpty) return null;
+    return registry.toOpenAiTools();
+  }
+
   /// 本地模型专用真流式路径。
   ///
   /// 与远端模型不同：
@@ -370,13 +380,22 @@ class AiRequestDispatcher {
   ///   固定 50 秒超时会直接掐死生成）
   /// - 逐 token 实时推送，无 token 时给"仍在思考"提示而不是静默等待
   /// - 超过 [firstTokenTimeoutSeconds] 仍无输出 → 提示可能卡死并结束
+  ///
+  /// 当启用工具时走「文本式工具调用」协议：紧凑工具清单注入 prompt，生成
+  /// 完成后解析【TOOL_CALL】标记 → 执行工具 → 把结果写回历史 → 续跑，直到
+  /// 模型给出最终答复或达到 [maxLocalToolRounds]。与中转站模型的 function
+  /// calling 循环行为对齐。
   Future<void> _runLocalStream(
     StreamController<StreamChunk> controller, {
     required AiModelEntity preferredModel,
     double temperature = 0.7,
     int firstTokenTimeoutSeconds = 120,
     int maxTokens = 2048,
+    int toolRound = 0,
+    List<Map<String, dynamic>>? tools,
   }) async {
+    const maxLocalToolRounds = 4;
+    final useTools = tools != null && tools.isNotEmpty;
     final fullContent = StringBuffer();
     final profile = _profileFromModel(preferredModel);
     final messages = <Map<String, dynamic>>[
@@ -396,6 +415,7 @@ class AiRequestDispatcher {
         messages: messages,
         temperature: temperature,
         maxTokens: maxTokens,
+        tools: useTools ? tools : null,
       );
 
       firstTokenTimer = Timer(Duration(seconds: firstTokenTimeoutSeconds), () {
@@ -410,17 +430,34 @@ class AiRequestDispatcher {
         }
       });
 
-      await for (final chunk in stream) {
-        if (_cancelled) break;
-        if (controller.isClosed) break;
-        if (chunk.isDone) break;
-        if (chunk.content.isNotEmpty) {
-          if (!gotFirstToken) {
-            gotFirstToken = true;
-            firstTokenTimer.cancel();
+      if (!useTools) {
+        // ── 纯文本真流式：逐 token 实时推送 ──
+        await for (final chunk in stream) {
+          if (_cancelled) break;
+          if (controller.isClosed) break;
+          if (chunk.isDone) break;
+          if (chunk.content.isNotEmpty) {
+            if (!gotFirstToken) {
+              gotFirstToken = true;
+              firstTokenTimer.cancel();
+            }
+            fullContent.write(chunk.content);
+            controller.add(chunk);
           }
-          fullContent.write(chunk.content);
-          controller.add(chunk);
+        }
+      } else {
+        // ── 工具模式：缓冲生成（避免工具标记直接暴露在流中）──
+        await for (final chunk in stream) {
+          if (_cancelled) break;
+          if (controller.isClosed) break;
+          if (chunk.isDone) break;
+          if (chunk.content.isNotEmpty) {
+            if (!gotFirstToken) {
+              gotFirstToken = true;
+              firstTokenTimer.cancel();
+            }
+            fullContent.write(chunk.content);
+          }
         }
       }
     } catch (e) {
@@ -443,7 +480,53 @@ class AiRequestDispatcher {
       return;
     }
 
-    final text = fullContent.toString();
+    final raw = fullContent.toString();
+    final (calls, body) = AiService.parseLocalToolCalls(raw);
+
+    // ── 文本式工具调用循环 ──
+    if (calls.isNotEmpty && toolRound < maxLocalToolRounds && !_cancelled) {
+      // 记录含工具调用的 assistant 消息（供下一轮 prompt 续接上下文）
+      addAssistantMessage(raw);
+
+      final toolExecutor = ToolExecutor();
+      final results = await toolExecutor.executeAll(calls);
+      onToolsExecuted?.call(calls, results);
+
+      final toolResults = ToolExecutor.formatToolResultsForAi(calls, results);
+      for (final tr in toolResults) {
+        _chatHistory.add(Map<String, dynamic>.from(tr));
+      }
+
+      final toolNames = calls
+          .map((tc) => tc.toolId)
+          .where((n) => n.isNotEmpty)
+          .join(', ');
+      if (toolNames.isNotEmpty) {
+        controller.add(StreamChunk(content: '正在使用工具: $toolNames...\n'));
+      }
+
+      await _runLocalStream(
+        controller,
+        preferredModel: preferredModel,
+        temperature: temperature,
+        firstTokenTimeoutSeconds: firstTokenTimeoutSeconds,
+        maxTokens: maxTokens,
+        toolRound: toolRound + 1,
+        tools: tools,
+      );
+      return;
+    }
+
+    if (calls.isNotEmpty && toolRound >= maxLocalToolRounds) {
+      const tip = '已达最大工具调用轮次，未获得最终回复。';
+      fullContent.clear();
+      fullContent.write(tip);
+    }
+
+    // 最终答复：去掉工具调用标记后的正文（无工具调用时原样返回）
+    final text = (calls.isNotEmpty && toolRound >= maxLocalToolRounds)
+        ? fullContent.toString()
+        : (calls.isNotEmpty ? body : raw);
     if (text.isNotEmpty) {
       addAssistantMessage(text);
       _modelManager.recordCall(
@@ -453,6 +536,11 @@ class AiRequestDispatcher {
         true,
       );
       unawaited(_modelManager.recordKeySuccess(preferredModel));
+    }
+
+    // 工具模式下生成被缓冲（避免工具标记暴露在流中），最终正文一次性推送
+    if (useTools && text.isNotEmpty && !controller.isClosed) {
+      controller.add(StreamChunk(content: text));
     }
 
     if (!controller.isClosed) {
