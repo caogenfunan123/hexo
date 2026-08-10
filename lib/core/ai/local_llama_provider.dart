@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:llamadart/llamadart.dart';
 
+import '../../models/local_model_settings.dart';
+
 /// 本地 GGUF 模型推理提供者。
 ///
 /// 内部基于 `llamadart`（Dart/Flutter binding of llama.cpp，FFI + isolate）。
@@ -25,7 +27,7 @@ class LocalLlamaProvider {
   /// llamadart 引擎与后端（FFI isolate）。
   LlamaEngine? _engine;
   String? _loadedModelPath;
-  int? _loadedContextSize;
+  LocalModelSettings? _loadedSettings;
   String? _lastError;
   String? _backendName;
   ({int total, int free})? _vram;
@@ -65,50 +67,82 @@ class LocalLlamaProvider {
   }
 
   /// 加载 GGUF 模型文件（llamadart modelLoad + contextCreate）。
-  /// [modelPath] 为本地 .gguf 文件绝对路径，[contextSize] 为上下文长度。
+  /// [modelPath] 为本地 .gguf 文件绝对路径，[settings] 为本地模型完整设置
+  /// （上下文、批处理、线程、KV cache、GPU 层数、后端等）；为 null 时使用
+  /// 默认设置。
+  ///
   /// 返回 null 表示成功，否则返回错误信息。
-  Future<String?> loadModel(String modelPath, {int contextSize = 4096}) async {
+  Future<String?> loadModel(
+    String modelPath, {
+    LocalModelSettings? settings,
+  }) async {
     _lastError = null;
     if (!isAvailable) {
       _lastError = '本地模型当前平台不可用';
       return _lastError;
     }
     final normalizedPath = modelPath.trim();
+    final effective = settings ?? const LocalModelSettings();
     if (isModelLoaded &&
         _loadedModelPath == normalizedPath &&
-        _loadedContextSize == contextSize) {
+        _sameSettings(_loadedSettings, effective)) {
       return null;
     }
     if (isModelLoaded &&
         (_loadedModelPath != normalizedPath ||
-            _loadedContextSize != contextSize)) {
+            !_sameSettings(_loadedSettings, effective))) {
       await unload();
     }
     try {
       final engine = _engine ??= LlamaEngine(LlamaBackend());
 
-      // llamadart 在 Android 上把默认的 auto 后端强制解析为 CPU 并把 GPU
-      // 层数归零（防止不稳定 Vulkan 栈崩溃），因此必须显式探测并指定
-      // Vulkan 才能真正启用 GPU 加速；无 GPU 设备探测后回退 CPU。
-      var useGpu = false;
-      try {
-        useGpu = await engine.isGpuSupported();
-      } catch (_) {}
+      // 设备选择：auto 时先探测 GPU（llamadart 在 Android 上把默认的 auto
+      // 后端强制解析为 CPU 并把 GPU 层数归零，因此必须显式探测并指定
+      // Vulkan 才能真正启用 GPU 加速）；无 GPU 设备探测后回退 CPU。
+      var useGpu = effective.isVulkan;
+      if (effective.isAuto) {
+        try {
+          useGpu = await engine.isGpuSupported();
+        } catch (_) {
+          useGpu = false;
+        }
+      }
+      final gpuLayers = useGpu
+          ? (effective.gpuLayers > 0
+                ? effective.gpuLayers
+                : ModelParams.maxGpuLayers)
+          : 0;
 
-      await engine.loadModel(
-        normalizedPath,
-        modelParams: ModelParams(
-          contextSize: contextSize,
-          // GPU 层数：全量卸载到 GPU（配合显式 Vulkan 后端）。
-          gpuLayers: ModelParams.maxGpuLayers,
-          preferredBackend: useGpu ? GpuBackend.vulkan : GpuBackend.cpu,
-          numberOfThreads: _dynamicThreads,
-          useMmap: true,
-          useMlock: false,
-        ),
+      var modelParams = ModelParams(
+        contextSize: effective.effectiveContextSize,
+        gpuLayers: gpuLayers,
+        preferredBackend: useGpu ? GpuBackend.vulkan : GpuBackend.cpu,
+        numberOfThreads: effective.threads > 0
+            ? effective.threads
+            : _dynamicThreads,
+        numberOfThreadsBatch:
+            effective.threadsBatch > 0 ? effective.threadsBatch : 0,
+        batchSize: effective.batchSize,
+        microBatchSize: effective.microBatchSize,
+        maxParallelSequences: effective.maxParallelSequences,
+        useMmap: effective.useMmap,
+        useMlock: effective.useMlock,
+        flashAttention: _mapFlashAttention(effective.flashAttention),
+        cacheTypeK: _mapKvCacheType(effective.cacheTypeK),
+        cacheTypeV: _mapKvCacheType(effective.cacheTypeV),
+        kvUnified: effective.kvUnified,
+        chatTemplate: effective.chatTemplate,
       );
+      try {
+        modelParams.validate();
+      } catch (_) {
+        // llama.cpp 不允许非 F16 KV cache + flash attention 禁用；此处兜底：
+        // 强制打开 flash attention，避免参数校验失败导致加载崩溃。
+        modelParams = modelParams.copyWith(flashAttention: FlashAttention.enabled);
+      }
+      await engine.loadModel(normalizedPath, modelParams: modelParams);
       _loadedModelPath = normalizedPath;
-      _loadedContextSize = contextSize;
+      _loadedSettings = effective;
       _backendName = null;
       _vram = null;
       try {
@@ -124,28 +158,66 @@ class LocalLlamaProvider {
     }
   }
 
+  /// 两次设置是否完全一致（决定是否复用已加载模型）。
+  bool _sameSettings(
+    LocalModelSettings? a,
+    LocalModelSettings b,
+  ) {
+    if (a == null) return false;
+    return a.toJson().toString() == b.toJson().toString();
+  }
+
+  /// 映射 flash attention 字符串到 llamadart 枚举。
+  FlashAttention _mapFlashAttention(String value) {
+    switch (value) {
+      case 'enabled':
+        return FlashAttention.enabled;
+      case 'disabled':
+        return FlashAttention.disabled;
+      default:
+        return FlashAttention.auto;
+    }
+  }
+
+  /// 映射 KV cache 类型字符串到 llamadart 枚举。
+  KvCacheType _mapKvCacheType(String value) {
+    switch (value) {
+      case 'q8_0':
+        return KvCacheType.q8_0;
+      case 'q4_0':
+        return KvCacheType.q4_0;
+      default:
+        return KvCacheType.f16;
+    }
+  }
+
   /// 单次完整生成（流式聚合，适合短文本）。
   /// [prompt] 为完整提示词（含 system + user），返回生成的补全文本。
-  /// [maxTokens] 最大生成 token 数，[temperature] 采样温度。
+  /// [settings] 提供采样参数（maxTokens/temperature/top_k/top_p/min_p/
+  /// 惩罚/停止词）；为 null 时使用当前已加载模型的设置（或默认值）。
   Future<String> complete(
     String prompt, {
-    int maxTokens = 1024,
-    double temperature = 0.7,
+    LocalModelSettings? settings,
+    int? maxTokens,
+    double? temperature,
   }) async {
     final engine = _engine;
     if (engine == null || !engine.isReady) {
       return '本地模型未加载。请先在"AI 模型管理"中导入并加载 GGUF 模型。';
     }
-    final fit = await _fitToContext(prompt, maxTokens);
+    final s = settings ?? _loadedSettings ?? const LocalModelSettings();
+    final maxOut = maxTokens ?? s.maxTokens;
+    final fit = await _fitToContext(prompt, maxOut);
     if (fit.error != null) {
       return fit.error!;
     }
     final buf = StringBuffer();
     await for (final token in engine.generate(
       prompt,
-      params: GenerationParams(
+      params: _generationParams(
+        s,
         maxTokens: fit.maxTokens,
-        temp: temperature,
+        temperature: temperature,
       ),
     )) {
       buf.write(token);
@@ -164,7 +236,7 @@ class LocalLlamaProvider {
     int maxTokens,
   ) async {
     final engine = _engine;
-    final contextSize = _loadedContextSize ?? 4096;
+    final contextSize = _loadedSettings?.effectiveContextSize ?? 4096;
     var promptTokens = 0;
     if (engine != null) {
       try {
@@ -186,10 +258,32 @@ class LocalLlamaProvider {
       );
     }
     final roomForOutput = usable - promptTokens;
-    final effective = maxTokens > roomForOutput
+    // n_predict = -1（无限）：用满上下文剩余空间，直到 EOS 才停止。
+    final target = maxTokens <= 0 ? roomForOutput : maxTokens;
+    final effective = target > roomForOutput
         ? (roomForOutput < 16 ? 16 : roomForOutput)
-        : maxTokens;
+        : target;
     return (error: null, maxTokens: effective);
+  }
+
+  /// 从 [LocalModelSettings] 构造 llamadart [GenerationParams]。
+  /// [maxTokens] / [temperature] 非空时覆盖设置中的对应值。
+  GenerationParams _generationParams(
+    LocalModelSettings s, {
+    int? maxTokens,
+    double? temperature,
+  }) {
+    return GenerationParams(
+      maxTokens: maxTokens ?? s.maxTokens,
+      temp: temperature ?? s.temperature,
+      topK: s.topK,
+      topP: s.topP,
+      minP: s.minP,
+      penalty: s.repeatPenalty,
+      presencePenalty: s.presencePenalty,
+      seed: s.seed,
+      stopSequences: s.stopSequences,
+    );
   }
 
   /// 流式生成：逐 token 产出补全文本（真流式）。
@@ -198,24 +292,28 @@ class LocalLlamaProvider {
   /// 产出，首个 token 到达前不做任何缓冲；调用方（UI）可实时展示。
   Stream<String> generateStream(
     String prompt, {
-    int maxTokens = 1024,
-    double temperature = 0.7,
+    LocalModelSettings? settings,
+    int? maxTokens,
+    double? temperature,
   }) async* {
     final engine = _engine;
     if (engine == null || !engine.isReady) {
       yield '本地模型未加载。请先在"AI 模型管理"中导入并加载 GGUF 模型。';
       return;
     }
-    final fit = await _fitToContext(prompt, maxTokens);
+    final s = settings ?? _loadedSettings ?? const LocalModelSettings();
+    final maxOut = maxTokens ?? s.maxTokens;
+    final fit = await _fitToContext(prompt, maxOut);
     if (fit.error != null) {
       yield fit.error!;
       return;
     }
     yield* engine.generate(
       prompt,
-      params: GenerationParams(
+      params: _generationParams(
+        s,
         maxTokens: fit.maxTokens,
-        temp: temperature,
+        temperature: temperature,
       ),
     );
   }
@@ -233,7 +331,7 @@ class LocalLlamaProvider {
   Future<void> unload() async {
     final engine = _engine;
     _loadedModelPath = null;
-    _loadedContextSize = null;
+    _loadedSettings = null;
     if (engine != null) {
       try {
         await engine.unloadModel();
@@ -249,7 +347,7 @@ class LocalLlamaProvider {
     final engine = _engine;
     _engine = null;
     _loadedModelPath = null;
-    _loadedContextSize = null;
+    _loadedSettings = null;
     if (engine != null) {
       try {
         await engine.dispose();

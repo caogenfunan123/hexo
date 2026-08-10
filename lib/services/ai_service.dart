@@ -185,7 +185,7 @@ class AiService {
       }
       final err = await llama.loadModel(
         modelPath,
-        contextSize: p.localContextSize ?? 4096,
+        settings: p.localSettings,
       );
       if (err != null) {
         throw Exception('加载本地模型失败: $err');
@@ -194,7 +194,11 @@ class AiService {
     final prompt = systemPrompt.trim().isEmpty
         ? userPrompt
         : '$systemPrompt\n\n$userPrompt';
-    return llama.complete(prompt, temperature: temperature);
+    return llama.complete(
+      prompt,
+      settings: p.localSettings,
+      temperature: temperature,
+    );
   }
 
   /// 本地模型精简指令头：替代巨型全局内核 Prompt，降低小参数 GGUF 的
@@ -292,21 +296,25 @@ class AiService {
       }
       final err = await llama.loadModel(
         modelPath,
-        contextSize: p.localContextSize ?? 4096,
+        settings: p.localSettings,
       );
       if (err != null) {
         yield StreamChunk(content: '加载本地模型失败: $err', isDone: true);
         return;
       }
     }
+    final contextSize = p.localSettings?.effectiveContextSize ??
+        p.localContextSize ??
+        4096;
     final prompt = buildLocalPrompt(
       systemPrompt,
       messages,
-      contextSize: p.localContextSize ?? 4096,
+      contextSize: contextSize,
       maxTokens: maxTokens,
     );
     yield* llama.generateStream(
       prompt,
+      settings: p.localSettings,
       maxTokens: maxTokens,
       temperature: temperature,
     ).map((t) => StreamChunk(content: t));
@@ -664,7 +672,8 @@ class AiService {
       final userPrompt = buildLocalPrompt(
         systemPrompt,
         messages,
-        contextSize: p.localContextSize ?? 4096,
+        contextSize:
+            p.localSettings?.effectiveContextSize ?? p.localContextSize ?? 4096,
       );
       final text = await _completeLocal(
         p,

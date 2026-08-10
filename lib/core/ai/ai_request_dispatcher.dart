@@ -694,6 +694,8 @@ class AiRequestDispatcher {
       localModelPath: m.provider == ModelProvider.local ? m.apiBase : null,
       localContextSize:
           m.provider == ModelProvider.local && m.contextLimit > 0 ? m.contextLimit : null,
+      localSettings:
+          m.provider == ModelProvider.local ? m.localSettings : null,
     );
   }
 

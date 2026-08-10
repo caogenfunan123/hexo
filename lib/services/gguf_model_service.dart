@@ -4,6 +4,7 @@ import 'dart:io';
 import '../core/ai/ai_model_entity.dart';
 import '../core/ai/ai_model_manager.dart';
 import '../core/ai/ai_provider.dart';
+import '../models/local_model_settings.dart';
 import 'storage_service.dart';
 
 /// 本地 GGUF 模型扫描与登记服务。
@@ -49,13 +50,14 @@ class GgufModelService {
     var added = 0;
     for (final f in files) {
       final modelId = 'local:${f.path.split('/').last.split('\\').last}';
-      final contextLimit = await getContextSize(modelId);
+      final settings = await getLocalSettings(modelId);
       final idx = all.indexWhere((m) => m.modelId == modelId);
       if (idx >= 0) {
         all[idx] = all[idx].copyWith(
           modelName: _displayName(f.path),
           apiBase: f.path,
-          contextLimit: contextLimit,
+          contextLimit: settings.effectiveContextSize,
+          localSettings: settings,
         );
       } else {
         all.add(AiModelEntity(
@@ -65,7 +67,8 @@ class GgufModelService {
           apiKey: '',
           provider: ModelProvider.local,
           group: 'general',
-          contextLimit: contextLimit,
+          contextLimit: settings.effectiveContextSize,
+          localSettings: settings,
           priority: 0,
         ));
         added++;
@@ -90,14 +93,15 @@ class GgufModelService {
       await src.copy(dest.path);
     }
     final modelId = 'local:$fileName';
-    final contextLimit = await getContextSize(modelId);
+    final settings = await getLocalSettings(modelId);
     final all = await _modelManager.loadAll();
     final idx = all.indexWhere((m) => m.modelId == modelId);
     if (idx >= 0) {
       all[idx] = all[idx].copyWith(
         modelName: _displayName(dest.path),
         apiBase: dest.path,
-        contextLimit: contextLimit,
+        contextLimit: settings.effectiveContextSize,
+        localSettings: settings,
       );
     } else {
       all.add(AiModelEntity(
@@ -107,7 +111,8 @@ class GgufModelService {
         apiKey: '',
         provider: ModelProvider.local,
         group: 'general',
-        contextLimit: contextLimit,
+        contextLimit: settings.effectiveContextSize,
+        localSettings: settings,
         priority: 0,
       ));
     }
@@ -161,22 +166,46 @@ class GgufModelService {
     await f.writeAsString(const JsonEncoder.withIndent('  ').convert(index));
   }
 
-  /// 读取指定模型的上下文长度设置（默认 4096）。
-  Future<int> getContextSize(String modelId) async {
+  /// 读取指定模型的完整本地推理设置（默认 [LocalModelSettings]）。
+  Future<LocalModelSettings> getLocalSettings(String modelId) async {
     final index = await _readIndex();
     final entry = index[modelId];
     if (entry is Map) {
-      final v = entry['contextSize'];
-      if (v is num) return v.toInt();
+      final s = entry['settings'];
+      if (s is Map) {
+        return LocalModelSettings.fromJson(Map<String, dynamic>.from(s));
+      }
+      // 旧格式：只有 contextSize 字段，迁移为完整设置。
+      final legacy = entry['contextSize'];
+      if (legacy is num) {
+        return const LocalModelSettings().copyWith(contextSize: legacy.toInt());
+      }
     }
-    return 4096;
+    return const LocalModelSettings();
   }
 
-  /// 保存指定模型的上下文长度设置。
-  Future<void> setContextSize(String modelId, int contextSize) async {
+  /// 保存指定模型的完整本地推理设置。
+  Future<void> setLocalSettings(
+    String modelId,
+    LocalModelSettings settings,
+  ) async {
     final index = await _readIndex();
     final entry = (index[modelId] as Map? ?? {}) as Map;
-    index[modelId] = {...entry, 'contextSize': contextSize};
+    index[modelId] = {
+      ...entry,
+      'settings': settings.toJson(),
+    };
     await _writeIndex(index);
+  }
+
+  /// 读取指定模型的上下文长度设置（默认 4096）。
+  Future<int> getContextSize(String modelId) async {
+    return (await getLocalSettings(modelId)).effectiveContextSize;
+  }
+
+  /// 保存指定模型的上下文长度设置（仅更新上下文，其余设置保持不变）。
+  Future<void> setContextSize(String modelId, int contextSize) async {
+    final current = await getLocalSettings(modelId);
+    await setLocalSettings(modelId, current.copyWith(contextSize: contextSize));
   }
 }
