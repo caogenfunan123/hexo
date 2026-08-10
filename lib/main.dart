@@ -40,6 +40,7 @@ import 'screens/blog_site_editor_screen.dart';
 import 'screens/drafts_screen.dart';
 import 'screens/remote_screen.dart';
 import 'screens/remote_posts_screen.dart';
+import 'screens/static_blog_posts_screen.dart';
 import 'screens/sync_screen.dart';
 import 'screens/sync_settings_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -60,6 +61,7 @@ import 'core/cancel_token.dart';
 import 'core/shared_bootstrap.dart';
 import 'core/site_manager.dart';
 import 'core/repository/blog_repository.dart';
+import 'core/repository/static_blog_repository.dart';
 import 'services/ai_service.dart';
 import 'services/github_service.dart';
 import 'services/image_service.dart';
@@ -71,6 +73,8 @@ import 'services/webdav_service.dart';
 import 'services/log_service.dart';
 import 'services/sync_service.dart';
 import 'services/cloud_sync_service.dart';
+import 'services/static_blog_batch_publish_service.dart';
+import 'services/template_service.dart';
 import 'theme/app_theme.dart';
 
 // ── 移动端新功能集成 ──
@@ -323,6 +327,36 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       if (adapter != null) result.add(adapter);
     }
     return result;
+  }
+
+  /// 全部静态博客仓库适配器（用于远程文章多站点聚合查看）
+  List<BlogRepository> get _allStaticAdapters {
+    final result = <BlogRepository>[];
+    for (final repo in repos) {
+      result.add(StaticBlogRepository(
+        repoConfig: _resolvedRepoFor(repo),
+        appSettings: settings,
+        githubService: github,
+        logService: logService,
+      ));
+    }
+    return result;
+  }
+
+  /// 全部站点适配器（静态博客 + 动态 CMS，用于远程文章统一聚合管理）
+  List<BlogRepository> get _allSiteAdapters {
+    final result = <BlogRepository>[];
+    result.addAll(_allStaticAdapters);
+    result.addAll(_allCmsAdapters);
+    return result;
+  }
+
+  /// 解析仓库的 GitHub Token（优先仓库自身 Token，否则回退全局 Token）
+  RepoConfig _resolvedRepoFor(RepoConfig repo) {
+    if (repo.token.isNotEmpty) return repo;
+    final t = settings.effectiveGithubToken;
+    if (t.isEmpty) return repo;
+    return repo.copyWith(token: t);
   }
 
   String get _pageTitle {
@@ -1055,7 +1089,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         ? siteManager.currentBlogType.displayName
         : (_resolvedRepo?.fullName ?? 'GitHub');
     final dynamicSiteCount = siteManager.dynamicSites.length;
+    final staticRepoCount = siteManager.staticRepos.length;
     bool saveMdBackup = false;
+    bool publishToAllStatic = false;
 
     final confirmed = await showDialog<int>(
       context: context,
@@ -1095,6 +1131,21 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                 contentPadding: EdgeInsets.zero,
                 dense: true,
               ),
+              // 静态站点：同时发布到所有静态博客站点
+              if (!siteManager.isDynamicSite && staticRepoCount > 1)
+                CheckboxListTile(
+                  value: publishToAllStatic,
+                  onChanged: (v) {
+                    setDialogState(() => publishToAllStatic = v ?? false);
+                  },
+                  title: const Text('同时发布到所有静态博客站点',
+                      style: TextStyle(fontSize: 13)),
+                  subtitle: const Text('将本文发布到全部 $staticRepoCount 个静态仓库',
+                      style: TextStyle(fontSize: 11)),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                ),
             ],
           ),
           actions: [
@@ -1135,6 +1186,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     // 动态 CMS 站点：推送到远程 CMS
     if (siteManager.isDynamicSite) {
       await _publishToCms();
+      return;
+    }
+    // 静态站点：勾选了"同时发布到所有静态站点"则批量发布
+    if (publishToAllStatic) {
+      await _publishToAllStaticSites();
       return;
     }
     // 静态站点：Git 推送
@@ -1469,6 +1525,175 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         .replaceAll(RegExp(r'-+'), '-')
         .replaceAll(RegExp(r'^-|-$'), '');
     return slug.isEmpty ? 'untitled' : slug;
+  }
+
+  /// 一键发布当前文章到所有静态博客站点（带预览确认）
+  Future<void> _publishToAllStaticSites() async {
+    final a = _collect(draft: false);
+    if (a.title.trim().isEmpty) {
+      _showToast('请先填写文章标题');
+      return;
+    }
+    final slug = _generateSlug(a.title);
+    final post = BlogPost(
+      title: a.title,
+      contentMd: a.content,
+      status: 'publish',
+      slug: slug,
+      tags: a.tags,
+      categories: a.categories,
+      date: DateTime.now(),
+    );
+
+    setState(() {
+      _editorBusy = true;
+      _editorStatus = '正在生成多站点发布预览...';
+    });
+
+    final service = StaticBlogBatchPublishService(
+      settings: settings,
+      siteManager: siteManager,
+      githubService: github,
+      templateService: TemplateService(),
+    );
+
+    try {
+      final preview = await service.buildPreview(post);
+      if (!mounted) return;
+      final confirmed = await _showStaticPublishPreviewDialog(preview);
+      if (confirmed != true) {
+        if (mounted) setState(() => _editorStatus = '已取消');
+        return;
+      }
+
+      await service.publishFromPreview(
+        post,
+        preview,
+        onProgress: (current, total, message) {
+          if (mounted) setState(() => _editorStatus = message);
+        },
+        onComplete: (success, message, results) {
+          logService.add('多静态站点发布', message, success: success);
+          if (mounted) {
+            setState(() {
+              _editorBusy = false;
+              _editorStatus = message;
+            });
+            _showStaticPublishResult(results);
+          }
+        },
+      );
+    } catch (e) {
+      logService.add('多静态站点发布失败', '$e', success: false);
+      if (mounted) {
+        setState(() {
+          _editorBusy = false;
+          _editorStatus = '发布失败';
+        });
+        _showToast('发布失败: $e');
+      }
+    }
+  }
+
+  /// 展示静态站点发布预览确认对话框
+  Future<bool?> _showStaticPublishPreviewDialog(MultiSitePublishPreview preview) async {
+    final sites = preview.publishable;
+    final skipped = preview.skippedCount;
+    final title = _doc.titleCtrl.text.isNotEmpty
+        ? _doc.titleCtrl.text
+        : '(无标题)';
+
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('多站点发布预览'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('《$title》将发布到以下站点:',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 8),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: sites.map<Widget>((site) {
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(
+                          Icons.cloud_done_outlined,
+                          size: 18,
+                          color: const Color(0xFF059669),
+                        ),
+                        title: Text(site.siteName,
+                            style: const TextStyle(fontSize: 13)),
+                        subtitle: Text(site.path,
+                            style: const TextStyle(fontSize: 11)),
+                        trailing: const Text('可发布',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF059669),
+                            )),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              if (skipped > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('$skipped 个站点未配置 Token 将被跳过',
+                      style: const TextStyle(fontSize: 12, color: Colors.orange)),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton.icon(
+            icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+            label: const Text('确认发布'),
+            onPressed: () => Navigator.pop(ctx, true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 展示静态站点发布结果
+  Future<void> _showStaticPublishResult(Map<String, dynamic> results) async {
+    final lines = results.entries.map((e) {
+      final v = e.value;
+      final ok = v is Map && v['success'] == true;
+      final msg = v is Map ? (v['message']?.toString() ?? '') : '$v';
+      return '${ok ? '✓' : '✗'} ${e.key}: $msg';
+    }).join('\n');
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('发布结果'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Text(lines.isEmpty ? '无结果' : lines,
+                style: const TextStyle(fontSize: 13)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _insertText(String t) {
@@ -3962,6 +4187,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   /// 打开 CMS 远程文章到编辑器（多站点：先切换到文章所属站点）
   void _openRemotePostInEditor(BlogPost post) {
+    // 静态站点文章：走 GitHub 文件加载链路
+    if (post.siteId != null) {
+      final identity = siteManager.getSiteIdentity(post.siteId!);
+      if (identity != null && identity.isStatic) {
+        _openStaticBlogPostInEditor(post);
+        return;
+      }
+    }
     // 关闭抽屉
     if (_scaffoldKey.currentState?.isDrawerOpen == true) {
       Navigator.pop(context);
@@ -4001,6 +4234,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   /// 删除 CMS 远程文章（多站点：按文章所属站点解析适配器）
   Future<void> _deleteRemoteCmsPost(BlogPost post) async {
     if (post.id == null) return;
+    // 静态站点文章：走 GitHub 文件删除链路
+    if (post.siteId != null) {
+      final identity = siteManager.getSiteIdentity(post.siteId!);
+      if (identity != null && identity.isStatic) {
+        await _deleteStaticBlogPost(post);
+        return;
+      }
+    }
     BlogRepository? adapter;
     if (post.siteId != null) {
       adapter = siteManager.getAdapter(post.siteId!);
@@ -4400,6 +4641,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   const SizedBox(height: 8),
                   _drawerSection('管理'),
                   _drawerItem(2, Icons.cloud_outlined, '远程文章'),
+                  _drawerAction(Icons.article_outlined, '静态博客文章', _showStaticBlogPosts),
                   _drawerItem(12, Icons.sync, '同步状态'),
                   _drawerAction(Icons.wifi, 'P2P 同步', _openP2PSync),
                   _drawerItem(3, Icons.dashboard_outlined, '仪表盘'),
@@ -4587,6 +4829,29 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             },
             onDelete: _deleteDraft);
       case 2:
+        // 远程文章：支持多站点统一聚合（静态博客 + 动态 CMS）
+        final allSiteAdapters = _allSiteAdapters;
+        final currentAdapter = siteManager.currentAdapter;
+        final activeSiteId = siteManager.activeSiteId;
+        if (allSiteAdapters.length > 1) {
+          // 多站点聚合模式：静态 + 动态统一浏览
+          final primary = allSiteAdapters
+                  .where((a) => a.config.id == activeSiteId)
+                  .firstOrNull ??
+              currentAdapter ??
+              allSiteAdapters.first;
+          if (primary == null) {
+            return const Center(child: Text('未配置站点'));
+          }
+          return RemotePostsScreen(
+            adapter: primary,
+            allAdapters: allSiteAdapters,
+            siteManager: siteManager,
+            logService: logService,
+            onOpenInEditor: (post) => _openRemotePostInEditor(post),
+            onDeletePost: (post) => _deleteRemoteCmsPost(post),
+          );
+        }
         if (siteManager.isDynamicSite) {
           final adapter = siteManager.currentAdapter;
           if (adapter == null) {
@@ -4595,6 +4860,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           return RemotePostsScreen(
             adapter: adapter,
             allAdapters: _allCmsAdapters,
+            siteManager: siteManager,
             logService: logService,
             onOpenInEditor: (post) => _openRemotePostInEditor(post),
             onDeletePost: (post) => _deleteRemoteCmsPost(post),
@@ -5445,6 +5711,97 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   }
 
   // ── 新功能导航 ──
+
+  /// 打开静态博客文章管理界面（一键批量发布已保存的文章）
+  Future<void> _showStaticBlogPosts() async {
+    if (repos.isEmpty) {
+      _showToast('请先在设置中添加仓库');
+      return;
+    }
+    RepoConfig repo;
+    if (repos.length == 1) {
+      repo = repos.first;
+    } else {
+      final selected = await showDialog<RepoConfig>(
+        context: context,
+        builder: (ctx) => SimpleDialog(
+          title: const Text('选择静态博客仓库'),
+          children: repos
+              .map((r) => SimpleDialogOption(
+                    onPressed: () => Navigator.pop(ctx, r),
+                    child: Text('${r.name} (${r.fullName})'),
+                  ))
+              .toList(),
+        ),
+      );
+      if (selected == null) return;
+      repo = selected;
+    }
+    final resolved = _resolvedRepoFor(repo);
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => StaticBlogPostsScreen(
+          repoConfig: resolved,
+          siteManager: siteManager,
+          settings: settings,
+          githubService: github,
+          logService: logService,
+          onOpenInEditor: _openStaticBlogPostInEditor,
+          onDeletePost: _deleteStaticBlogPost,
+        ),
+      ),
+    );
+  }
+
+  /// 在仓库中查找与文章对应的 GitHub 文件项
+  Future<GitHubFileItem?> _findStaticFileItem(BlogPost post) async {
+    final repo =
+        repos.where((r) => r.id == post.siteId).firstOrNull ?? activeRepo;
+    if (repo == null) return null;
+    final resolved = _resolvedRepoFor(repo);
+    final items = await github.listPosts(resolved);
+    if (items.isEmpty) return null;
+    final slug = post.slug?.toLowerCase().replaceAll(RegExp(r'\.md$'), '');
+    final title = post.title.trim();
+    return items.where((i) {
+      final name = i.name.toLowerCase();
+      if (slug != null && name == '$slug.md') return true;
+      if (title.isNotEmpty && name == '$title.md') return true;
+      return i.path.contains(post.slug ?? post.title);
+    }).firstOrNull;
+  }
+
+  /// 打开静态博客远程文章到编辑器
+  void _openStaticBlogPostInEditor(BlogPost post) {
+    _openStaticBlogPostAsync(post);
+  }
+
+  Future<void> _openStaticBlogPostAsync(BlogPost post) async {
+    try {
+      final item = await _findStaticFileItem(post);
+      final repo = repos.where((r) => r.id == post.siteId).firstOrNull ?? activeRepo;
+      if (item == null || repo == null) {
+        _showToast('未在仓库中找到该文章');
+        return;
+      }
+      final article = await github.getArticle(_resolvedRepoFor(repo), item);
+      _openExistingArticle(article);
+    } catch (e) {
+      logService.add('打开静态博客文章失败', '$e', success: false);
+      if (mounted) _showToast('打开失败: $e');
+    }
+  }
+
+  /// 删除静态博客远程文章
+  Future<void> _deleteStaticBlogPost(BlogPost post) async {
+    final item = await _findStaticFileItem(post);
+    final repo = repos.where((r) => r.id == post.siteId).firstOrNull ?? activeRepo;
+    if (item == null || repo == null) {
+      throw Exception('未在仓库中找到该文章');
+    }
+    final article = await github.getArticle(_resolvedRepoFor(repo), item);
+    await github.deleteArticle(_resolvedRepoFor(repo), article);
+  }
 
   void _showTemplateManager() async {
     await Navigator.of(context).push<void>(
