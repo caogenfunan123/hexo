@@ -19,6 +19,7 @@ class SettingsScreen extends StatefulWidget {
   final VoidCallback onSyncWebDavToLocal;
   final VoidCallback onSyncDraftsToWebDav;
   final VoidCallback onShowAiManager;
+  final VoidCallback onShowLocalModelManager;
   final VoidCallback onShowGithubTokenManager;
   final VoidCallback onShowRepoManager;
   final VoidCallback onShowSiteEditor;
@@ -41,6 +42,7 @@ class SettingsScreen extends StatefulWidget {
     required this.onSyncWebDavToLocal,
     required this.onSyncDraftsToWebDav,
     required this.onShowAiManager,
+    required this.onShowLocalModelManager,
     required this.onShowGithubTokenManager,
     required this.onShowRepoManager,
     required this.onShowSiteEditor,
@@ -634,6 +636,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Text(
             '兼容各类 OpenAI 中转站：填 Base URL + API Key → 点击获取模型 → 选择模型保存。',
             style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+          ),
+        ]),
+
+        const SizedBox(height: 20),
+        // ── 本地模型 ──
+        _sectionTitle('本地模型（离线 GGUF）'),
+        const SizedBox(height: 8),
+        _settingsCard([
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.memory_outlined),
+            title: const Text('本地 GGUF 模型',
+                style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: const Text(
+                '导入 .gguf 文件，配置推理设备 / 上下文 / 采样参数后完全离线使用'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: widget.onShowLocalModelManager,
           ),
         ]),
 

@@ -90,7 +90,7 @@ class LocalModelSettings {
   const LocalModelSettings({
     this.device = 'auto',
     this.gpuLayers = 0,
-    this.contextSize = 4096,
+    this.contextSize = 2048,
     this.batchSize = 0,
     this.microBatchSize = 0,
     this.threads = 0,
@@ -144,7 +144,7 @@ class LocalModelSettings {
   bool get allGpuLayers => gpuLayers >= 999;
 
   /// 生效的上下文长度（自动 / 手动的公共展示）。
-  int get effectiveContextSize => contextSize > 0 ? contextSize : 4096;
+  int get effectiveContextSize => contextSize > 0 ? contextSize : 2048;
 
   LocalModelSettings copyWith({
     String? device,
@@ -257,7 +257,7 @@ class LocalModelSettings {
       version: _int(j['version'], currentVersion),
       device: _enumString(j['device'], 'auto', devices),
       gpuLayers: _int(j['gpuLayers'], 0),
-      contextSize: _int(j['contextSize'], 4096),
+      contextSize: _int(j['contextSize'], 2048),
       batchSize: _int(j['batchSize'], 0),
       microBatchSize: _int(j['microBatchSize'], 0),
       threads: _int(j['threads'], 0),

@@ -834,7 +834,7 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                             final v = int.tryParse(ctrlContext.text.trim());
                             update(settings.copyWith(
                               contextSize: (v == null || v < 512)
-                                  ? 4096
+                                  ? 2048
                                   : v,
                             ));
                           },
@@ -1201,7 +1201,7 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
   String _localSummary(AiModelEntity m) {
     final s = m.localSettings;
     if (s == null) {
-      return '上下文 ${m.contextLimit > 0 ? m.contextLimit : 4096}';
+      return '上下文 ${m.contextLimit > 0 ? m.contextLimit : 2048}';
     }
     final deviceLabel = switch (s.device) {
       'cpu' => 'CPU',
@@ -1319,6 +1319,9 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
             }
           } else {
             backendHint = ' · 后端信息暂不可用';
+          }
+          if (llama.gpuFallbackToCpu) {
+            backendHint += ' · ⚠ 未检测到 GPU，已回退 CPU 推理（可能偏慢）';
           }
         }
         ScaffoldMessenger.of(context).showSnackBar(

@@ -176,6 +176,7 @@ class AiRequestDispatcher {
           controller,
           preferredModel: preferredModel,
           temperature: temperature,
+          maxTokens: preferredModel.localSettings?.maxTokens ?? 2048,
         );
         return;
       }

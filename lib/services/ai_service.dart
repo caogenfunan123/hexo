@@ -241,7 +241,7 @@ class AiService {
     }
     buf.writeln();
 
-    final limit = (contextSize ?? 4096).clamp(512, 32768);
+    final limit = (contextSize ?? 2048).clamp(512, 32768);
     final history = <String>[];
     for (final m in messages) {
       final role = m['role']?.toString() ?? 'user';
@@ -305,7 +305,7 @@ class AiService {
     }
     final contextSize = p.localSettings?.effectiveContextSize ??
         p.localContextSize ??
-        4096;
+        2048;
     final prompt = buildLocalPrompt(
       systemPrompt,
       messages,
@@ -673,7 +673,7 @@ class AiService {
         systemPrompt,
         messages,
         contextSize:
-            p.localSettings?.effectiveContextSize ?? p.localContextSize ?? 4096,
+            p.localSettings?.effectiveContextSize ?? p.localContextSize ?? 2048,
       );
       final text = await _completeLocal(
         p,

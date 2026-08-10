@@ -31,6 +31,7 @@ class LocalLlamaProvider {
   String? _lastError;
   String? _backendName;
   ({int total, int free})? _vram;
+  bool _gpuFallbackToCpu = false;
 
   /// 是否可在当前平台使用（llamadart 支持 Android/iOS/桌面/Web）。
   bool get isAvailable {
@@ -49,6 +50,9 @@ class LocalLlamaProvider {
   /// 实际生效的推理后端名称（如 llama.cpp Vulkan / CPU），用于确认
   /// GPU 加速是否真正启用；未加载模型时为 null。
   String? get backendName => _backendName;
+
+  /// 是否因无 GPU / 探测失败而回退到 CPU 推理。
+  bool get gpuFallbackToCpu => _gpuFallbackToCpu;
 
   /// 显存信息（字节），Vulkan/GPU 后端可用时返回。
   ({int total, int free})? get vram => _vram;
@@ -100,12 +104,16 @@ class LocalLlamaProvider {
       // 后端强制解析为 CPU 并把 GPU 层数归零，因此必须显式探测并指定
       // Vulkan 才能真正启用 GPU 加速）；无 GPU 设备探测后回退 CPU。
       var useGpu = effective.isVulkan;
+      _gpuFallbackToCpu = false;
       if (effective.isAuto) {
         try {
           useGpu = await engine.isGpuSupported();
         } catch (_) {
           useGpu = false;
         }
+        if (!useGpu) _gpuFallbackToCpu = true;
+      } else if (!useGpu) {
+        _gpuFallbackToCpu = true;
       }
       final gpuLayers = useGpu
           ? (effective.gpuLayers > 0
@@ -236,7 +244,7 @@ class LocalLlamaProvider {
     int maxTokens,
   ) async {
     final engine = _engine;
-    final contextSize = _loadedSettings?.effectiveContextSize ?? 4096;
+    final contextSize = _loadedSettings?.effectiveContextSize ?? 2048;
     var promptTokens = 0;
     if (engine != null) {
       try {
@@ -332,6 +340,7 @@ class LocalLlamaProvider {
     final engine = _engine;
     _loadedModelPath = null;
     _loadedSettings = null;
+    _gpuFallbackToCpu = false;
     if (engine != null) {
       try {
         await engine.unloadModel();
@@ -348,6 +357,7 @@ class LocalLlamaProvider {
     _engine = null;
     _loadedModelPath = null;
     _loadedSettings = null;
+    _gpuFallbackToCpu = false;
     if (engine != null) {
       try {
         await engine.dispose();
@@ -369,6 +379,6 @@ class LocalLlamaProvider {
   }
 
   /// 估算模型上下文是否能容纳 [tokenCount] 个 token。
-  bool canFit(int tokenCount, {int contextSize = 4096}) =>
+  bool canFit(int tokenCount, {int contextSize = 2048}) =>
       tokenCount <= contextSize;
 }

@@ -3127,6 +3127,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       onSyncWebDavToLocal: _syncWebDavToLocal,
       onSyncDraftsToWebDav: _syncDraftsToWebDav,
       onShowAiManager: _showAiManager,
+      onShowLocalModelManager: _showAiModelManager,
       onShowGithubTokenManager: _showGithubTokenManager,
       onShowRepoManager: _showRepoManager,
       onShowSiteEditor: _showSiteEditor,
