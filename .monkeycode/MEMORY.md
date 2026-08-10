@@ -36,7 +36,8 @@ Entries discovered by the Agent during task execution should follow this format:
 - Context: Discovered by Agent while installing Flutter SDK to verify hexo app Dart code compiles
 - Category: Environment Configuration
 - Instructions:
-  - Flutter SDK 安装在 /opt/flutter（stable 分支，Dart 3.12.2，2026-08-10 已重新完整安装并通过 `flutter --version`），执行命令前需 `export PATH=/opt/flutter/bin:$PATH`
-  - 编译/analyze 命令必须在后台终端执行：`cd /workspace/hexo && export PATH=/opt/flutter/bin:$PATH && flutter pub get && flutter analyze`
-  - `flutter analyze` 当前基线：约 600 个 issues，几乎全部是历史遗留的 `withOpacity`/`value`/`onChanged` deprecated info 与 `test/`、`example/`、`unified_remote_posts_screen.dart` 的既有 error；AI 本地模型相关改动文件（local_llama_provider / ai_service / ai_request_dispatcher / ai_model_manager_screen / settings_screen / main / desktop_shell）为 0 error
+  - Flutter SDK 安装在 /tmp/opencode/flutter（stable 3.44.9，Dart 3.12.2，2026-08-10 在当前会话环境新装），执行命令前需 `export PATH=/tmp/opencode/flutter/bin:$PATH`；执行前先 `git config --global --add safe.directory /tmp/opencode/flutter`（避免 dubious ownership 报错）
+  - hexo 仓库克隆在 /tmp/opencode/hexo（远程 origin 已内嵌 GitHub token，main 分支直接提交并 push）
+  - 编译/analyze 命令必须在后台终端执行：`cd /tmp/opencode/hexo && export PATH=/tmp/opencode/flutter/bin:$PATH && flutter pub get && flutter analyze`
+  - `flutter analyze` 基线约 600+ issues，几乎全部是历史遗留的 `withOpacity` deprecated info、`test/`（test_batch_publish/test_localizations 引用不存在的 package:hexo_app 与 flutter_test）与各屏既有问题；本功能改动文件（markdown_diff / static_blog_batch_publish_service / static_blog_posts_screen / ai_service / ai_request_dispatcher）不新增任何 issue
   - 本环境无 PHP，无法运行 `php -l` 校验 SecureApi 插件 PHP 语法，只能人工审查
