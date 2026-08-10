@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../core/repository/static_blog_repository.dart';
 import '../core/site_manager.dart';
+import '../core/diff/markdown_diff.dart';
 import '../models/app_settings.dart';
 import '../models/blog_post.dart';
 import '../models/repo_config.dart';
@@ -519,10 +520,10 @@ class _StaticBlogPostsScreenState extends State<StaticBlogPostsScreen> {
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.public),
               title: const Text('发布到所有静态博客站点'),
-              subtitle: const Text('自动转换为各站点框架格式并推送'),
+              subtitle: const Text('预览各站文件与差异后一键发布'),
               onTap: () {
                 Navigator.pop(ctx);
-                _startBatchPublish(selectedPosts, null);
+                _startWithPreview(selectedPosts, null);
               },
             ),
             ListTile(
@@ -594,7 +595,7 @@ class _StaticBlogPostsScreenState extends State<StaticBlogPostsScreen> {
               onPressed: () {
                 Navigator.pop(ctx);
                 if (_selectedSiteIds.isNotEmpty) {
-                  _startBatchPublish(
+                  _startWithPreview(
                       selectedPosts, _selectedSiteIds.toList());
                 }
               },
@@ -606,8 +607,8 @@ class _StaticBlogPostsScreenState extends State<StaticBlogPostsScreen> {
     );
   }
 
-  /// 开始批量发布
-  void _startBatchPublish(
+  /// 开始带预览的批量发布：逐篇预览 → 确认 → 发布
+  void _startWithPreview(
       List<BlogPost> selectedPosts, List<String>? selectedSiteIds) {
     if (selectedPosts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -620,14 +621,14 @@ class _StaticBlogPostsScreenState extends State<StaticBlogPostsScreen> {
       _isBatchPublishing = true;
       _batchProgress = 0;
       _batchTotal = selectedPosts.length;
-      _batchMessage = '开始批量发布...';
+      _batchMessage = '生成发布预览...';
     });
 
-    _publishNextPost(selectedPosts, selectedSiteIds, 0);
+    _previewThenPublish(selectedPosts, selectedSiteIds, 0);
   }
 
-  /// 发布下一篇文章
-  void _publishNextPost(
+  /// 逐篇执行「生成预览 → 确认 → 发布」
+  void _previewThenPublish(
       List<BlogPost> selectedPosts, List<String>? selectedSiteIds, int index) {
     if (index >= selectedPosts.length) {
       setState(() {
@@ -642,26 +643,242 @@ class _StaticBlogPostsScreenState extends State<StaticBlogPostsScreen> {
 
     final post = selectedPosts[index];
 
-    _batchPublishService.batchPublishToStaticBlogs(
-      post,
-      selectedSiteIds: selectedSiteIds,
-      onProgress: (current, total, message) {
-        if (!mounted) return;
-        setState(() {
-          _batchProgress = current;
-          _batchTotal = total;
-          _batchMessage = message;
-        });
-      },
-      onComplete: (success, message, results) {
-        if (!mounted) return;
-        setState(() {
-          _batchProgress = index + 1;
-          _batchMessage = message;
-        });
-        _showBatchPublishResults(results);
-        _publishNextPost(selectedPosts, selectedSiteIds, index + 1);
-      },
+    // 生成该文章的多站点预览
+    _batchPublishService
+        .buildPreview(post, selectedSiteIds: selectedSiteIds)
+        .then((preview) {
+      if (!mounted) return;
+      setState(() {
+        _batchProgress = index + 1;
+        _batchTotal = selectedPosts.length;
+        _batchMessage =
+            '预览就绪：${preview.publishable.length} 站可发布，${preview.skippedCount} 站跳过';
+      });
+      _showPreviewConfirmDialog(post, preview, selectedPosts, selectedSiteIds,
+              index)
+          .then((confirmed) {
+        if (confirmed != true) {
+          // 用户取消 → 终止后续发布
+          setState(() {
+            _isBatchPublishing = false;
+            _selectedPostKeys.clear();
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('已取消发布')),
+          );
+          return;
+        }
+
+        // 确认 → 执行该篇发布，完成后进入下一篇
+        _batchPublishService.publishFromPreview(
+          post,
+          preview,
+          onProgress: (current, total, message) {
+            if (!mounted) return;
+            setState(() {
+              _batchProgress = index + 1;
+              _batchTotal = selectedPosts.length;
+              _batchMessage = message;
+            });
+          },
+          onComplete: (success, message, results) {
+            if (!mounted) return;
+            setState(() {
+              _batchProgress = index + 1;
+              _batchMessage = message;
+            });
+            _showBatchPublishResults(results);
+            _previewThenPublish(selectedPosts, selectedSiteIds, index + 1);
+          },
+        );
+      });
+    }).catchError((e) {
+      if (!mounted) return;
+      setState(() {
+        _isBatchPublishing = false;
+        _selectedPostKeys.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('生成预览失败: $e')),
+      );
+    });
+  }
+
+  /// 展示发布预览确认对话框（每站卡片：路径/模板/差异）
+  Future<bool?> _showPreviewConfirmDialog(
+    BlogPost post,
+    MultiSitePublishPreview preview,
+    List<BlogPost> selectedPosts,
+    List<String>? selectedSiteIds,
+    int index,
+  ) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('发布预览 · ${post.title}'),
+        content: SizedBox(
+          width: 640,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '共 ${selectedPosts.length} 篇，当前第 ${index + 1} 篇 · '
+                '${preview.publishable.length} 站可发布 / '
+                '${preview.skippedCount} 站跳过',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: preview.sites.length,
+                  itemBuilder: (context, i) {
+                    return _buildSitePreviewCard(preview.sites[i]);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认发布'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 单站点预览卡片
+  Widget _buildSitePreviewCard(SitePublishPreview site) {
+    if (!site.loggedIn) {
+      return Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        color: Colors.grey.shade100,
+        child: ListTile(
+          leading: const Icon(Icons.block, color: Colors.grey),
+          title: Text(site.siteName),
+          subtitle: Text(site.loginError ?? '未登录'),
+          trailing: const Text('跳过', style: TextStyle(color: Colors.grey)),
+        ),
+      );
+    }
+
+    final header = Row(
+      children: [
+        Icon(
+          site.isNewFile ? Icons.add_circle : Icons.update,
+          color: site.isNewFile ? Colors.green : Colors.blue,
+          size: 16,
+        ),
+        const SizedBox(width: 6),
+        Text(site.isNewFile ? '新建' : '更新',
+            style: TextStyle(
+                fontSize: 12,
+                color: site.isNewFile ? Colors.green : Colors.blue)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            site.path,
+            style: const TextStyle(fontWeight: FontWeight.w500),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+
+    final meta = Text(
+      '模板: ${site.templateName ?? '框架默认'}'
+      '${site.isNewFile ? '' : ' · ${site.diff.addedCount} 增 / ${site.diff.removedCount} 删'}',
+      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+    );
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            header,
+            const SizedBox(height: 4),
+            meta,
+            const SizedBox(height: 8),
+            _buildDiffBody(site),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 差异/新文件内容展示
+  Widget _buildDiffBody(SitePublishPreview site) {
+    const maxLines = 40;
+    final lines = site.isNewFile
+        ? site.diff.changes
+        : site.diff.changes.where(
+            (c) => c.type != LineChangeType.unchanged);
+    final visible = lines.take(maxLines).toList();
+    final truncated = lines.length > maxLines;
+
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxHeight: 220),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      padding: const EdgeInsets.all(8),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ...visible.map((c) {
+              final Color color;
+              final String prefix;
+              switch (c.type) {
+                case LineChangeType.added:
+                  color = Colors.green.shade700;
+                  prefix = '+';
+                  break;
+                case LineChangeType.removed:
+                  color = Colors.red.shade700;
+                  prefix = '-';
+                  break;
+                case LineChangeType.unchanged:
+                  color = Colors.grey.shade500;
+                  prefix = ' ';
+                  break;
+              }
+              return Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                        text: ' $prefix ',
+                        style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+                    TextSpan(
+                        text: c.text.isEmpty ? ' ' : c.text,
+                        style: TextStyle(color: color)),
+                  ],
+                ),
+                style: const TextStyle(
+                    fontSize: 11, fontFamily: 'monospace', height: 1.4),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              );
+            }),
+            if (truncated)
+              Text('… 仅显示前 $maxLines 行（共 ${lines.length} 行变更）',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+          ],
+        ),
+      ),
     );
   }
 
