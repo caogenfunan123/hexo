@@ -102,18 +102,11 @@ jobs:
           flutter config --android-sdk "$ANDROID_HOME"
           yes | flutter doctor --android-licenses || echo "License acceptance failed, continuing..."
 
-      - name: Install NDK & CMake for fcllama
+      - name: Install Android SDK components
         run: |
-          # fcllama (llama.cpp binding) 构建要求 NDK 28.0.12674087 + cmake 3.31.0 + SDK 35
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          if [ ! -f "$SDKMANAGER" ]; then
-            SDKMANAGER="$(dirname "$(dirname "$(which sdkmanager 2>/dev/null || true)")")/cmdline-tools/latest/bin/sdkmanager"
-          fi
-          if [ -f "$SDKMANAGER" ]; then
-            yes | "$SDKMANAGER" "ndk;28.0.12674087" "cmake;3.31.0" "platforms;android-35" >/dev/null 2>&1 || echo "sdkmanager install failed, AGP will auto-download"
-          else
-            echo "sdkmanager not found, AGP will auto-download"
-          fi
+          # llamadart 通过 pub build hook 自动下载预编译 llama.cpp native 运行时，
+          # Android 无需 NDK/CMake 本地编译；SDK 组件由 AGP 自动安装。
+          echo "Android SDK ready"
 
       - name: Build APK
         run: |

@@ -1,9 +1,10 @@
 # llama_bridge 本地模型桥接层（已弃用）
 
-> **已弃用**：本项目本地 GGUF 推理已改用 pub.dev 的 `fcllama` 插件
-> （`lib/core/ai/local_llama_provider.dart` 内部基于 `fcllama`）。
-> `fcllama` 在 Android 构建时通过 CMake 自动编译 llama.cpp，APK 自带 native 库，
-> 无需手动编译或放置 .so，导入 GGUF 即可直接使用。
+> **已弃用**：本项目本地 GGUF 推理已改用 pub.dev 的 `llamadart` 插件
+> （`lib/core/ai/local_llama_provider.dart` 内部基于 `llamadart`）。
+> `llamadart` 通过 pub build hook 自动下载匹配平台的预编译 llama.cpp native
+> 运行时，Android 默认启用 CPU + Vulkan 双后端，无需手动编译或放置 .so，
+> 导入 GGUF 即可直接使用。
 >
 > 以下内容仅供历史参考，不再用于生产构建。
 

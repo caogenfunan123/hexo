@@ -167,7 +167,7 @@ class AiService {
     );
   }
 
-  /// 本地 GGUF 模型生成（fcllama，完全离线，仅 Android）。
+  /// 本地 GGUF 模型生成（llamadart，完全离线）。
   Future<String> _completeLocal(
     AiProfile p, {
     required String systemPrompt,
@@ -176,7 +176,7 @@ class AiService {
   }) async {
     final llama = LocalLlamaProvider.instance;
     if (!llama.isAvailable) {
-      throw Exception('本地模型仅在 Android 设备上可用');
+      throw Exception('本地模型当前平台不可用');
     }
     if (!llama.isModelLoaded) {
       final modelPath = p.localModelPath;
@@ -277,7 +277,7 @@ class AiService {
   }) async* {
     final llama = LocalLlamaProvider.instance;
     if (!llama.isAvailable) {
-      yield StreamChunk(content: '本地模型仅在 Android 设备上可用', isDone: true);
+      yield StreamChunk(content: '本地模型当前平台不可用', isDone: true);
       return;
     }
     if (!llama.isModelLoaded) {

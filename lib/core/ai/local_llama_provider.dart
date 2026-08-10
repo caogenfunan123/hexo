@@ -1,43 +1,49 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:fcllama/fllama.dart';
 import 'package:flutter/foundation.dart';
+import 'package:llamadart/llamadart.dart';
 
 /// 本地 GGUF 模型推理提供者。
 ///
-/// 内部基于 `fcllama`（Flutter binding of llama.cpp，platform channel）。
-/// Android 构建时通过 CMake 自动编译 llama.cpp，APK 内已包含全部 native
-/// 库，因此**导入 GGUF 即可用**，无需手动放置 .so。
+/// 内部基于 `llamadart`（Dart/Flutter binding of llama.cpp，FFI + isolate）。
+/// 构建期 hook 自动下载匹配平台的预编译 native 运行时，Android 默认启用
+/// **CPU + Vulkan 双后端**：模型加载时 [ModelParams.gpuLayers] 自动将
+/// 算子卸载到 GPU（无 GPU 时自动回退 CPU），显著提升推理速度。
 ///
-/// 仅 Android 平台启用；其他平台 [isAvailable] 返回 false，
-/// 上层应给出"本地模型仅在 Android 可用"的提示。
+/// 提供逐 token 真流式接口 [generateStream]（内部为
+/// `engine.generate` → `Stream<String>`），UI 可实时渲染，避免"思考完成才
+/// 一次性显示"与"长时间无输出假死"。
+///
+/// 仅 Android / iOS / 桌面 / Web 等 llamadart 支持平台启用；其他平台
+/// [isAvailable] 返回 false，上层应给出"本地模型当前平台不可用"的提示。
 class LocalLlamaProvider {
   LocalLlamaProvider._();
 
   static final LocalLlamaProvider instance = LocalLlamaProvider._();
 
-  /// fcllama 上下文 id（double，>0 表示已成功 initContext）
-  double? _contextId;
+  /// llamadart 引擎与后端（FFI isolate）。
+  LlamaEngine? _engine;
   String? _loadedModelPath;
   int? _loadedContextSize;
   String? _lastError;
-  Future<void> _completionQueue = Future<void>.value();
 
-  /// 是否可在当前平台使用（仅 Android）。
-  bool get isAvailable =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  /// 是否可在当前平台使用（llamadart 支持 Android/iOS/桌面/Web）。
+  bool get isAvailable {
+    if (kIsWeb) return true;
+    return true;
+  }
 
   /// 当前已加载的模型是否在内存中。
-  bool get isModelLoaded => _contextId != null;
+  bool get isModelLoaded => _engine != null && (_engine?.isReady ?? false);
 
-  /// 已加载模型的上文 token 数（fcllama 不直接暴露，返回 0）。
+  /// 已加载模型的上文 token 数（llamadart 不直接暴露，返回 0）。
   int get currentTokens => 0;
 
   String? get lastError => _lastError;
 
-  /// 是否已在 Android 上初始化过（有上下文）。
-  bool get initialized => _contextId != null;
+  /// 是否已初始化（有已加载模型）。
+  bool get initialized => isModelLoaded;
 
   /// 动态线程数：取设备物理核心数，超出 8 核封顶（避免线程过度竞争）。
   int get _dynamicThreads {
@@ -49,48 +55,39 @@ class LocalLlamaProvider {
     return 4;
   }
 
-  /// 加载 GGUF 模型文件（fcllama initContext）。
+  /// 加载 GGUF 模型文件（llamadart modelLoad + contextCreate）。
   /// [modelPath] 为本地 .gguf 文件绝对路径，[contextSize] 为上下文长度。
   /// 返回 null 表示成功，否则返回错误信息。
   Future<String?> loadModel(String modelPath, {int contextSize = 4096}) async {
     _lastError = null;
     if (!isAvailable) {
-      _lastError = '本地模型仅在 Android 设备上可用';
-      return _lastError;
-    }
-    final llama = FCllama.instance();
-    if (llama == null) {
-      _lastError = 'fcllama 插件未初始化';
+      _lastError = '本地模型当前平台不可用';
       return _lastError;
     }
     final normalizedPath = modelPath.trim();
-    if (_contextId != null &&
+    if (isModelLoaded &&
         _loadedModelPath == normalizedPath &&
         _loadedContextSize == contextSize) {
       return null;
     }
-    if (_contextId != null &&
+    if (isModelLoaded &&
         (_loadedModelPath != normalizedPath ||
             _loadedContextSize != contextSize)) {
       await unload();
     }
     try {
-      final ctx = await llama.initContext(
+      final engine = _engine ??= LlamaEngine(LlamaBackend());
+      await engine.loadModel(
         normalizedPath,
-        nCtx: contextSize,
-        nBatch: contextSize > 512 ? 512 : contextSize,
-        nThreads: _dynamicThreads,
-        useMlock: false,
-        useMmap: true,
-        emitLoadProgress: false,
+        modelParams: ModelParams(
+          contextSize: contextSize,
+          // GPU 层数：默认全量卸载到 GPU（llamadart 自动选择 Vulkan/CPU）。
+          gpuLayers: ModelParams.maxGpuLayers,
+          numberOfThreads: _dynamicThreads,
+          useMmap: true,
+          useMlock: false,
+        ),
       );
-      final idStr = ctx?['contextId']?.toString() ?? '';
-      final id = double.tryParse(idStr);
-      if (id == null || id <= 0) {
-        _lastError = '加载本地模型失败：上下文初始化未返回有效 id（${ctx ?? '空响应'}）';
-        return _lastError;
-      }
-      _contextId = id;
       _loadedModelPath = normalizedPath;
       _loadedContextSize = contextSize;
       return null;
@@ -98,88 +95,6 @@ class LocalLlamaProvider {
       _lastError = '加载本地模型失败: $e';
       return _lastError;
     }
-  }
-
-  Future<T> _serializeCompletion<T>(Future<T> Function() action) {
-    final next = _completionQueue.then((_) => action());
-    _completionQueue = next.then<void>((_) {}, onError: (_) {});
-    return next;
-  }
-
-  /// 每次 completion 生成的完整文本（流式聚合）。
-  Future<String> _collectCompletion(
-    double contextId,
-    String prompt,
-    int maxTokens,
-    double temperature,
-  ) async {
-    final buf = StringBuffer();
-    await for (final token
-        in _streamCompletion(contextId, prompt, maxTokens, temperature)) {
-      buf.write(token);
-    }
-    return buf.toString();
-  }
-
-  /// 真流式：逐 token 从 onTokenStream 读取并产出。
-  ///
-  /// 返回 controller stream，内部在 `_completionQueue` 中串行执行
-  /// completion 并实时向 controller 推送 token；首个 token 到达前不做任何
-  /// 缓冲，调用方（UI）可实时展示，避免"长时间思考无输出"的假死感知。
-  /// 消费者取消订阅时自动停止原生生成。
-  Stream<String> _streamCompletion(
-    double contextId,
-    String prompt,
-    int maxTokens,
-    double temperature,
-  ) {
-    final controller = StreamController<String>();
-    controller.onCancel = () async {
-      await stopCompletion();
-      if (!controller.isClosed) await controller.close();
-    };
-    unawaited(_serializeCompletion(() async {
-      final llama = FCllama.instance();
-      if (llama == null) {
-        controller.addError(Exception('fcllama 插件未初始化'));
-        if (!controller.isClosed) await controller.close();
-        return;
-      }
-      StreamSubscription<Map<Object?, dynamic>>? sub;
-      var done = false;
-      try {
-        final stream = llama.onTokenStream;
-        if (stream != null) {
-          sub = stream.listen((data) {
-            if (done) return;
-            if (data['function'] != 'completion') return;
-            final eventContextId =
-                double.tryParse(data['contextId']?.toString() ?? '');
-            if (eventContextId != null && eventContextId != contextId) return;
-            final res = data['result'];
-            if (res is Map && res['token'] != null) {
-              controller.add(res['token'].toString());
-            }
-          });
-        }
-        await llama.completion(
-          contextId,
-          prompt: prompt,
-          nPredict: maxTokens,
-          temperature: temperature,
-          topP: 0.9,
-          emitRealtimeCompletion: true,
-        );
-      } catch (e) {
-        controller.addError(Exception('本地模型生成失败: $e'));
-      } finally {
-        done = true;
-        await Future<void>.delayed(const Duration(milliseconds: 60));
-        await sub?.cancel();
-        if (!controller.isClosed) await controller.close();
-      }
-    }));
-    return controller.stream;
   }
 
   /// 单次完整生成（流式聚合，适合短文本）。
@@ -190,45 +105,71 @@ class LocalLlamaProvider {
     int maxTokens = 1024,
     double temperature = 0.7,
   }) async {
-    final id = _contextId;
-    if (id == null) {
+    final engine = _engine;
+    if (engine == null || !engine.isReady) {
       return '本地模型未加载。请先在"AI 模型管理"中导入并加载 GGUF 模型。';
     }
-    return _collectCompletion(id, prompt, maxTokens, temperature);
+    final buf = StringBuffer();
+    await for (final token in engine.generate(
+      prompt,
+      params: GenerationParams(maxTokens: maxTokens, temp: temperature),
+    )) {
+      buf.write(token);
+    }
+    return buf.toString();
   }
 
   /// 流式生成：逐 token 产出补全文本（真流式）。
+  ///
+  /// 基于 llamadart `engine.generate` → `Stream<String>`，每个 token 立即
+  /// 产出，首个 token 到达前不做任何缓冲；调用方（UI）可实时展示。
   Stream<String> generateStream(
     String prompt, {
     int maxTokens = 1024,
     double temperature = 0.7,
   }) async* {
-    final id = _contextId;
-    if (id == null) {
+    final engine = _engine;
+    if (engine == null || !engine.isReady) {
       yield '本地模型未加载。请先在"AI 模型管理"中导入并加载 GGUF 模型。';
       return;
     }
-    yield* _streamCompletion(id, prompt, maxTokens, temperature);
+    yield* engine.generate(
+      prompt,
+      params: GenerationParams(maxTokens: maxTokens, temp: temperature),
+    );
   }
 
-  /// 取消当前正在进行的生成（fcllama 原生 stop）。
+  /// 取消当前正在进行的生成（llamadart backend.cancelGeneration）。
   Future<void> stopCompletion() async {
-    final id = _contextId;
-    if (id == null) return;
+    final engine = _engine;
+    if (engine == null) return;
     try {
-      await FCllama.instance()?.stopCompletion(contextId: id);
+      engine.cancelGeneration();
     } catch (_) {}
   }
 
   /// 卸载当前模型，释放内存。
   Future<void> unload() async {
-    final id = _contextId;
-    _contextId = null;
+    final engine = _engine;
     _loadedModelPath = null;
     _loadedContextSize = null;
-    if (id != null) {
+    if (engine != null) {
       try {
-        await FCllama.instance()?.releaseContext(id);
+        await engine.unloadModel();
+      } catch (_) {}
+    }
+    _lastError = null;
+  }
+
+  /// 释放全部引擎资源（应用退出时调用）。
+  Future<void> dispose() async {
+    final engine = _engine;
+    _engine = null;
+    _loadedModelPath = null;
+    _loadedContextSize = null;
+    if (engine != null) {
+      try {
+        await engine.dispose();
       } catch (_) {}
     }
     _lastError = null;

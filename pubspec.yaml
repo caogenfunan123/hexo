@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 1.0.4+5
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.10.7 <4.0.0'
 
 dependencies:
   flutter:
@@ -19,8 +19,9 @@ dependencies:
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.3.0
   path: ^1.8.0
-  # 本地 GGUF 模型推理（仅 Android/iOS，构建期自动编译 llama.cpp）
-  fcllama: ^0.0.3
+  # 本地 GGUF 模型推理（llamadart：llama.cpp 绑定，Android 支持 CPU+Vulkan 双后端，
+  # 构建期 hook 自动下载预编译 native 运行时，逐 token 真流式）
+  llamadart: ^0.8.18
   markdown: ^7.1.0
   # 桌面端专用
   window_manager: ^0.3.8
@@ -42,7 +43,7 @@ dependencies:
   # 编码
   gbk_codec: ^0.4.0
   # ZIP 压缩/解压 (DOCX 导入导出)
-  archive: ^3.6.1
+  archive: ^4.0.7
   # 加密（站点加密服务）
   pointycastle: ^3.9.1
   flutter_inappwebview: ^6.1.5

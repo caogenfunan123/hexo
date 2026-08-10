@@ -55,7 +55,7 @@ class AiRequestDispatcher {
     _cancelled = true;
     _activeStreamController?.close();
     _activeStreamController = null;
-    // 本地 GGUF 生成同步停止（fcllama stopCompletion）
+    // 本地 GGUF 生成同步停止（llamadart cancelGeneration）
     unawaited(LocalLlamaProvider.instance.stopCompletion());
   }
 
