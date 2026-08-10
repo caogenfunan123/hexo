@@ -226,6 +226,7 @@ class AiService {
     String systemPrompt,
     List<Map<String, dynamic>> messages, {
     int? contextSize,
+    int maxTokens = 2048,
   }) {
     final buf = StringBuffer();
     buf.writeln(_localSystemHint);
@@ -246,8 +247,11 @@ class AiService {
       final line = role == 'user' ? '用户：$content' : '助手：$content';
       history.add(line);
     }
-    // 丢弃最早对话，保留最近能塞进上下文的部分
-    final budgetChars = limit * 3;
+    // 为输出预留 maxTokens + 余量，再按 ~2 字符/token 保守估算历史字符
+    // 预算（中文 tokenizer 约 1.5~2 字符/token，原 3 字符/token 会低估
+    // token 数导致 prompt 撑爆上下文触发 "prompt too long"）。
+    final reserved = (maxTokens + 32).clamp(64, limit ~/ 2);
+    final budgetChars = (limit - reserved) * 2;
     final keep = <String>[];
     var total = 0;
     for (final line in history.reversed) {
@@ -299,6 +303,7 @@ class AiService {
       systemPrompt,
       messages,
       contextSize: p.localContextSize ?? 4096,
+      maxTokens: maxTokens,
     );
     yield* llama.generateStream(
       prompt,

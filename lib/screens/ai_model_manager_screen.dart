@@ -10,6 +10,7 @@ import '../models/app_settings.dart';
 import '../services/ai_service.dart';
 import '../services/gguf_model_service.dart';
 import '../services/storage_service.dart';
+import '../core/ai/local_llama_provider.dart';
 import 'token_usage_screen.dart';
 
 /// 预置模型库
@@ -875,8 +876,23 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
         ),
       );
       if (mounted) {
+        String backendHint = '';
+        if (model.provider == ModelProvider.local) {
+          final llama = LocalLlamaProvider.instance;
+          final name = llama.backendName;
+          if (name != null && name.trim().isNotEmpty) {
+            backendHint = ' · 后端: $name';
+            final vram = llama.vram;
+            if (vram != null && vram.total > 0) {
+              backendHint +=
+                  ' · 显存: ${(vram.free / (1024 * 1024)).toStringAsFixed(0)}MB';
+            }
+          } else {
+            backendHint = ' · 后端信息暂不可用';
+          }
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${model.modelName} ✅ 连通正常')),
+          SnackBar(content: Text('${model.modelName} ✅ 连通正常$backendHint')),
         );
       }
     } catch (e) {
