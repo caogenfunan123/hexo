@@ -581,6 +581,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         snippets = sn;
         loading = false;
       });
+      // 启动时若有壁纸，异步计算自动字色
+      _refreshWallpaperBrightness();
       _doc.setDrafts(drafts);
       _doc.setTemplates(templates);
       // 初始化站点管理器（统一管理静态仓库和动态 CMS 站点）
@@ -980,7 +982,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       return _buildFocusMode();
     }
 
-    return PopScope(
+    final scaffold = PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
@@ -1000,6 +1002,17 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         body: _buildPage(),
       ),
     );
+
+    // 编辑页：全屏壁纸层垫底，壁纸/纯色背景延伸覆盖状态栏与顶栏
+    if (_currentPage == 0) {
+      return Stack(
+        children: [
+          Positioned.fill(child: _buildEditorBackground()),
+          scaffold,
+        ],
+      );
+    }
+    return scaffold;
   }
 
 
@@ -1009,20 +1022,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       backgroundColor: _currentPage == 0 ? Colors.transparent : Colors.white,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
-      shadowColor: Colors.black.withOpacity(0.04),
+      shadowColor: Colors.transparent,
+      centerTitle: _currentPage == 0,
       leading: IconButton(
-        icon: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: globalTextColor.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            Icons.menu_rounded,
-            color: _currentPage == 0 ? globalTextColor : cs.primary,
-            size: 20,
-          ),
+        icon: Icon(
+          Icons.menu_rounded,
+          color: _currentPage == 0 ? globalTextColor : cs.primary,
+          size: 22,
         ),
         onPressed: _openDrawer,
       ),
@@ -1050,26 +1056,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                 onTap: _openArticlePreview,
               ),
               _appBarAction(
-                icon: Icons.widgets_outlined,
-                tooltip: '工具箱',
-                color: globalTextColor,
-                onTap: () => _showEditorToolbox(),
-              ),
-              _appBarAction(
                 icon: Icons.more_vert,
                 tooltip: '更多',
                 color: globalTextColor,
-                onTap: () => _showEditorMoreMenu(),
-              ),
-              _appBarAction(
-                icon: Icons.widgets_outlined,
-                tooltip: '工具箱',
-                color: cs.primary,
-                onTap: () => _showEditorToolbox(),
-              ),
-              _appBarAction(
-                icon: Icons.more_vert,
-                tooltip: '更多',
                 onTap: () => _showEditorMoreMenu(),
               ),
             ]
@@ -1151,8 +1140,47 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   /// 壁纸路径
   String get _wallpaperPath => _editorTheme.wallpaperPath;
 
-  /// 壁纸模式下自动适配的文字颜色（固定按亮度估算：壁纸视为中等亮度，默认黑字）
-  Color get _wallpaperTextColor => Colors.black;
+  /// 壁纸平均亮度缓存（0=纯黑 ~ 1=纯白），未计算时默认按浅色处理
+  double _wallpaperBrightness = 1.0;
+
+  /// 异步计算壁纸平均亮度，用于自动适配字色
+  Future<void> _refreshWallpaperBrightness() async {
+    if (_editorTheme.bgMode == 2 && _wallpaperPath.isNotEmpty) {
+      try {
+        final bytes = await File(_wallpaperPath).readAsBytes();
+        final codec = await ui.instantiateImageCodec(
+          bytes,
+          targetWidth: 32,
+          targetHeight: 32,
+        );
+        final frame = await codec.getNextFrame();
+        final data = await frame.image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        frame.image.dispose();
+        if (data != null) {
+          final bytesData = data.buffer.asUint8List();
+          var sum = 0.0;
+          final step = bytesData.length ~/ 4;
+          for (var i = 0; i + 2 < bytesData.length; i += 4 * (step > 400 ? step ~/ 400 : 1)) {
+            final r = bytesData[i] / 255;
+            final g = bytesData[i + 1] / 255;
+            final b = bytesData[i + 2] / 255;
+            sum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          }
+          final count = (bytesData.length / (4 * (step > 400 ? step ~/ 400 : 1))).ceil();
+          if (count > 0) sum /= count;
+          _wallpaperBrightness = sum.clamp(0.0, 1.0);
+        }
+      } catch (_) {
+        // 读取失败保持默认
+      }
+    }
+  }
+
+  /// 壁纸模式下自动适配的文字颜色：按壁纸平均亮度自动选择黑/白
+  Color get _wallpaperTextColor =>
+      _wallpaperBrightness > 0.5 ? Colors.black : Colors.white;
 
   /// 是否使用深色系统栏图标（浅背景黑字时用深色图标）
   bool get _useDarkSystemIcons => globalTextColor.computeLuminance() > 0.5;

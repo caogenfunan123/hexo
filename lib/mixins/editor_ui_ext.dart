@@ -14,7 +14,7 @@ extension EditorUiExt on _RootShellState {
           children: [
             // 主编辑区 — 居中、干净
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 60),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 60),
               child: TextField(
                 controller: _doc.contentCtrl,
                 focusNode: _doc.contentFocus,
@@ -124,7 +124,10 @@ extension EditorUiExt on _RootShellState {
         Container(
           width: 8,
           height: 8,
-          decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle),
+          decoration: BoxDecoration(
+            color: globalTextColor,
+            shape: BoxShape.circle,
+          ),
         ),
       ],
     );
@@ -599,6 +602,15 @@ extension EditorUiExt on _RootShellState {
             children: [
               // ── 文档操作 ──
               _menuGroupTitle('文档操作'),
+              _menuRow(
+                icon: Icons.widgets_outlined,
+                label: '工具箱',
+                color: cs.primary,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showEditorToolbox();
+                },
+              ),
               _menuRow(
                 icon: Icons.save_alt,
                 label: '保存为 .md 文件',
@@ -1397,20 +1409,27 @@ extension EditorUiExt on _RootShellState {
     );
   }
 
-  Widget _buildEditorPage() {
-    final cs = Theme.of(context).colorScheme;
-    final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
+  /// 编辑页全屏背景层：纯白/纯黑/自定义壁纸铺满整机（含状态栏与顶栏）
+  Widget _buildEditorBackground() {
     final wallpaper = _editorTheme.bgMode == 2 && _wallpaperPath.isNotEmpty
         ? File(_wallpaperPath)
         : null;
     return Container(
-      // 全屏主题背景：纯白/纯黑/自定义壁纸铺满整机，所有子组件透明
       decoration: BoxDecoration(
         color: _editorBgColor,
         image: wallpaper != null && wallpaper.existsSync()
             ? DecorationImage(image: FileImage(wallpaper), fit: BoxFit.cover)
             : null,
       ),
+    );
+  }
+
+  Widget _buildEditorPage() {
+    final cs = Theme.of(context).colorScheme;
+    final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
+    return Container(
+      // 背景交给外层全屏背景层，这里保持透明
+      color: Colors.transparent,
       child: Stack(
         children: [
           Column(
@@ -1458,7 +1477,7 @@ extension EditorUiExt on _RootShellState {
               Expanded(
                 child: ListView(
                   controller: _editorScrollCtrl,
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 40),
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 40),
                   children: [
                     // ── 标题：无边框、无常驻 label、淡提示 ──
                     TextField(
@@ -1546,7 +1565,7 @@ extension EditorUiExt on _RootShellState {
               ),
               // ── 左下角常驻状态文字：当前站点标识 ──
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
+                padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(

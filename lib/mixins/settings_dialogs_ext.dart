@@ -84,6 +84,8 @@ extension SettingsDialogsExt on _RootShellState {
     _updateSystemBarStyle();
     _updateSiteManager();
     _startAutoSync(); // 重启自动同步（间隔/开关可能变化）
+    // 壁纸变化时刷新自动字色
+    _refreshWallpaperBrightness();
     // 同步全局统一存储目录
     storage.setCustomRoot(s.storageRootDir);
     await storage.saveSettings(s);
