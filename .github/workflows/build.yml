@@ -389,7 +389,15 @@ jobs:
             - Flutter 版本: 3.44.9
             - 构建时间: ${{ github.run_started_at }}
             - 提交信息: ${{ github.event.head_commit.message }}
-            
+
+            ### 直接下载
+            | 平台 | 下载地址 |
+            |------|----------|
+            | Android APK | https://github.com/${{ github.repository }}/releases/download/build-${{ github.sha }}/app-release.apk |
+            | Linux | https://github.com/${{ github.repository }}/releases/download/build-${{ github.sha }}/hexo-linux.tar.gz |
+            | Windows | https://github.com/${{ github.repository }}/releases/download/build-${{ github.sha }}/hexo-windows.zip |
+            | Web | https://github.com/${{ github.repository }}/releases/download/build-${{ github.sha }}/main.dart.js (需配合 assets/ 使用，建议直接看上面的 hexo-web 目录) |
+
             ### 功能更新
             - ✅ 多语言支持（简体中文、English、日本語、한국어）
             - ✅ 静态博客批量发布功能
@@ -398,5 +406,5 @@ jobs:
           files: |
             artifacts/**
           fail_on_unmatched_files: false
-          prerelease: true
+          prerelease: false
           draft: false
