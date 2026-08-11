@@ -1013,6 +1013,14 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                   ),
                 ),
                 Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: OutlinedButton.icon(
+                    onPressed: () => _exportLocalDiagLogs(ctx),
+                    icon: const Icon(Icons.bug_report_outlined, size: 18),
+                    label: const Text('导出诊断日志'),
+                  ),
+                ),
+                Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                   child: Row(
                     children: [
@@ -1076,6 +1084,31 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
         );
       }
     }
+  }
+
+  /// 导出本地模型诊断日志（llama.cpp 原生日志 + 设备/设置信息）。
+  ///
+  /// 用户在真机遇到"模型卡住/加载不出对话"时，导出此文件后反馈，
+  /// 用于定位后端注册、张量分配、prefill、线程等环节的卡点。
+  Future<void> _exportLocalDiagLogs(BuildContext sheetContext) async {
+    final llama = LocalLlamaProvider.instance;
+    final path = await llama.exportDiagnosticLogs();
+    if (!mounted) return;
+    if (path == null || path.startsWith('导出失败')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('导出诊断日志失败: $path')),
+      );
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('诊断日志已导出：$path'),
+        duration: const Duration(seconds: 5),
+      ),
+    );
+    // 提示用户可另存到可访问位置
+    if (path.startsWith('导出失败')) return;
+    debugPrint('[diag] llama 诊断日志导出路径: $path');
   }
 
   Widget _settingsSection(String title, List<Widget> children) {

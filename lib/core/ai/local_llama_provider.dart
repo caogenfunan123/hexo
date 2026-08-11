@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:llamadart/llamadart.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../models/local_model_settings.dart';
 
@@ -32,6 +33,11 @@ class LocalLlamaProvider {
   String? _backendName;
   ({int total, int free})? _vram;
   bool _gpuFallbackToCpu = false;
+
+  /// llama.cpp 原生 + Dart 诊断日志环形缓冲（用于手动导出定位卡点）。
+  final List<String> _logRing = [];
+  bool _loggingConfigured = false;
+  static const int _logRingCapacity = 2000;
 
   /// 是否可在当前平台使用（llamadart 支持 Android/iOS/桌面/Web）。
   bool get isAvailable {
@@ -99,6 +105,15 @@ class LocalLlamaProvider {
     }
     try {
       final engine = _engine ??= LlamaEngine(LlamaBackend());
+
+      // 打开 llama.cpp 原生层诊断日志（Android logcat / 桌面 stdout），
+      // 写入环形缓冲，供「导出诊断日志」功能导出后定位卡点。
+      if (!kIsWeb) {
+        _configureLogging();
+        try {
+          await engine.setLogLevel(LlamaLogLevel.debug);
+        } catch (_) {}
+      }
 
       // 设备选择：
       // - auto：Android 上默认 CPU。llamadart 在 Android 上把 auto 强制解析
@@ -198,6 +213,91 @@ class LocalLlamaProvider {
       _lastError = '加载本地模型失败: $e';
       return _lastError;
     }
+  }
+
+  /// 配置 llamadart 日志写入环形缓冲（幂等，只配置一次）。
+  ///
+  /// 通过 [LlamaEngine.configureLogging] 挂 handler 捕获 Dart 侧日志；
+  /// 原生层（llama.cpp）日志经 [LlamaEngine.setLogLevel] 走同一 handler
+  /// 输出。debug 级别信息量大，仅保存在内存缓冲中，不影响磁盘写入。
+  void _configureLogging() {
+    if (_loggingConfigured) return;
+    _loggingConfigured = true;
+    try {
+      LlamaEngine.configureLogging(
+        level: LlamaLogLevel.debug,
+        handler: (record) {
+          final line = '[${record.time.toIso8601String()}] '
+              '[${record.level.name.toUpperCase()}] ${record.message}';
+          _logRing.add(line);
+          if (_logRing.length > _logRingCapacity) {
+            _logRing.removeRange(0, _logRing.length - _logRingCapacity);
+          }
+        },
+      );
+    } catch (_) {}
+  }
+
+  /// 导出诊断日志到 `{modelsDir}/llama_diag_log.txt`，返回导出文件路径。
+  ///
+  /// 日志内容包含：设备/平台信息、模型路径与设置、llama.cpp 原生加载与
+  /// 推理日志（环形缓冲）。用于在真机上"卡住加载不出来对话"时定位卡点
+  /// （后端注册、张量分配、prefill、线程等）。
+  Future<String?> exportDiagnosticLogs() async {
+    try {
+      final buf = StringBuffer();
+      buf.writeln('===== Hexo 本地模型诊断日志 =====');
+      buf.writeln('时间: ${DateTime.now().toIso8601String()}');
+      buf.writeln('平台: ${defaultTargetPlatform.name}');
+      if (!kIsWeb) {
+        try {
+          buf.writeln('CPU 核心数: ${Platform.numberOfProcessors}');
+        } catch (_) {}
+      }
+      buf.writeln('已加载模型: ${_loadedModelPath ?? '（无）'}');
+      buf.writeln('后端: ${_backendName ?? '（未知）'}');
+      buf.writeln('GPU 回退 CPU: $_gpuFallbackToCpu');
+      buf.writeln('最近错误: ${_lastError ?? '（无）'}');
+      if (_loadedSettings != null) {
+        buf.writeln('设置: ${_loadedSettings!.toJson()}');
+      }
+      buf.writeln();
+      buf.writeln('===== llama.cpp 日志（最近 ${_logRing.length} 条）=====');
+      if (_logRing.isEmpty) {
+        buf.writeln('（无日志，请先触发一次模型加载/对话后再导出）');
+      } else {
+        for (final line in _logRing) {
+          buf.writeln(line);
+        }
+      }
+
+      final root = await _storageRoot();
+      final dir = Directory('$root/models');
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final file = File('${dir.path}/llama_diag_log.txt');
+      await file.writeAsString(buf.toString());
+      return file.path;
+    } catch (e) {
+      return '导出失败: $e';
+    }
+  }
+
+  Future<String> _storageRoot() async {
+    try {
+      // 与 GgufModelService 共用同一存储根目录；通过 path_provider 获取
+      // 移动端应用文件目录（Android getFilesDir），桌面端应用支持目录。
+      if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+        final appDir = await getApplicationSupportDirectory();
+        return '${appDir.path}/hexo_blog_manager';
+      }
+    } catch (_) {}
+    try {
+      if (!kIsWeb) {
+        final dir = await getApplicationDocumentsDirectory();
+        return dir.path;
+      }
+    } catch (_) {}
+    return '.';
   }
 
   /// 两次设置是否完全一致（决定是否复用已加载模型）。
