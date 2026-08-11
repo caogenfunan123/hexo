@@ -2169,7 +2169,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       final fileName = '${timestamp}_$safeTitle.md';
       final file = File('${dir.path}/$fileName');
       await file.writeAsString(a.content);
-      if (mounted) _showToast('MD 已保存到 ${storage.dirMdArticles}/$fileName\n${dir.path}');
+      if (mounted) _showToast('MD 已保存到 ${StorageService.dirMdArticles}/$fileName\n${dir.path}');
     } catch (e) {
       if (mounted) _showToast('MD 保存失败: $e');
     }
@@ -5408,7 +5408,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           final file = File(filePath);
           await file.writeAsBytes(byteData.buffer.asUint8List());
           if (mounted) {
-            _showToast('PNG 长图已保存到 ${storage.dirLongImages}/$fileName\n${dir.path}');
+            _showToast('PNG 长图已保存到 ${StorageService.dirLongImages}/\n$filePath');
           }
         }
       }

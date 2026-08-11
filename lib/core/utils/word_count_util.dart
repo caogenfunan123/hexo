@@ -6,7 +6,8 @@
 library;
 
 final RegExp _mdSymbols = RegExp(r'[#*_`~\[\]\(\)<>|\\\+\=\-\{\}]');
-final RegExp _punctuation = RegExp(r'[，。！？；：、（）【】《》〈〉“”‘’…—·,.!?;:()\[\]{}"\'<>|/\\@#$%^&*_+=~\-]');
+final RegExp _punctuation = RegExp(
+    "[，。！？；：、（）【】《》〈〉“”‘’…—·,.!?;:()\\[\\]{}'\"<>|/\\\\@#\\\$%^&*_+=~\\-]");
 
 /// 单文本字数统计结果
 class WordCountResult {
