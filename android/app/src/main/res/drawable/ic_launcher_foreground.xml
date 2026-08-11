@@ -3,11 +3,34 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#2196F3"
-        android:pathData="M54,54m-24,0a24,24 0,1 1,48 0a24,24 0,1 1,-48 0" />
+    <!-- 白色圆角文档卡片 -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M44,44L64,44L64,64L44,64Z"
-        android:strokeWidth="0" />
+        android:pathData="M36,26 H72 Q78,26 78,32 V80 Q78,86 72,86 H36 Q30,86 30,80 V32 Q30,26 36,26 Z" />
+    <!-- 文档文字行 1 -->
+    <path
+        android:strokeColor="#0EA5E9"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M40,44 H68" />
+    <!-- 文档文字行 2 -->
+    <path
+        android:strokeColor="#0EA5E9"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M40,54 H68" />
+    <!-- 文档文字行 3（较短） -->
+    <path
+        android:strokeColor="#0EA5E9"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M40,64 H58" />
+    <!-- 钢笔笔身 -->
+    <path
+        android:fillColor="#0284C7"
+        android:pathData="M62,66 L80,84 L76,88 L58,70 Z" />
+    <!-- 钢笔笔尖 -->
+    <path
+        android:fillColor="#0EA5E9"
+        android:pathData="M80,84 L86,90 L76,88 Z" />
 </vector>

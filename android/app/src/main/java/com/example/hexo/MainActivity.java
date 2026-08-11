@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.provider.OpenableColumns;
 import android.util.Base64;
 
@@ -23,8 +24,10 @@ public class MainActivity extends FlutterActivity {
     private static final String CHANNEL = "hexo/native";
     private static final int REQ_PICK_IMAGE = 0x4858;
     private static final int REQ_PICK_FILE = 0x4859;
+    private static final int REQ_PICK_DIR = 0x4860;
     private MethodChannel.Result pendingPickResult;
     private MethodChannel.Result pendingPickFileResult;
+    private MethodChannel.Result pendingPickDirResult;
 
     @Override
     public void configureFlutterEngine(@NonNull FlutterEngine flutterEngine) {
@@ -34,6 +37,11 @@ public class MainActivity extends FlutterActivity {
                     switch (call.method) {
                         case "getFilesDir":
                             result.success(getFilesDir().getAbsolutePath());
+                            break;
+                        case "getExternalFilesDir":
+                            result.success(getExternalFilesDir(null) != null
+                                    ? getExternalFilesDir(null).getAbsolutePath()
+                                    : getFilesDir().getAbsolutePath());
                             break;
                         case "pickImage":
                             if (pendingPickResult != null) {
@@ -67,10 +75,61 @@ public class MainActivity extends FlutterActivity {
                                 result.error("PICK_FAILED", e.getMessage(), null);
                             }
                             break;
+                        case "pickDirectory":
+                            if (pendingPickDirResult != null) {
+                                result.error("BUSY", "已有选目录任务", null);
+                                return;
+                            }
+                            pendingPickDirResult = result;
+                            try {
+                                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                                startActivityForResult(intent, REQ_PICK_DIR);
+                            } catch (Exception e) {
+                                pendingPickDirResult = null;
+                                result.error("PICK_FAILED", e.getMessage(), null);
+                            }
+                            break;
+                        case "checkStoragePermission":
+                            // Android 11+ 分区存储：应用私有目录始终可写
+                            result.success(true);
+                            break;
+                        case "openFolder":
+                            openFolder(call, result);
+                            break;
                         default:
                             result.notImplemented();
                     }
                 });
+    }
+
+    private void openFolder(MethodChannel.MethodCall call, MethodChannel.Result result) {
+        try {
+            String path = call.argument("path");
+            if (path == null || path.isEmpty()) {
+                result.error("BAD_PATH", "路径为空", null);
+                return;
+            }
+            Uri uri = Uri.parse(path);
+            if (uri.getScheme() == null || uri.getScheme().equals("file")) {
+                java.io.File dir = new java.io.File(path);
+                if (!dir.exists()) {
+                    dir.mkdirs();
+                }
+                uri = Uri.fromFile(dir);
+            }
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(uri, "resource/folder");
+            if (intent.resolveActivity(getPackageManager()) == null) {
+                // 无文件夹查看器时退回文件管理器根部
+                intent = new Intent(Intent.ACTION_VIEW);
+                intent.setDataAndType(Environment.getExternalStorageDirectory().toURI()
+                        .toString().replace("file:", ""), "resource/folder");
+            }
+            startActivity(intent);
+            result.success(true);
+        } catch (Exception e) {
+            result.error("OPEN_FAILED", e.getMessage(), null);
+        }
     }
 
     @Override
@@ -113,6 +172,17 @@ public class MainActivity extends FlutterActivity {
             } catch (Exception e) {
                 result.error("READ_FAILED", e.getMessage(), null);
             }
+        } else if (requestCode == REQ_PICK_DIR && pendingPickDirResult != null) {
+            MethodChannel.Result result = pendingPickDirResult;
+            pendingPickDirResult = null;
+            if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+                result.success(null);
+                return;
+            }
+            Uri uri = data.getData();
+            // ACTION_OPEN_DOCUMENT_TREE 返回 tree:// URI；取文档路径作为可写目录
+            String treePath = uri.toString();
+            result.success(treePath);
         }
     }
 

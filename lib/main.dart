@@ -93,6 +93,7 @@ import 'services/template_sync_service.dart';
 import 'services/full_text_search_isolate.dart';
 import 'services/recycle_bin_service.dart';
 import 'services/version_snapshot_service.dart';
+import 'core/utils/word_count_util.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -466,6 +467,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     try {
       var s = await storage.loadSettings();
       var r = await storage.loadRepos();
+      // 同步全局统一存储目录配置
+      storage.setCustomRoot(s.storageRootDir);
       final d = await storage.loadDrafts();
       final t = await storage.loadAllTemplates();
       final sn = await storage.loadSnippets();
@@ -2135,6 +2138,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     setState(() => settings = s);
     _updateSiteManager();
     _startAutoSync(); // 重启自动同步（间隔/开关可能变化）
+    // 同步全局统一存储目录
+    storage.setCustomRoot(s.storageRootDir);
     await storage.saveSettings(s);
     widget.onThemeChanged(Color(s.themeColor));
     // 通知父 widget 重建 MaterialApp（DesignConfig 变化时主题实时更新）
@@ -2153,11 +2158,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   Future<void> _saveMdBackup() async {
     try {
       final a = _collect(draft: false);
-      final rootDir = await storage.root;
-      final dir = Directory('${rootDir.path}/hexo_backups');
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
+      final dir = await storage.mdArticlesDir();
       final timestamp = DateTime.now()
           .toIso8601String()
           .replaceAll(':', '-')
@@ -2168,9 +2169,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       final fileName = '${timestamp}_$safeTitle.md';
       final file = File('${dir.path}/$fileName');
       await file.writeAsString(a.content);
-      if (mounted) _showToast('MD 备份已保存到 hexo_backups/$fileName');
+      if (mounted) _showToast('MD 已保存到 ${storage.dirMdArticles}/$fileName\n${dir.path}');
     } catch (e) {
-      if (mounted) _showToast('MD 备份保存失败: $e');
+      if (mounted) _showToast('MD 保存失败: $e');
     }
   }
 
@@ -4396,7 +4397,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       },
       child: Scaffold(
         key: _scaffoldKey,
-        backgroundColor: AppTheme.bg,
+        // 编辑页为纯白无缝画布，其余页面保持主题背景
+        backgroundColor: _currentPage == 0 ? Colors.white : AppTheme.bg,
         appBar: _buildAppBar(),
         drawer: _buildDrawer(),
         body: _buildPage(),
@@ -4523,6 +4525,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   fontSize: 18)),
       actions: _currentPage == 0
           ? [
+              _WordCountBadge(
+                titleCtrl: _doc.titleCtrl,
+                contentCtrl: _doc.contentCtrl,
+              ),
+              _appBarAction(
+                  icon: Icons.visibility_outlined,
+                  tooltip: '预览',
+                  color: cs.primary,
+                  onTap: _openArticlePreview),
               _appBarAction(
                   icon: Icons.widgets_outlined,
                   tooltip: '工具箱',
@@ -5005,6 +5016,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   _exportPngLongImage();
                 },
               ),
+              _menuRow(
+                icon: Icons.folder_open_outlined,
+                label: '打开存储文件夹',
+                color: const Color(0xFF6366F1),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _openStorageFolder();
+                },
+              ),
               const Divider(height: 18),
               // ── 发布渠道 ──
               _menuGroupTitle('发布渠道'),
@@ -5050,8 +5070,17 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               // ── 分享 ──
               _menuGroupTitle('分享'),
               _menuRow(
+                icon: Icons.description_outlined,
+                label: '分享 MD 文件',
+                color: const Color(0xFF0EA5E9),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _shareMdFile();
+                },
+              ),
+              _menuRow(
                 icon: Icons.share_outlined,
-                label: '分享本文',
+                label: '分享本文（纯文本）',
                 color: const Color(0xFFF59E0B),
                 onTap: () {
                   Navigator.pop(ctx);
@@ -5268,15 +5297,59 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     }
   }
 
-  /// 导出正文为 PNG 长图（Markdown 渲染后截图保存到 hexo_exports/）
-  Future<void> _exportPngLongImage() async {
+  /// 生成标准 .md 文件并唤起系统分享（写入 临时分享文件/ 分类目录）
+  Future<void> _shareMdFile() async {
     try {
-      final a = _collect(draft: false);
-      final rootDir = await storage.root;
-      final dir = Directory('${rootDir.path}/hexo_exports');
+      final a = _collect(draft: true);
+      final dir = await storage.shareTempDir();
+      final timestamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .replaceAll('.', '-');
+      final safeTitle = a.title.isNotEmpty
+          ? a.title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+          : 'untitled';
+      final fileName = '${timestamp}_$safeTitle.md';
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsString(
+        a.title.isNotEmpty ? '# ${a.title}\n\n${a.content}' : a.content,
+      );
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'text/markdown')],
+        subject: a.title,
+        text: a.content.isNotEmpty
+            ? '${a.title.isNotEmpty ? '${a.title}\n\n' : ''}${a.content}'
+            : a.title,
+      );
+      if (mounted) _showToast('MD 文件已生成: ${dir.path}/$fileName');
+    } catch (e) {
+      if (mounted) _showToast('MD 分享失败: $e');
+    }
+  }
+
+  /// 打开全局存储根目录（原生文件管理器）
+  Future<void> _openStorageFolder() async {
+    try {
+      final dir = await storage.root;
       if (!await dir.exists()) {
         await dir.create(recursive: true);
       }
+      const channel = MethodChannel('hexo/native');
+      final ok = await channel
+          .invokeMethod<bool>('openFolder', {'path': dir.path});
+      if (ok != true) {
+        if (mounted) _showToast('无法打开文件夹: ${dir.path}');
+      }
+    } catch (e) {
+      if (mounted) _showToast('打开文件夹失败: $e');
+    }
+  }
+
+  /// 导出正文为 PNG 长图（Markdown 渲染后截图保存到 文章长图/）
+  Future<void> _exportPngLongImage() async {
+    try {
+      final a = _collect(draft: false);
+      final dir = await storage.longImagesDir();
       final timestamp = DateTime.now()
           .toIso8601String()
           .replaceAll(':', '-')
@@ -5335,7 +5408,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           final file = File(filePath);
           await file.writeAsBytes(byteData.buffer.asUint8List());
           if (mounted) {
-            _showToast('PNG 长图已保存到 hexo_exports/');
+            _showToast('PNG 长图已保存到 ${storage.dirLongImages}/$fileName\n${dir.path}');
           }
         }
       }
@@ -5922,10 +5995,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   Widget _buildMdToolbar(ColorScheme cs) {
     return Container(
       height: 46,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.black.withOpacity(0.06))),
-      ),
+      color: Colors.white,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -6559,4 +6629,141 @@ class _DebounceEntry {
   });
 
   void cancel() => timer.cancel();
+}
+
+/// 顶部栏实时精准字数统计徽标
+///
+/// - 空白无文字时自动隐藏
+/// - 双统计规则：含标点总字符 / 过滤 MD 符号、标点的纯写作文字
+/// - 点击数字弹窗，分别查看标题、正文单独字数
+class _WordCountBadge extends StatefulWidget {
+  final TextEditingController titleCtrl;
+  final TextEditingController contentCtrl;
+
+  const _WordCountBadge({
+    required this.titleCtrl,
+    required this.contentCtrl,
+  });
+
+  @override
+  State<_WordCountBadge> createState() => _WordCountBadgeState();
+}
+
+class _WordCountBadgeState extends State<_WordCountBadge> {
+  int _totalChars = 0;
+  int _pureChars = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    widget.titleCtrl.addListener(_refresh);
+    widget.contentCtrl.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    widget.titleCtrl.removeListener(_refresh);
+    widget.contentCtrl.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() {
+    final title = widget.titleCtrl.text;
+    final content = widget.contentCtrl.text;
+    final combined = '$title\n$content';
+    final stats = countWords(combined);
+    if (stats.totalChars == _totalChars && stats.pureChars == _pureChars) return;
+    setState(() {
+      _totalChars = stats.totalChars;
+      _pureChars = stats.pureChars;
+    });
+  }
+
+  void _showDetail() {
+    final titleStats = countWords(widget.titleCtrl.text);
+    final contentStats = countWords(widget.contentCtrl.text);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('字数统计'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _statRow('标题', titleStats),
+            const Divider(height: 20),
+            _statRow('正文', contentStats),
+            const Divider(height: 20),
+            _statRow('总计', countWords('${widget.titleCtrl.text}\n${widget.contentCtrl.text}')),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statRow(String label, WordCountResult stats) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 48,
+            child: Text(label,
+                style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+          ),
+          Expanded(
+            child: Text(
+              '总字符 ${stats.totalChars}  ·  纯写作 ${stats.pureChars}',
+              textAlign: TextAlign.end,
+              style: const TextStyle(
+                  fontSize: 13.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_totalChars == 0) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(right: 2),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: _showDetail,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '$_totalChars',
+                style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
+                    height: 1.1),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                '纯$_pureChars',
+                style: const TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF94A3B8),
+                    height: 1.1),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

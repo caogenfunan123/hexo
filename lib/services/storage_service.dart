@@ -11,6 +11,12 @@ import '../models/repo_config.dart';
 import '../models/template_item.dart';
 
 /// 本地 JSON 持久化：桌面端用 path_provider，移动端用 MethodChannel，失败则用临时目录。
+///
+/// 全局统一存储目录规则：
+/// - 默认使用应用私有目录
+/// - 用户可在设置中选择「全局文件存储目录」，此后本地导出 MD/图片、云同步
+///   上传下载、Git 拉取推送、分享临时 MD 缓存全部统一读写该目录
+/// - 根目录下自动生成分类子文件夹：MD文章 / 文章长图 / 同步缓存 / Git博文 / 临时分享文件
 class StorageService {
   static const _channel = MethodChannel('hexo/native');
   static const _settingsFile = 'settings.json';
@@ -20,16 +26,45 @@ class StorageService {
   static const _snippetsFile = 'snippets.json';
   static const _deviceKeyFile = '.device_key';
 
+  // ── 全局统一存储目录分类子文件夹 ──
+  static const String dirMdArticles = 'MD文章';
+  static const String dirLongImages = '文章长图';
+  static const String dirSyncCache = '同步缓存';
+  static const String dirGitPosts = 'Git博文';
+  static const String dirShareTemp = '临时分享文件';
+
   Directory? _root;
+  String _customRoot = '';
+
+  /// 配置自定义全局存储根目录（空串表示重置为默认目录）
+  void setCustomRoot(String path) {
+    _customRoot = path.trim();
+    _root = null; // 失效缓存，下次访问重建
+  }
+
+  /// 当前自定义根目录路径（未设置时为空）
+  String get customRoot => _customRoot;
 
   Future<Directory> get root async {
     if (_root != null) return _root!;
+    // 优先使用用户配置的全局统一存储目录
+    if (_customRoot.isNotEmpty) {
+      try {
+        final custom = Directory(_customRoot);
+        if (await custom.exists()) {
+          _root = custom;
+          await _ensureCategoryDirs();
+          return _root!;
+        }
+      } catch (_) {}
+    }
     // 桌面端：使用 path_provider 获取应用支持目录
     if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
       try {
         final appDir = await getApplicationSupportDirectory();
         _root = Directory('${appDir.path}/hexo_blog_manager');
         if (!await _root!.exists()) await _root!.create(recursive: true);
+        await _ensureCategoryDirs();
         return _root!;
       } catch (e) {
         debugPrint('StorageService: path_provider failed: $e');
@@ -41,13 +76,116 @@ class StorageService {
       if (path != null && path.isNotEmpty) {
         _root = Directory(path);
         if (!await _root!.exists()) await _root!.create(recursive: true);
+        await _ensureCategoryDirs();
         return _root!;
       }
     } catch (_) {}
     // 最终降级：系统临时目录
     _root = Directory('${Directory.systemTemp.path}/hexo_blog_manager');
     if (!await _root!.exists()) await _root!.create(recursive: true);
+    await _ensureCategoryDirs();
     return _root!;
+  }
+
+  /// 在根目录自动创建分类子文件夹
+  Future<void> _ensureCategoryDirs() async {
+    if (_root == null) return;
+    for (final name in [
+      dirMdArticles,
+      dirLongImages,
+      dirSyncCache,
+      dirGitPosts,
+      dirShareTemp,
+    ]) {
+      final d = Directory('${_root!.path}/$name');
+      if (!await d.exists()) await d.create(recursive: true);
+    }
+  }
+
+  /// 自动创建分类子文件夹（供外部调用）
+  Future<void> ensureCategoryDirs() async {
+    await root;
+    await _ensureCategoryDirs();
+  }
+
+  // ── 分类子文件夹访问器 ──
+
+  /// MD 文章导出目录
+  Future<Directory> mdArticlesDir() async {
+    final d = Directory('${(await root).path}/$dirMdArticles');
+    if (!await d.exists()) await d.create(recursive: true);
+    return d;
+  }
+
+  /// 文章长图导出目录
+  Future<Directory> longImagesDir() async {
+    final d = Directory('${(await root).path}/$dirLongImages');
+    if (!await d.exists()) await d.create(recursive: true);
+    return d;
+  }
+
+  /// 云同步缓存目录
+  Future<Directory> syncCacheDir() async {
+    final d = Directory('${(await root).path}/$dirSyncCache');
+    if (!await d.exists()) await d.create(recursive: true);
+    return d;
+  }
+
+  /// Git 博文目录
+  Future<Directory> gitPostsDir() async {
+    final d = Directory('${(await root).path}/$dirGitPosts');
+    if (!await d.exists()) await d.create(recursive: true);
+    return d;
+  }
+
+  /// 临时分享文件目录
+  Future<Directory> shareTempDir() async {
+    final d = Directory('${(await root).path}/$dirShareTemp');
+    if (!await d.exists()) await d.create(recursive: true);
+    return d;
+  }
+
+  /// 一键迁移旧目录全部历史文件到当前全局根目录
+  /// [oldRoot] 旧根目录路径；返回迁移的文件/目录数量
+  Future<int> migrateFrom(String oldRoot) async {
+    final source = Directory(oldRoot);
+    if (!await source.exists()) return 0;
+    final target = await root;
+    if (source.path == target.path) return 0;
+    var count = 0;
+    await for (final entity in source.list(followLinks: false)) {
+      try {
+        final dest = Directory('${target.path}/${entity.path.split('/').last}');
+        if (entity is Directory) {
+          await _copyDirectory(entity, dest);
+          count++;
+        } else if (entity is File) {
+          if (!await dest.exists()) {
+            await dest.create(recursive: true);
+          }
+          await entity.copy('${dest.path}/${entity.uri.pathSegments.last}');
+          count++;
+        }
+      } catch (e) {
+        debugPrint('StorageService.migrateFrom skip: $e');
+      }
+    }
+    return count;
+  }
+
+  Future<void> _copyDirectory(Directory src, Directory dest) async {
+    if (!await dest.exists()) await dest.create(recursive: true);
+    await for (final entity in src.list(followLinks: false)) {
+      try {
+        if (entity is Directory) {
+          await _copyDirectory(entity, Directory('${dest.path}/${entity.uri.pathSegments.last}'));
+        } else if (entity is File) {
+          await entity.copy('${dest.path}/${entity.uri.pathSegments.last}');
+        }
+      } catch (e) {
+        debugPrint('StorageService._copyDirectory skip: $e');
+      }
+    }
   }
 
   Future<File> _file(String name) async => File('${(await root).path}/$name');
@@ -139,9 +277,7 @@ class StorageService {
       _write(_draftsFile, drafts.map((e) => e.toJson()).toList());
 
   Future<Directory> draftsDir() async {
-    final d = Directory('${(await root).path}/drafts_md');
-    if (!await d.exists()) await d.create(recursive: true);
-    return d;
+    return mdArticlesDir();
   }
 
   Future<void> exportDraftMarkdown(Article a) async {

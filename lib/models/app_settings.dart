@@ -33,6 +33,10 @@ class AppSettings {
   // ── 应用设置 ──
   final String language;
 
+  // ── 全局统一存储目录 ──
+  // 为空时使用默认目录；设置后本地导出/云同步/Git/分享缓存统一读写该目录
+  final String storageRootDir;
+
   const AppSettings({
     this.github = const GitHubSettings(),
     this.ai = const AiSettings(),
@@ -43,6 +47,7 @@ class AppSettings {
     this.activeSiteId = '',
     this.activeRepoId = '',
     this.language = 'zh-CN',
+    this.storageRootDir = '',
   });
 
   // ============================================================
@@ -162,6 +167,7 @@ class AppSettings {
     String? activeSiteId,
     String? activeRepoId,
     String? language,
+    String? storageRootDir,
     // ── 扁平参数（向后兼容旧代码） ──
     // GitHubSettings
     String? defaultToken,
@@ -356,6 +362,7 @@ class AppSettings {
       activeSiteId: activeSiteId ?? this.activeSiteId,
       activeRepoId: activeRepoId ?? this.activeRepoId,
       language: language ?? this.language,
+      storageRootDir: storageRootDir ?? this.storageRootDir,
     );
   }
 
@@ -373,6 +380,7 @@ class AppSettings {
         'activeSiteId': activeSiteId,
         'activeRepoId': activeRepoId,
         'language': language,
+        'storageRootDir': storageRootDir,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) {
@@ -386,6 +394,7 @@ class AppSettings {
       activeSiteId: j['activeSiteId']?.toString() ?? '',
       activeRepoId: j['activeRepoId']?.toString() ?? '',
       language: j['language']?.toString() ?? 'zh-CN',
+      storageRootDir: j['storageRootDir']?.toString() ?? '',
     );
   }
 

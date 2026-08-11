@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import '../models/app_settings.dart';
 import '../models/repo_config.dart';
 import '../services/github_service.dart';
@@ -86,6 +87,88 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 获取语言显示名称
   String _getLanguageDisplayName(String languageCode) {
     return AppLanguage.fromCode(languageCode).displayName;
+  }
+
+  // ── 全局文件存储目录 ──
+
+  /// 选择全局存储根目录
+  ///
+  /// Android 使用原生 SAF 目录选择；SAF 返回的 content:// tree URI 无法被
+  /// dart:io 直接读写，此时回退到应用外部专属存储目录（真实可写路径）。
+  Future<void> _pickStorageRoot() async {
+    final l10n = AppLocalizations.ofContext(context);
+    var path = '';
+    try {
+      const channel = MethodChannel('hexo/native');
+      final picked = await channel.invokeMethod<String>('pickDirectory');
+      if (picked != null && picked.isNotEmpty) {
+        if (picked.startsWith('/')) {
+          path = picked;
+        } else if (picked.startsWith('content://') ||
+            picked.startsWith('tree://')) {
+          // SAF tree URI 不可直接用于 dart:io，回退应用外部存储目录
+          final external =
+              await channel.invokeMethod<String>('getExternalFilesDir');
+          if (external != null && external.isNotEmpty) path = external;
+        }
+      }
+    } catch (_) {
+      try {
+        final picked = await FilePicker.platform
+            .getDirectoryPath(dialogTitle: l10n.translate('pick_global_storage_root'));
+        if (picked != null && picked.isNotEmpty) path = picked;
+      } catch (_) {}
+    }
+    if (path.isEmpty) {
+      widget.onShowToast(l10n.translate('pick_dir_failed'));
+      return;
+    }
+    final ns = widget.settings.copyWith(storageRootDir: path);
+    await widget.onSettingsChanged(ns);
+    widget.onShowToast(l10n.translate('global_storage_set', params: {'path': path}));
+  }
+
+  /// 复制当前存储根目录路径
+  Future<void> _copyStorageRootPath() async {
+    final l10n = AppLocalizations.ofContext(context);
+    final dir = await widget.storage.root;
+    await Clipboard.setData(ClipboardData(text: dir.path));
+    widget.onShowToast(
+        l10n.translate('export_dir_copied', params: {'path': dir.path}));
+  }
+
+  /// 重置为默认存储根目录
+  Future<void> _resetStorageRoot() async {
+    final l10n = AppLocalizations.ofContext(context);
+    final ns = widget.settings.copyWith(storageRootDir: '');
+    await widget.onSettingsChanged(ns);
+    widget.onShowToast(l10n.translate('global_storage_reset'));
+  }
+
+  /// 一键迁移旧目录全部历史文件到当前全局根目录
+  Future<void> _migrateStorageRoot(String oldRoot) async {
+    final l10n = AppLocalizations.ofContext(context);
+    final count = await widget.storage.migrateFrom(oldRoot);
+    widget.onShowToast(
+        l10n.translate('global_storage_migrated', params: {'count': '$count'}));
+  }
+
+  Widget _storageActionBtn({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 17, color: const Color(0xFF475569)),
+      label: Text(label, style: const TextStyle(color: Color(0xFF475569))),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 40),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        side: const BorderSide(color: Color(0xFFE2E8F0)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
   }
 
   /// 显示语言选择器
@@ -438,6 +521,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (v) async {
               await widget.onSettingsChanged(s.copyWith(restoreSession: v));
             },
+          ),
+        ]),
+
+        const SizedBox(height: 20),
+        // ── 全局文件存储目录 ──
+        _sectionTitle(l10n.translate('settings_global_storage')),
+        const SizedBox(height: 8),
+        _settingsCard([
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.folder_outlined, color: Color(0xFF6366F1)),
+            title: Text(l10n.translate('global_storage_root')),
+            subtitle: Text(
+              s.storageRootDir.isEmpty
+                  ? l10n.translate('global_storage_default')
+                  : s.storageRootDir,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _pickStorageRoot,
+          ),
+          const Divider(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: _storageActionBtn(
+                  icon: Icons.copy_outlined,
+                  label: l10n.translate('copy_path'),
+                  onTap: () => _copyStorageRootPath(),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _storageActionBtn(
+                  icon: Icons.restart_alt,
+                  label: l10n.translate('reset_storage_root'),
+                  onTap: _resetStorageRoot,
+                ),
+              ),
+            ],
+          ),
+          if (s.storageRootDir.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _storageActionBtn(
+                    icon: Icons.drive_file_move_outline,
+                    label: l10n.translate('migrate_storage_root'),
+                    onTap: () => _migrateStorageRoot(s.storageRootDir),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 12),
+          Text(
+            l10n.translate('global_storage_hint'),
+            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
           ),
         ]),
 
