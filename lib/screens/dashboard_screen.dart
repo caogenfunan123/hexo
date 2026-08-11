@@ -3,6 +3,7 @@ import '../models/app_settings.dart';
 import '../models/article.dart';
 import '../models/repo_config.dart';
 import '../services/github_service.dart';
+import '../l10n/app_localizations.dart';
 
 class DashboardScreen extends StatelessWidget {
   final List<Article> drafts;
@@ -35,28 +36,29 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.ofContext(context);
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         // Stats cards
         Row(children: [
-          _statCard(context, '本地草稿', '${drafts.length}', Icons.drafts_outlined,
+          _statCard(context, l10n.translate('dashboard_local_drafts'), '${drafts.length}', Icons.drafts_outlined,
               const Color(0xFF0EA5E9), onNavigateToDrafts),
           const SizedBox(width: 10),
-          _statCard(context, '远程文章', '${remotePosts.length}', Icons.cloud_outlined,
+          _statCard(context, l10n.translate('dashboard_remote_posts'), '${remotePosts.length}', Icons.cloud_outlined,
               const Color(0xFF10B981), onNavigateToRemote),
         ]),
         const SizedBox(height: 10),
         Row(children: [
-          _statCard(context, '提交次数', '${commits.length}', Icons.history,
+          _statCard(context, l10n.translate('commits_count'), '${commits.length}', Icons.history,
               const Color(0xFF8B5CF6), onNavigateToHistory),
           const SizedBox(width: 10),
-          _statCard(context, '仓库', activeRepo?.name ?? '-',
+          _statCard(context, l10n.translate('repository'), activeRepo?.name ?? '-',
               Icons.storage_outlined, const Color(0xFFF59E0B), onNavigateToSettings),
         ]),
         const SizedBox(height: 20),
         // Quick actions
-        Text('快捷操作',
+        Text(l10n.translate('quick_actions'),
             style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
@@ -70,46 +72,46 @@ class DashboardScreen extends StatelessWidget {
             _actionTile(
               icon: Icons.edit,
               color: cs.primary,
-              title: '新建文章',
-              subtitle: '开始写一篇新文章',
+              title: l10n.translate('new_post'),
+              subtitle: l10n.translate('new_post_sub'),
               onTap: onNewPost,
             ),
             _actionTile(
               icon: Icons.drafts_outlined,
               color: const Color(0xFF0EA5E9),
-              title: '管理草稿',
-              subtitle: '查看和编辑本地草稿',
+              title: l10n.translate('manage_drafts'),
+              subtitle: l10n.translate('manage_drafts_sub'),
               onTap: onNavigateToDrafts,
             ),
             _actionTile(
               icon: Icons.cloud_outlined,
               color: const Color(0xFF10B981),
-              title: '远程文章',
-              subtitle: '查看和管理 GitHub 上的文章',
+              title: l10n.translate('dashboard_remote_posts'),
+              subtitle: l10n.translate('remote_posts_sub'),
               onTap: onNavigateToRemote,
             ),
             _actionTile(
               icon: Icons.history,
               color: const Color(0xFF8B5CF6),
-              title: '提交历史',
-              subtitle: '查看提交记录并回滚文件',
+              title: l10n.translate('commit_history'),
+              subtitle: l10n.translate('commit_history_sub'),
               onTap: onNavigateToHistory,
             ),
             if (activeRepo != null)
               _actionTile(
                 icon: Icons.language,
                 color: const Color(0xFFF59E0B),
-                title: '预览网站',
+                title: l10n.translate('preview_site'),
                 subtitle: activeRepo!.siteUrl.isNotEmpty
                     ? activeRepo!.siteUrl
-                    : '未配置网址',
+                    : l10n.translate('no_url_configured'),
                 onTap: onNavigateToPreview,
               ),
             _actionTile(
               icon: Icons.settings_outlined,
               color: const Color(0xFF64748B),
-              title: '设置',
-              subtitle: '配置 Token、仓库、AI、备份等',
+              title: l10n.translate('settings'),
+              subtitle: l10n.translate('settings_sub'),
               onTap: onNavigateToSettings,
             ),
           ]),
@@ -117,7 +119,7 @@ class DashboardScreen extends StatelessWidget {
         const SizedBox(height: 20),
         // Recent commits
         if (commits.isNotEmpty) ...[
-          Text('最近提交',
+          Text(l10n.translate('recent_commits'),
               style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,

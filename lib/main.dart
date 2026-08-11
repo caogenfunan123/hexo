@@ -361,35 +361,38 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   }
 
   String get _pageTitle {
+    final l10n = AppLocalizations.ofContext(context);
     switch (_currentPage) {
       case 0:
-        return '写文章';
+        return l10n.translate('nav_write');
       case 1:
-        return '草稿';
+        return l10n.translate('nav_drafts');
       case 2:
-        return siteManager.isDynamicSite ? '远程文章' : '远程';
+        return siteManager.isDynamicSite
+            ? l10n.translate('nav_remote')
+            : l10n.translate('nav_remote_single');
       case 3:
-        return '仪表盘';
+        return l10n.translate('nav_dashboard');
       case 4:
         return 'RSS';
       case 5:
-        return '历史';
+        return l10n.translate('nav_history');
       case 6:
-        return '批量上传';
+        return l10n.translate('nav_upload');
       case 7:
-        return '网站预览';
+        return l10n.translate('nav_preview');
       case 8:
-        return '设置';
+        return l10n.translate('nav_settings');
       case 9:
-        return '阅读';
+        return l10n.translate('page_read');
       case 10:
-        return 'AI 主题迁移';
+        return l10n.translate('nav_ai_theme_migrate');
       case 11:
-        return '操作日志';
+        return l10n.translate('nav_log');
       case 12:
-        return '同步状态';
+        return l10n.translate('nav_sync_status');
       case 13:
-        return '云同步';
+        return l10n.translate('nav_cloud_sync');
       default:
         return '';
     }
@@ -2090,7 +2093,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     if (repo == null || repo.token.isEmpty) return;
     setState(() => busy = true);
     try {
-      remotePosts = await github.listPosts(repo);
+      remotePosts = await github.listPosts(repo, recursive: true);
     } catch (e) {
       debugPrint('Refresh remote error: $e');
     }
@@ -4234,14 +4237,16 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   /// 删除 CMS 远程文章（多站点：按文章所属站点解析适配器）
   Future<void> _deleteRemoteCmsPost(BlogPost post) async {
-    if (post.id == null) return;
-    // 静态站点文章：走 GitHub 文件删除链路
+    // 静态站点文章无数字 id，需走 GitHub 文件删除链路
     if (post.siteId != null) {
       final identity = siteManager.getSiteIdentity(post.siteId!);
       if (identity != null && identity.isStatic) {
         await _deleteStaticBlogPost(post);
         return;
       }
+    }
+    if (post.id == null) {
+      throw Exception('该文章缺少远程 ID，无法删除');
     }
     BlogRepository? adapter;
     if (post.siteId != null) {
@@ -4578,6 +4583,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   Widget _buildDrawer() {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.ofContext(context);
     final repoName = activeRepo?.name ?? '未配置';
     final repoFullName = activeRepo?.fullName ?? '';
     final siteName = settings.siteName.isNotEmpty ? settings.siteName : 'Hexo 写作';
@@ -4634,45 +4640,45 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               child: ListView(
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 children: [
-                  _drawerSection('创作'),
-                  _drawerItem(0, Icons.edit_square, '写文章',
+                  _drawerSection(l10n.translate('drawer_section_create')),
+                  _drawerItem(0, Icons.edit_square, l10n.translate('nav_write'),
                       isPrimary: true),
-                  _drawerItem(1, Icons.drafts_outlined, '草稿箱',
+                  _drawerItem(1, Icons.drafts_outlined, l10n.translate('nav_drafts'),
                       badge: drafts.where((d) => !d.published).length),
                   const SizedBox(height: 8),
-                  _drawerSection('管理'),
-                  _drawerItem(2, Icons.cloud_outlined, '远程文章'),
-                  _drawerAction(Icons.article_outlined, '静态博客文章', _showStaticBlogPosts),
-                  _drawerAction(Icons.library_books_outlined, '全部博客管理', _showAllStaticBlogs),
-                  _drawerItem(12, Icons.sync, '同步状态'),
-                  _drawerAction(Icons.wifi, 'P2P 同步', _openP2PSync),
-                  _drawerItem(3, Icons.dashboard_outlined, '仪表盘'),
-                  _drawerItem(5, Icons.history_outlined, '提交历史'),
+                  _drawerSection(l10n.translate('drawer_section_manage')),
+                  _drawerItem(2, Icons.cloud_outlined, l10n.translate('nav_remote')),
+                  _drawerAction(Icons.article_outlined, l10n.translate('static_blog_posts'), _showStaticBlogPosts),
+                  _drawerAction(Icons.library_books_outlined, l10n.translate('all_blog_manage'), _showAllStaticBlogs),
+                  _drawerItem(12, Icons.sync, l10n.translate('nav_sync_status')),
+                  _drawerAction(Icons.wifi, l10n.translate('p2p_sync'), _openP2PSync),
+                  _drawerItem(3, Icons.dashboard_outlined, l10n.translate('nav_dashboard')),
+                  _drawerItem(5, Icons.history_outlined, l10n.translate('nav_history')),
                   const SizedBox(height: 8),
-                  _drawerSection('工具'),
-                  _drawerItem(6, Icons.drive_folder_upload, '批量上传'),
-                  _drawerItem(7, Icons.language, '网站预览'),
-                  _drawerItem(4, Icons.rss_feed_outlined, 'RSS 订阅'),
-                  _drawerAction(Icons.view_quilt_outlined, '模板管理', _showTemplateManager),
-                  _drawerAction(Icons.content_paste, '片段素材库', _showSnippetManager),
-                  _drawerAction(Icons.settings_applications, '配置编辑器', _showSiteConfigEditor),
-                  _drawerAction(Icons.swap_horiz, 'AI批量迁移', _showMigrationTool),
+                  _drawerSection(l10n.translate('drawer_section_tools')),
+                  _drawerItem(6, Icons.drive_folder_upload, l10n.translate('nav_upload')),
+                  _drawerItem(7, Icons.language, l10n.translate('nav_preview')),
+                  _drawerItem(4, Icons.rss_feed_outlined, l10n.translate('nav_rss')),
+                  _drawerAction(Icons.view_quilt_outlined, l10n.translate('template_manager'), _showTemplateManager),
+                  _drawerAction(Icons.content_paste, l10n.translate('snippet_library'), _showSnippetManager),
+                  _drawerAction(Icons.settings_applications, l10n.translate('config_editor'), _showSiteConfigEditor),
+                  _drawerAction(Icons.swap_horiz, l10n.translate('ai_batch_migrate'), _showMigrationTool),
                   const SizedBox(height: 8),
-                  _drawerSection('AI 工具'),
-                  _drawerAction(Icons.assignment_outlined, 'Agent 任务工作台', _showAgentWorkbench),
-                  _drawerAction(Icons.article_outlined, 'AI 博文创作', _showAiArticleChat),
-                  _drawerAction(Icons.web_outlined, 'AI 页面创作', _showAiPageChat),
-                  _drawerAction(Icons.palette_outlined, 'AI 主题开发', _showAiThemeChat),
-                  _drawerItem(10, Icons.auto_fix_high, 'AI 主题迁移'),
-                  _drawerAction(Icons.fact_check_outlined, 'AI 站点巡检', _showAiAudit),
-                  _drawerAction(Icons.view_quilt_outlined, 'AI 模板与框架', _showAiTemplateChat),
-                  _drawerAction(Icons.psychology_outlined, 'AI 模型管理', _showAiModelManager),
-                  _drawerAction(Icons.build_outlined, '工具库', _showToolLibrary),
+                  _drawerSection(l10n.translate('drawer_section_ai')),
+                  _drawerAction(Icons.assignment_outlined, l10n.translate('agent_workbench'), _showAgentWorkbench),
+                  _drawerAction(Icons.article_outlined, l10n.translate('ai_post_create'), _showAiArticleChat),
+                  _drawerAction(Icons.web_outlined, l10n.translate('ai_page_create'), _showAiPageChat),
+                  _drawerAction(Icons.palette_outlined, l10n.translate('ai_theme_dev'), _showAiThemeChat),
+                  _drawerItem(10, Icons.auto_fix_high, l10n.translate('nav_ai_theme_migrate')),
+                  _drawerAction(Icons.fact_check_outlined, l10n.translate('ai_site_audit'), _showAiAudit),
+                  _drawerAction(Icons.view_quilt_outlined, l10n.translate('ai_templates'), _showAiTemplateChat),
+                  _drawerAction(Icons.psychology_outlined, l10n.translate('ai_models'), _showAiModelManager),
+                  _drawerAction(Icons.build_outlined, l10n.translate('tool_library'), _showToolLibrary),
                   const SizedBox(height: 8),
-                  _drawerSection('系统'),
-                  _drawerItem(13, Icons.cloud_sync, '云同步'),
-                  _drawerItem(8, Icons.settings_outlined, '设置'),
-                  _drawerItem(11, Icons.history, '操作日志'),
+                  _drawerSection(l10n.translate('drawer_section_system')),
+                  _drawerItem(13, Icons.cloud_sync, l10n.translate('nav_cloud_sync')),
+                  _drawerItem(8, Icons.settings_outlined, l10n.translate('nav_settings')),
+                  _drawerItem(11, Icons.history, l10n.translate('nav_log')),
                 ],
               ),
             ),
@@ -5800,7 +5806,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         repos.where((r) => r.id == post.siteId).firstOrNull ?? activeRepo;
     if (repo == null) return null;
     final resolved = _resolvedRepoFor(repo);
-    final items = await github.listPosts(resolved);
+    final items = await github.listPosts(resolved, recursive: true);
     if (items.isEmpty) return null;
     final slug = post.slug?.toLowerCase().replaceAll(RegExp(r'\.md$'), '');
     final title = post.title.trim();

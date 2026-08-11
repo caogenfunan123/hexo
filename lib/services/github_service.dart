@@ -140,7 +140,21 @@ class GitHubService {
   }
 
   Future<List<GitHubFileItem>> listPosts(RepoConfig repo,
-      {String? path}) async {
+      {String? path, bool recursive = false}) async {
+    if (recursive) {
+      // 递归遍历子目录，收集全部 .md 文章，避免漏掉分类/日期子目录中的文章
+      final all = <GitHubFileItem>[];
+      await _collectMarkdownFiles(repo, path ?? repo.postsPath, all);
+      if (all.isEmpty) return all;
+      await _enrichCommitDates(repo, all);
+      all.sort((a, b) {
+        final ad = a.lastModified;
+        final bd = b.lastModified;
+        if (ad != null && bd != null) return bd.compareTo(ad);
+        return b.name.compareTo(a.name);
+      });
+      return all;
+    }
     final p = path ?? repo.postsPath;
     final url =
         '${repo.apiBase}/contents/${_encPath(p)}?ref=${Uri.encodeComponent(repo.branch)}';
@@ -151,7 +165,49 @@ class GitHubService {
           .map((e) => GitHubFileItem.fromJson(Map<String, dynamic>.from(e)))
           .where((e) => e.type == 'file' && e.name.endsWith('.md'))
           .toList();
-      await Future.wait(items.map((item) async {
+      if (items.isEmpty) return items;
+      await _enrichCommitDates(repo, items);
+      items.sort((a, b) {
+        final ad = a.lastModified;
+        final bd = b.lastModified;
+        if (ad != null && bd != null) return bd.compareTo(ad);
+        return b.name.compareTo(a.name);
+      });
+      return items;
+    }
+    return [];
+  }
+
+  /// 递归收集指定目录下的全部 .md 文件
+  Future<void> _collectMarkdownFiles(
+      RepoConfig repo, String dirPath, List<GitHubFileItem> out) async {
+    final p = dirPath.replaceAll(RegExp(r'/+$'), '');
+    final url =
+        '${repo.apiBase}/contents/${_encPath(p)}?ref=${Uri.encodeComponent(repo.branch)}';
+    final data = await _request('GET', url, repo.token);
+    if (data is! List) return;
+    final entries = data
+        .whereType<Map>()
+        .map((e) => GitHubFileItem.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+    for (final e in entries) {
+      if (e.type == 'dir') {
+        await _collectMarkdownFiles(repo, e.path, out);
+      } else if (e.type == 'file' && e.name.toLowerCase().endsWith('.md')) {
+        out.add(e);
+      }
+    }
+  }
+
+  /// 批量补充文件最近提交时间（控制并发，避免触发 GitHub 限流）
+  Future<void> _enrichCommitDates(
+      RepoConfig repo, List<GitHubFileItem> items) async {
+    const concurrency = 4;
+    var index = 0;
+    Future<void> worker() async {
+      while (index < items.length) {
+        final item = items[index];
+        index++;
         try {
           final curl =
               '${repo.apiBase}/commits?path=${_encPath(item.path)}&sha=${Uri.encodeComponent(repo.branch)}&per_page=1';
@@ -167,16 +223,12 @@ class GitHubService {
         } catch (e) {
           debugPrint('GitHub: get commit history failed: $e');
         }
-      }));
-      items.sort((a, b) {
-        final ad = a.lastModified;
-        final bd = b.lastModified;
-        if (ad != null && bd != null) return bd.compareTo(ad);
-        return b.name.compareTo(a.name);
-      });
-      return items;
+      }
     }
-    return [];
+
+    final workers = List.generate(
+        concurrency.clamp(1, items.length).toInt(), (_) => worker());
+    await Future.wait(workers);
   }
 
   /// 列出仓库目录全部内容（含子目录与非 md 文件），供 AI 诊断仓库结构使用。

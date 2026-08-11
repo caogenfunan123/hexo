@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/repo_config.dart';
 import '../models/blog_post.dart';
 import '../services/github_service.dart';
+import '../l10n/app_localizations.dart';
 
 class RemoteScreen extends StatefulWidget {
   final List<GitHubFileItem> posts;
@@ -89,6 +90,7 @@ class _RemoteScreenState extends State<RemoteScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.ofContext(context);
     // 检查是否有静态博客文章
     final hasStaticPosts = widget.blogPosts != null && widget.blogPosts!.isNotEmpty;
     
@@ -105,7 +107,7 @@ class _RemoteScreenState extends State<RemoteScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '静态博客文章 (${widget.blogPosts!.length} 篇)',
+                    l10n.translate('static_blog_posts_count').replaceAll('{count}', '${widget.blogPosts!.length}'),
                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -146,7 +148,7 @@ class _RemoteScreenState extends State<RemoteScreen> {
                 child: OutlinedButton.icon(
                   onPressed: _toggleSelectMode,
                   icon: const Icon(Icons.checklist, size: 18),
-                  label: const Text('批量选择'),
+                  label: Text(l10n.translate('batch_select')),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
@@ -159,7 +161,7 @@ class _RemoteScreenState extends State<RemoteScreen> {
                 child: FilledButton.icon(
                   onPressed: widget.onRefresh,
                   icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('刷新'),
+                  label: Text(l10n.translate('refresh')),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
@@ -174,12 +176,13 @@ class _RemoteScreenState extends State<RemoteScreen> {
   }
 
   Widget _buildRemoteFilesList() {
+    final l10n = AppLocalizations.ofContext(context);
     if (widget.posts.isEmpty) {
       return Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.cloud_off_outlined, size: 64, color: Colors.grey.shade300),
           const SizedBox(height: 16),
-          Text('暂无远程文章', style: TextStyle(fontSize: 16, color: Colors.grey.shade500)),
+          Text(l10n.translate('no_remote_posts'), style: TextStyle(fontSize: 16, color: Colors.grey.shade500)),
           const SizedBox(height: 8),
           Text(widget.activeRepo?.fullName ?? '',
               style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
@@ -187,7 +190,7 @@ class _RemoteScreenState extends State<RemoteScreen> {
           FilledButton.tonalIcon(
               onPressed: widget.onRefresh,
               icon: const Icon(Icons.refresh, size: 18),
-              label: const Text('刷新')),
+              label: Text(l10n.translate('refresh'))),
         ]),
       );
     }
@@ -286,12 +289,12 @@ class _RemoteScreenState extends State<RemoteScreen> {
                           _toggleSelect(p);
                         }
                       },
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 'edit', child: Text('编辑')),
+                      itemBuilder: (_) => [
+                        PopupMenuItem(value: 'edit', child: Text(l10n.translate('edit'))),
                         PopupMenuItem(
-                            value: 'rollback', child: Text('回滚历史')),
-                        PopupMenuItem(value: 'select', child: Text('批量选择')),
-                        PopupMenuItem(value: 'delete', child: Text('删除远程')),
+                            value: 'rollback', child: Text(l10n.translate('rollback_history'))),
+                        PopupMenuItem(value: 'select', child: Text(l10n.translate('batch_select'))),
+                        PopupMenuItem(value: 'delete', child: Text(l10n.translate('delete_remote'))),
                       ],
                     )
                   else
@@ -307,14 +310,15 @@ class _RemoteScreenState extends State<RemoteScreen> {
   }
 
   Widget _buildStaticBlogPostsList() {
+    final l10n = AppLocalizations.ofContext(context);
     if (widget.blogPosts!.isEmpty) {
       return Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.article_outlined, size: 64, color: Colors.grey.shade300),
           const SizedBox(height: 16),
-          Text('暂无静态博客文章', style: TextStyle(fontSize: 16, color: Colors.grey.shade500)),
+          Text(l10n.translate('no_static_posts'), style: TextStyle(fontSize: 16, color: Colors.grey.shade500)),
           const SizedBox(height: 8),
-          Text('请检查仓库配置', style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
+          Text(l10n.translate('check_repo_config'), style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
         ]),
       );
     }
@@ -349,7 +353,7 @@ class _RemoteScreenState extends State<RemoteScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            post.title.isEmpty ? '（无标题）' : post.title,
+                            post.title.isEmpty ? l10n.translate('no_title') : post.title,
                             style: const TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 15,
@@ -371,7 +375,7 @@ class _RemoteScreenState extends State<RemoteScreen> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            post.isPublished ? '已发布' : '草稿',
+                            post.isPublished ? l10n.translate('published') : l10n.translate('draft'),
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
@@ -389,10 +393,10 @@ class _RemoteScreenState extends State<RemoteScreen> {
                             }
                           },
                           icon: const Icon(Icons.more_horiz, size: 18),
-                          itemBuilder: (_) => const [
+                          itemBuilder: (_) => [
                             PopupMenuItem(
                               value: 'delete',
-                              child: Text('删除文章'),
+                              child: Text(l10n.translate('delete_post')),
                             ),
                           ],
                         ),
@@ -442,12 +446,13 @@ class _RemoteScreenState extends State<RemoteScreen> {
   }
 
   String _formatDate(DateTime dt) {
+    final l10n = AppLocalizations.ofContext(context);
     final now = DateTime.now();
     final diff = now.difference(dt);
-    if (diff.inMinutes < 1) return '刚刚';
-    if (diff.inHours < 1) return '${diff.inMinutes}分钟前';
-    if (diff.inDays < 1) return '${diff.inHours}小时前';
-    if (diff.inDays < 7) return '${diff.inDays}天前';
+    if (diff.inMinutes < 1) return l10n.translate('just_now');
+    if (diff.inHours < 1) return l10n.translate('minutes_ago').replaceAll('{count}', '${diff.inMinutes}');
+    if (diff.inDays < 1) return l10n.translate('hours_ago').replaceAll('{count}', '${diff.inHours}');
+    if (diff.inDays < 7) return l10n.translate('days_ago').replaceAll('{count}', '${diff.inDays}');
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
   }
 }

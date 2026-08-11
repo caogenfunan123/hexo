@@ -126,6 +126,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final s = widget.settings;
+    final l10n = AppLocalizations.ofContext(context);
     final activeRepo = widget.repos.isEmpty
         ? null
         : widget.repos.firstWhere(
@@ -140,11 +141,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.all(16),
       children: [
         // ── 基本信息 ──
-        _sectionTitle('基本信息'),
+        _sectionTitle(l10n.translate('settings_basic_info')),
         const SizedBox(height: 8),
         _settingsCard([
           _field(
-            label: '网站名称',
+            label: l10n.translate('website_name'),
             value: s.siteName,
             onChanged: (v) async {
               final ns = s.copyWith(siteName: v);
@@ -153,7 +154,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 12),
           _field(
-            label: '网站简介',
+            label: l10n.translate('website_bio'),
             value: s.siteBio,
             onChanged: (v) async {
               final ns = s.copyWith(siteBio: v);
@@ -162,7 +163,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 12),
           _field(
-            label: '站点预览 URL',
+            label: l10n.translate('site_preview_url'),
             value: s.sitePreviewUrl,
             hint: 'https://your-site.com/',
             onChanged: (v) async {
@@ -172,9 +173,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 12),
           _field(
-            label: '应用语言',
+            label: l10n.translate('language'),
             value: _getLanguageDisplayName(s.language),
-            hint: '选择应用界面显示语言',
+            hint: l10n.translate('language_selector_hint'),
             readOnly: true,
             onTap: () => _showLanguageSelector(),
           ),
@@ -182,7 +183,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── GitHub 登录令牌 ──
-        _sectionTitle('GitHub 登录令牌'),
+        _sectionTitle(l10n.translate('settings_github_token')),
         const SizedBox(height: 8),
         _settingsCard([
           ListTile(
@@ -190,12 +191,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             leading: const Icon(Icons.key_outlined),
             title: Text(
               s.activeGithubToken?.displayLabel ??
-                  (s.effectiveGithubToken.isEmpty ? '尚未登录 Token' : '已配置 Token'),
+                  (s.effectiveGithubToken.isEmpty ? l10n.translate('not_logged_in') : l10n.translate('token_configured')),
             ),
             subtitle: Text(
               s.githubTokens.isEmpty
-                  ? '保存过的 Token 可复用到多个仓库'
-                  : '已保存 ${s.githubTokens.length} 个 · 点此管理',
+                  ? l10n.translate('saved_tokens_reuse')
+                  : l10n.translate('saved_tokens_count').replaceAll('{count}', '${s.githubTokens.length}'),
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onShowGithubTokenManager,
@@ -205,8 +206,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               value: s.githubTokens.any((e) => e.id == s.activeGithubTokenId)
                   ? s.activeGithubTokenId
                   : s.githubTokens.first.id,
-              decoration: const InputDecoration(
-                labelText: '当前登录令牌',
+              decoration: InputDecoration(
+                labelText: l10n.translate('current_token'),
                 prefixIcon: Icon(Icons.swap_horiz),
               ),
               items: s.githubTokens
@@ -243,7 +244,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         await widget.onReposChanged(updated);
                       }
                     }
-                    widget.onShowToast('已切换到 ${t.displayLabel}');
+                    widget.onShowToast(
+                        '${l10n.translate('switched_to')} ${t.displayLabel}');
                     break;
                   }
                 }
@@ -252,7 +254,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           FilledButton.tonalIcon(
             onPressed: widget.onShowGithubTokenManager,
             icon: const Icon(Icons.login),
-            label: const Text('管理已登录令牌'),
+            label: Text(l10n.translate('manage_tokens')),
           ),
           const SizedBox(height: 4),
           if (widget.onShowBlogSiteManager != null) ...[
@@ -260,11 +262,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.cloud_outlined),
-              title: const Text('动态博客登录'),
+              title: Text(l10n.translate('dynamic_blog_login')),
               subtitle: Text(
                 widget.settings.blogSiteConfigs.isEmpty
                     ? 'WordPress / Ghost / Typecho'
-                    : '已配置 ${widget.settings.blogSiteConfigs.length} 个站点',
+                    : l10n.translate('sites_configured').replaceAll('{count}', '${widget.settings.blogSiteConfigs.length}'),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: widget.onShowBlogSiteManager,
@@ -272,45 +274,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
           ListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('多仓库管理'),
-            subtitle: Text('当前 ${widget.repos.length} 个仓库'),
+            title: Text(l10n.translate('multi_repo_manage')),
+            subtitle: Text(l10n.translate('repos_count').replaceAll('{count}', '${widget.repos.length}')),
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onShowRepoManager,
           ),
-          const Text(
-            '登录过的 Token 会本地保存，可随时切换；新建/编辑仓库时可一键选用已登录令牌。',
-            style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+          Text(
+            l10n.translate('token_hint'),
+            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
           ),
         ]),
 
         const SizedBox(height: 20),
         // ── WebDAV 云端备份 ──
-        _sectionTitle('WebDAV 云端备份'),
+        _sectionTitle(l10n.translate('settings_webdav')),
         const SizedBox(height: 8),
         _settingsCard([
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.cloud_outlined),
-            title: const Text('配置坚果云 / WebDAV 网盘'),
+            title: Text(l10n.translate('config_nutstore')),
             subtitle: Text(s.webdavUrl.isEmpty
-                ? '填写 WebDAV 地址、账号和密码'
-                : '已配置: ${s.webdavUrl}'),
+                ? l10n.translate('webdav_placeholder')
+                : l10n.translate('webdav_configured').replaceAll('{url}', s.webdavUrl)),
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onShowWebDavDialog,
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.upload_file_outlined),
-            title: const Text('上传草稿到 WebDAV'),
-            subtitle: Text(s.webdavUrl.isEmpty ? '请先配置 WebDAV' : '同步本地草稿到云端'),
+            title: Text(l10n.translate('upload_drafts_webdav')),
+            subtitle: Text(s.webdavUrl.isEmpty
+                ? l10n.translate('webdav_not_configured')
+                : l10n.translate('upload_drafts_hint')),
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onSyncDraftsToWebDav,
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.download_outlined),
-            title: const Text('从 WebDAV 同步到本地'),
-            subtitle: Text(s.webdavUrl.isEmpty ? '请先配置 WebDAV' : '下载云端草稿到本地'),
+            title: Text(l10n.translate('sync_webdav_local')),
+            subtitle: Text(s.webdavUrl.isEmpty
+                ? l10n.translate('webdav_not_configured')
+                : l10n.translate('download_drafts_hint')),
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onSyncWebDavToLocal,
           ),
@@ -318,14 +324,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── 草稿自动保存 ──
-        _sectionTitle('草稿备份设置'),
+        _sectionTitle(l10n.translate('settings_draft_backup')),
         const SizedBox(height: 8),
         _settingsCard([
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('本地自动保存'),
-            subtitle: Text(
-                '间隔 ${s.autoSaveIntervalSeconds} 秒自动保存草稿快照'),
+            title: Text(l10n.translate('local_auto_save')),
+            subtitle: Text(l10n.translate('auto_save_interval_hint')
+                .replaceAll('{count}', '${s.autoSaveIntervalSeconds}')),
             value: s.autoSaveEnabled,
             onChanged: (v) async {
               await widget.onSettingsChanged(s.copyWith(autoSaveEnabled: v));
@@ -334,9 +340,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (s.autoSaveEnabled)
             DropdownButtonFormField<int>(
               value: s.autoSaveIntervalSeconds,
-              decoration: const InputDecoration(
-                labelText: '自动保存间隔',
-                prefixIcon: Icon(Icons.timer_outlined),
+              decoration: InputDecoration(
+                labelText: l10n.translate('auto_save_interval'),
+                prefixIcon: const Icon(Icons.timer_outlined),
               ),
               items: const [
                 DropdownMenuItem(value: 10, child: Text('10 秒')),
@@ -355,7 +361,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (s.autoSaveEnabled) ...[
             const SizedBox(height: 12),
             _field(
-              label: '保存目录（默认 ~/.hexo_app/auto_save）',
+              label: l10n.translate('auto_save_dir'),
               value: s.autoSaveDir,
               onChanged: (v) async {
                 await widget.onSettingsChanged(s.copyWith(autoSaveDir: v));
@@ -363,7 +369,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 12),
             _field(
-              label: '备份目录（默认 ~/.hexo_app/backup）',
+              label: l10n.translate('backup_dir'),
               value: s.backupDir,
               onChanged: (v) async {
                 await widget.onSettingsChanged(s.copyWith(backupDir: v));
@@ -371,18 +377,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
           const SizedBox(height: 4),
-          const Text(
-            '打字时防抖延时保存，到达定时周期强制快照，切后台/退出时立刻保存。',
-            style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+          Text(
+            l10n.translate('auto_save_hint'),
+            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
           ),
           const Divider(height: 24),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('网盘自动同步'),
+            title: Text(l10n.translate('netdisk_auto_sync')),
             subtitle: Text(
               s.webdavAutoSyncEnabled
-                  ? '每 ${s.webdavAutoSyncIntervalSeconds ~/ 60} 分钟同步到云端'
-                  : '关闭后仅手动同步',
+                  ? l10n.translate('webdav_auto_sync_enabled').replaceAll(
+                      '{count}',
+                      '${s.webdavAutoSyncIntervalSeconds ~/ 60}')
+                  : l10n.translate('webdav_auto_sync_disabled'),
             ),
             value: s.webdavAutoSyncEnabled,
             onChanged: (v) async {
@@ -393,9 +401,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (s.webdavAutoSyncEnabled) ...[
             DropdownButtonFormField<int>(
               value: s.webdavAutoSyncIntervalSeconds,
-              decoration: const InputDecoration(
-                labelText: '网盘同步间隔',
-                prefixIcon: Icon(Icons.cloud_sync_outlined),
+              decoration: InputDecoration(
+                labelText: l10n.translate('netdisk_sync_interval'),
+                prefixIcon: const Icon(Icons.cloud_sync_outlined),
               ),
               items: const [
                 DropdownMenuItem(value: 60, child: Text('1 分钟')),
@@ -412,8 +420,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('仅 WiFi 同步'),
-              subtitle: const Text('开启后仅在 WiFi 网络下自动同步'),
+              title: Text(l10n.translate('only_wifi_sync')),
+              subtitle: Text(l10n.translate('only_wifi_sync_hint')),
               value: s.webdavSyncWifiOnly,
               onChanged: (v) async {
                 await widget.onSettingsChanged(
@@ -424,9 +432,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(height: 24),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('启动时恢复上次会话'),
-            subtitle: const Text(
-                'APP 被杀后台后重新打开，自动恢复到上次停留的页面'),
+            title: Text(l10n.translate('restore_last_session')),
+            subtitle: Text(l10n.translate('restore_last_session_hint')),
             value: s.restoreSession,
             onChanged: (v) async {
               await widget.onSettingsChanged(s.copyWith(restoreSession: v));
@@ -436,28 +443,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── 发布状态预设 ──
-        _sectionTitle('发布状态预设'),
+        _sectionTitle(l10n.translate('settings_publish_status')),
         const SizedBox(height: 8),
         _settingsCard([
           _statusPresetManager(s),
           const Divider(height: 24),
-          const Text(
-            '自定义 CMS 发布时的可选状态。默认提供 publish（发布）、draft（草稿）、'
-            'pending（待审核）、private（私有）四种状态。',
-            style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+          Text(
+            l10n.translate('status_preset_hint'),
+            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
           ),
         ]),
 
         const SizedBox(height: 20),
         // ── 网络超时设置 ──
-        _sectionTitle('网络设置'),
+        _sectionTitle(l10n.translate('settings_network')),
         const SizedBox(height: 8),
         _settingsCard([
           DropdownButtonFormField<int>(
             value: s.httpTimeoutSeconds,
-            decoration: const InputDecoration(
-              labelText: 'HTTP 请求超时',
-              prefixIcon: Icon(Icons.timer_outlined),
+            decoration: InputDecoration(
+              labelText: l10n.translate('http_timeout'),
+              prefixIcon: const Icon(Icons.timer_outlined),
             ),
             items: const [
               DropdownMenuItem(value: 10, child: Text('10 秒')),
@@ -475,41 +481,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 12),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('允许不安全的 HTTPS 证书'),
-            subtitle: const Text(
-                '开启后忽略 SSL 证书校验（适用于自签名证书站点）'),
+            title: Text(l10n.translate('allow_insecure_https')),
+            subtitle: Text(l10n.translate('allow_insecure_https_hint')),
             value: s.allowInsecureHttps,
             onChanged: (v) async {
               await widget.onSettingsChanged(s.copyWith(allowInsecureHttps: v));
             },
           ),
           const Divider(height: 24),
-          const Text(
-            '超时设置影响所有动态 CMS 站点（WordPress / Ghost / Typecho）的 HTTP 请求。'
-            '网络环境较差时可适当增大超时。',
-            style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+          Text(
+            l10n.translate('http_timeout_hint'),
+            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
           ),
         ]),
 
         const SizedBox(height: 20),
         // ── 图床（GitHub + CDN）──
-        _sectionTitle('图床（GitHub + CDN）'),
+        _sectionTitle(l10n.translate('settings_image_host')),
         const SizedBox(height: 8),
         _settingsCard([
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.sync_alt),
-            title: const Text('一键同步当前仓库为图床'),
+            title: Text(l10n.translate('image_host_sync')),
             subtitle: Text(
               activeRepo == null
-                  ? '请先添加仓库'
-                  : '使用 ${activeRepo.fullName} / ${activeRepo.branch}，Token 回退已登录令牌',
+                  ? l10n.translate('image_host_no_repo')
+                  : l10n.translate('image_host_repo_hint')
+                      .replaceAll('{name}', activeRepo.fullName)
+                      .replaceAll('{branch}', activeRepo.branch),
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () async {
               final r = activeRepo;
               if (r == null) {
-                widget.onShowToast('请先添加仓库');
+                widget.onShowToast(l10n.translate('image_host_no_repo'));
                 return;
               }
               final ns = s.copyWith(
@@ -523,11 +529,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     s.imageBedPath.isEmpty ? 'images' : s.imageBedPath,
               );
               await widget.onSettingsChanged(ns);
-              widget.onShowToast('已同步图床仓库为 ${r.fullName}');
+              widget.onShowToast(l10n.translate('image_host_synced')
+                  .replaceAll('{name}', r.fullName));
             },
           ),
           _field(
-            label: '图床 Token（可留空用已登录令牌）',
+            label: l10n.translate('image_bed_token'),
             value: s.imageBedToken,
             obscure: true,
             onChanged: (v) async {
@@ -556,14 +563,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
           _field(
-            label: '目录路径',
+            label: l10n.translate('dir_path'),
             value: s.imageBedPath,
             onChanged: (v) async {
               await widget.onSettingsChanged(s.copyWith(imageBedPath: v));
             },
           ),
           _field(
-            label: '自定义 CDN 前缀（可选）',
+            label: l10n.translate('cdn_prefix'),
             value: s.imageBedCdn,
             onChanged: (v) async {
               await widget.onSettingsChanged(s.copyWith(imageBedCdn: v));
@@ -571,9 +578,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('自动压缩图片'),
+            title: Text(l10n.translate('auto_compress_image')),
             subtitle: Text(
-              '最大宽 ${s.compressMaxWidth}px / 质量 ${s.compressQuality}',
+              l10n.translate('compress_hint')
+                  .replaceAll('{width}', '${s.compressMaxWidth}')
+                  .replaceAll('{quality}', '${s.compressQuality}'),
             ),
             value: s.autoCompressImage,
             onChanged: (v) async {
@@ -584,20 +593,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── AI 中转站 ──
-        _sectionTitle('AI 中转站（可多套切换）'),
+        _sectionTitle(l10n.translate('settings_ai_relay')),
         const SizedBox(height: 8),
         _settingsCard([
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.smart_toy_outlined),
             title: Text(
-              s.activeAiProfile?.displayLabel ?? '尚未配置 AI',
+              s.activeAiProfile?.displayLabel ??
+                  l10n.translate('ai_not_configured'),
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             subtitle: Text(
               s.aiProfiles.isEmpty
-                  ? '填写密钥和 URL，获取模型后保存；可添加多套任意切换'
-                  : '已保存 ${s.aiProfiles.length} 套配置 · 点此管理',
+                  ? l10n.translate('ai_profile_empty_hint')
+                  : l10n.translate('ai_profile_count').replaceAll(
+                      '{count}', '${s.aiProfiles.length}'),
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onShowAiManager,
@@ -605,9 +616,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (s.aiProfiles.isNotEmpty)
             DropdownButtonFormField<String>(
               value: s.activeAiProfile?.id,
-              decoration: const InputDecoration(
-                labelText: '当前使用的 AI 配置',
-                prefixIcon: Icon(Icons.swap_horiz),
+              decoration: InputDecoration(
+                labelText: l10n.translate('current_ai_profile'),
+                prefixIcon: const Icon(Icons.swap_horiz),
               ),
               items: s.aiProfiles
                   .map((p) => DropdownMenuItem(
@@ -629,28 +640,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 );
                 await widget.onSettingsChanged(ns);
-                widget.onShowToast('已切换到 ${p.displayLabel}');
+                widget.onShowToast(
+                    '${l10n.translate('switched_to')} ${p.displayLabel}');
               },
             ),
           const SizedBox(height: 8),
-          const Text(
-            '兼容各类 OpenAI 中转站：填 Base URL + API Key → 点击获取模型 → 选择模型保存。',
-            style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+          Text(
+            l10n.translate('ai_relay_desc'),
+            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
           ),
         ]),
 
         const SizedBox(height: 20),
         // ── 本地模型 ──
-        _sectionTitle('本地模型（离线 GGUF）'),
+        _sectionTitle(l10n.translate('settings_local_model')),
         const SizedBox(height: 8),
         _settingsCard([
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.memory_outlined),
-            title: const Text('本地 GGUF 模型',
-                style: TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: const Text(
-                '导入 .gguf 文件，配置推理设备 / 上下文 / 采样参数后完全离线使用'),
+            title: Text(l10n.translate('local_gguf_model'),
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text(l10n.translate('local_model_hint')),
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onShowLocalModelManager,
           ),
@@ -658,13 +669,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── AI 调度器 ──
-        _sectionTitle('AI 调度器'),
+        _sectionTitle(l10n.translate('settings_ai_scheduler')),
         const SizedBox(height: 8),
         _settingsCard([
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('自动择优模式'),
-            subtitle: const Text('后台探测各模型延迟，优先调用当前最快模型'),
+            title: Text(l10n.translate('auto_best_mode')),
+            subtitle: Text(l10n.translate('auto_best_mode_hint')),
             value: s.ai.aiAutoOptimalModel,
             onChanged: (v) async {
               await widget.onSettingsChanged(
@@ -674,8 +685,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('允许 AI 自动保存工具'),
-            subtitle: const Text('AI 生成的 MCP/Skill 校验通过后自动存入工具箱'),
+            title: Text(l10n.translate('allow_ai_save_tool')),
+            subtitle: Text(l10n.translate('allow_ai_save_tool_hint')),
             value: s.ai.aiAllowAutoSaveTools,
             onChanged: (v) async {
               await widget.onSettingsChanged(
@@ -684,7 +695,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
           _field(
-            label: '请求超时阈值（秒）',
+            label: l10n.translate('ai_request_timeout'),
             value: s.ai.aiRequestTimeoutSec.toString(),
             onChanged: (v) async {
               final n = int.tryParse(v);
@@ -695,7 +706,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
           _field(
-            label: '最大自动切换次数',
+            label: l10n.translate('ai_max_switch'),
             value: s.ai.aiMaxSwitchCount.toString(),
             onChanged: (v) async {
               final n = int.tryParse(v);
@@ -709,64 +720,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── 站点与 PWA ──
-        _sectionTitle('站点与 PWA'),
+        _sectionTitle(l10n.translate('settings_site_pwa')),
         const SizedBox(height: 8),
         _settingsCard([
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.language),
-            title: const Text('博客地址'),
+            title: Text(l10n.translate('blog_address')),
             subtitle: Text(activeRepo?.siteUrl.isNotEmpty == true
                 ? activeRepo!.siteUrl
-                : (s.sitePreviewUrl.isNotEmpty ? s.sitePreviewUrl : '未设置')),
+                : (s.sitePreviewUrl.isNotEmpty
+                    ? s.sitePreviewUrl
+                    : l10n.translate('site_url_not_set'))),
             trailing: const Icon(Icons.copy),
             onTap: () {
               final u = activeRepo?.siteUrl.isNotEmpty == true
                   ? activeRepo!.siteUrl
                   : (s.sitePreviewUrl.isNotEmpty ? s.sitePreviewUrl : '');
               if (u.isEmpty) {
-                widget.onShowToast('未设置站点地址');
+                widget.onShowToast(l10n.translate('site_url_not_set'));
                 return;
               }
               Clipboard.setData(ClipboardData(text: u));
-              widget.onShowToast('已复制站点地址');
+              widget.onShowToast(l10n.translate('site_url_copied'));
             },
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.install_mobile),
-            title: const Text('PWA 说明'),
-            subtitle: const Text('站点已部署 Cloudflare Pages，可在浏览器"添加到主屏幕"'),
+            title: Text(l10n.translate('pwa_guide')),
+            subtitle: Text(l10n.translate('pwa_guide_hint')),
             onTap: widget.onShowPwaGuide,
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.cloud_upload),
-            title: const Text('Cloudflare 部署钩子'),
+            title: Text(l10n.translate('cloudflare_hook')),
             subtitle: Text(s.cloudflareDeployHook.isNotEmpty
-                ? '已配置（发布后自动触发重新部署）'
-                : '未配置（发布后需手动触发部署）'),
+                ? l10n.translate('deploy_hook_configured')
+                : l10n.translate('deploy_hook_not_configured')),
             trailing: const Icon(Icons.edit, size: 18),
             onTap: () async {
               final ctrl = TextEditingController(text: s.cloudflareDeployHook);
               final ok = await showDialog<bool>(
                 context: context,
                 builder: (ctx) => AlertDialog(
-                  title: const Text('Cloudflare Deploy Hook'),
+                  title: Text(l10n.translate('deploy_hook_title')),
                   content: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
-                        '在 Cloudflare Pages → 项目设置 → Deploy Hooks 中创建钩子，粘贴 URL 到此处。发布文章后将自动触发重新部署。',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      Text(
+                        l10n.translate('deploy_hook_desc'),
+                        style: const TextStyle(
+                            fontSize: 12, color: Colors.grey),
                       ),
                       const SizedBox(height: 12),
                       TextField(
                         controller: ctrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Deploy Hook URL',
-                          hintText: 'https://api.cloudflare.com/...',
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: l10n.translate('deploy_hook_label'),
+                          hintText: l10n.translate('deploy_hook_hint'),
+                          border: const OutlineInputBorder(),
                         ),
                       ),
                     ],
@@ -774,36 +788,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('取消'),
+                      child: Text(l10n.translate('cancel')),
                     ),
                     FilledButton(
                       onPressed: () => Navigator.pop(ctx, true),
-                      child: const Text('保存'),
+                      child: Text(l10n.translate('save')),
                     ),
                   ],
                 ),
               );
               if (ok == true) {
                 await widget.onSettingsChanged(
-                  widget.settings.copyWith(cloudflareDeployHook: ctrl.text.trim()),
+                  widget.settings.copyWith(
+                      cloudflareDeployHook: ctrl.text.trim()),
                 );
-                widget.onShowToast('Cloudflare 部署钩子已保存');
+                widget.onShowToast(l10n.translate('cloudflare_hook_saved'));
               }
             },
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.web),
-            title: const Text('网站页面编辑'),
-            subtitle: const Text('头像 · 名称 · 首页 · 关于 · 留言 · Now · 作品'),
+            title: Text(l10n.translate('website_pages')),
+            subtitle: Text(l10n.translate('site_editor_pages')),
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onShowSiteEditor,
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.palette),
-            title: const Text('主题颜色'),
-            subtitle: const Text('点击切换主题色'),
+            title: Text(l10n.translate('theme_color')),
+            subtitle: Text(l10n.translate('theme_color_hint')),
             trailing: CircleAvatar(
               backgroundColor: Color(s.themeColor),
               radius: 14,
@@ -814,39 +829,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── 关于 ──
-        _sectionTitle('关于'),
+        _sectionTitle(l10n.translate('settings_about')),
         const SizedBox(height: 8),
         _settingsCard([
-          const ListTile(
+          ListTile(
             contentPadding: EdgeInsets.zero,
-            title: Text('Hexo 写作管理系统'),
-            subtitle: Text(
-              '本地草稿 · 离线编辑 · GitHub 发布 · 图床 · AI · RSS · 搜索 · 提交回滚',
-            ),
-          ),
-          const ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text('作者'),
-            subtitle: Text('开发者'),
-          ),
-          const ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text('版本'),
-            subtitle: Text('1.0.1'),
+            title: Text(l10n.translate('hexo_writing_system')),
+            subtitle: Text(l10n.translate('local_drafts')),
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('联系邮箱'),
+            title: Text(l10n.translate('about_author')),
+            subtitle: Text(l10n.translate('about_developer')),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(l10n.translate('about_version')),
+            subtitle: const Text('1.0.1'),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(l10n.translate('about_email')),
             subtitle: const Text('1995@139.com'),
             trailing: const Icon(Icons.copy),
             onTap: () {
               Clipboard.setData(const ClipboardData(text: '1995@139.com'));
-              widget.onShowToast('已复制邮箱地址');
+              widget.onShowToast(l10n.translate('email_copied'));
             },
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('仓库'),
+            title: Text(l10n.translate('repository')),
             subtitle: const Text('github.com/caogenfunan123/xiamend'),
             trailing: const Icon(Icons.copy),
             onTap: () {
@@ -854,18 +867,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const ClipboardData(
                     text: 'https://github.com/caogenfunan123/xiamend'),
               );
-              widget.onShowToast('已复制仓库地址');
+              widget.onShowToast(l10n.translate('repo_copied'));
             },
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.folder_open_outlined),
-            title: const Text('导出目录'),
-            subtitle: const Text('查看本地 drafts_md 导出路径'),
+            title: Text(l10n.translate('export_dir')),
+            subtitle: Text(l10n.translate('export_dir_hint')),
             onTap: () async {
               final dir = await widget.storage.draftsDir();
               Clipboard.setData(ClipboardData(text: dir.path));
-              widget.onShowToast('导出目录已复制: ${dir.path}');
+              widget.onShowToast(
+                  l10n.translate('export_dir_copied', params: {'path': dir.path}));
             },
           ),
         ]),
@@ -932,6 +946,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _statusPresetManager(AppSettings s) {
+    final l10n = AppLocalizations.ofContext(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -946,7 +961,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: TextFormField(
                     initialValue: status,
                     decoration: InputDecoration(
-                      labelText: '状态 ${idx + 1}',
+                      labelText: l10n.translate('status_label')
+                          .replaceAll('{index}', '${idx + 1}'),
                       prefixIcon: const Icon(Icons.label_outline, size: 18),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -978,7 +994,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             await widget.onSettingsChanged(s.copyWith(ui: s.ui.copyWith(statusPresets: updated)));
           },
           icon: const Icon(Icons.add, size: 18),
-          label: const Text('添加状态'),
+          label: Text(l10n.translate('add_status')),
         ),
       ],
     );

@@ -5,6 +5,7 @@ import '../core/site_manager.dart';
 import '../models/blog_post.dart';
 import '../models/repo_config.dart';
 import '../services/log_service.dart';
+import '../l10n/app_localizations.dart';
 
 /// 远程文章浏览面板
 ///
@@ -206,7 +207,8 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
         setState(() {
           _loading = false;
           _posts = [];
-          _error = '请至少选择一个站点';
+          _error = AppLocalizations.ofContext(context)
+              .translate('select_at_least_one_site');
         });
       }
       return;
@@ -214,10 +216,10 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
 
     try {
       if (_multiSite && _scope != _RemoteScope.current) {
-        // ── 多站点聚合模式 ──
+        // ── 多站点聚合模式：逐站点翻页拉取全部文章 ──
         final results = await Future.wait(adapters.map((a) async {
           try {
-            return await a.getPosts(page: 1, perPage: 30);
+            return await _fetchAllSitePosts(a);
           } catch (e) {
             debugPrint('RemotePosts: load site ${a.config.name} failed: $e');
             return <BlogPost>[];
@@ -228,7 +230,7 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
         for (var i = 0; i < results.length; i++) {
           final siteId = adapters[i].config.id;
           for (final p in results[i]) {
-            final key = '${p.siteId ?? siteId}:${p.id}';
+            final key = '${p.siteId ?? siteId}:${p.id ?? p.slug ?? p.title}';
             if (seen.contains(key)) continue;
             seen.add(key);
             merged.add(p);
@@ -283,23 +285,43 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
     await _loadPosts();
   }
 
+  /// 逐页拉取单站点的全部文章（静态站点由适配器一次返回全部，动态 CMS 翻页拉完）
+  Future<List<BlogPost>> _fetchAllSitePosts(BlogRepository adapter) async {
+    const perPage = 100;
+    final all = <BlogPost>[];
+    var page = 1;
+    while (true) {
+      final batch = await adapter.getPosts(page: page, perPage: perPage);
+      if (batch.isEmpty) break;
+      all.addAll(batch);
+      if (batch.length < perPage) break;
+      page++;
+    }
+    return all;
+  }
+
   Future<void> _deletePost(BlogPost post) async {
-    if (post.id == null) return;
+    final l10n = AppLocalizations.ofContext(context);
+    // 静态站点文章无数字 id（基于文件路径删除），此处不做 id 拦截
+    if (post.title.isEmpty && post.id == null) return;
     final siteLabel = _multiSite ? '（${_siteName(post.siteId)}）' : '';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('确认删除'),
-        content: Text('确定要删除远程文章「${post.title}」$siteLabel 吗？\n此操作不可撤销。'),
+        title: Text(l10n.translate('confirm_delete_title')),
+        content: Text(l10n
+            .translate('confirm_delete_remote')
+            .replaceAll('{title}', post.title)
+            .replaceAll('{site}', siteLabel)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            child: Text(l10n.translate('cancel')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
+            child: Text(l10n.translate('delete')),
           ),
         ],
       ),
@@ -309,52 +331,75 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
 
     try {
       await widget.onDeletePost(post);
-      setState(() => _posts.removeWhere((p) => p.id == post.id && p.siteId == post.siteId));
-      widget.logService.add('删除远程文章', '标题: ${post.title}');
+      setState(() => _removePostFromList(post));
+      widget.logService.add(l10n.translate('log_delete_remote'), '标题: ${post.title}');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已删除: ${post.title}')),
+          SnackBar(
+              content:
+                  Text(l10n.translate('deleted_prefix').replaceAll('{title}', post.title))),
         );
       }
     } catch (e) {
-      widget.logService.add('删除远程文章失败', '$e', success: false);
+      widget.logService.add(l10n.translate('log_delete_remote_failed'), '$e', success: false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('删除失败: $e')),
+          SnackBar(
+              content: Text(
+                  l10n.translate('delete_failed').replaceAll('{error}', '$e'))),
         );
       }
     }
   }
 
+  /// 从列表移除被删除的文章（静态文章 id 为 null，需按 siteId+slug 匹配）
+  void _removePostFromList(BlogPost post) {
+    _posts.removeWhere((p) {
+      if (post.id != null) {
+        return p.id == post.id && p.siteId == post.siteId;
+      }
+      return p.siteId == post.siteId &&
+          (p.slug == post.slug ||
+              (p.slug == null && p.title == post.title && p.link == post.link));
+    });
+  }
+
   String _formatDate(DateTime dt) {
+    final l10n = AppLocalizations.ofContext(context);
     final now = DateTime.now();
     final diff = now.difference(dt);
-    if (diff.inMinutes < 1) return '刚刚';
-    if (diff.inHours < 1) return '${diff.inMinutes}分钟前';
-    if (diff.inDays < 1) return '${diff.inHours}小时前';
-    if (diff.inDays < 7) return '${diff.inDays}天前';
+    if (diff.inMinutes < 1) return l10n.translate('just_now');
+    if (diff.inHours < 1) return l10n.translate('minutes_ago').replaceAll('{count}', '${diff.inMinutes}');
+    if (diff.inDays < 1) return l10n.translate('hours_ago').replaceAll('{count}', '${diff.inHours}');
+    if (diff.inDays < 7) return l10n.translate('days_ago').replaceAll('{count}', '${diff.inDays}');
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
   }
 
   String get _headerTitle {
+    final l10n = AppLocalizations.ofContext(context);
     if (!_multiSite) {
       final siteType = widget.siteManager?.currentSiteIdentity?.type;
       final siteName = widget.adapter.config.name;
       if (siteType == SiteType.staticBlog) {
-        return '静态博客 · $siteName';
+        return l10n.translate('static_blog_prefix').replaceAll('{name}', siteName);
       } else {
-        return '${widget.adapter.config.type.name} 远程文章';
+        return l10n
+            .translate('cms_remote_posts')
+            .replaceAll('{type}', widget.adapter.config.type.name);
       }
     }
     return switch (_scope) {
-      _RemoteScope.current => '当前站点 · ${widget.adapter.config.name}',
-      _RemoteScope.all => '全部站点文章',
-      _RemoteScope.selected => '自选站点文章',
+      _RemoteScope.current => l10n
+          .translate('current_site_name')
+          .replaceAll('{name}', widget.adapter.config.name),
+      _RemoteScope.all => l10n.translate('all_site_posts'),
+      _RemoteScope.selected => l10n.translate('selected_site_posts'),
     };
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.ofContext(context);
     return Column(
       children: [
         // ── 头部信息 ──
@@ -374,14 +419,14 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
                 ),
               ),
               Text(
-                '${_posts.length} 篇',
+                l10n.translate('posts_count').replaceAll('{count}', '${_posts.length}'),
                 style: TextStyle(fontSize: 12, color: Colors.grey[500]),
               ),
               const SizedBox(width: 8),
               IconButton(
                 icon: const Icon(Icons.refresh, size: 18),
                 onPressed: _loading ? null : () => _loadPosts(refresh: true),
-                tooltip: '刷新',
+                tooltip: l10n.translate('refresh'),
               ),
             ],
           ),
@@ -394,21 +439,21 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
             color: Colors.white,
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
             child: SegmentedButton<_SiteTypeScope>(
-              segments: const [
+              segments: [
                 ButtonSegment(
                   value: _SiteTypeScope.all,
-                  label: Text('所有站点'),
-                  icon: Icon(Icons.all_inclusive, size: 16),
+                  label: Text(l10n.translate('all_sites')),
+                  icon: const Icon(Icons.all_inclusive, size: 16),
                 ),
                 ButtonSegment(
                   value: _SiteTypeScope.static,
-                  label: Text('静态博客'),
-                  icon: Icon(Icons.code, size: 16),
+                  label: Text(l10n.translate('static_blog')),
+                  icon: const Icon(Icons.code, size: 16),
                 ),
                 ButtonSegment(
                   value: _SiteTypeScope.dynamic,
-                  label: Text('动态CMS'),
-                  icon: Icon(Icons.web, size: 16),
+                  label: Text(l10n.translate('dynamic_cms')),
+                  icon: const Icon(Icons.web, size: 16),
                 ),
               ],
               selected: {_siteTypeScope},
@@ -429,21 +474,21 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
             color: Colors.white,
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
             child: SegmentedButton<_RemoteScope>(
-              segments: const [
+              segments: [
                 ButtonSegment(
                   value: _RemoteScope.current,
-                  label: Text('当前站点'),
-                  icon: Icon(Icons.trip_origin, size: 16),
+                  label: Text(l10n.translate('current_site')),
+                  icon: const Icon(Icons.trip_origin, size: 16),
                 ),
                 ButtonSegment(
                   value: _RemoteScope.all,
-                  label: Text('全部站点'),
-                  icon: Icon(Icons.dns, size: 16),
+                  label: Text(l10n.translate('all_sites')),
+                  icon: const Icon(Icons.dns, size: 16),
                 ),
                 ButtonSegment(
                   value: _RemoteScope.selected,
-                  label: Text('自选站点'),
-                  icon: Icon(Icons.checklist, size: 16),
+                  label: Text(l10n.translate('selected_sites')),
+                  icon: const Icon(Icons.checklist, size: 16),
                 ),
               ],
               selected: {_scope},
@@ -483,7 +528,7 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
               color: Colors.white,
               child: Text(
-                '仅展示已勾选站点的文章；默认勾选已登录（已配置密钥）的站点。',
+                l10n.translate('select_site_hint'),
                 style: TextStyle(fontSize: 11, color: Colors.grey[500]),
               ),
             ),
@@ -510,7 +555,7 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
                 ),
                 TextButton(
                   onPressed: () => _loadPosts(refresh: true),
-                  child: const Text('重试'),
+                  child: Text(l10n.translate('retry')),
                 ),
               ],
             ),
@@ -526,12 +571,12 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
                         Icon(Icons.article_outlined, size: 64, color: Colors.grey.shade300),
                         const SizedBox(height: 16),
                         Text(
-                          '暂无远程文章',
+                          l10n.translate('no_remote_posts'),
                           style: TextStyle(fontSize: 16, color: Colors.grey.shade500),
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '点击刷新按钮重新加载',
+                          l10n.translate('tap_refresh'),
                           style: TextStyle(fontSize: 13, color: Colors.grey.shade400),
                         ),
                       ]),
@@ -573,7 +618,7 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
                                       children: [
                                         Expanded(
                                           child: Text(
-                                            post.title.isEmpty ? '（无标题）' : post.title,
+                                            post.title.isEmpty ? l10n.translate('no_title') : post.title,
                                             style: const TextStyle(
                                               fontWeight: FontWeight.w600,
                                               fontSize: 15,
@@ -597,8 +642,8 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
                                             ),
                                             child: Text(
                                               _isStaticSite(post.siteId!)
-                                                  ? '静态'
-                                                  : 'CMS',
+                                                  ? l10n.translate('site_static')
+                                                  : l10n.translate('site_cms'),
                                               style: TextStyle(
                                                 fontSize: 10,
                                                 fontWeight: FontWeight.w600,
@@ -643,7 +688,7 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
                                             borderRadius: BorderRadius.circular(8),
                                           ),
                                           child: Text(
-                                            post.isPublished ? '已发布' : '草稿',
+                                            post.isPublished ? l10n.translate('published') : l10n.translate('draft'),
                                             style: TextStyle(
                                               fontSize: 11,
                                               fontWeight: FontWeight.w600,
@@ -659,10 +704,10 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
                                             if (v == 'delete') _deletePost(post);
                                           },
                                           icon: const Icon(Icons.more_horiz, size: 18),
-                                          itemBuilder: (_) => const [
+                                          itemBuilder: (_) => [
                                             PopupMenuItem(
                                               value: 'delete',
-                                              child: Text('删除远程文章'),
+                                              child: Text(l10n.translate('delete_remote_post')),
                                             ),
                                           ],
                                         ),

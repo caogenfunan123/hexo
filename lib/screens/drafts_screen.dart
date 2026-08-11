@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/article.dart';
 import '../models/blog_site_config.dart';
 import '../models/repo_config.dart';
+import '../l10n/app_localizations.dart';
 
 class DraftsScreen extends StatefulWidget {
   final List<Article> drafts;
@@ -34,13 +35,13 @@ class _DraftsScreenState extends State<DraftsScreen> {
     for (final s in widget.blogSiteConfigs) {
       if (s.id == siteId) return s.name;
     }
-    return '未知站点';
+    return AppLocalizations.ofContext(context).translate('unknown_site');
   }
 
   /// 获取所有站点选项
   List<MapEntry<String?, String>> get _siteOptions {
     final options = <MapEntry<String?, String>>[
-      const MapEntry(null, '全部站点'),
+      MapEntry(null, AppLocalizations.ofContext(context).translate('all_sites_short')),
     ];
     final seen = <String>{};
     for (final r in widget.repos) {
@@ -65,6 +66,7 @@ class _DraftsScreenState extends State<DraftsScreen> {
   @override
   Widget build(BuildContext context) {
     final drafts = _filteredDrafts;
+    final l10n = AppLocalizations.ofContext(context);
 
     return Column(
       children: [
@@ -76,7 +78,7 @@ class _DraftsScreenState extends State<DraftsScreen> {
             children: [
               const Icon(Icons.filter_list, size: 18, color: Color(0xFF64748B)),
               const SizedBox(width: 8),
-              const Text('站点筛选：', style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+              Text(l10n.translate('site_filter'), style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
               Expanded(
                 child: DropdownButton<String?>(
                   value: _selectedSiteId,
@@ -103,7 +105,7 @@ class _DraftsScreenState extends State<DraftsScreen> {
                     Icon(Icons.drafts_outlined, size: 64, color: Colors.grey.shade300),
                     const SizedBox(height: 16),
                     Text(
-                      _selectedSiteId == null ? '暂无草稿' : '该站点暂无草稿',
+                      _selectedSiteId == null ? l10n.translate('no_drafts') : l10n.translate('site_no_drafts'),
                       style: TextStyle(fontSize: 16, color: Colors.grey.shade500),
                     ),
                   ]),
@@ -129,7 +131,7 @@ class _DraftsScreenState extends State<DraftsScreen> {
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Row(children: [
                               Expanded(
-                                child: Text(a.title.isEmpty ? '未命名' : a.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                child: Text(a.title.isEmpty ? l10n.translate('untitled') : a.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
                               ),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -137,24 +139,24 @@ class _DraftsScreenState extends State<DraftsScreen> {
                                   color: a.published ? const Color(0xFF059669).withOpacity(0.1) : const Color(0xFFD97706).withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: Text(a.published ? '已发布' : '草稿', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: a.published ? const Color(0xFF059669) : const Color(0xFFD97706))),
+                                child: Text(a.published ? l10n.translate('published') : l10n.translate('draft'), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: a.published ? const Color(0xFF059669) : const Color(0xFFD97706))),
                               ),
                               PopupMenuButton<String>(
                                 onSelected: (v) async {
                                   if (v == 'delete') {
                                     final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-                                      title: const Text('删除草稿'),
-                                      content: Text('确认删除「${a.title}」？'),
+                                      title: Text(l10n.translate('delete_draft')),
+                                      content: Text(l10n.translate('confirm_delete_draft').replaceAll('{title}', a.title)),
                                       actions: [
-                                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-                                        FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(ctx, true), child: const Text('删除')),
+                                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.translate('cancel'))),
+                                        FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(ctx, true), child: Text(l10n.translate('delete'))),
                                       ],
                                     ));
                                     if (ok == true) widget.onDelete(a);
                                   }
                                 },
                                 icon: const Icon(Icons.more_horiz, size: 18, color: Color(0xFF64748B)),
-                                itemBuilder: (_) => const [PopupMenuItem(value: 'delete', child: Text('删除草稿'))],
+                                itemBuilder: (_) => [PopupMenuItem(value: 'delete', child: Text(l10n.translate('delete_draft')))],
                               ),
                             ]),
                             if (preview.isNotEmpty) ...[
@@ -176,7 +178,7 @@ class _DraftsScreenState extends State<DraftsScreen> {
                                 const SizedBox(width: 12),
                                 Icon(Icons.text_fields, size: 13, color: Colors.grey.shade400),
                                 const SizedBox(width: 4),
-                                Text('$wordCount 字', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+                                Text(l10n.translate('word_count').replaceAll('{count}', '$wordCount'), style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
                               ],
                             ]),
                             if (a.tags.isNotEmpty)
@@ -197,12 +199,13 @@ class _DraftsScreenState extends State<DraftsScreen> {
   }
 
   String _fmt(DateTime dt) {
+    final l10n = AppLocalizations.ofContext(context);
     final now = DateTime.now();
     final diff = now.difference(dt);
-    if (diff.inMinutes < 1) return '刚刚';
-    if (diff.inHours < 1) return '${diff.inMinutes}分钟前';
-    if (diff.inDays < 1) return '${diff.inHours}小时前';
-    if (diff.inDays < 7) return '${diff.inDays}天前';
+    if (diff.inMinutes < 1) return l10n.translate('just_now');
+    if (diff.inHours < 1) return l10n.translate('minutes_ago').replaceAll('{count}', '${diff.inMinutes}');
+    if (diff.inDays < 1) return l10n.translate('hours_ago').replaceAll('{count}', '${diff.inHours}');
+    if (diff.inDays < 7) return l10n.translate('days_ago').replaceAll('{count}', '${diff.inDays}');
     return '${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 }

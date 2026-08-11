@@ -58,7 +58,7 @@ class StaticBlogRepository implements BlogRepository {
   @override
   Future<List<BlogPost>> getPosts({int page = 1, int perPage = 10}) async {
     try {
-      final posts = await githubService.listPosts(repoConfig);
+      final posts = await githubService.listPosts(repoConfig, recursive: true);
       
       // 转换为 BlogPost 格式
       final blogPosts = posts.map((fileItem) {
