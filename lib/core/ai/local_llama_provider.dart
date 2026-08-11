@@ -100,6 +100,20 @@ class LocalLlamaProvider {
   /// 是否已初始化（有已加载模型）。
   bool get initialized => isModelLoaded;
 
+  /// 实际生效的线程数。llamadart 会把 [ModelParams.numberOfThreads] 原样透传
+  /// 给 llama.cpp 的 `n_threads`；与 llama-cli 不同，`n_threads=0` 在 ggml-cpu
+  /// 里不会回退为"自动"，而是把 CPU 后端设成 0 线程 → 单线程 decode，0.5B
+  /// 模型只有 ~2.5 token/s。因此必须显式给出核心数。
+  /// 取设备物理核心数，超出 8 核封顶（避免线程过度竞争）。
+  int get _effectiveThreads {
+    try {
+      if (kIsWeb) return 4;
+      final cores = Platform.numberOfProcessors;
+      if (cores > 0) return cores > 8 ? 8 : cores;
+    } catch (_) {}
+    return 4;
+  }
+
   /// 加载 GGUF 模型文件（llamadart modelLoad + contextCreate）。
   /// [modelPath] 为本地 .gguf 文件绝对路径，[settings] 为本地模型完整设置
   /// （上下文、批处理、线程、KV cache、GPU 层数、后端等）；为 null 时使用
@@ -189,12 +203,16 @@ class LocalLlamaProvider {
         contextSize: effective.effectiveContextSize,
         gpuLayers: gpuLayers,
         preferredBackend: useGpu ? GpuBackend.vulkan : GpuBackend.cpu,
-        // threads=0 时保持 0，让 llamadart/llama.cpp 自动选择线程数。
-        // 之前强制替换为设备核心数（如骁龙 8+ 的 8 线程）会让 1+3+4
-        // 大小核跨簇调度，小核拖累 prefill，导致首 token 数十秒。
-        numberOfThreads: effective.threads > 0 ? effective.threads : 0,
-        numberOfThreadsBatch:
-            effective.threadsBatch > 0 ? effective.threadsBatch : 0,
+        // 必须显式给线程数：llamadart 把 numberOfThreads 原样透传 n_threads，
+        // 0 会被 ggml-cpu 当作单线程（0.5B 仅 ~2.5 token/s）。用户设为 0
+        // （自动）时按设备物理核心数给出。
+        numberOfThreads: effective.threads > 0
+            ? effective.threads
+            : _effectiveThreads,
+        // batch 线程同理会 0 导致 prefill 单线程，显式给与生成线程相同的值。
+        numberOfThreadsBatch: effective.threadsBatch > 0
+            ? effective.threadsBatch
+            : _effectiveThreads,
         batchSize: effective.batchSize,
         // 移动端默认 512 的 micro batch 会放大调度/分配压力；llamadart
         // 性能文档建议手机先降到 256。仅当用户显式设置时保留。

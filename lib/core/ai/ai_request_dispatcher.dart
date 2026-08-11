@@ -179,7 +179,7 @@ class AiRequestDispatcher {
           temperature: temperature,
           maxTokens: preferredModel.localSettings?.maxTokens ?? 2048,
           toolRound: toolRound,
-          tools: disableTools ? null : _localEnabledTools(),
+          tools: null,
         );
         return;
       }
@@ -366,13 +366,6 @@ class AiRequestDispatcher {
     }
   }
 
-  /// 本地模型可用的工具列表（OpenAI 格式）。无启用的工具时返回 null。
-  List<Map<String, dynamic>>? _localEnabledTools() {
-    final registry = ToolRegistry();
-    if (registry.enabledTools.isEmpty) return null;
-    return registry.toOpenAiTools();
-  }
-
   /// 本地模型专用真流式路径。
   ///
   /// 与远端模型不同：
@@ -381,10 +374,9 @@ class AiRequestDispatcher {
   /// - 逐 token 实时推送，无 token 时给"仍在思考"提示而不是静默等待
   /// - 超过 [firstTokenTimeoutSeconds] 仍无输出 → 提示可能卡死并结束
   ///
-  /// 当启用工具时走「文本式工具调用」协议：紧凑工具清单注入 prompt，生成
-  /// 完成后解析【TOOL_CALL】标记 → 执行工具 → 把结果写回历史 → 续跑，直到
-  /// 模型给出最终答复或达到 [maxLocalToolRounds]。与中转站模型的 function
-  /// calling 循环行为对齐。
+  /// 0.5B 小模型无法可靠执行工具调用（会陷入复制工具清单的死循环），
+  /// 因此 [tools] 固定传 null，本地模型只做纯文本对话。工具执行能力仅保留
+  /// 给云端模型。
   Future<void> _runLocalStream(
     StreamController<StreamChunk> controller, {
     required AiModelEntity preferredModel,
