@@ -1,5 +1,3 @@
-import 'dart:io';
-import '../models/app_settings.dart';
 import '../models/article.dart';
 import '../models/article_type.dart';
 import '../models/blog_post.dart';
@@ -10,7 +8,6 @@ import '../core/template_engine/template_resolver.dart';
 import '../core/diff/markdown_diff.dart';
 import 'github_service.dart';
 import 'storage_service.dart';
-import 'template_service.dart';
 
 /// 单个站点的发布预览
 class SitePublishPreview {
@@ -66,10 +63,8 @@ class MultiSitePublishPreview {
 ///   差异），确认后再通过 [publishFromPreview] / [batchPublishToStaticBlogs]
 ///   经 GitHub Contents API 真实写入。
 class StaticBlogBatchPublishService {
-  final AppSettings _settings;
   final SiteManager _siteManager;
   final GitHubService _githubService;
-  final TemplateService _templateService;
   final StorageService _storage;
 
   /// 登录态缓存：按 token 缓存校验结果，避免逐站/逐篇重复 GET /user
@@ -77,16 +72,12 @@ class StaticBlogBatchPublishService {
   static const _loginCacheTtl = Duration(minutes: 5);
 
   StaticBlogBatchPublishService({
-    required AppSettings settings,
     required SiteManager siteManager,
     required GitHubService githubService,
-    required TemplateService templateService,
     StorageService? storageService,
-  }) : _settings = settings,
-       _siteManager = siteManager,
-       _githubService = githubService,
-       _templateService = templateService,
-       _storage = storageService ?? StorageService();
+  })  : _siteManager = siteManager,
+        _githubService = githubService,
+        _storage = storageService ?? StorageService();
 
   /// 生成批量发布预览（只读，不产生任何 GitHub 写入）。
   ///

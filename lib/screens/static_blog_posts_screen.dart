@@ -10,7 +10,6 @@ import '../models/repo_config.dart';
 import '../services/github_service.dart';
 import '../services/log_service.dart';
 import '../services/static_blog_batch_publish_service.dart';
-import '../services/template_service.dart';
 
 /// 静态博客文章管理界面
 ///
@@ -46,7 +45,6 @@ class _StaticBlogPostsScreenState extends State<StaticBlogPostsScreen> {
 
   List<BlogPost> _posts = [];
   bool _loading = true;
-  bool _hasMore = false;
   final Set<String> _selectedPostKeys = {};
   final Set<String> _selectedSiteIds = {};
   int _batchProgress = 0;
@@ -69,10 +67,8 @@ class _StaticBlogPostsScreenState extends State<StaticBlogPostsScreen> {
       logService: widget.logService,
     );
     _batchPublishService = StaticBlogBatchPublishService(
-      settings: widget.settings,
       siteManager: widget.siteManager,
       githubService: widget.githubService,
-      templateService: TemplateService(),
     );
     _loadPosts(refresh: true);
   }
@@ -109,7 +105,6 @@ class _StaticBlogPostsScreenState extends State<StaticBlogPostsScreen> {
       if (!mounted) return;
       setState(() {
         _posts = filtered;
-        _hasMore = false;
         _loading = false;
         _error = null;
       });

@@ -61,27 +61,6 @@ class _RemoteScreenState extends State<RemoteScreen> {
     });
   }
 
-  void _selectAll() {
-    setState(() {
-      if (_selected.length == widget.posts.length) {
-        _selected.clear();
-        _selectMode = false;
-      } else {
-        _selected.addAll(widget.posts.map((e) => e.path));
-      }
-    });
-  }
-
-  Future<void> _deleteSelected() async {
-    if (_selected.isEmpty) return;
-    final items = widget.posts.where((e) => _selected.contains(e.path)).toList();
-    await widget.onBatchDelete(items);
-    setState(() {
-      _selected.clear();
-      _selectMode = false;
-    });
-  }
-
   void _toggleStaticPosts() {
     setState(() {
       _showStaticPosts = !_showStaticPosts;

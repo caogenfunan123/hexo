@@ -287,24 +287,26 @@ class EditorStateManager {
 
   /// 从当前绑定的控制器自动更新
   void updateFromControllers() {
-    if (_scrollController?.hasClients == true) {
-      _scrollOffset = _scrollController!.offset;
-      _maxScrollExtent = _scrollController!.position.maxScrollExtent;
+    final sc = _scrollController;
+    if (sc != null && sc.hasClients) {
+      _scrollOffset = sc.offset;
+      _maxScrollExtent = sc.position.maxScrollExtent;
     }
-    if (_textController != null) {
-      _cursorPosition = _textController!.selection.baseOffset;
-      final text = _textController!.text;
+    final tc = _textController;
+    if (tc != null) {
+      _cursorPosition = tc.selection.baseOffset;
+      final text = tc.text;
       if (_cursorPosition <= text.length) {
         final before = text.substring(0, _cursorPosition);
         _cursorLine = '\n'.allMatches(before).length;
         final lastNewline = before.lastIndexOf('\n');
         _cursorColumn = _cursorPosition - (lastNewline + 1);
       }
-      if (_textController!.selection.isValid) {
-        _selectionStart = _textController!.selection.start;
-        _selectionEnd = _textController!.selection.end;
+      if (tc.selection.isValid) {
+        _selectionStart = tc.selection.start;
+        _selectionEnd = tc.selection.end;
         if (_selectionStart != _selectionEnd) {
-          _selectedText = _textController!.selection.textInside(text);
+          _selectedText = tc.selection.textInside(text);
         }
       }
     }
@@ -329,28 +331,30 @@ class EditorStateManager {
   /// 恢复到快照状态
   Future<void> restoreFromSnapshot(EditorStateSnapshot snapshot) async {
     // 恢复滚动位置
-    if (_scrollController?.hasClients == true) {
+    final sc = _scrollController;
+    if (sc != null && sc.hasClients) {
       final targetOffset = snapshot.scrollOffset.clamp(
         0.0,
         snapshot.maxScrollExtent,
       );
-      _scrollController!.jumpTo(targetOffset);
+      sc.jumpTo(targetOffset);
     }
 
     // 恢复光标位置和选择
-    if (_textController != null) {
-      final text = _textController!.text;
+    final tc = _textController;
+    if (tc != null) {
+      final text = tc.text;
       final safePosition = snapshot.cursorPosition.clamp(0, text.length);
 
       if (snapshot.hasSelection) {
         final safeStart = snapshot.selectionStart.clamp(0, text.length);
         final safeEnd = snapshot.selectionEnd.clamp(0, text.length);
-        _textController!.selection = TextSelection(
+        tc.selection = TextSelection(
           baseOffset: safeStart,
           extentOffset: safeEnd,
         );
       } else {
-        _textController!.selection = TextSelection.collapsed(
+        tc.selection = TextSelection.collapsed(
           offset: safePosition,
         );
       }

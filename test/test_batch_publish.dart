@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hexo/services/static_blog_batch_publish_service.dart';
-import 'package:hexo/services/template_service.dart';
 import 'package:hexo/services/github_service.dart';
 import 'package:hexo/models/blog_post.dart';
 import 'package:hexo/models/repo_config.dart';
@@ -17,10 +16,8 @@ void main() {
       siteManager = MockSiteManager();
       githubService = MockGitHubService();
       service = StaticBlogBatchPublishService(
-        settings: const AppSettings(),
         siteManager: siteManager,
         githubService: githubService,
-        templateService: TemplateService(),
       );
     });
 
@@ -36,7 +33,6 @@ void main() {
       );
 
       bool completed = false;
-      String? message;
       bool? success;
       Map<String, dynamic>? results;
 
@@ -46,7 +42,6 @@ void main() {
         onComplete: (s, m, r) {
           completed = true;
           success = s;
-          message = m;
           results = r;
         },
       );

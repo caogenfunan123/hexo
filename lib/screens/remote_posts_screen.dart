@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../core/repository/blog_repository.dart';
 import '../core/site_manager.dart';
 import '../models/blog_post.dart';
-import '../models/repo_config.dart';
 import '../services/log_service.dart';
 import '../l10n/app_localizations.dart';
 
@@ -124,11 +123,6 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
   /// 判断是否为静态博客站点
   bool _isStaticSite(String siteId) {
     return _getSiteType(siteId) == SiteType.staticBlog;
-  }
-
-  /// 判断是否为动态CMS站点
-  bool _isDynamicSite(String siteId) {
-    return _getSiteType(siteId) == SiteType.dynamicCms;
   }
 
   String _siteName(String? siteId) {
@@ -511,7 +505,6 @@ class _RemotePostsScreenState extends State<RemotePostsScreen> {
                 runSpacing: 4,
                 children: _allAdapters.map((a) {
                   final checked = _checkedSites.contains(a.config.id);
-                  final siteType = _getSiteType(a.config.id);
                   return FilterChip(
                     label: Text(
                       a.config.name,

@@ -6915,7 +6915,7 @@ $htmlContent
       archive.addFile(file);
     }
     final encoded = ZipEncoder().encode(archive);
-    return Uint8List.fromList(encoded ?? []);
+    return Uint8List.fromList(encoded);
   }
 
   // ============================================================

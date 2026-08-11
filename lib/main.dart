@@ -78,7 +78,6 @@ import 'services/log_service.dart';
 import 'services/sync_service.dart';
 import 'services/cloud_sync_service.dart';
 import 'services/static_blog_batch_publish_service.dart';
-import 'services/template_service.dart';
 import 'theme/app_theme.dart';
 
 // ── 移动端新功能集成 ──
@@ -922,6 +921,23 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     _doc.setEditorRepoId(repo?.id);
   }
 
+  /// 新建空白文章：先将当前文章存到草稿箱，再清空编辑器
+  Future<void> _newBlankArticle() async {
+    // 当前有内容时先保存到草稿箱
+    final hasContent = _doc.titleCtrl.text.isNotEmpty ||
+        _doc.contentCtrl.text.isNotEmpty;
+    if (hasContent) {
+      await _saveLocal();
+    }
+    _stopAutoSave();
+    await _clearSession();
+    _resetEditor();
+    _startAutoSave();
+    if (mounted) {
+      _showToast(hasContent ? '已保存到草稿箱，开始新文章' : '开始写新文章');
+    }
+  }
+
   /// 根据当前文章类型和仓库配置自动选择模板
   void _autoSelectTemplate() {
     final repo = _editorRepo;
@@ -1564,10 +1580,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     });
 
     final service = StaticBlogBatchPublishService(
-      settings: settings,
       siteManager: siteManager,
       githubService: github,
-      templateService: TemplateService(),
     );
 
     try {
@@ -4564,29 +4578,18 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     );
   }
 
-  /// 极简顶部标识：当前站点名 + 小圆点，取代大标题「写文章」
+  /// 极简顶部标识：仅保留当前站点小圆点，不显示「写文章」文字
   Widget _buildEditorAppBarTitle(ColorScheme cs) {
-    final siteName = settings.siteName.isNotEmpty ? settings.siteName : '写文章';
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 7,
-          height: 7,
+          width: 8,
+          height: 8,
           decoration: BoxDecoration(
             color: cs.primary,
             shape: BoxShape.circle,
           ),
-        ),
-        const SizedBox(width: 7),
-        Text(
-          siteName,
-          style: const TextStyle(
-            color: AppTheme.text,
-            fontWeight: FontWeight.w600,
-            fontSize: 15,
-          ),
-          overflow: TextOverflow.ellipsis,
         ),
       ],
     );
@@ -5687,9 +5690,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   .firstOrNull ??
               currentAdapter ??
               allSiteAdapters.first;
-          if (primary == null) {
-            return const Center(child: Text('未配置站点'));
-          }
           return RemotePostsScreen(
             adapter: primary,
             allAdapters: allSiteAdapters,
@@ -5867,26 +5867,38 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   // ============ EDITOR PAGE ============
 
+  /// 当前站点标识：动态站点用类型名，静态站点用仓库名
+  String get _currentSiteLabel {
+    if (siteManager.isDynamicSite) {
+      return siteManager.currentBlogType.displayName;
+    }
+    return _resolvedRepo?.name ?? '我的博客';
+  }
+
   Widget _buildEditorPage() {
     final cs = Theme.of(context).colorScheme;
     final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
-    return Column(
+    return Stack(
       children: [
-        if (_editorBusy) const LinearProgressIndicator(minHeight: 2),
-        if (_editorBusy)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            child: Row(
-              children: [
-                const SizedBox(
-                  width: 14, height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: 8),
-                Text(_editorStatus ?? '处理中...',
-                    style: TextStyle(fontSize: 12, color: cs.primary)),
-                const Spacer(),
-                TextButton.icon(
+        Column(
+          children: [
+            if (_editorBusy) const LinearProgressIndicator(minHeight: 2),
+            if (_editorBusy)
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                child: Row(
+                  children: [
+                    const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(_editorStatus ?? '处理中...',
+                        style: TextStyle(fontSize: 12, color: cs.primary)),
+                    const Spacer(),
+                    TextButton.icon(
                   onPressed: () {
                     _publishCancelToken.cancel();
                     setState(() {
@@ -5928,7 +5940,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                 style: const TextStyle(
                     fontSize: 22, fontWeight: FontWeight.w700, height: 1.3),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 4),
               // ── 正文：无边框、无常驻 label，首次进入显示淡提示，输入后永久隐藏 ──
               OrientationGuard(
                 enabled: true,
@@ -5973,20 +5985,61 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   ).p,
                 ),
               ),
-              if (_editorStatus != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(_editorStatus!,
-                      style: TextStyle(
-                        color: _editorBusy ? cs.primary : cs.outline,
-                        fontSize: 12,
-                      )),
-                ),
             ],
+          ),
+        ),
+        // ── 左下角常驻状态文字：当前站点标识 ──
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '已切换到: ${_currentSiteLabel}',
+              style: TextStyle(
+                color: cs.outline.withValues(alpha: 0.8),
+                fontSize: 11,
+              ),
+            ),
           ),
         ),
         // ── 底部 MD 语法工具栏：键盘弹出时紧贴输入法，平时不占编辑区 ──
         if (keyboardVisible && !_editorBusy) _buildMdToolbar(cs),
+          ],
+        ),
+        // ── 右下角悬浮快捷按钮：MD 导出 + 新建空白文章 ──
+        Positioned(
+          right: 18,
+          bottom: 24,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              FloatingActionButton(
+                heroTag: 'editor_export_md',
+                mini: true,
+                backgroundColor: Colors.white,
+                foregroundColor: cs.primary,
+                elevation: 2,
+                tooltip: 'MD 导出',
+                onPressed: _saveMdBackup,
+                child: const Text(
+                  'M↓',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(height: 12),
+              FloatingActionButton(
+                heroTag: 'editor_new_blank',
+                mini: true,
+                backgroundColor: cs.primary,
+                foregroundColor: Colors.white,
+                elevation: 3,
+                tooltip: '新建空白文章',
+                onPressed: _newBlankArticle,
+                child: const Icon(Icons.add, size: 22),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -6733,34 +6786,21 @@ class _WordCountBadgeState extends State<_WordCountBadge> {
   @override
   Widget build(BuildContext context) {
     if (_totalChars == 0) return const SizedBox.shrink();
+    // 淡色小字，紧贴右上角三点菜单角落；空白无文字时自动隐藏
     return Padding(
-      padding: const EdgeInsets.only(right: 2),
+      padding: const EdgeInsets.only(right: 4),
       child: InkWell(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
         onTap: _showDetail,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '$_totalChars',
-                style: const TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
-                    height: 1.1),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                '纯$_pureChars',
-                style: const TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF94A3B8),
-                    height: 1.1),
-              ),
-            ],
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          child: Text(
+            '$_totalChars',
+            style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF94A3B8),
+                height: 1.0),
           ),
         ),
       ),

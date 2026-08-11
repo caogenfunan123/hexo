@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../core/repository/blog_repository.dart';
-import '../core/repository/static_blog_repository.dart';
 import '../core/site_manager.dart';
 import '../models/blog_post.dart';
-import '../models/repo_config.dart';
-import '../models/blog_site_config.dart';
 import '../services/log_service.dart';
 
 /// 统一的远程文章管理界面
@@ -71,8 +68,6 @@ class _UnifiedRemotePostsScreenState extends State<UnifiedRemotePostsScreen> {
   
   // 获取所有站点信息
   List<SiteIdentity> get _allSites => widget.siteManager.allSites;
-  List<SiteIdentity> get _staticSites => widget.siteManager.staticSites;
-  List<SiteIdentity> get _dynamicSites => widget.siteManager.dynamicSitesList;
   
   // 当前活跃站点
   SiteIdentity? get _currentSite => widget.siteManager.currentSiteIdentity;
@@ -231,8 +226,7 @@ class _UnifiedRemotePostsScreenState extends State<UnifiedRemotePostsScreen> {
           filteredPosts = merged.where((post) {
             final searchLower = _searchQuery.toLowerCase();
             return post.title.toLowerCase().contains(searchLower) ||
-                   post.excerpt.toLowerCase().contains(searchLower) ||
-                   post.author.toLowerCase().contains(searchLower);
+                   post.contentMd.toLowerCase().contains(searchLower);
           }).toList();
         }
         
@@ -260,8 +254,7 @@ class _UnifiedRemotePostsScreenState extends State<UnifiedRemotePostsScreen> {
           filteredPosts = posts.where((post) {
             final searchLower = _searchQuery.toLowerCase();
             return post.title.toLowerCase().contains(searchLower) ||
-                   post.excerpt.toLowerCase().contains(searchLower) ||
-                   post.author.toLowerCase().contains(searchLower);
+                   post.contentMd.toLowerCase().contains(searchLower);
           }).toList();
         }
         

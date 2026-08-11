@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
-import '../core/repository/blog_repository.dart';
-import '../core/repository/static_blog_repository.dart';
 import '../core/site_manager.dart';
-import '../models/blog_post.dart';
 import '../models/repo_config.dart';
 import '../models/blog_site_config.dart';
 import '../models/app_settings.dart';
@@ -256,7 +252,7 @@ class _StaticBlogManagementExampleState extends State<StaticBlogManagementExampl
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.web_off, size: 64, color: Colors.grey.shade300),
+            Icon(Icons.cloud_off, size: 64, color: Colors.grey.shade300),
             const SizedBox(height: 16),
             Text(
               '暂无动态CMS配置',

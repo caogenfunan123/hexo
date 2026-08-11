@@ -190,7 +190,7 @@ class GgufModelService {
     LocalModelSettings settings,
   ) async {
     final index = await _readIndex();
-    final entry = (index[modelId] as Map? ?? {}) as Map;
+    final entry = Map<String, dynamic>.from(index[modelId] as Map? ?? {});
     index[modelId] = {
       ...entry,
       'settings': settings.toJson(),
