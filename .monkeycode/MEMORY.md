@@ -33,6 +33,14 @@ Entries discovered by the Agent during task execution should follow this format:
 
 [Project Knowledge Summary]
 - Date: 2026-08-11
+- Context: User explicitly asks AI to always follow the repo's coding convention guide when modifying code
+- Category: Workflow & Collaboration
+- Instructions:
+  - 修改本仓库任何 Dart 代码前，必须阅读 `.monkeycode/docs/code-splitting-guide.md`，并按第五节「新增代码时的行为准则」执行：新方法按业务域写入 `lib/mixins/editor_xxx_ext.dart`（不要堆进 main.dart 类体）；part 文件内一律用 `_applyState` 替代 `setState`；纯组件抽到 `lib/widgets/`；禁止新建 1000+ 行巨型文件
+  - 用户侧提醒方式：直接说「按 code-splitting-guide.md 的规范写」即可
+
+[Project Knowledge Summary]
+- Date: 2026-08-11
 - Context: Discovered by Agent while splitting _RootShellState (7425 行) into extension part files in lib/mixins/
 - Category: Build Methods
 - Instructions:
