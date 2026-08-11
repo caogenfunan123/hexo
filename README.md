@@ -2,6 +2,29 @@
 
 Flutter 跨平台 Hexo 博客编辑器，支持 Markdown 写作、GitHub 发布、AI 辅助、自动保存、WebDAV 同步。
 
+## 项目结构
+
+```
+lib/
+├── main.dart                  # 入口 + _RootShellState 核心状态类（生命周期/会话/导航）
+├── mixins/                    # 按业务域拆分的 State 扩展（Extension + Part 方案）
+│   ├── editor_publish_ext.dart    # 发布/上传/保存
+│   ├── editor_sync_ext.dart       # 同步/云端
+│   ├── settings_dialogs_ext.dart  # 设置/管理弹窗
+│   ├── editor_ui_ext.dart         # 编辑页 UI 构建
+│   ├── editor_text_ext.dart       # 文本操作/自动保存
+│   ├── editor_ai_ext.dart         # AI 功能/对话
+│   ├── editor_repo_ext.dart       # 仓库/Token 管理
+│   ├── editor_remote_ext.dart     # 远程内容/分享
+│   ├── editor_misc_ext.dart       # 杂项工具
+│   └── editor_drawer_ext.dart     # 抽屉组件
+├── widgets/                   # 独立公开组件（WordCountBadge、EditorMenuGroupTitle 等）
+├── theme/                     # 主题控制器（EditorThemeController）
+└── ...                        # services / screens / core 等
+```
+
+`_RootShellState` 曾为 7425 行巨型类，现已按业务域拆分为 10 个 extension part 文件，`main.dart` 缩减至约 1290 行。完整拆分方法论与新增代码准则见 [代码拆分说明](.monkeycode/docs/code-splitting-guide.md)。
+
 ## 下载
 
 [![Build APK](https://github.com/caogenfunan123/hexo/actions/workflows/build.yml/badge.svg)](https://github.com/caogenfunan123/hexo/actions/workflows/build.yml)
