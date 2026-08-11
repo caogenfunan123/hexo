@@ -37,7 +37,22 @@ class LocalLlamaProvider {
   /// llama.cpp 原生 + Dart 诊断日志环形缓冲（用于手动导出定位卡点）。
   final List<String> _logRing = [];
   bool _loggingConfigured = false;
+  bool _loggingEnabled = false;
   static const int _logRingCapacity = 2000;
+
+  /// 是否开启了日志记录（默认关闭，避免 debug 日志开销）。
+  bool get loggingEnabled => _loggingEnabled;
+
+  /// 开关日志记录。开启后 llama.cpp 原生层日志写入环形缓冲，
+  /// 供 [exportDiagnosticLogs] 导出定位卡点；关闭后停止写入。
+  void setLoggingEnabled(bool enabled) {
+    _loggingEnabled = enabled;
+    if (enabled) {
+      _configureLogging();
+    } else {
+      _logRing.clear();
+    }
+  }
 
   /// 是否可在当前平台使用（llamadart 支持 Android/iOS/桌面/Web）。
   bool get isAvailable {
@@ -106,9 +121,9 @@ class LocalLlamaProvider {
     try {
       final engine = _engine ??= LlamaEngine(LlamaBackend());
 
-      // 打开 llama.cpp 原生层诊断日志（Android logcat / 桌面 stdout），
-      // 写入环形缓冲，供「导出诊断日志」功能导出后定位卡点。
-      if (!kIsWeb) {
+      // 仅在用户开启「诊断日志」开关时才设置原生层 debug 级别并捕获；
+      // 默认关闭，避免 debug 日志影响正式体验。
+      if (_loggingEnabled && !kIsWeb) {
         _configureLogging();
         try {
           await engine.setLogLevel(LlamaLogLevel.debug);
@@ -227,6 +242,7 @@ class LocalLlamaProvider {
       LlamaEngine.configureLogging(
         level: LlamaLogLevel.debug,
         handler: (record) {
+          if (!_loggingEnabled) return;
           final line = '[${record.time.toIso8601String()}] '
               '[${record.level.name.toUpperCase()}] ${record.message}';
           _logRing.add(line);
@@ -249,6 +265,13 @@ class LocalLlamaProvider {
       buf.writeln('===== Hexo 本地模型诊断日志 =====');
       buf.writeln('时间: ${DateTime.now().toIso8601String()}');
       buf.writeln('平台: ${defaultTargetPlatform.name}');
+      buf.writeln('日志记录开关: ${_loggingEnabled ? '开' : '关'}');
+      if (!_loggingEnabled) {
+        buf.writeln('');
+        buf.writeln('>>> 提示：诊断日志开关为「关」，以下仅有设备信息。');
+        buf.writeln('>>> 请先开启「记录诊断日志」开关，重新加载模型/复现卡顿，');
+        buf.writeln('>>> 再回到此处导出，才能包含 llama.cpp 原生加载日志。');
+      }
       if (!kIsWeb) {
         try {
           buf.writeln('CPU 核心数: ${Platform.numberOfProcessors}');

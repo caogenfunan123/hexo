@@ -1014,6 +1014,24 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('记录诊断日志',
+                        style: TextStyle(fontSize: 14)),
+                    subtitle: const Text(
+                      '开启后记录 llama.cpp 加载/推理日志，复现卡顿后导出定位问题（默认关闭）',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    value: LocalLlamaProvider.instance.loggingEnabled,
+                    onChanged: (v) {
+                      LocalLlamaProvider.instance.setLoggingEnabled(v);
+                      setSheetState(() {});
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                   child: OutlinedButton.icon(
                     onPressed: () => _exportLocalDiagLogs(ctx),
                     icon: const Icon(Icons.bug_report_outlined, size: 18),
