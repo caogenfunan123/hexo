@@ -40,6 +40,7 @@ import 'screens/blog_site_editor_screen.dart';
 import 'screens/drafts_screen.dart';
 import 'screens/remote_screen.dart';
 import 'screens/remote_posts_screen.dart';
+import 'screens/all_static_blogs_screen.dart';
 import 'screens/static_blog_posts_screen.dart';
 import 'screens/sync_screen.dart';
 import 'screens/sync_settings_screen.dart';
@@ -4642,6 +4643,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   _drawerSection('管理'),
                   _drawerItem(2, Icons.cloud_outlined, '远程文章'),
                   _drawerAction(Icons.article_outlined, '静态博客文章', _showStaticBlogPosts),
+                  _drawerAction(Icons.library_books_outlined, '全部博客管理', _showAllStaticBlogs),
                   _drawerItem(12, Icons.sync, '同步状态'),
                   _drawerAction(Icons.wifi, 'P2P 同步', _openP2PSync),
                   _drawerItem(3, Icons.dashboard_outlined, '仪表盘'),
@@ -5726,12 +5728,28 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         context: context,
         builder: (ctx) => SimpleDialog(
           title: const Text('选择静态博客仓库'),
-          children: repos
-              .map((r) => SimpleDialogOption(
-                    onPressed: () => Navigator.pop(ctx, r),
-                    child: Text('${r.name} (${r.fullName})'),
-                  ))
-              .toList(),
+          children: [
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _showAllStaticBlogs();
+              },
+              child: const Row(
+                children: [
+                  Icon(Icons.library_books_outlined, size: 20),
+                  SizedBox(width: 12),
+                  Text('全部博客管理（聚合所有仓库）'),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            ...repos
+                .map((r) => SimpleDialogOption(
+                      onPressed: () => Navigator.pop(ctx, r),
+                      child: Text('${r.name} (${r.fullName})'),
+                    ))
+                .toList(),
+          ],
         ),
       );
       if (selected == null) return;
@@ -5743,6 +5761,29 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         builder: (_) => StaticBlogPostsScreen(
           repoConfig: resolved,
           siteManager: siteManager,
+          settings: settings,
+          githubService: github,
+          logService: logService,
+          onOpenInEditor: _openStaticBlogPostInEditor,
+          onDeletePost: _deleteStaticBlogPost,
+        ),
+      ),
+    );
+  }
+
+  /// 打开全部静态博客聚合管理界面（跨仓库批量选择、批量删除）
+  Future<void> _showAllStaticBlogs() async {
+    if (repos.isEmpty) {
+      _showToast('请先在设置中添加仓库');
+      return;
+    }
+    final resolved = repos
+        .map(_resolvedRepoFor)
+        .toList();
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => AllStaticBlogsScreen(
+          repos: resolved,
           settings: settings,
           githubService: github,
           logService: logService,
