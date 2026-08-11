@@ -12,8 +12,6 @@ import '../tools/tool_registry.dart';
 import 'ai_model_entity.dart';
 import 'ai_model_manager.dart';
 import 'ai_model_probe_service.dart';
-import 'ai_provider.dart';
-import 'local_llama_provider.dart';
 
 /// 模型切换事件（UI 提示条用）
 class SwitchEvent {
@@ -55,8 +53,6 @@ class AiRequestDispatcher {
     _cancelled = true;
     _activeStreamController?.close();
     _activeStreamController = null;
-    // 本地 GGUF 生成同步停止（llamadart cancelGeneration）
-    unawaited(LocalLlamaProvider.instance.stopCompletion());
   }
 
   /// 上下文持有器：保存完整会话历史（含 tool_calls），保证切换模型时上下文不丢失
@@ -169,21 +165,6 @@ class AiRequestDispatcher {
     final fullContent = StringBuffer();
 
     try {
-      // ── 本地模型：走专用真流式路径，不受全局 50 秒硬超时限制 ──
-      // 工具走「文本式工具调用」协议，与中转站模型同样具备工具执行能力
-      if (preferredModel != null &&
-          preferredModel.provider == ModelProvider.local) {
-        await _runLocalStream(
-          controller,
-          preferredModel: preferredModel,
-          temperature: temperature,
-          maxTokens: preferredModel.localSettings?.maxTokens ?? 2048,
-          toolRound: toolRound,
-          tools: null,
-        );
-        return;
-      }
-
       AiProfile? profile;
       if (preferredModel != null) {
         profile = _profileFromModel(preferredModel);
@@ -363,181 +344,6 @@ class AiRequestDispatcher {
         controller.addError(Exception(errorMsg));
         await controller.close();
       }
-    }
-  }
-
-  /// 本地模型专用真流式路径。
-  ///
-  /// 与远端模型不同：
-  /// - 不受全局 [timeoutSeconds] 硬超时限制（本地 GGUF 首 token 预处理慢，
-  ///   固定 50 秒超时会直接掐死生成）
-  /// - 逐 token 实时推送，无 token 时给"仍在思考"提示而不是静默等待
-  /// - 超过 [firstTokenTimeoutSeconds] 仍无输出 → 提示可能卡死并结束
-  ///
-  /// 0.5B 小模型无法可靠执行工具调用（会陷入复制工具清单的死循环），
-  /// 因此 [tools] 固定传 null，本地模型只做纯文本对话。工具执行能力仅保留
-  /// 给云端模型。
-  Future<void> _runLocalStream(
-    StreamController<StreamChunk> controller, {
-    required AiModelEntity preferredModel,
-    double temperature = 0.7,
-    int firstTokenTimeoutSeconds = 120,
-    int maxTokens = 2048,
-    int toolRound = 0,
-    List<Map<String, dynamic>>? tools,
-  }) async {
-    const maxLocalToolRounds = 4;
-    final useTools = tools != null && tools.isNotEmpty;
-    final fullContent = StringBuffer();
-    final profile = _profileFromModel(preferredModel);
-    final messages = <Map<String, dynamic>>[
-      {'role': 'system', 'content': _systemPrompt},
-      ..._chatHistory,
-    ];
-
-    // 首 token 等待超时计时器：本地模型预处理慢，超过阈值提示卡死
-    Timer? firstTokenTimer;
-    var gotFirstToken = false;
-    final stopwatch = Stopwatch()..start();
-
-    try {
-      final stream = _aiService.streamCompleteLocal(
-        p: profile,
-        systemPrompt: _systemPrompt,
-        messages: messages,
-        temperature: temperature,
-        maxTokens: maxTokens,
-        tools: useTools ? tools : null,
-      );
-
-      firstTokenTimer = Timer(Duration(seconds: firstTokenTimeoutSeconds), () {
-        if (gotFirstToken || controller.isClosed) return;
-        // 无 token 输出：停止生成并提示用户可能卡死
-        unawaited(LocalLlamaProvider.instance.stopCompletion());
-        final hint = '⚠️ 本地模型长时间未产生内容（> $firstTokenTimeoutSeconds 秒）。'
-            '可能原因：模型过大、上下文过长或内存不足。'
-            '建议降低上下文长度、换更小量化模型或检查模型文件完整性。';
-        if (!controller.isClosed) {
-          controller.add(StreamChunk(content: hint));
-        }
-      });
-
-      if (!useTools) {
-        // ── 纯文本真流式：逐 token 实时推送 ──
-        await for (final chunk in stream) {
-          if (_cancelled) break;
-          if (controller.isClosed) break;
-          if (chunk.isDone) break;
-          if (chunk.content.isNotEmpty) {
-            if (!gotFirstToken) {
-              gotFirstToken = true;
-              firstTokenTimer.cancel();
-            }
-            fullContent.write(chunk.content);
-            controller.add(chunk);
-          }
-        }
-      } else {
-        // ── 工具模式：缓冲生成（避免工具标记直接暴露在流中）──
-        await for (final chunk in stream) {
-          if (_cancelled) break;
-          if (controller.isClosed) break;
-          if (chunk.isDone) break;
-          if (chunk.content.isNotEmpty) {
-            if (!gotFirstToken) {
-              gotFirstToken = true;
-              firstTokenTimer.cancel();
-            }
-            fullContent.write(chunk.content);
-          }
-        }
-      }
-    } catch (e) {
-      if (!controller.isClosed) {
-        controller.addError(Exception(e.toString()));
-      }
-      if (fullContent.isEmpty) {
-        await controller.close();
-        return;
-      }
-    } finally {
-      firstTokenTimer?.cancel();
-      stopwatch.stop();
-    }
-
-    if (_cancelled) {
-      if (!controller.isClosed) {
-        await controller.close();
-      }
-      return;
-    }
-
-    final raw = fullContent.toString();
-    final (calls, body) = AiService.parseLocalToolCalls(raw);
-
-    // ── 文本式工具调用循环 ──
-    if (calls.isNotEmpty && toolRound < maxLocalToolRounds && !_cancelled) {
-      // 记录含工具调用的 assistant 消息（供下一轮 prompt 续接上下文）
-      addAssistantMessage(raw);
-
-      final toolExecutor = ToolExecutor();
-      final results = await toolExecutor.executeAll(calls);
-      onToolsExecuted?.call(calls, results);
-
-      final toolResults = ToolExecutor.formatToolResultsForAi(calls, results);
-      for (final tr in toolResults) {
-        _chatHistory.add(Map<String, dynamic>.from(tr));
-      }
-
-      final toolNames = calls
-          .map((tc) => tc.toolId)
-          .where((n) => n.isNotEmpty)
-          .join(', ');
-      if (toolNames.isNotEmpty) {
-        controller.add(StreamChunk(content: '正在使用工具: $toolNames...\n'));
-      }
-
-      await _runLocalStream(
-        controller,
-        preferredModel: preferredModel,
-        temperature: temperature,
-        firstTokenTimeoutSeconds: firstTokenTimeoutSeconds,
-        maxTokens: maxTokens,
-        toolRound: toolRound + 1,
-        tools: tools,
-      );
-      return;
-    }
-
-    if (calls.isNotEmpty && toolRound >= maxLocalToolRounds) {
-      const tip = '已达最大工具调用轮次，未获得最终回复。';
-      fullContent.clear();
-      fullContent.write(tip);
-    }
-
-    // 最终答复：去掉工具调用标记后的正文（无工具调用时原样返回）
-    final text = (calls.isNotEmpty && toolRound >= maxLocalToolRounds)
-        ? fullContent.toString()
-        : (calls.isNotEmpty ? body : raw);
-    if (text.isNotEmpty) {
-      addAssistantMessage(text);
-      _modelManager.recordCall(
-        preferredModel.modelId,
-        preferredModel.apiBase,
-        stopwatch.elapsedMilliseconds,
-        true,
-      );
-      unawaited(_modelManager.recordKeySuccess(preferredModel));
-    }
-
-    // 工具模式下生成被缓冲（避免工具标记暴露在流中），最终正文一次性推送
-    if (useTools && text.isNotEmpty && !controller.isClosed) {
-      controller.add(StreamChunk(content: text));
-    }
-
-    if (!controller.isClosed) {
-      controller.add(const StreamChunk(content: '', isDone: true));
-      await controller.close();
     }
   }
 
@@ -772,11 +578,6 @@ class AiRequestDispatcher {
       thinkingEnabled: m.thinkingEnabled,
       reasoningEffort: m.reasoningEffort,
       reasoningBudgetTokens: m.reasoningBudgetTokens,
-      localModelPath: m.provider == ModelProvider.local ? m.apiBase : null,
-      localContextSize:
-          m.provider == ModelProvider.local && m.contextLimit > 0 ? m.contextLimit : null,
-      localSettings:
-          m.provider == ModelProvider.local ? m.localSettings : null,
     );
   }
 

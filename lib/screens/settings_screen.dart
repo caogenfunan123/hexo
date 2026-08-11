@@ -21,7 +21,6 @@ class SettingsScreen extends StatefulWidget {
   final VoidCallback onSyncWebDavToLocal;
   final VoidCallback onSyncDraftsToWebDav;
   final VoidCallback onShowAiManager;
-  final VoidCallback onShowLocalModelManager;
   final VoidCallback onShowGithubTokenManager;
   final VoidCallback onShowRepoManager;
   final VoidCallback onShowSiteEditor;
@@ -44,7 +43,6 @@ class SettingsScreen extends StatefulWidget {
     required this.onSyncWebDavToLocal,
     required this.onSyncDraftsToWebDav,
     required this.onShowAiManager,
-    required this.onShowLocalModelManager,
     required this.onShowGithubTokenManager,
     required this.onShowRepoManager,
     required this.onShowSiteEditor,
@@ -1002,24 +1000,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Text(
             l10n.translate('ai_relay_desc'),
             style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
-          ),
-        ]),
-
-        const SizedBox(height: 20),
-        // ── 本地模型 ──
-        _sectionTitle(l10n.translate('settings_local_model')),
-        const SizedBox(height: 8),
-        _settingsCard([
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.memory_outlined),
-            title: Text(
-              l10n.translate('local_gguf_model'),
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            subtitle: Text(l10n.translate('local_model_hint')),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: widget.onShowLocalModelManager,
           ),
         ]),
 

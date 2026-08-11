@@ -1,5 +1,4 @@
 import '../core/ai/ai_provider.dart';
-import 'local_model_settings.dart';
 
 class AiProfile {
   final String id;
@@ -14,9 +13,6 @@ class AiProfile {
   final bool thinkingEnabled;
   final String reasoningEffort;
   final int reasoningBudgetTokens;
-  final String? localModelPath;
-  final int? localContextSize;
-  final LocalModelSettings? localSettings;
 
   const AiProfile({
     required this.id,
@@ -31,12 +27,7 @@ class AiProfile {
     this.thinkingEnabled = false,
     this.reasoningEffort = 'medium',
     this.reasoningBudgetTokens = 1024,
-    this.localModelPath,
-    this.localContextSize,
-    this.localSettings,
   });
-
-  bool get isLocalModel => localModelPath != null && localModelPath!.isNotEmpty;
 
   AiProfile copyWith({
     String? id,
@@ -51,10 +42,6 @@ class AiProfile {
     bool? thinkingEnabled,
     String? reasoningEffort,
     int? reasoningBudgetTokens,
-    String? localModelPath,
-    int? localContextSize,
-    LocalModelSettings? localSettings,
-    bool clearLocalModel = false,
   }) {
     return AiProfile(
       id: id ?? this.id,
@@ -70,10 +57,6 @@ class AiProfile {
       reasoningEffort: reasoningEffort ?? this.reasoningEffort,
       reasoningBudgetTokens:
           reasoningBudgetTokens ?? this.reasoningBudgetTokens,
-      localModelPath:
-          clearLocalModel ? null : (localModelPath ?? this.localModelPath),
-      localContextSize: localContextSize ?? this.localContextSize,
-      localSettings: localSettings ?? this.localSettings,
     );
   }
 
@@ -90,9 +73,6 @@ class AiProfile {
         'thinkingEnabled': thinkingEnabled,
         'reasoningEffort': reasoningEffort,
         'reasoningBudgetTokens': reasoningBudgetTokens,
-        'localModelPath': localModelPath,
-        'localContextSize': localContextSize,
-        'localSettings': localSettings?.toJson(),
       };
 
   factory AiProfile.fromJson(Map<String, dynamic> j) {
@@ -110,13 +90,6 @@ class AiProfile {
       thinkingEnabled: j['thinkingEnabled'] as bool? ?? false,
       reasoningEffort: j['reasoningEffort']?.toString() ?? 'medium',
       reasoningBudgetTokens: j['reasoningBudgetTokens'] as int? ?? 1024,
-      localModelPath: j['localModelPath']?.toString(),
-      localContextSize: (j['localContextSize'] as num?)?.toInt(),
-      localSettings: j['localSettings'] is Map
-          ? LocalModelSettings.fromJson(
-              Map<String, dynamic>.from(j['localSettings'] as Map),
-            )
-          : null,
     );
   }
 

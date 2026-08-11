@@ -1012,7 +1012,6 @@ class AiChatPanelState extends State<AiChatPanel> {
                   aiService: widget.aiService,
                   settings: widget.settings,
                   onSettingsChanged: widget.onSettingsChanged,
-                  storageService: widget.storageService,
                 ),
               ),
             ).then((_) => _loadModels());

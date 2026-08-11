@@ -19,11 +19,6 @@ dependencies:
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.3.0
   path: ^1.8.0
-  ffi: ^2.1.0
-  # 本地 GGUF 模型推理（llamadart：llama.cpp 绑定，Android 支持 CPU+Vulkan 双后端，
-  # 构建期 hook 自动下载预编译 native 运行时，逐 token 真流式）。
-  # 0.8.19 升级 llama.cpp native 到 b10333，修复 Android 加载期崩溃回归。
-  llamadart: ^0.8.19
   markdown: ^7.1.0
   # 桌面端专用
   window_manager: ^0.3.8
@@ -56,20 +51,6 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
-
-# 精确裁剪 llamadart 打包的原生运行时，大幅缩减 APK 体积
-# - llamadart_native_runtimes: 只打 llama_cpp(GGUF)，排除本项目用不到的 litert_lm
-# - android-arm64: 仅 Vulkan 后端 + compact CPU profile(单一 armv8.0 baseline)
-#   CPU 后端由 llamadart 强制保留，无 Vulkan GPU 设备可自动回退 CPU
-hooks:
-  user_defines:
-    llamadart:
-      llamadart_native_runtimes: [llama_cpp]
-      llamadart_native_backends:
-        platforms:
-          android-arm64:
-            backends: [vulkan]
-            cpu_profile: compact
 
 flutter:
   uses-material-design: true

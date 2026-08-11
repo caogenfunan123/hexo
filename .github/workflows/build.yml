@@ -104,8 +104,7 @@ jobs:
 
       - name: Install Android SDK components
         run: |
-          # llamadart 通过 pub build hook 自动下载预编译 llama.cpp native 运行时，
-          # Android 无需 NDK/CMake 本地编译；SDK 组件由 AGP 自动安装。
+          # Android SDK 组件由 AGP 自动安装。
           echo "Android SDK ready"
 
       - name: Build APK

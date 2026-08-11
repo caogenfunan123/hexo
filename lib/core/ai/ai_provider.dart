@@ -15,8 +15,7 @@ enum ModelProvider {
   volcengine('Volcengine'),
   google('Gemini'),
   baiZhiCloud('BaiZhiCloud'),
-  custom('Custom'),
-  local('Local');
+  custom('Custom');
 
   final String label;
   const ModelProvider(this.label);

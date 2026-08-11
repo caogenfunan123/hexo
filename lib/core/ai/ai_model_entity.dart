@@ -1,4 +1,3 @@
-import '../../models/local_model_settings.dart';
 import 'ai_provider.dart';
 
 /// AI 模型实体，用于中转站模型管理
@@ -22,10 +21,6 @@ class AiModelEntity {
   final int contextLimit;
   final int outputLimit;
   final DateTime createdAt;
-
-  /// 本地 GGUF 模型的完整推理设置（上下文 + 采样参数）。
-  /// 仅 [provider] == [ModelProvider.local] 时有意义，为 null 时使用默认值。
-  final LocalModelSettings? localSettings;
 
   /// 备用密钥池（不含主密钥 [apiKey]）。
   final List<String> keyPool;
@@ -61,7 +56,6 @@ class AiModelEntity {
     this.keyPool = const [],
     this.keyPoolIndex = 0,
     this.consecutiveFailures = 0,
-    this.localSettings,
     DateTime? createdAt,
   })  : provider = provider ?? ModelProvider.custom,
         interfaceType = interfaceType ?? inferInterfaceType(modelId),
@@ -103,7 +97,6 @@ class AiModelEntity {
     List<String>? keyPool,
     int? keyPoolIndex,
     int? consecutiveFailures,
-    LocalModelSettings? localSettings,
     DateTime? createdAt,
   }) {
     return AiModelEntity(
@@ -129,7 +122,6 @@ class AiModelEntity {
       keyPool: keyPool ?? this.keyPool,
       keyPoolIndex: keyPoolIndex ?? this.keyPoolIndex,
       consecutiveFailures: consecutiveFailures ?? this.consecutiveFailures,
-      localSettings: localSettings ?? this.localSettings,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -156,7 +148,6 @@ class AiModelEntity {
         'keyPool': keyPool,
         'keyPoolIndex': keyPoolIndex,
         'consecutiveFailures': consecutiveFailures,
-        'localSettings': localSettings?.toJson(),
         'createdAt': createdAt.toIso8601String(),
       };
 
@@ -183,11 +174,6 @@ class AiModelEntity {
             (j['keyPool'] as List?)?.whereType<String>().toList() ?? const [],
         keyPoolIndex: (j['keyPoolIndex'] as num?)?.toInt() ?? 0,
         consecutiveFailures: (j['consecutiveFailures'] as num?)?.toInt() ?? 0,
-        localSettings: j['localSettings'] is Map
-            ? LocalModelSettings.fromJson(
-                Map<String, dynamic>.from(j['localSettings'] as Map),
-              )
-            : null,
         createdAt: DateTime.tryParse(j['createdAt']?.toString() ?? '') ??
             DateTime.now(),
       );

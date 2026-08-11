@@ -3,6 +3,3 @@
 -dontwarn com.google.android.play.core.splitcompat.**
 -dontwarn com.google.android.play.core.splitinstall.**
 -dontwarn com.google.android.play.core.tasks.**
-
-# fcllama (llama.cpp) 原生库
--keep class ink.xcl.fllama.** { *; }

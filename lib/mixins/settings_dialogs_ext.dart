@@ -1041,7 +1041,6 @@ extension SettingsDialogsExt on _RootShellState {
           aiService: aiService,
           settings: settings,
           onSettingsChanged: _updateSettings,
-          storageService: storage,
         ),
       ),
     );
