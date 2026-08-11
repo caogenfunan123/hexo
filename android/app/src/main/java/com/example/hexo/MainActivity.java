@@ -18,6 +18,7 @@ import java.util.Map;
 
 import io.flutter.embedding.android.FlutterActivity;
 import io.flutter.embedding.engine.FlutterEngine;
+import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 
 public class MainActivity extends FlutterActivity {
@@ -102,7 +103,7 @@ public class MainActivity extends FlutterActivity {
                 });
     }
 
-    private void openFolder(MethodChannel.MethodCall call, MethodChannel.Result result) {
+    private void openFolder(MethodCall call, MethodChannel.Result result) {
         try {
             String path = call.argument("path");
             if (path == null || path.isEmpty()) {
@@ -121,9 +122,11 @@ public class MainActivity extends FlutterActivity {
             intent.setDataAndType(uri, "resource/folder");
             if (intent.resolveActivity(getPackageManager()) == null) {
                 // 无文件夹查看器时退回文件管理器根部
-                intent = new Intent(Intent.ACTION_VIEW);
-                intent.setDataAndType(Environment.getExternalStorageDirectory().toURI()
-                        .toString().replace("file:", ""), "resource/folder");
+                Intent fallback = new Intent(Intent.ACTION_VIEW);
+                fallback.setDataAndType(
+                        Uri.parse(Environment.getExternalStorageDirectory().getAbsolutePath()),
+                        "resource/folder");
+                intent = fallback;
             }
             startActivity(intent);
             result.success(true);
