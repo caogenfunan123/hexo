@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -806,8 +809,10 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                         _choiceTile<String>(
                           settings.device,
                           '推理设备',
-                          const {
-                            'auto': '自动（探测 GPU，无则回退 CPU）',
+                          {
+                            'auto': !kIsWeb && Platform.isAndroid
+                                ? '自动（Android 默认 CPU，最稳）'
+                                : '自动（探测 GPU，无则回退 CPU）',
                             'cpu': '纯 CPU（最稳，最慢）',
                             'vulkan': 'Vulkan GPU（快，要求设备支持）',
                           },
@@ -1321,7 +1326,8 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
             backendHint = ' · 后端信息暂不可用';
           }
           if (llama.gpuFallbackToCpu) {
-            backendHint += ' · ⚠ 未检测到 GPU，已回退 CPU 推理（可能偏慢）';
+            backendHint +=
+                ' · 当前使用 CPU 推理（Android 默认走 CPU 保证稳定，可选 Vulkan）';
           }
         }
         ScaffoldMessenger.of(context).showSnackBar(

@@ -100,19 +100,33 @@ class LocalLlamaProvider {
     try {
       final engine = _engine ??= LlamaEngine(LlamaBackend());
 
-      // 设备选择：auto 时先探测 GPU（llamadart 在 Android 上把默认的 auto
-      // 后端强制解析为 CPU 并把 GPU 层数归零，因此必须显式探测并指定
-      // Vulkan 才能真正启用 GPU 加速）；无 GPU 设备探测后回退 CPU。
+      // 设备选择：
+      // - auto：Android 上默认 CPU。llamadart 在 Android 上把 auto 强制解析
+      //   为 CPU（官方为避开不稳定 Vulkan 驱动栈），而 engine.isGpuSupported()
+      //   只是编译期特性检查，不代表真机 Vulkan 可用；一旦据此强制走 Vulkan，
+      //   部分设备会在 ggml 加载模型张量时原生层空函数指针崩溃（SIGSEGV）。
+      //   android 上仅显式选择 vulkan 才尝试 GPU；桌面/其他平台保留探测逻辑。
+      // - vulkan：显式选择时仍做真实设备枚举（listGpuDevices），枚举不到
+      //   Vulkan 设备则回退 CPU，避免把不存在的后端传给 llama.cpp。
       var useGpu = effective.isVulkan;
       _gpuFallbackToCpu = false;
       if (effective.isAuto) {
-        try {
-          useGpu = await engine.isGpuSupported();
-        } catch (_) {
+        if (!kIsWeb && Platform.isAndroid) {
           useGpu = false;
+        } else {
+          try {
+            useGpu = await engine.isGpuSupported();
+          } catch (_) {
+            useGpu = false;
+          }
         }
         if (!useGpu) _gpuFallbackToCpu = true;
-      } else if (!useGpu) {
+      } else if (useGpu) {
+        if (!await _hasRealVulkanDevice(engine)) {
+          useGpu = false;
+          _gpuFallbackToCpu = true;
+        }
+      } else {
         _gpuFallbackToCpu = true;
       }
       final gpuLayers = useGpu
@@ -173,6 +187,24 @@ class LocalLlamaProvider {
   ) {
     if (a == null) return false;
     return a.toJson().toString() == b.toJson().toString();
+  }
+
+  /// 运行时探测是否存在真实可用的 Vulkan 设备。
+  ///
+  /// [LlamaBackend.isGpuSupported] 只反映编译期是否包含 GPU 后端（等价于
+  /// llama.cpp 的 `llama_supports_gpu_offload`），无法证明当前设备驱动可用。
+  /// 这里改用 `listGpuDevices(probeBackends: [vulkan])` 做真实设备枚举，
+  /// 只有枚举到 Vulkan 设备才允许走 GPU 路径；枚举不到就回退 CPU，从源头
+  /// 规避 ggml 在加载模型张量时的空函数指针原生崩溃。
+  Future<bool> _hasRealVulkanDevice(LlamaEngine engine) async {
+    try {
+      final devices = await engine.listGpuDevices(
+        probeBackends: const [GpuBackend.vulkan],
+      );
+      return devices.any((d) => d.backend == GpuBackend.vulkan);
+    } catch (_) {
+      return false;
+    }
   }
 
   /// 映射 flash attention 字符串到 llamadart 枚举。
