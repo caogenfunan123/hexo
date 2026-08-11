@@ -100,16 +100,6 @@ class LocalLlamaProvider {
   /// 是否已初始化（有已加载模型）。
   bool get initialized => isModelLoaded;
 
-  /// 动态线程数：取设备物理核心数，超出 8 核封顶（避免线程过度竞争）。
-  int get _dynamicThreads {
-    try {
-      if (kIsWeb) return 4;
-      final cores = Platform.numberOfProcessors;
-      if (cores > 0) return cores > 8 ? 8 : cores;
-    } catch (_) {}
-    return 4;
-  }
-
   /// 加载 GGUF 模型文件（llamadart modelLoad + contextCreate）。
   /// [modelPath] 为本地 .gguf 文件绝对路径，[settings] 为本地模型完整设置
   /// （上下文、批处理、线程、KV cache、GPU 层数、后端等）；为 null 时使用
@@ -199,13 +189,18 @@ class LocalLlamaProvider {
         contextSize: effective.effectiveContextSize,
         gpuLayers: gpuLayers,
         preferredBackend: useGpu ? GpuBackend.vulkan : GpuBackend.cpu,
-        numberOfThreads: effective.threads > 0
-            ? effective.threads
-            : _dynamicThreads,
+        // threads=0 时保持 0，让 llamadart/llama.cpp 自动选择线程数。
+        // 之前强制替换为设备核心数（如骁龙 8+ 的 8 线程）会让 1+3+4
+        // 大小核跨簇调度，小核拖累 prefill，导致首 token 数十秒。
+        numberOfThreads: effective.threads > 0 ? effective.threads : 0,
         numberOfThreadsBatch:
             effective.threadsBatch > 0 ? effective.threadsBatch : 0,
         batchSize: effective.batchSize,
-        microBatchSize: effective.microBatchSize,
+        // 移动端默认 512 的 micro batch 会放大调度/分配压力；llamadart
+        // 性能文档建议手机先降到 256。仅当用户显式设置时保留。
+        microBatchSize: effective.microBatchSize > 0
+            ? effective.microBatchSize
+            : (Platform.isAndroid || Platform.isIOS) ? 256 : 0,
         maxParallelSequences: effective.maxParallelSequences,
         useMmap: effective.useMmap,
         useMlock: effective.useMlock,
