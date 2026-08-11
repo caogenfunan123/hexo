@@ -47,6 +47,13 @@ dependencies:
   # 加密（站点加密服务）
   pointycastle: ^3.9.1
   flutter_inappwebview: ^6.1.5
+  # 系统分享
+  share_plus: ^10.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
 
 # 精确裁剪 llamadart 打包的原生运行时，大幅缩减 APK 体积
 # - llamadart_native_runtimes: 只打 llama_cpp(GGUF)，排除本项目用不到的 litert_lm

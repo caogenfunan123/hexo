@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexo_app/services/static_blog_batch_publish_service.dart';
-import 'package:hexo_app/services/template_service.dart';
-import 'package:hexo_app/services/github_service.dart';
-import 'package:hexo_app/models/blog_post.dart';
-import 'package:hexo_app/models/repo_config.dart';
-import 'package:hexo_app/models/app_settings.dart';
-import 'package:hexo_app/core/site_manager.dart';
+import 'package:hexo/services/static_blog_batch_publish_service.dart';
+import 'package:hexo/services/template_service.dart';
+import 'package:hexo/services/github_service.dart';
+import 'package:hexo/models/blog_post.dart';
+import 'package:hexo/models/repo_config.dart';
+import 'package:hexo/models/app_settings.dart';
+import 'package:hexo/core/site_manager.dart';
 
 void main() {
   group('StaticBlogBatchPublishService Tests', () {

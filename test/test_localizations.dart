@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hexo_app/l10n/app_localizations.dart';
+import 'package:hexo/l10n/app_localizations.dart';
 
 void main() {
   group('AppLocalizations Tests', () {

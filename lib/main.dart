@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'controllers/controllers.dart';
 
@@ -269,6 +272,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   // ── 新功能：专注模式 ──
   bool _focusModeEnabled = false;
+
+  // ── 极简编辑界面：正文首次进入显示淡提示，输入后永久隐藏 ──
+  bool _contentHintDismissed = false;
 
   // ── 新功能：横竖屏状态保持 ──
   late final EditorStateManager _orientationManager;
@@ -4508,56 +4514,24 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         ),
         onPressed: _openDrawer,
       ),
-      title: Text(_pageTitle,
-          style: const TextStyle(
-              color: AppTheme.text,
-              fontWeight: FontWeight.w700,
-              fontSize: 18)),
+      title: _currentPage == 0
+          ? _buildEditorAppBarTitle(cs)
+          : Text(_pageTitle,
+              style: const TextStyle(
+                  color: AppTheme.text,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 18)),
       actions: _currentPage == 0
           ? [
               _appBarAction(
-                  icon: _focusModeEnabled ? Icons.center_focus_strong : Icons.center_focus_weak,
-                  tooltip: _focusModeEnabled ? '退出专注模式' : '专注模式',
-                  onTap: () => setState(() => _focusModeEnabled = !_focusModeEnabled)),
-              _appBarAction(
-                  icon: Icons.close,
-                  tooltip: '关闭',
-                  onTap: () => _onCloseEditor()),
-              _appBarAction(
-                  icon: Icons.visibility_outlined,
-                  tooltip: '预览文章',
-                  onTap: _editorBusy
-                      ? null
-                      : () {
-                          final mdStyle = createMobileMarkdownStyle(context: context);
-                          Navigator.of(context).push(MaterialPageRoute(
-                              builder: (_) => Scaffold(
-                                    backgroundColor: AppTheme.bg,
-                                    appBar: AppBar(
-                                        title: Text(_doc.titleCtrl
-                                                .text.isEmpty
-                                            ? '预览'
-                                            : _doc.titleCtrl.text)),
-                                    body: Padding(
-                                      padding: const EdgeInsets.all(16),
-                                      child: Markdown(
-                                          data: _doc.contentCtrl.text.isEmpty
-                                              ? '*暂无内容*'
-                                              : _doc.contentCtrl.text,
-                                          selectable: true,
-                                          styleSheet: mdStyle),
-                                    ),
-                                  )));
-                        }),
-              _appBarAction(
-                  icon: Icons.save_outlined,
-                  tooltip: '保存草稿',
-                  onTap: _editorBusy ? null : _saveLocal),
-              _appBarAction(
-                  icon: Icons.cloud_upload_outlined,
-                  tooltip: '发布',
+                  icon: Icons.widgets_outlined,
+                  tooltip: '工具箱',
                   color: cs.primary,
-                  onTap: _editorBusy ? null : _publish),
+                  onTap: () => _showEditorToolbox()),
+              _appBarAction(
+                  icon: Icons.more_vert,
+                  tooltip: '更多',
+                  onTap: () => _showEditorMoreMenu()),
             ]
           : null,
     );
@@ -4577,6 +4551,798 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         foregroundColor: color ?? AppTheme.muted,
       ),
     );
+  }
+
+  /// 极简顶部标识：当前站点名 + 小圆点，取代大标题「写文章」
+  Widget _buildEditorAppBarTitle(ColorScheme cs) {
+    final siteName = settings.siteName.isNotEmpty ? settings.siteName : '写文章';
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(
+            color: cs.primary,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 7),
+        Text(
+          siteName,
+          style: const TextStyle(
+            color: AppTheme.text,
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+          ),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+
+  /// 工具箱抽屉：静态博客类型 / 目标仓库 / 博文页面设置 / 模板配置 / 标签分类 / 封面 URL
+  void _showEditorToolbox() {
+    final cs = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          final isDynamic = siteManager.isDynamicSite;
+          final siteName = settings.siteName.isNotEmpty ? settings.siteName : '未命名站点';
+          return SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── 头部 ──
+                  Row(
+                    children: [
+                      Icon(Icons.handyman_outlined, color: cs.primary, size: 20),
+                      const SizedBox(width: 8),
+                      const Text('工具箱',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w700)),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 20),
+                        onPressed: () => Navigator.pop(ctx),
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.all(4),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text('当前站点: $siteName',
+                      style: const TextStyle(
+                          fontSize: 12, color: Color(0xFF64748B))),
+                  if (_failedImageBytes != null) ...[
+                    const SizedBox(height: 10),
+                    Material(
+                      color: Colors.orange.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _retryUploadImage();
+                        },
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          child: Row(
+                            children: [
+                              Icon(Icons.refresh,
+                                  size: 18, color: Colors.orange),
+                              SizedBox(width: 8),
+                              Text('重试上传失败的图片',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.orange)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+
+                  // ── 1. 静态博客类型切换 ──
+                  _toolboxSectionTitle('静态博客类型'),
+                  _toolboxSectionBody(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _toolboxTypeChip(
+                            icon: Icons.article_outlined,
+                            label: '博文',
+                            active: !isDynamic && _doc.articleType == ArticleType.post,
+                            onTap: () => setSheetState(() {
+                              _doc.setArticleType(ArticleType.post);
+                              _autoSelectTemplate();
+                            }),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _toolboxTypeChip(
+                            icon: Icons.web_outlined,
+                            label: '页面',
+                            active: !isDynamic && _doc.articleType == ArticleType.page,
+                            onTap: () => setSheetState(() {
+                              _doc.setArticleType(ArticleType.page);
+                              _autoSelectTemplate();
+                            }),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // ── 2. 目标仓库配置 ──
+                  _toolboxSectionTitle('目标仓库配置'),
+                  _toolboxSectionBody(
+                    child: DropdownButtonFormField<String>(
+                      value: _editorRepo?.id,
+                      decoration: const InputDecoration(
+                        labelText: '目标仓库',
+                        prefixIcon:
+                            Icon(Icons.storage_outlined, size: 18),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      items: repos
+                          .map((r) => DropdownMenuItem(
+                                value: r.id,
+                                child: Text('${r.name} (${r.fullName})',
+                                    style: const TextStyle(fontSize: 13)),
+                              ))
+                          .toList(),
+                      onChanged: (v) => setState(() {
+                        _editorRepo = repos.firstWhere((e) => e.id == v);
+                        _doc.setEditorRepoId(v);
+                      }),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // ── 3. 博文页面设置（站点切换） ──
+                  _toolboxSectionTitle('博文页面设置'),
+                  _toolboxSectionBody(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: siteManager.activeSiteId,
+                            decoration: InputDecoration(
+                              labelText: '当前站点',
+                              prefixIcon: Icon(isDynamic
+                                  ? Icons.dns_outlined
+                                  : Icons.storage_outlined, size: 18),
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              isDense: true,
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                            isExpanded: true,
+                            style: TextStyle(fontSize: 13, color: cs.onSurface),
+                            items: siteManager.allSites.map((site) {
+                              final typeLabel = site.isDynamic ? 'CMS' : '静态';
+                              return DropdownMenuItem<String>(
+                                value: site.id,
+                                child: Text('${site.name}  [$typeLabel]',
+                                    style: const TextStyle(fontSize: 13),
+                                    overflow: TextOverflow.ellipsis),
+                              );
+                            }).toList(),
+                            onChanged: _editorBusy ? null : _onSiteChanged,
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.settings_outlined,
+                              size: 20, color: cs.outline),
+                          onPressed: _editorBusy
+                              ? null
+                              : () {
+                                  Navigator.pop(ctx);
+                                  _openSiteManagement();
+                                },
+                          tooltip: '管理站点',
+                          constraints:
+                              const BoxConstraints(minWidth: 36, minHeight: 36),
+                          padding: EdgeInsets.zero,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // ── 4. 模板博文配置 ──
+                  _toolboxSectionTitle('模板博文配置'),
+                  _toolboxSectionBody(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                value: _doc.selectedTemplateId,
+                                decoration: InputDecoration(
+                                  labelText:
+                                      '模板 (${_doc.articleType == ArticleType.post ? '博文' : '页面'})',
+                                  prefixIcon: const Icon(
+                                      Icons.view_quilt_outlined, size: 18),
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                                items: [
+                                  const DropdownMenuItem<String>(
+                                    value: null,
+                                    child: Text('无模板',
+                                        style: TextStyle(fontSize: 13)),
+                                  ),
+                                  ...templates
+                                      .where((t) => t.isPost ==
+                                          (_doc.articleType ==
+                                              ArticleType.post))
+                                      .map((t) => DropdownMenuItem<String>(
+                                            value: t.id,
+                                            child: Text(
+                                              '${t.isBuiltin ? "[内置] " : ""}${t.name}',
+                                              style: const TextStyle(
+                                                  fontSize: 13),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          )),
+                                ],
+                                onChanged: (v) => setState(
+                                    () => _doc.setSelectedTemplateId(v)),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: '设为本仓库默认模板',
+                              onPressed: _editorRepo != null &&
+                                      _doc.selectedTemplateId != null
+                                  ? () => _setAsRepoDefault(
+                                      _doc.selectedTemplateId!)
+                                  : null,
+                              icon: const Icon(Icons.bookmark_add_outlined,
+                                  size: 18),
+                              constraints: const BoxConstraints(),
+                              padding: const EdgeInsets.all(4),
+                            ),
+                            IconButton(
+                              tooltip: '管理模板',
+                              onPressed: () => _showTemplateManager(),
+                              icon: const Icon(Icons.settings_outlined,
+                                  size: 18),
+                              constraints: const BoxConstraints(),
+                              padding: const EdgeInsets.all(4),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          '小字提示：默认模板可在「博文」或「页面」下分别设置，发布时自动套用所选模板生成 front-matter。',
+                          style: TextStyle(
+                              fontSize: 10, color: Color(0xFF94A3B8)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // ── 5. 标签、分类管理 ──
+                  _toolboxSectionTitle('标签、分类管理'),
+                  _toolboxSectionBody(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _doc.tagsCtrl,
+                            decoration: const InputDecoration(
+                              labelText: '标签',
+                              prefixIcon: Icon(Icons.tag, size: 18),
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              isDense: true,
+                            ),
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: _doc.categoriesCtrl,
+                            decoration: const InputDecoration(
+                              labelText: '分类',
+                              prefixIcon: Icon(Icons.folder_outlined,
+                                  size: 18),
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              isDense: true,
+                            ),
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // ── 6. 封面 URL ──
+                  _toolboxSectionTitle('封面图 URL'),
+                  _toolboxSectionBody(
+                    child: TextField(
+                      controller: _doc.coverCtrl,
+                      decoration: const InputDecoration(
+                        labelText: '封面图 URL（可选）',
+                        prefixIcon:
+                            Icon(Icons.image_outlined, size: 19),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        isDense: true,
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _toolboxSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Text(title,
+          style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF64748B))),
+    );
+  }
+
+  Widget _toolboxSectionBody({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _toolboxTypeChip({
+    required IconData icon,
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: active ? cs.primary.withOpacity(0.08) : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: active ? cs.primary : const Color(0xFFE2E8F0),
+            width: active ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon,
+                size: 17,
+                color: active ? cs.primary : const Color(0xFF94A3B8)),
+            const SizedBox(width: 6),
+            Text(label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                  color: active ? cs.primary : const Color(0xFF475569),
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 三点菜单：分层承载文档操作 / 发布渠道 / AI 全功能 / 分享 / 页面操作
+  void _showEditorMoreMenu() {
+    final cs = Theme.of(context).colorScheme;
+    final isDynamic = siteManager.isDynamicSite;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── 文档操作 ──
+              _menuGroupTitle('文档操作'),
+              _menuRow(
+                icon: Icons.save_alt,
+                label: '保存为 .md 文件',
+                color: cs.primary,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _saveMdBackup();
+                },
+              ),
+              _menuRow(
+                icon: Icons.image_outlined,
+                label: '导出 PNG 长图',
+                color: const Color(0xFF0EA5E9),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _exportPngLongImage();
+                },
+              ),
+              const Divider(height: 18),
+              // ── 发布渠道 ──
+              _menuGroupTitle('发布渠道'),
+              _menuRow(
+                icon: isDynamic
+                    ? Icons.cloud_outlined
+                    : Icons.cloud_queue_outlined,
+                label: isDynamic
+                    ? '发布到站点 (${siteManager.currentBlogType.displayName})'
+                    : '发布到站点',
+                color: const Color(0xFF10B981),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _publish();
+                },
+              ),
+              _menuRow(
+                icon: Icons.upload_file_outlined,
+                label: '发布 Git 仓库',
+                color: const Color(0xFF6366F1),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  if (siteManager.isDynamicSite) {
+                    _showToast('当前为动态站点，发布走「发布到站点」');
+                  } else {
+                    _publish();
+                  }
+                },
+              ),
+              const Divider(height: 18),
+              // ── AI 全功能 ──
+              _menuGroupTitle('AI 全功能'),
+              _menuRow(
+                icon: Icons.auto_awesome,
+                label: 'AI 全功能入口',
+                color: const Color(0xFF8B5CF6),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showAiFullMenu();
+                },
+              ),
+              const Divider(height: 18),
+              // ── 分享 ──
+              _menuGroupTitle('分享'),
+              _menuRow(
+                icon: Icons.share_outlined,
+                label: '分享本文',
+                color: const Color(0xFFF59E0B),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _shareArticle();
+                },
+              ),
+              const Divider(height: 18),
+              // ── 页面操作 ──
+              _menuGroupTitle('页面操作'),
+              _menuRow(
+                icon: Icons.visibility_outlined,
+                label: '预览文章',
+                color: cs.primary,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _openArticlePreview();
+                },
+              ),
+              _menuRow(
+                icon: Icons.exit_to_app,
+                label: '退出编辑',
+                color: const Color(0xFFEF4444),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _onCloseEditor();
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _menuGroupTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Text(title,
+          style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.3,
+              color: Color(0xFF94A3B8))),
+    );
+  }
+
+  Widget _menuRow({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 4),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Icon(icon, size: 18, color: color),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(label,
+                  style: const TextStyle(
+                      fontSize: 14, color: Color(0xFF1E293B))),
+            ),
+            const Icon(Icons.chevron_right,
+                size: 18, color: Color(0xFFCBD5E1)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 预览文章（复用原 AppBar 预览逻辑）
+  void _openArticlePreview() {
+    if (_editorBusy) return;
+    final mdStyle = createMobileMarkdownStyle(context: context);
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => Scaffold(
+              backgroundColor: AppTheme.bg,
+              appBar: AppBar(
+                  title: Text(_doc.titleCtrl.text.isEmpty
+                      ? '预览'
+                      : _doc.titleCtrl.text)),
+              body: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Markdown(
+                    data: _doc.contentCtrl.text.isEmpty
+                        ? '*暂无内容*'
+                        : _doc.contentCtrl.text,
+                    selectable: true,
+                    styleSheet: mdStyle),
+              ),
+            )));
+  }
+
+  /// AI 全功能入口：列出全部 AI 功能
+  void _showAiFullMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.auto_awesome,
+                      color: const Color(0xFF8B5CF6), size: 20),
+                  const SizedBox(width: 8),
+                  const Text('AI 全功能',
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w700)),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _aiMenuChip('润色', Icons.edit_note, () {
+                    Navigator.pop(ctx);
+                    _aiAction('polish');
+                  }),
+                  _aiMenuChip('续写', Icons.auto_awesome, () {
+                    Navigator.pop(ctx);
+                    _aiAction('continue');
+                  }),
+                  _aiMenuChip('摘要', Icons.summarize_outlined, () {
+                    Navigator.pop(ctx);
+                    _aiAction('summary');
+                  }),
+                  _aiMenuChip('代码', Icons.developer_mode, () {
+                    Navigator.pop(ctx);
+                    _aiAction('code');
+                  }),
+                  _aiMenuChip('改写', Icons.sync_alt, () {
+                    Navigator.pop(ctx);
+                    _aiAction('rewrite');
+                  }),
+                  _aiMenuChip('排版', Icons.auto_fix_high, () {
+                    Navigator.pop(ctx);
+                    _aiAction('format');
+                  }),
+                  _aiMenuChip('对话', Icons.chat, () {
+                    Navigator.pop(ctx);
+                    _showAiArticleChat();
+                  }),
+                  _aiMenuChip('选区', Icons.touch_app, () {
+                    Navigator.pop(ctx);
+                    _showAiSelectionEdit();
+                  }),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _aiMenuChip(String label, IconData icon, VoidCallback onTap) {
+    final color = const Color(0xFF8B5CF6);
+    return Material(
+      color: color.withOpacity(0.06),
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: color),
+              const SizedBox(width: 5),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w500,
+                      color: color)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 系统分享当前文章
+  Future<void> _shareArticle() async {
+    try {
+      final a = _collect(draft: true);
+      final text = a.content.isNotEmpty
+          ? '${a.title.isNotEmpty ? '${a.title}\n\n' : ''}${a.content}'
+          : a.title;
+      await Share.share(text, subject: a.title);
+    } catch (e) {
+      if (mounted) _showToast('分享失败: $e');
+    }
+  }
+
+  /// 导出正文为 PNG 长图（Markdown 渲染后截图保存到 hexo_exports/）
+  Future<void> _exportPngLongImage() async {
+    try {
+      final a = _collect(draft: false);
+      final rootDir = await storage.root;
+      final dir = Directory('${rootDir.path}/hexo_exports');
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      final timestamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .replaceAll('.', '-');
+      final safeTitle = a.title.isNotEmpty
+          ? a.title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+          : 'untitled';
+      final filePath = '${dir.path}/${timestamp}_$safeTitle.png';
+
+      // 渲染长图：标题 + Markdown 正文
+      final mdStyle = createMobileMarkdownStyle(context: context);
+      final width = MediaQuery.of(context).size.width;
+      final boundaryKey = GlobalKey();
+
+      final overlay = Overlay.of(context);
+      late OverlayEntry entry;
+      entry = OverlayEntry(
+        builder: (_) => Positioned(
+          left: -100000,
+          top: 0,
+          child: RepaintBoundary(
+            key: boundaryKey,
+            child: Container(
+              width: width,
+              color: Colors.white,
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (a.title.isNotEmpty)
+                    Text(a.title,
+                        style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black)),
+                  const SizedBox(height: 12),
+                  MarkdownBody(
+                    data: a.content.isEmpty ? '*（无内容）*' : a.content,
+                    styleSheet: mdStyle,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      overlay.insert(entry);
+      await Future.delayed(const Duration(milliseconds: 300));
+      final boundary = boundaryKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+      if (boundary != null) {
+        final image = await boundary.toImage(pixelRatio: 3);
+        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (byteData != null) {
+          final file = File(filePath);
+          await file.writeAsBytes(byteData.buffer.asUint8List());
+          if (mounted) {
+            _showToast('PNG 长图已保存到 hexo_exports/');
+          }
+        }
+      }
+      entry.remove();
+    } catch (e) {
+      if (mounted) _showToast('导出失败: $e');
+    }
   }
 
   // ============ DRAWER ============
@@ -5030,6 +5796,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   Widget _buildEditorPage() {
     final cs = Theme.of(context).colorScheme;
+    final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
     return Column(
       children: [
         if (_editorBusy) const LinearProgressIndicator(minHeight: 2),
@@ -5069,528 +5836,129 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         Expanded(
           child: ListView(
             controller: _editorScrollCtrl,
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 120),
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 40),
             children: [
-              // ── 站点切换器 + 类型指示器 ──
-              _buildSiteSwitcher(cs),
-              const SizedBox(height: 8),
-              // ── 仓库选择器（静态站点时显示） ──
-              if (repos.isNotEmpty && !siteManager.isDynamicSite)
-                _editorCard(
-                  child: DropdownButtonFormField<String>(
-                    value: _editorRepo?.id,
-                    decoration: const InputDecoration(
-                      labelText: '目标仓库',
-                      prefixIcon: Icon(Icons.storage_outlined,
-                          size: 19),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      isDense: true,
-                    ),
-                    items: repos
-                        .map((r) => DropdownMenuItem(
-                            value: r.id,
-                            child: Text('${r.name} (${r.fullName})',
-                                style: const TextStyle(fontSize: 13))))
-                        .toList(),
-                    onChanged: (v) => setState(() {
-                        _editorRepo =
-                            repos.firstWhere((e) => e.id == v);
-                        _doc.setEditorRepoId(v);
-                      }),
-                  ),
+              // ── 标题：无边框、无常驻 label、淡提示 ──
+              TextField(
+                controller: _doc.titleCtrl,
+                decoration: InputDecoration(
+                  hintText: '输入标题',
+                  hintStyle: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: cs.outlineVariant),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
                 ),
-              const SizedBox(height: 8),
-              // ── 文章类型切换 ──
-              Row(
-                children: [
-                  Expanded(
-                    child: _editorTypeToggle(
-                      icon: Icons.article_outlined,
-                      label: '博文',
-                      subtitle: _editorRepo != null
-                          ? '${_editorRepo!.postsPath}'
-                          : '文章目录',
-                      active: _doc.articleType == ArticleType.post,
-                      onTap: () => setState(() {
-                        _doc.setArticleType(ArticleType.post);
-                        _autoSelectTemplate();
-                      }),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _editorTypeToggle(
-                      icon: Icons.web_outlined,
-                      label: '页面',
-                      subtitle: _editorRepo != null
-                          ? '${_editorRepo!.pagesPath}'
-                          : '页面目录',
-                      active: _doc.articleType == ArticleType.page,
-                      onTap: () => setState(() {
-                        _doc.setArticleType(ArticleType.page);
-                        _autoSelectTemplate();
-                      }),
-                    ),
-                  ),
-                ],
+                style: const TextStyle(
+                    fontSize: 22, fontWeight: FontWeight.w700, height: 1.3),
               ),
-              const SizedBox(height: 6),
-              // ── 模板选择器 ──
-              if (templates.isNotEmpty)
-                _editorCard(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: _doc.selectedTemplateId,
-                          decoration: InputDecoration(
-                            labelText: '模板 (${_doc.articleType == ArticleType.post ? '博文' : '页面'})',
-                            prefixIcon: const Icon(Icons.view_quilt_outlined, size: 18),
-                            border: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            isDense: true,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          items: [
-                            const DropdownMenuItem<String>(
-                              value: null,
-                              child: Text('无模板', style: TextStyle(fontSize: 13)),
-                            ),
-                            ...templates
-                                .where((t) => t.isPost == (_doc.articleType == ArticleType.post))
-                                .map((t) => DropdownMenuItem<String>(
-                                      value: t.id,
-                                      child: Text(
-                                        '${t.isBuiltin ? "[内置] " : ""}${t.name}',
-                                        style: const TextStyle(fontSize: 13),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    )),
-                          ],
-                          onChanged: (v) => setState(() => _doc.setSelectedTemplateId(v)),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: '设为本仓库默认模板',
-                        onPressed: _editorRepo != null && _doc.selectedTemplateId != null
-                            ? () => _setAsRepoDefault(_doc.selectedTemplateId!)
-                            : null,
-                        icon: const Icon(Icons.bookmark_add_outlined, size: 18),
-                        constraints: const BoxConstraints(),
-                        padding: const EdgeInsets.all(4),
-                      ),
-                      IconButton(
-                        tooltip: '管理模板',
-                        onPressed: () => _showTemplateManager(),
-                        icon: const Icon(Icons.settings_outlined, size: 18),
-                        constraints: const BoxConstraints(),
-                        padding: const EdgeInsets.all(4),
-                      ),
-                    ],
-                  ),
-                ),
-              // ── 框架信息 ──
-              if (_editorRepo != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF0F9FF),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFBAE6FD)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.info_outline, size: 14, color: Color(0xFF0EA5E9)),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            '框架: ${BlogFramework.byId(_editorRepo!.frameworkId)?.name ?? _editorRepo!.frameworkId} | '
-                            '文件名: ${_doc.articleType == ArticleType.page ? '无日期前缀' : (_editorRepo!.fileNameRule.postDatePrefix ? '自动加日期' : '纯标题')}',
-                            style: const TextStyle(fontSize: 11, color: Color(0xFF0369A1)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 8),
-              // ── 标题 ──
-              _editorCard(
+              const SizedBox(height: 12),
+              // ── 正文：无边框、无常驻 label，首次进入显示淡提示，输入后永久隐藏 ──
+              OrientationGuard(
+                enabled: true,
                 child: TextField(
-                  controller: _doc.titleCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '文章标题',
-                    prefixIcon:
-                        Icon(Icons.title, size: 19),
+                  controller: _doc.contentCtrl,
+                  focusNode: _doc.contentFocus,
+                  minLines: 20,
+                  maxLines: null,
+                  keyboardType: TextInputType.multiline,
+                  textAlignVertical: TextAlignVertical.top,
+                  enabled: !_editorBusy,
+                  onChanged: (_) {
+                    _onContentChanged();
+                    if (!_contentHintDismissed &&
+                        _doc.contentCtrl.text.isNotEmpty) {
+                      setState(() => _contentHintDismissed = true);
+                    }
+                    // 更新打字机光标位置
+                    final text = _doc.contentCtrl.text;
+                    final cursorPos = _doc.contentCtrl.selection.baseOffset;
+                    final textBefore =
+                        text.substring(0, cursorPos.clamp(0, text.length));
+                    final currentLine = '\n'.allMatches(textBefore).length;
+                    final totalLines = '\n'.allMatches(text).length + 1;
+                    _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
+                  },
+                  decoration: InputDecoration(
+                    hintText:
+                        _contentHintDismissed ? null : '开始写作，支持 Markdown 语法...',
+                    hintStyle: TextStyle(fontSize: 15, color: cs.outlineVariant),
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
                   ),
-                  style: const TextStyle(
-                      fontSize: 17, fontWeight: FontWeight.w700),
-                ),
-              ),
-              const SizedBox(height: 8),
-              // ── 标签 & 分类 ──
-              Row(children: [
-                Expanded(
-                  child: _editorCard(
-                    child: TextField(
-                      controller: _doc.tagsCtrl,
-                      decoration: const InputDecoration(
-                        labelText: '标签',
-                        prefixIcon:
-                            Icon(Icons.tag, size: 18),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        isDense: true,
-                      ),
-                      style: const TextStyle(fontSize: 13),
+                  style: createUnifiedMarkdownStyle(
+                    context: context,
+                    config: const UnifiedMarkdownStyleConfig(
+                      baseFontSize: 15,
+                      lineHeight: 1.7,
+                      fontFamily: 'monospace',
                     ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _editorCard(
-                    child: TextField(
-                      controller: _doc.categoriesCtrl,
-                      decoration: const InputDecoration(
-                        labelText: '分类',
-                        prefixIcon: Icon(Icons.folder_outlined,
-                            size: 18),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        isDense: true,
-                      ),
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 8),
-              // ── 封面图 ──
-              _editorCard(
-                child: TextField(
-                  controller: _doc.coverCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '封面图 URL（可选）',
-                    prefixIcon:
-                        Icon(Icons.image_outlined, size: 19),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    isDense: true,
-                  ),
-                  style: const TextStyle(fontSize: 13),
-                ),
-              ),
-              const SizedBox(height: 10),
-              // ── 工具栏 ──
-              _editorCard(
-                padding: const EdgeInsets.all(8),
-                child: Wrap(
-                    spacing: 2,
-                    runSpacing: 2,
-                    children: [
-                      _toolChip(Icons.format_bold, '粗体',
-                          () => _wrap('**', '**', p: '粗体')),
-                      _toolChip(Icons.format_italic, '斜体',
-                          () => _wrap('*', '*', p: '斜体')),
-                      _toolChip(Icons.code, '行内码',
-                          () => _wrap('`', '`', p: 'code')),
-                      _toolChip(Icons.code_off, '代码块',
-                          _insertCodeBlock),
-                      _toolChip(Icons.title, 'H1',
-                          () => _insertHeading(1)),
-                      _toolChip(Icons.title, 'H2',
-                          () => _insertHeading(2)),
-                      _toolChip(Icons.format_list_bulleted, '列表',
-                          () => _insertList('- ')),
-                      _toolChip(Icons.format_quote, '引用',
-                          () => _insertList('> ')),
-                      _toolChip(Icons.link, '链接',
-                          () => _wrap('[', '](https://)', p: '链接文字')),
-                      _toolChip(Icons.grid_on, '表格',
-                          () => _insertText('\n| 列1 | 列2 |\n| --- | --- |\n| 值1 | 值2 |\n')),
-                      _toolChip(Icons.horizontal_rule, '分割线',
-                          () => _insertText('\n---\n')),
-                      _toolChip(Icons.format_strikethrough, '删除线',
-                          () => _wrap('~~', '~~', p: '删除文字')),
-                      _toolChip(Icons.checklist, '任务',
-                          () => _insertList('- [ ] ')),
-                      _toolChip(Icons.more_horiz, 'more',
-                          () => _insertText('\n<!--more-->\n')),
-                      _toolChip(Icons.image_outlined, '图床',
-                          _editorBusy ? null : _insertImage),
-                      _toolChip(Icons.collections_outlined, '批量图床',
-                          _editorBusy ? null : _batchInsertImages),
-                      _toolChip(Icons.auto_awesome, 'AI润色',
-                          _editorBusy ? null : () => _aiAction('polish'),
-                          color: Colors.purple),
-                      _toolChip(Icons.edit_note, 'AI续写',
-                          _editorBusy ? null : () => _aiAction('continue'),
-                          color: Colors.purple),
-                      _toolChip(Icons.summarize_outlined, 'AI摘要',
-                          _editorBusy ? null : () => _aiAction('summary'),
-                          color: Colors.purple),
-                      _toolChip(Icons.developer_mode, 'AI代码',
-                          _editorBusy ? null : () => _aiAction('code'),
-                          color: Colors.purple),
-                      _toolChip(Icons.sync_alt, 'AI改写',
-                          _editorBusy ? null : () => _aiAction('rewrite'),
-                          color: Colors.purple),
-                      _toolChip(Icons.auto_fix_high, 'AI排版',
-                          _editorBusy ? null : () => _aiAction('format'),
-                          color: Colors.deepPurple),
-                      _toolChip(Icons.chat, 'AI对话',
-                          () => _showAiArticleChat(),
-                          color: Colors.deepPurple),
-                      _toolChip(Icons.touch_app, 'AI选区',
-                          _editorBusy ? null : _showAiSelectionEdit,
-                          color: Colors.deepPurple),
-                    ]),
-              ),
-              const SizedBox(height: 10),
-              // ── 正文编辑区（集成新功能：横竖屏防护 + 统一样式） ──
-              _editorCard(
-                padding: const EdgeInsets.all(14),
-                child: OrientationGuard(
-                  enabled: true,
-                  child: TextField(
-                    controller: _doc.contentCtrl,
-                    focusNode: _doc.contentFocus,
-                    minLines: 20,
-                    maxLines: null,
-                    keyboardType: TextInputType.multiline,
-                    enabled: !_editorBusy,
-                    onChanged: (_) {
-                      _onContentChanged();
-                      // 更新打字机光标位置
-                      final text = _doc.contentCtrl.text;
-                      final cursorPos = _doc.contentCtrl.selection.baseOffset;
-                      final textBefore = text.substring(0, cursorPos.clamp(0, text.length));
-                      final currentLine = '\n'.allMatches(textBefore).length;
-                      final totalLines = '\n'.allMatches(text).length + 1;
-                      _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
-                    },
-                    decoration: const InputDecoration(
-                      labelText: 'Markdown 正文',
-                      alignLabelWithHint: true,
-                      hintText: '支持 # 标题、**粗体**、代码块、列表...\n编辑完可存草稿或直接发布',
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                    ),
-                    style: createUnifiedMarkdownStyle(
-                      context: context,
-                      config: const UnifiedMarkdownStyleConfig(
-                        baseFontSize: 14.5,
-                        lineHeight: 1.6,
-                        fontFamily: 'monospace',
-                      ),
-                    ).p,
-                  ),
+                  ).p,
                 ),
               ),
               if (_editorStatus != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Row(
-                    children: [
-                      if (_editorBusy)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: SizedBox(
-                            width: 12,
-                            height: 12,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: cs.primary,
-                            ),
-                          ),
-                        ),
-                      Text(_editorStatus!,
-                          style: TextStyle(
-                            color: _editorBusy ? cs.primary : cs.outline,
-                            fontSize: 12,
-                          )),
-                    ],
-                  ),
+                  child: Text(_editorStatus!,
+                      style: TextStyle(
+                        color: _editorBusy ? cs.primary : cs.outline,
+                        fontSize: 12,
+                      )),
                 ),
             ],
           ),
         ),
-        // ── 底部操作栏 ──
-        Container(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
-                  blurRadius: 10,
-                  offset: const Offset(0, -2))
-            ],
-          ),
-          child: Row(children: [
-            if (_failedImageBytes != null) ...[
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _editorBusy ? null : _retryUploadImage,
-                  icon: const Icon(Icons.refresh, size: 18, color: Colors.orange),
-                  label: const Text('重试上传',
-                      style: TextStyle(color: Colors.orange)),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    side: const BorderSide(color: Colors.orange),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-            ],
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _editorBusy ? null : _saveLocal,
-                icon: const Icon(Icons.drafts_outlined, size: 18),
-                label: const Text('存草稿'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  side: BorderSide(
-                      color: cs.primary.withOpacity(0.25)),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 2,
-              child: FilledButton.icon(
-                onPressed: _editorBusy ? null : _publish,
-                icon: _editorBusy
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.cloud_upload_outlined, size: 18),
-                label: Text(_editorBusy
-                    ? '发布中...'
-                    : (siteManager.isDynamicSite
-                        ? '发布到 ${siteManager.currentBlogType.displayName}'
-                        : '发布到 GitHub')),
-                style: FilledButton.styleFrom(
-                  backgroundColor: cs.primary,
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-          ]),
-        ),
+        // ── 底部 MD 语法工具栏：键盘弹出时紧贴输入法，平时不占编辑区 ──
+        if (keyboardVisible && !_editorBusy) _buildMdToolbar(cs),
       ],
     );
   }
 
-  /// 站点切换器 + 类型指示器
-  Widget _buildSiteSwitcher(ColorScheme cs) {
-    final allSites = siteManager.allSites;
-    final isDynamic = siteManager.isDynamicSite;
-
-    return _editorCard(
-      child: Row(
+  /// 底部 MD 语法工具栏：紧贴输入法顶部的横向滚动工具条
+  Widget _buildMdToolbar(ColorScheme cs) {
+    return Container(
+      height: 46,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Colors.black.withOpacity(0.06))),
+      ),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         children: [
-          // ── 站点类型指示器 ──
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: isDynamic
-                  ? const Color(0xFF7C3AED).withOpacity(0.1)
-                  : cs.primary.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isDynamic
-                    ? const Color(0xFF7C3AED).withOpacity(0.3)
-                    : cs.primary.withOpacity(0.3),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isDynamic ? Icons.cloud_outlined : Icons.folder_outlined,
-                  size: 14,
-                  color: isDynamic ? const Color(0xFF7C3AED) : cs.primary,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  isDynamic ? '动态CMS' : '静态博客',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: isDynamic ? const Color(0xFF7C3AED) : cs.primary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          // ── 站点切换下拉 ──
-          Expanded(
-            child: DropdownButtonFormField<String>(
-              value: siteManager.activeSiteId,
-              decoration: InputDecoration(
-                labelText: '当前站点',
-                prefixIcon: Icon(
-                  isDynamic ? Icons.dns_outlined : Icons.storage_outlined,
-                  size: 18,
-                ),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
-              ),
-              isExpanded: true,
-              style: TextStyle(fontSize: 13, color: cs.onSurface),
-              items: allSites.map((site) {
-                final typeIcon = site.isDynamic ? Icons.cloud : Icons.folder;
-                final typeLabel = site.isDynamic ? 'CMS' : '静态';
-                return DropdownMenuItem<String>(
-                  value: site.id,
-                  child: Row(
-                    children: [
-                      Icon(typeIcon, size: 16, color: cs.outline),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          '${site.name}  [$typeLabel]',
-                          style: const TextStyle(fontSize: 13),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
-              onChanged: _editorBusy ? null : _onSiteChanged,
-            ),
-          ),
-          // ── 管理按钮 ──
-          const SizedBox(width: 6),
-          IconButton(
-            icon: Icon(Icons.settings_outlined, size: 20, color: cs.outline),
-            onPressed: _editorBusy ? null : _openSiteManagement,
-            tooltip: '管理站点',
-            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-            padding: EdgeInsets.zero,
-          ),
+          _toolChip(Icons.format_bold, '粗体', () => _wrap('**', '**', p: '粗体')),
+          _toolChip(Icons.format_italic, '斜体', () => _wrap('*', '*', p: '斜体')),
+          _toolChip(Icons.code, '行内码', () => _wrap('`', '`', p: 'code')),
+          _toolChip(Icons.code_off, '代码块', _insertCodeBlock),
+          _toolChip(Icons.title, 'H1', () => _insertHeading(1)),
+          _toolChip(Icons.title, 'H2', () => _insertHeading(2)),
+          _toolChip(Icons.format_list_bulleted, '列表', () => _insertList('- ')),
+          _toolChip(Icons.format_quote, '引用', () => _insertList('> ')),
+          _toolChip(Icons.link, '链接', () => _wrap('[', '](https://)', p: '链接文字')),
+          _toolChip(Icons.grid_on, '表格', () => _insertText('\n| 列1 | 列2 |\n| --- | --- |\n| 值1 | 值2 |\n')),
+          _toolChip(Icons.horizontal_rule, '分割线', () => _insertText('\n---\n')),
+          _toolChip(Icons.format_strikethrough, '删除线', () => _wrap('~~', '~~', p: '删除文字')),
+          _toolChip(Icons.checklist, '任务', () => _insertList('- [ ] ')),
+          _toolChip(Icons.more_horiz, 'more', () => _insertText('\n<!--more-->\n')),
+          _toolChip(Icons.image_outlined, '图床', _editorBusy ? null : _insertImage),
+          _toolChip(Icons.collections_outlined, '批量图床', _editorBusy ? null : _batchInsertImages),
+          _toolChip(Icons.auto_awesome, 'AI润色', _editorBusy ? null : () => _aiAction('polish'), color: Colors.purple),
+          _toolChip(Icons.edit_note, 'AI续写', _editorBusy ? null : () => _aiAction('continue'), color: Colors.purple),
+          _toolChip(Icons.summarize_outlined, 'AI摘要', _editorBusy ? null : () => _aiAction('summary'), color: Colors.purple),
+          _toolChip(Icons.developer_mode, 'AI代码', _editorBusy ? null : () => _aiAction('code'), color: Colors.purple),
+          _toolChip(Icons.sync_alt, 'AI改写', _editorBusy ? null : () => _aiAction('rewrite'), color: Colors.purple),
+          _toolChip(Icons.auto_fix_high, 'AI排版', _editorBusy ? null : () => _aiAction('format'), color: Colors.deepPurple),
+          _toolChip(Icons.chat, 'AI对话', () => _showAiArticleChat(), color: Colors.deepPurple),
+          _toolChip(Icons.touch_app, 'AI选区', _editorBusy ? null : _showAiSelectionEdit, color: Colors.deepPurple),
         ],
       ),
     );
   }
+
 
   /// 切换站点
   void _onSiteChanged(String? siteId) {
@@ -5627,25 +5995,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     ));
   }
 
-  Widget _editorCard(
-      {required Widget child, EdgeInsetsGeometry? padding}) {
-    return Container(
-      padding: padding ?? const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black.withOpacity(0.05)),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.02),
-              blurRadius: 4,
-              offset: const Offset(0, 1)),
-        ],
-      ),
-      child: child,
-    );
-  }
-
   Widget _toolChip(IconData icon, String label, VoidCallback? onTap,
       {Color? color}) {
     final c = color ?? Theme.of(context).colorScheme.primary;
@@ -5667,52 +6016,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                     fontWeight: FontWeight.w500,
                     color: c)),
           ]),
-        ),
-      ),
-    );
-  }
-
-  Widget _editorTypeToggle({
-    required IconData icon,
-    required String label,
-    required String subtitle,
-    required bool active,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: active ? const Color(0xFF0EA5E9).withOpacity(0.08) : Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: active ? const Color(0xFF0EA5E9) : const Color(0xFFE2E8F0),
-            width: active ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: active ? const Color(0xFF0EA5E9) : const Color(0xFF94A3B8)),
-            const SizedBox(width: 6),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                    color: active ? const Color(0xFF0EA5E9) : const Color(0xFF475569),
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: const TextStyle(fontSize: 9, color: Color(0xFF94A3B8)),
-                ),
-              ],
-            ),
-          ],
         ),
       ),
     );
