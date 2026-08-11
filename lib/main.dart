@@ -15,6 +15,7 @@ import 'controllers/controllers.dart';
 
 import 'models/ai_profile.dart';
 import 'models/app_settings.dart';
+import 'models/editor_theme.dart';
 import 'models/article_type.dart';
 import 'models/article.dart';
 import 'models/blog_framework.dart';
@@ -181,9 +182,10 @@ class _HexoAppState extends State<HexoApp> {
         theme: AppTheme.lightFromConfig(_settings.ui.designConfig),
         darkTheme: AppTheme.darkFromConfig(_settings.ui.designConfig),
         home: RootShell(
-            onThemeChanged: updateTheme,
-            onSettingsChanged: updateSettings,
-            initialSettings: _settings),
+          onThemeChanged: updateTheme,
+          onSettingsChanged: updateSettings,
+          initialSettings: _settings,
+        ),
       ),
     );
   }
@@ -193,11 +195,12 @@ class RootShell extends StatefulWidget {
   final void Function(Color) onThemeChanged;
   final void Function(AppSettings)? onSettingsChanged;
   final AppSettings initialSettings;
-  const RootShell(
-      {super.key,
-      required this.onThemeChanged,
-      this.onSettingsChanged,
-      required this.initialSettings});
+  const RootShell({
+    super.key,
+    required this.onThemeChanged,
+    this.onSettingsChanged,
+    required this.initialSettings,
+  });
 
   @override
   State<RootShell> createState() => _RootShellState();
@@ -209,8 +212,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   late final imageService = ImageService(github);
   final aiService = AiService();
   late final aiModelManager = AiModelManager(storage);
-  late final siteDispatcherManager =
-      SiteDispatcherManager(aiService, aiModelManager);
+  late final siteDispatcherManager = SiteDispatcherManager(
+    aiService,
+    aiModelManager,
+  );
   bool _siteDispatcherManagerUsed = false;
 
   /// 当前站点对应的调度器（站点隔离：每个站点独立上下文）
@@ -218,6 +223,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     _siteDispatcherManagerUsed = true;
     return siteDispatcherManager.forSite(settings.effectiveActiveSiteId);
   }
+
   late final themeMigrationService = ThemeMigrationService(aiService, github);
   late final aiSelfChecker = AiSelfChecker(aiService);
   final skillManager = SkillManager();
@@ -231,6 +237,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   /// 站点管理器：统一管理静态仓库和动态 CMS 站点
   late SiteManager siteManager;
+
   /// 标记 siteManager 是否已初始化（避免 dispose 时 LateInitializationError）
   bool siteManagerInitialized = false;
 
@@ -256,6 +263,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   Timer? _autoSyncTimer; // 云端自动同步
   /// 每草稿独立防抖定时器，杜绝多草稿相互阻塞
   final Map<String, _DebounceEntry> _debounceTimers = {};
+
   /// 每草稿独立上次保存内容，切换草稿不丢失
   final Map<String, String> _lastSavedContentMap = {};
 
@@ -340,12 +348,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   List<BlogRepository> get _allStaticAdapters {
     final result = <BlogRepository>[];
     for (final repo in repos) {
-      result.add(StaticBlogRepository(
-        repoConfig: _resolvedRepoFor(repo),
-        appSettings: settings,
-        githubService: github,
-        logService: logService,
-      ));
+      result.add(
+        StaticBlogRepository(
+          repoConfig: _resolvedRepoFor(repo),
+          appSettings: settings,
+          githubService: github,
+          logService: logService,
+        ),
+      );
     }
     return result;
   }
@@ -415,7 +425,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     syncService = SyncService(logService);
     cloudSyncService = CloudSyncService(logService);
-    _p2pSyncService = P2PSyncService(deviceName: 'Mobile-${DateTime.now().millisecondsSinceEpoch}');
+    _p2pSyncService = P2PSyncService(
+      deviceName: 'Mobile-${DateTime.now().millisecondsSinceEpoch}',
+    );
     _typewriterCtrl = TypewriterScrollController(
       scrollController: _editorScrollCtrl,
       lineHeight: 22.0,
@@ -434,6 +446,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       activeSiteId: '',
     );
     siteManagerInitialized = true;
+    _updateSystemBarStyle();
     _bootstrap();
   }
 
@@ -485,13 +498,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             siteUrl: '',
             token: s.effectiveGithubToken,
             isDefault: true,
-          )
+          ),
         ];
         await storage.saveRepos(r);
         s = s.copyWith(
-            activeRepoId: r.first.id,
-            imageBedOwner: 'caogenfunan123',
-            imageBedRepo: 'xiamend');
+          activeRepoId: r.first.id,
+          imageBedOwner: 'caogenfunan123',
+          imageBedRepo: 'xiamend',
+        );
         await storage.saveSettings(s);
       } else {
         final eff = s.effectiveGithubToken;
@@ -512,26 +526,37 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       // 自动解析编辑器默认模板
       String? autoTemplateId;
       if (_editorRepo != null) {
-        autoTemplateId = TemplateResolver.resolvePostTemplateId(_editorRepo!, t);
+        autoTemplateId = TemplateResolver.resolvePostTemplateId(
+          _editorRepo!,
+          t,
+        );
         _doc.setSelectedTemplateId(autoTemplateId);
       }
 
       // 同步到站点控制器
-      final staticSites = r.map((repo) => SiteConfig(
-        id: repo.id,
-        name: repo.name,
-        repoUrl: 'https://github.com/${repo.owner}/${repo.repo}',
-        branch: repo.branch,
-        isDefault: repo.isDefault,
-        isStatic: true,
-        tokenId: repo.token.isNotEmpty ? repo.id : null,
-      )).toList();
-      final dynamicSites = s.blogSiteConfigs.map((cfg) => SiteConfig(
-        id: cfg.id,
-        name: cfg.name,
-        repoUrl: cfg.siteUrl,
-        isStatic: false,
-      )).toList();
+      final staticSites = r
+          .map(
+            (repo) => SiteConfig(
+              id: repo.id,
+              name: repo.name,
+              repoUrl: 'https://github.com/${repo.owner}/${repo.repo}',
+              branch: repo.branch,
+              isDefault: repo.isDefault,
+              isStatic: true,
+              tokenId: repo.token.isNotEmpty ? repo.id : null,
+            ),
+          )
+          .toList();
+      final dynamicSites = s.blogSiteConfigs
+          .map(
+            (cfg) => SiteConfig(
+              id: cfg.id,
+              name: cfg.name,
+              repoUrl: cfg.siteUrl,
+              isStatic: false,
+            ),
+          )
+          .toList();
       _site.setSites(staticSites, dynamicSites);
 
       setState(() {
@@ -552,10 +577,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       }
     } catch (e) {
       debugPrint('Bootstrap error: $e');
-      if (mounted) setState(() {
-        loading = false;
-        error = e.toString();
-      });
+      if (mounted)
+        setState(() {
+          loading = false;
+          error = e.toString();
+        });
     }
     // 初始化工具系统
     try {
@@ -658,7 +684,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           localArticles: drafts,
           onFilesReceived: (files) {
             for (final file in files) {
-              final existingIndex = drafts.indexWhere((d) => d.fileName() == file.path);
+              final existingIndex = drafts.indexWhere(
+                (d) => d.fileName() == file.path,
+              );
               final article = Article(
                 id: DateTime.now().millisecondsSinceEpoch.toString(),
                 title: file.path.replaceAll('.md', ''),
@@ -703,11 +731,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     if (backend == null) return;
 
     try {
-      final pulled = await cloudSyncService.pullDrafts(backend, existingDrafts: drafts);
+      final pulled = await cloudSyncService.pullDrafts(
+        backend,
+        existingDrafts: drafts,
+      );
       if (pulled.isNotEmpty) {
-        if (mounted) setState(() {
-          drafts = pulled..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-        });
+        if (mounted)
+          setState(() {
+            drafts = pulled..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+          });
         storage.saveDrafts(drafts);
       }
       await cloudSyncService.pullSyncMappings(backend, syncService);
@@ -717,7 +749,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   }
 
   AppSettings _ensureGithubTokensFromLegacy(
-      AppSettings s, List<RepoConfig> repos) {
+    AppSettings s,
+    List<RepoConfig> repos,
+  ) {
     return ensureGithubTokensFromLegacy(s, repos);
   }
 
@@ -727,6 +761,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       _stopAutoSave();
     }
     setState(() => _currentPage = page);
+    _updateSystemBarStyle();
     // 仅在抽屉打开时才关闭抽屉，避免对根路由执行无意义的 pop
     if (_scaffoldKey.currentState?.isDrawerOpen == true) {
       _scaffoldKey.currentState?.closeDrawer();
@@ -819,11 +854,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           content: const Text('确认退出当前文章？'),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
             FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('确认退出')),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('确认退出'),
+            ),
           ],
         ),
       );
@@ -854,8 +891,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               const SizedBox(height: 6),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, 'discard'),
-                child: const Text('放弃修改，直接退出',
-                    style: TextStyle(color: Colors.red)),
+                child: const Text(
+                  '放弃修改，直接退出',
+                  style: TextStyle(color: Colors.red),
+                ),
               ),
               const SizedBox(height: 6),
               TextButton(
@@ -890,11 +929,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     await _clearSession();
     _resetEditor();
     setState(() => _currentPage = 0);
+    _updateSystemBarStyle();
   }
 
   Future<void> _onCloseReader() async {
     await _clearSession();
     setState(() => _currentPage = 0);
+    _updateSystemBarStyle();
   }
 
   void _resetEditor() {
@@ -924,8 +965,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   /// 新建空白文章：先将当前文章存到草稿箱，再清空编辑器
   Future<void> _newBlankArticle() async {
     // 当前有内容时先保存到草稿箱
-    final hasContent = _doc.titleCtrl.text.isNotEmpty ||
-        _doc.contentCtrl.text.isNotEmpty;
+    final hasContent =
+        _doc.titleCtrl.text.isNotEmpty || _doc.contentCtrl.text.isNotEmpty;
     if (hasContent) {
       await _saveLocal();
     }
@@ -942,9 +983,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   void _autoSelectTemplate() {
     final repo = _editorRepo;
     if (repo == null) return;
-    _doc.setSelectedTemplateId(_doc.articleType == ArticleType.post
-        ? TemplateResolver.resolvePostTemplateId(repo, templates)
-        : TemplateResolver.resolvePageTemplateId(repo, templates));
+    _doc.setSelectedTemplateId(
+      _doc.articleType == ArticleType.post
+          ? TemplateResolver.resolvePostTemplateId(repo, templates)
+          : TemplateResolver.resolvePageTemplateId(repo, templates),
+    );
   }
 
   // ============ 自动保存 ============
@@ -1054,18 +1097,18 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     _doc.setCurrentArticle(article);
     _saveSession(SessionPageType.reader);
     setState(() => _currentPage = 9); // 阅读页
+    _updateSystemBarStyle();
   }
 
   void _enterEditorFromReader(Article article) {
     _doc.setCurrentArticle(article);
-    _editorRepo = repos
-            .where((r) => r.id == article.repoId)
-            .firstOrNull ??
-        activeRepo;
+    _editorRepo =
+        repos.where((r) => r.id == article.repoId).firstOrNull ?? activeRepo;
     _doc.setEditorRepoId(_editorRepo?.id);
     _startAutoSave();
     _saveSession(SessionPageType.editor);
     setState(() => _currentPage = 0); // 回到编辑器
+    _updateSystemBarStyle();
   }
 
   // --- Editor methods ---
@@ -1128,8 +1171,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         builder: (ctx, setDialogState) => AlertDialog(
           title: Row(
             children: [
-              Icon(Icons.cloud_upload_outlined,
-                  color: Theme.of(context).colorScheme.primary, size: 22),
+              Icon(
+                Icons.cloud_upload_outlined,
+                color: Theme.of(context).colorScheme.primary,
+                size: 22,
+              ),
               const SizedBox(width: 8),
               const Text('确认发布', style: TextStyle(fontSize: 17)),
             ],
@@ -1138,8 +1184,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('即将发布到: $publishTarget',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+              Text(
+                '即将发布到: $publishTarget',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 8),
               Text(
                 '标题: ${_doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : "(无标题)"}',
@@ -1152,10 +1203,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                 onChanged: (v) {
                   setDialogState(() => saveMdBackup = v ?? false);
                 },
-                title: const Text('同时保存一份 MD 备份到本地目录',
-                    style: TextStyle(fontSize: 13)),
-                subtitle: const Text('备份到文档目录的 hexo_backups/ 文件夹',
-                    style: TextStyle(fontSize: 11)),
+                title: const Text(
+                  '同时保存一份 MD 备份到本地目录',
+                  style: TextStyle(fontSize: 13),
+                ),
+                subtitle: const Text(
+                  '备份到文档目录的 hexo_backups/ 文件夹',
+                  style: TextStyle(fontSize: 11),
+                ),
                 controlAffinity: ListTileControlAffinity.leading,
                 contentPadding: EdgeInsets.zero,
                 dense: true,
@@ -1167,10 +1222,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   onChanged: (v) {
                     setDialogState(() => publishToAllStatic = v ?? false);
                   },
-                  title: const Text('同时发布到所有静态博客站点',
-                      style: TextStyle(fontSize: 13)),
-                  subtitle: Text('将本文发布到全部 $staticRepoCount 个静态仓库',
-                      style: const TextStyle(fontSize: 11)),
+                  title: const Text(
+                    '同时发布到所有静态博客站点',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  subtitle: Text(
+                    '将本文发布到全部 $staticRepoCount 个静态仓库',
+                    style: const TextStyle(fontSize: 11),
+                  ),
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
                   dense: true,
@@ -1235,16 +1294,23 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     try {
       final a = _collect(draft: false);
       final pub = await github.upsertArticle(repo, a, templates: templates);
-      if (mounted) setState(() {
-        _doc.setCurrentArticle(pub);
-        _editorStatus = '已发布';
-      });
+      if (mounted)
+        setState(() {
+          _doc.setCurrentArticle(pub);
+          _editorStatus = '已发布';
+        });
       await _saveDraft(pub.copyWith(isDraft: false, published: true));
       await _refreshRemote();
       // 触发 Cloudflare Pages 重新部署
       if (settings.cloudflareDeployHook.isNotEmpty) {
-        final deployed = await GitHubService.triggerCloudflareDeploy(settings.cloudflareDeployHook);
-        logService.add('Cloudflare 部署', deployed ? '已触发重新部署' : '部署钩子触发失败', success: deployed);
+        final deployed = await GitHubService.triggerCloudflareDeploy(
+          settings.cloudflareDeployHook,
+        );
+        logService.add(
+          'Cloudflare 部署',
+          deployed ? '已触发重新部署' : '部署钩子触发失败',
+          success: deployed,
+        );
       }
       logService.add('发布成功', '已发布到 ${repo.fullName}: ${pub.title}');
       if (mounted) _showToast('已发布到 ${repo.fullName}');
@@ -1292,14 +1358,28 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               child: ListView(
                 shrinkWrap: true,
                 children: [
-                  Text(checkResult.message, style: const TextStyle(fontSize: 14)),
+                  Text(
+                    checkResult.message,
+                    style: const TextStyle(fontSize: 14),
+                  ),
                   if (checkResult.issues.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    const Text('具体问题:', style: TextStyle(fontWeight: FontWeight.bold)),
-                    ...checkResult.issues.map((i) => Padding(
-                          padding: const EdgeInsets.only(top: 4, left: 8),
-                          child: Text(i, style: const TextStyle(fontSize: 13, color: Color(0xFFEF4444))),
-                        )),
+                    const Text(
+                      '具体问题:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    ...checkResult.issues.map(
+                      (i) => Padding(
+                        padding: const EdgeInsets.only(top: 4, left: 8),
+                        child: Text(
+                          i,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFFEF4444),
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ],
               ),
@@ -1370,7 +1450,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         try {
           if (attempts > 1) {
             final action = remoteId != null ? '更新' : '发布';
-            if (mounted) setState(() => _editorStatus = '正在重试$action (第 $attempts 次)...');
+            if (mounted)
+              setState(() => _editorStatus = '正在重试$action (第 $attempts 次)...');
           }
           result = remoteId != null
               ? await adapter.updatePost(post)
@@ -1382,14 +1463,16 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           }
           // 5xx 服务端错误，尝试重试
           if (attempts >= maxRetries) rethrow;
-          if (mounted) setState(() => _editorStatus = '发布失败，${2 * attempts}s 后重试...');
+          if (mounted)
+            setState(() => _editorStatus = '发布失败，${2 * attempts}s 后重试...');
           await Future.delayed(Duration(seconds: 2 * attempts));
           _publishCancelToken.throwIfCancelled();
         } catch (e) {
           if (e is CancelledException) rethrow;
           // 网络错误等其他异常，也尝试重试
           if (attempts >= maxRetries) rethrow;
-          if (mounted) setState(() => _editorStatus = '网络异常，${2 * attempts}s 后重试...');
+          if (mounted)
+            setState(() => _editorStatus = '网络异常，${2 * attempts}s 后重试...');
           await Future.delayed(Duration(seconds: 2 * attempts));
           _publishCancelToken.throwIfCancelled();
         }
@@ -1403,30 +1486,38 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         remotePath: finalResult.link,
         remoteSha: finalResult.id?.toString(),
       );
-      if (mounted) setState(() {
-        _doc.setCurrentArticle(pub);
-        _editorStatus = isUpdate
-            ? '已更新到 ${adapter.config.type.displayName}'
-            : '已发布到 ${adapter.config.type.displayName}';
-      });
+      if (mounted)
+        setState(() {
+          _doc.setCurrentArticle(pub);
+          _editorStatus = isUpdate
+              ? '已更新到 ${adapter.config.type.displayName}'
+              : '已发布到 ${adapter.config.type.displayName}';
+        });
       await _saveDraft(pub);
       // 保存到 CMS SQLite 草稿表
       await cmsDraftService.saveDraft(finalResult);
       // 更新同步映射
       if (finalResult.id != null) {
-        syncService.setMapping(SyncMapping(
-          localArticleId: pub.id,
-          remotePostId: finalResult.id!,
-          siteId: adapter.config.id,
-          lastSyncAt: DateTime.now(),
-          localModifiedAt: pub.updatedAt,
-          remoteModifiedAt: finalResult.modifiedDate,
-        ));
+        syncService.setMapping(
+          SyncMapping(
+            localArticleId: pub.id,
+            remotePostId: finalResult.id!,
+            siteId: adapter.config.id,
+            lastSyncAt: DateTime.now(),
+            localModifiedAt: pub.updatedAt,
+            remoteModifiedAt: finalResult.modifiedDate,
+          ),
+        );
       }
       final actionLabel = isUpdate ? '更新' : '发布';
-      logService.add('CMS$actionLabel成功', '已${actionLabel}到 ${adapter.config.type.displayName}: ${finalResult.title}');
+      logService.add(
+        'CMS$actionLabel成功',
+        '已${actionLabel}到 ${adapter.config.type.displayName}: ${finalResult.title}',
+      );
       if (mounted) {
-        _showToast('已${actionLabel}到 ${adapter.config.type.displayName}: ${finalResult.link ?? finalResult.title}');
+        _showToast(
+          '已${actionLabel}到 ${adapter.config.type.displayName}: ${finalResult.link ?? finalResult.title}',
+        );
       }
     } on BlogRepositoryException catch (e) {
       if (mounted) setState(() => _editorStatus = '发布失败');
@@ -1495,14 +1586,16 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           details[siteName] = '成功 (ID: ${result.id})';
           await cmsDraftService.saveDraft(result);
           if (result.id != null) {
-            syncService.setMapping(SyncMapping(
-              localArticleId: a.id,
-              remotePostId: result.id!,
-              siteId: adapter.config.id,
-              lastSyncAt: DateTime.now(),
-              localModifiedAt: a.updatedAt,
-              remoteModifiedAt: result.modifiedDate,
-            ));
+            syncService.setMapping(
+              SyncMapping(
+                localArticleId: a.id,
+                remotePostId: result.id!,
+                siteId: adapter.config.id,
+                lastSyncAt: DateTime.now(),
+                localModifiedAt: a.updatedAt,
+                remoteModifiedAt: result.modifiedDate,
+              ),
+            );
           }
         } catch (e) {
           final msg = e is BlogRepositoryException ? e.message : '$e';
@@ -1519,11 +1612,12 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       }
     }
 
-    logService.add(
-        '多站点发布', '《${a.title}》成功 $success/${adapters.length} 个站点');
+    logService.add('多站点发布', '《${a.title}》成功 $success/${adapters.length} 个站点');
     if (mounted) {
       _showToast('多站点发布完成: 成功 $success/${adapters.length} 个站点');
-      final lines = details.entries.map((e) => '${e.key}: ${e.value}').join('\n');
+      final lines = details.entries
+          .map((e) => '${e.key}: ${e.value}')
+          .join('\n');
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -1623,7 +1717,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   }
 
   /// 展示静态站点发布预览确认对话框
-  Future<bool?> _showStaticPublishPreviewDialog(MultiSitePublishPreview preview) async {
+  Future<bool?> _showStaticPublishPreviewDialog(
+    MultiSitePublishPreview preview,
+  ) async {
     final sites = preview.publishable;
     final skipped = preview.skippedCount;
     final title = _doc.titleCtrl.text.isNotEmpty
@@ -1640,8 +1736,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('《$title》将发布到以下站点:',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+              Text(
+                '《$title》将发布到以下站点:',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 8),
               Flexible(
                 child: SingleChildScrollView(
@@ -1655,15 +1756,21 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                           size: 18,
                           color: const Color(0xFF059669),
                         ),
-                        title: Text(site.siteName,
-                            style: const TextStyle(fontSize: 13)),
-                        subtitle: Text(site.path,
-                            style: const TextStyle(fontSize: 11)),
-                        trailing: const Text('可发布',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF059669),
-                            )),
+                        title: Text(
+                          site.siteName,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        subtitle: Text(
+                          site.path,
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        trailing: const Text(
+                          '可发布',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF059669),
+                          ),
+                        ),
                       );
                     }).toList(),
                   ),
@@ -1672,8 +1779,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               if (skipped > 0)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Text('$skipped 个站点未配置 Token 将被跳过',
-                      style: const TextStyle(fontSize: 12, color: Colors.orange)),
+                  child: Text(
+                    '$skipped 个站点未配置 Token 将被跳过',
+                    style: const TextStyle(fontSize: 12, color: Colors.orange),
+                  ),
                 ),
             ],
           ),
@@ -1695,12 +1804,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   /// 展示静态站点发布结果
   Future<void> _showStaticPublishResult(Map<String, dynamic> results) async {
-    final lines = results.entries.map((e) {
-      final v = e.value;
-      final ok = v is Map && v['success'] == true;
-      final msg = v is Map ? (v['message']?.toString() ?? '') : '$v';
-      return '${ok ? '✓' : '✗'} ${e.key}: $msg';
-    }).join('\n');
+    final lines = results.entries
+        .map((e) {
+          final v = e.value;
+          final ok = v is Map && v['success'] == true;
+          final msg = v is Map ? (v['message']?.toString() ?? '') : '$v';
+          return '${ok ? '✓' : '✗'} ${e.key}: $msg';
+        })
+        .join('\n');
 
     await showDialog<void>(
       context: context,
@@ -1709,8 +1820,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         content: SizedBox(
           width: double.maxFinite,
           child: SingleChildScrollView(
-            child: Text(lines.isEmpty ? '无结果' : lines,
-                style: const TextStyle(fontSize: 13)),
+            child: Text(
+              lines.isEmpty ? '无结果' : lines,
+              style: const TextStyle(fontSize: 13),
+            ),
           ),
         ),
         actions: [
@@ -1729,8 +1842,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     final s = sel.isValid ? sel.start : txt.length;
     final e = sel.isValid ? sel.end : txt.length;
     _doc.contentCtrl.value = TextEditingValue(
-        text: txt.replaceRange(s, e, t),
-        selection: TextSelection.collapsed(offset: s + t.length));
+      text: txt.replaceRange(s, e, t),
+      selection: TextSelection.collapsed(offset: s + t.length),
+    );
     _doc.contentFocus.requestFocus();
     _onContentChanged();
   }
@@ -1743,18 +1857,20 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       final ins = '$l$body$r';
       final s = sel.isValid ? sel.start : txt.length;
       _doc.contentCtrl.value = TextEditingValue(
-          text: txt.replaceRange(s, s, ins),
-          selection:
-              TextSelection.collapsed(offset: s + l.length + body.length));
+        text: txt.replaceRange(s, s, ins),
+        selection: TextSelection.collapsed(offset: s + l.length + body.length),
+      );
       _doc.contentFocus.requestFocus();
       _onContentChanged();
       return;
     }
     final sel2 = txt.substring(sel.start, sel.end);
     _doc.contentCtrl.value = TextEditingValue(
-        text: txt.replaceRange(sel.start, sel.end, '$l$sel2$r'),
-        selection: TextSelection.collapsed(
-            offset: sel.start + l.length + sel2.length));
+      text: txt.replaceRange(sel.start, sel.end, '$l$sel2$r'),
+      selection: TextSelection.collapsed(
+        offset: sel.start + l.length + sel2.length,
+      ),
+    );
     _doc.contentFocus.requestFocus();
     _onContentChanged();
   }
@@ -1767,8 +1883,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         : txt.length;
     final lineStart = txt.lastIndexOf('\n', s - 1) + 1;
     _doc.contentCtrl.value = TextEditingValue(
-        text: txt.replaceRange(lineStart, lineStart, prefix),
-        selection: TextSelection.collapsed(offset: s + prefix.length));
+      text: txt.replaceRange(lineStart, lineStart, prefix),
+      selection: TextSelection.collapsed(offset: s + prefix.length),
+    );
     _doc.contentFocus.requestFocus();
     _onContentChanged();
   }
@@ -1783,8 +1900,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           .join('\n');
       final txt = _doc.contentCtrl.text;
       _doc.contentCtrl.value = TextEditingValue(
-          text: txt.replaceRange(sel.start, sel.end, lines),
-          selection: TextSelection.collapsed(offset: sel.start + lines.length));
+        text: txt.replaceRange(sel.start, sel.end, lines),
+        selection: TextSelection.collapsed(offset: sel.start + lines.length),
+      );
       _doc.contentFocus.requestFocus();
       _onContentChanged();
       return;
@@ -1802,8 +1920,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     final s = sel.isValid ? sel.start : txt.length;
     final e = sel.isValid ? sel.end : txt.length;
     _doc.contentCtrl.value = TextEditingValue(
-        text: txt.replaceRange(s, e, fence),
-        selection: TextSelection.collapsed(offset: s + 4));
+      text: txt.replaceRange(s, e, fence),
+      selection: TextSelection.collapsed(offset: s + 4),
+    );
     _doc.contentFocus.requestFocus();
     _onContentChanged();
   }
@@ -1858,8 +1977,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         settings,
         onProgress: (current, total, beforeKB, afterKB) {
           if (mounted) {
-            setState(() =>
-                _editorStatus = '预处理 $current/$total: ${beforeKB}KB → ${afterKB}KB');
+            setState(
+              () => _editorStatus =
+                  '预处理 $current/$total: ${beforeKB}KB → ${afterKB}KB',
+            );
           }
         },
       );
@@ -1870,7 +1991,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       int failed = 0;
       final buf = StringBuffer();
       for (var i = 0; i < total; i++) {
-        if (mounted) setState(() => _editorStatus = '正在上传图片 ${i + 1}/$total...');
+        if (mounted)
+          setState(() => _editorStatus = '正在上传图片 ${i + 1}/$total...');
         try {
           final url = await imageService.uploadToImageBed(
             preResult.images[i],
@@ -1879,7 +2001,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           );
           buf.writeln(imageService.markdownImage(url));
           uploaded++;
-        } catch (e) { debugPrint('App: image pick failed: $e');
+        } catch (e) {
+          debugPrint('App: image pick failed: $e');
           // 缓存失败图片字节，写标准重试标记，使用户可点击重试
           _failedImageBytes = preResult.images[i];
           buf.writeln('\n> ⚠️ 图片上传失败，[点击重试](#retry-upload)');
@@ -1956,58 +2079,65 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           result = await aiService.summarize(settings, text);
           if (mounted)
             await showDialog(
-                context: context,
-                builder: (_) => AlertDialog(
-                    title: const Text('AI 摘要'),
-                    content: Text(result),
-                    actions: [
-                      TextButton(
-                          onPressed: () {
-                            Clipboard.setData(
-                                ClipboardData(text: result));
-                            Navigator.pop(context);
-                          },
-                          child: const Text('复制')),
-                      TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('关闭')),
-                    ]));
+              context: context,
+              builder: (_) => AlertDialog(
+                title: const Text('AI 摘要'),
+                content: Text(result),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: result));
+                      Navigator.pop(context);
+                    },
+                    child: const Text('复制'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('关闭'),
+                  ),
+                ],
+              ),
+            );
           break;
         case 'outline':
           result = await aiService.generateOutline(
-              settings,
-              _doc.titleCtrl.text.isEmpty ? text : _doc.titleCtrl.text);
+            settings,
+            _doc.titleCtrl.text.isEmpty ? text : _doc.titleCtrl.text,
+          );
           _doc.contentCtrl.text = result;
           _onContentChanged();
           break;
         case 'code':
           final ctrl = TextEditingController();
           final ok = await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                  title: const Text('AI 生成代码'),
-                  content: TextField(
-                      controller: ctrl,
-                      maxLines: 5,
-                      decoration: const InputDecoration(
-                          hintText: '描述需要的代码')),
-                  actions: [
-                    TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('取消')),
-                    FilledButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text('生成')),
-                  ]));
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('AI 生成代码'),
+              content: TextField(
+                controller: ctrl,
+                maxLines: 5,
+                decoration: const InputDecoration(hintText: '描述需要的代码'),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('生成'),
+                ),
+              ],
+            ),
+          );
           if (ok != true) {
             ctrl.dispose();
             break;
           }
           result = await aiService.generateCode(
-              settings,
-              ctrl.text.trim().isEmpty
-                  ? '写一段示例代码'
-                  : ctrl.text.trim());
+            settings,
+            ctrl.text.trim().isEmpty ? '写一段示例代码' : ctrl.text.trim(),
+          );
           ctrl.dispose();
           _insertText('\n\n$result\n');
           break;
@@ -2017,40 +2147,49 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             throw Exception('请先选中要改写的文字');
           }
           final selected = text.substring(sel.start, sel.end);
-          final instrCtrl =
-              TextEditingController(text: '更简洁专业');
+          final instrCtrl = TextEditingController(text: '更简洁专业');
           final ok2 = await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                  title: const Text('AI 改写'),
-                  content: TextField(controller: instrCtrl),
-                  actions: [
-                    TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('取消')),
-                    FilledButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text('改写')),
-                  ]));
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('AI 改写'),
+              content: TextField(controller: instrCtrl),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('改写'),
+                ),
+              ],
+            ),
+          );
           if (ok2 != true) {
             instrCtrl.dispose();
             break;
           }
           result = await aiService.rewriteSelection(
-              settings, selected, instrCtrl.text.trim());
+            settings,
+            selected,
+            instrCtrl.text.trim(),
+          );
           instrCtrl.dispose();
           final txt = _doc.contentCtrl.text;
           _doc.contentCtrl.value = TextEditingValue(
-              text: txt.replaceRange(
-                  sel.start, sel.end, result),
-              selection: TextSelection.collapsed(
-                  offset: sel.start + result.length));
+            text: txt.replaceRange(sel.start, sel.end, result),
+            selection: TextSelection.collapsed(
+              offset: sel.start + result.length,
+            ),
+          );
           _doc.contentFocus.requestFocus();
           _onContentChanged();
           break;
         case 'format':
-          result = await aiService.polish(settings,
-              '请对以下 Markdown 内容进行排版优化：统一标题层级、规范空行、修正列表缩进、对齐表格格式。\n\n$text');
+          result = await aiService.polish(
+            settings,
+            '请对以下 Markdown 内容进行排版优化：统一标题层级、规范空行、修正列表缩进、对齐表格格式。\n\n$text',
+          );
           _doc.contentCtrl.text = result;
           _onContentChanged();
           break;
@@ -2084,7 +2223,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           _doc.contentCtrl.value = TextEditingValue(
             text: txt.replaceRange(sel.start, sel.end, acceptedText),
             selection: TextSelection.collapsed(
-              offset: sel.start + acceptedText.length),
+              offset: sel.start + acceptedText.length,
+            ),
           );
           _doc.contentFocus.requestFocus();
           _onContentChanged();
@@ -2096,8 +2236,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   // --- Data methods ---
   Future<void> _saveDraft(Article a) async {
     final i = drafts.indexWhere((e) => e.id == a.id);
-    if (i >= 0) drafts[i] = a;
-    else drafts.insert(0, a);
+    if (i >= 0)
+      drafts[i] = a;
+    else
+      drafts.insert(0, a);
     drafts.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     await storage.saveDrafts(drafts);
     await storage.exportDraftMarkdown(a);
@@ -2150,6 +2292,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   Future<void> _updateSettings(AppSettings s) async {
     setState(() => settings = s);
+    _updateSystemBarStyle();
     _updateSiteManager();
     _startAutoSync(); // 重启自动同步（间隔/开关可能变化）
     // 同步全局统一存储目录
@@ -2183,7 +2326,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       final fileName = '${timestamp}_$safeTitle.md';
       final file = File('${dir.path}/$fileName');
       await file.writeAsString(a.content);
-      if (mounted) _showToast('MD 已保存到 ${StorageService.dirMdArticles}/$fileName\n${dir.path}');
+      if (mounted)
+        _showToast(
+          'MD 已保存到 ${StorageService.dirMdArticles}/$fileName\n${dir.path}',
+        );
     } catch (e) {
       if (mounted) _showToast('MD 保存失败: $e');
     }
@@ -2191,10 +2337,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   void _showToast(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
         content: Text(msg),
         behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2)));
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   Future<bool> _confirm(String msg) async {
@@ -2205,11 +2354,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         content: Text(msg),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('确定')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确定'),
+          ),
         ],
       ),
     );
@@ -2238,32 +2389,36 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
-                    controller: c,
-                    decoration: const InputDecoration(
-                        labelText: 'WebDAV 网址',
-                        hintText: 'https://dav.jianguoyun.com/dav')),
+                  controller: c,
+                  decoration: const InputDecoration(
+                    labelText: 'WebDAV 网址',
+                    hintText: 'https://dav.jianguoyun.com/dav',
+                  ),
+                ),
                 const SizedBox(height: 12),
                 TextField(
-                    controller: u,
-                    decoration: const InputDecoration(labelText: '账号')),
+                  controller: u,
+                  decoration: const InputDecoration(labelText: '账号'),
+                ),
                 const SizedBox(height: 12),
                 TextField(
-                    controller: pw,
-                    obscureText: true,
-                    decoration:
-                        const InputDecoration(labelText: '密码')),
+                  controller: pw,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: '密码'),
+                ),
                 const SizedBox(height: 12),
                 TextField(
-                    controller: f,
-                    decoration:
-                        const InputDecoration(labelText: '文件夹')),
+                  controller: f,
+                  decoration: const InputDecoration(labelText: '文件夹'),
+                ),
               ],
             ),
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
             TextButton(
               onPressed: () {
                 settings = settings.copyWith(
@@ -2303,17 +2458,25 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       final folder = settings.webdavFolder.endsWith('/')
           ? settings.webdavFolder
           : '${settings.webdavFolder}/';
-      final remote = await svc.list(settings.webdavUrl,
-          settings.webdavUsername, settings.webdavPassword, folder);
+      final remote = await svc.list(
+        settings.webdavUrl,
+        settings.webdavUsername,
+        settings.webdavPassword,
+        folder,
+      );
       final localIds = drafts.map((a) => '${a.id}.md').toSet();
       int count = 0;
       for (final item in remote) {
         if (!item.isDir && item.name.endsWith('.md')) {
           final id = item.name.replaceAll(RegExp(r'\.md$'), '');
           if (!localIds.contains(item.name)) {
-            final bytes = await svc.downloadFile(settings.webdavUrl,
-                settings.webdavUsername, settings.webdavPassword,
-                folder, item.name);
+            final bytes = await svc.downloadFile(
+              settings.webdavUrl,
+              settings.webdavUsername,
+              settings.webdavPassword,
+              folder,
+              item.name,
+            );
             final md = utf8.decode(bytes);
             final article = Article.fromMarkdown(md, id: id);
             drafts.add(article);
@@ -2351,10 +2514,18 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       final folder = settings.webdavFolder.endsWith('/')
           ? settings.webdavFolder
           : '${settings.webdavFolder}/';
-      await svc.createFolder(settings.webdavUrl, settings.webdavUsername,
-          settings.webdavPassword, folder);
-      final remote = await svc.list(settings.webdavUrl,
-          settings.webdavUsername, settings.webdavPassword, folder);
+      await svc.createFolder(
+        settings.webdavUrl,
+        settings.webdavUsername,
+        settings.webdavPassword,
+        folder,
+      );
+      final remote = await svc.list(
+        settings.webdavUrl,
+        settings.webdavUsername,
+        settings.webdavPassword,
+        folder,
+      );
       final names = remote
           .where((e) => e.name.endsWith('.md'))
           .map((e) => e.name)
@@ -2363,11 +2534,12 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       for (final a in drafts) {
         if (!names.contains('${a.id}.md')) {
           await svc.putFile(
-              settings.webdavUrl,
-              settings.webdavUsername,
-              settings.webdavPassword,
-              '$folder${a.id}.md',
-              a.toMarkdownWithFrontMatter(templates: templates));
+            settings.webdavUrl,
+            settings.webdavUsername,
+            settings.webdavPassword,
+            '$folder${a.id}.md',
+            a.toMarkdownWithFrontMatter(templates: templates),
+          );
           count++;
         }
       }
@@ -2528,7 +2700,16 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       Color(0xFF1E293B),
     ];
     const names = [
-      '天蓝', '靛蓝', '紫色', '粉色', '玫瑰红', '翡翠绿', '青绿', '琥珀', '石板灰', '深灰'
+      '天蓝',
+      '靛蓝',
+      '紫色',
+      '粉色',
+      '玫瑰红',
+      '翡翠绿',
+      '青绿',
+      '琥珀',
+      '石板灰',
+      '深灰',
     ];
     await showDialog<void>(
       context: context,
@@ -2542,8 +2723,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             children: List.generate(colors.length, (i) {
               return GestureDetector(
                 onTap: () async {
-                  settings =
-                      settings.copyWith(themeColor: colors[i].value);
+                  settings = settings.copyWith(themeColor: colors[i].value);
                   await _persistSettings();
                   widget.onThemeChanged(colors[i]);
                   _showToast('主题色已切换为${names[i]}');
@@ -2559,14 +2739,12 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                         color: colors[i],
                         borderRadius: BorderRadius.circular(14),
                         border: settings.themeColor == colors[i].value
-                            ? Border.all(
-                                color: Colors.black, width: 2.5)
+                            ? Border.all(color: Colors.black, width: 2.5)
                             : null,
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(names[i],
-                        style: const TextStyle(fontSize: 11)),
+                    Text(names[i], style: const TextStyle(fontSize: 11)),
                   ],
                 ),
               );
@@ -2575,8 +2753,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('关闭')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
         ],
       ),
     );
@@ -2637,15 +2816,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModal) {
-            final profiles =
-                List<AiProfile>.from(settings.aiProfiles);
+            final profiles = List<AiProfile>.from(settings.aiProfiles);
             return Padding(
               padding: EdgeInsets.only(
                 left: 16,
                 right: 16,
                 top: 8,
-                bottom:
-                    MediaQuery.of(ctx).viewInsets.bottom + 16,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
               ),
               child: SizedBox(
                 height: MediaQuery.of(ctx).size.height * 0.75,
@@ -2658,18 +2835,18 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                           child: Text(
                             'AI 中转站配置',
                             style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                         TextButton.icon(
                           onPressed: () async {
-                            final created =
-                                await _editAiProfile(null);
+                            final created = await _editAiProfile(null);
                             if (created != null) {
                               final list = List<AiProfile>.from(
-                                  settings.aiProfiles)
-                                ..add(created);
+                                settings.aiProfiles,
+                              )..add(created);
                               settings = settings.copyWith(
                                 aiProfiles: list,
                                 activeAiProfileId: created.id,
@@ -2692,53 +2869,42 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                     const SizedBox(height: 8),
                     const Text(
                       '填写 Base URL + API Key，点「获取模型」选择模型后保存。可保存多套并任意切换。',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF64748B)),
+                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                     ),
                     const SizedBox(height: 12),
                     Expanded(
                       child: profiles.isEmpty
-                          ? const Center(
-                              child: Text('暂无配置，点右上角新增'))
+                          ? const Center(child: Text('暂无配置，点右上角新增'))
                           : ListView.separated(
                               itemCount: profiles.length,
                               separatorBuilder: (_, __) =>
                                   const SizedBox(height: 8),
                               itemBuilder: (_, i) {
                                 final p = profiles[i];
-                                final active = settings
-                                        .activeAiProfileId ==
-                                    p.id;
+                                final active =
+                                    settings.activeAiProfileId == p.id;
                                 return Card(
                                   child: ListTile(
                                     leading: Icon(
                                       active
                                           ? Icons.check_circle
-                                          : Icons
-                                              .smart_toy_outlined,
+                                          : Icons.smart_toy_outlined,
                                       color: active
-                                          ? Theme.of(ctx)
-                                              .colorScheme
-                                              .primary
+                                          ? Theme.of(ctx).colorScheme.primary
                                           : null,
                                     ),
                                     title: Text(p.displayLabel),
                                     subtitle: Text(
                                       '${p.baseUrl}\n模型: ${p.model.isEmpty ? "未选" : p.model}',
                                       maxLines: 3,
-                                      overflow:
-                                          TextOverflow.ellipsis,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                     isThreeLine: true,
-                                    trailing: PopupMenuButton<
-                                        String>(
+                                    trailing: PopupMenuButton<String>(
                                       onSelected: (v) async {
                                         if (v == 'use') {
-                                          settings = settings
-                                              .copyWith(
-                                            activeAiProfileId:
-                                                p.id,
+                                          settings = settings.copyWith(
+                                            activeAiProfileId: p.id,
                                             aiBaseUrl: p.baseUrl,
                                             aiApiKey: p.apiKey,
                                             aiModel: p.model,
@@ -2746,81 +2912,57 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                                           );
                                           await _persistSettings();
                                           setModal(() {});
-                                          if (mounted)
-                                            setState(() {});
-                                          _showToast(
-                                              '已切换到 ${p.displayLabel}');
-                                        } else if (v ==
-                                            'edit') {
-                                          final edited =
-                                              await _editAiProfile(
-                                                  p);
+                                          if (mounted) setState(() {});
+                                          _showToast('已切换到 ${p.displayLabel}');
+                                        } else if (v == 'edit') {
+                                          final edited = await _editAiProfile(
+                                            p,
+                                          );
                                           if (edited != null) {
-                                            final list = List<
-                                                    AiProfile>.from(
-                                                settings
-                                                    .aiProfiles);
-                                            final ix = list
-                                                .indexWhere((e) =>
-                                                    e.id ==
-                                                    p.id);
-                                            if (ix >= 0)
-                                              list[ix] = edited;
-                                            final activeId = settings
-                                                            .activeAiProfileId ==
-                                                        p.id
-                                                    ? edited.id
-                                                    : settings
-                                                        .activeAiProfileId;
-                                            settings = settings
-                                                .copyWith(
+                                            final list = List<AiProfile>.from(
+                                              settings.aiProfiles,
+                                            );
+                                            final ix = list.indexWhere(
+                                              (e) => e.id == p.id,
+                                            );
+                                            if (ix >= 0) list[ix] = edited;
+                                            final activeId =
+                                                settings.activeAiProfileId ==
+                                                    p.id
+                                                ? edited.id
+                                                : settings.activeAiProfileId;
+                                            settings = settings.copyWith(
                                               aiProfiles: list,
-                                              activeAiProfileId:
-                                                  activeId,
-                                              aiBaseUrl: activeId ==
-                                                      edited.id
+                                              activeAiProfileId: activeId,
+                                              aiBaseUrl: activeId == edited.id
                                                   ? edited.baseUrl
-                                                  : settings
-                                                      .aiBaseUrl,
-                                              aiApiKey: activeId ==
-                                                      edited.id
+                                                  : settings.aiBaseUrl,
+                                              aiApiKey: activeId == edited.id
                                                   ? edited.apiKey
-                                                  : settings
-                                                      .aiApiKey,
-                                              aiModel: activeId ==
-                                                      edited.id
+                                                  : settings.aiApiKey,
+                                              aiModel: activeId == edited.id
                                                   ? edited.model
-                                                  : settings
-                                                      .aiModel,
-                                              aiProvider: activeId ==
-                                                      edited.id
+                                                  : settings.aiModel,
+                                              aiProvider: activeId == edited.id
                                                   ? edited.name
-                                                  : settings
-                                                      .aiProvider,
+                                                  : settings.aiProvider,
                                             );
                                             await _persistSettings();
                                             setModal(() {});
-                                            if (mounted)
-                                              setState(() {});
+                                            if (mounted) setState(() {});
                                           }
-                                        } else if (v ==
-                                            'delete') {
+                                        } else if (v == 'delete') {
                                           final ok = await _confirm(
-                                              '删除配置「${p.name}」？');
+                                            '删除配置「${p.name}」？',
+                                          );
                                           if (!ok) return;
-                                          final list = List<
-                                                      AiProfile>
-                                                  .from(settings
-                                                      .aiProfiles)
-                                                ..removeWhere(
-                                                    (e) =>
-                                                        e.id ==
-                                                        p.id);
-                                          var activeId = settings
-                                              .activeAiProfileId;
+                                          final list = List<AiProfile>.from(
+                                            settings.aiProfiles,
+                                          )..removeWhere((e) => e.id == p.id);
+                                          var activeId =
+                                              settings.activeAiProfileId;
                                           if (activeId == p.id) {
-                                            activeId = list
-                                                    .isNotEmpty
+                                            activeId = list.isNotEmpty
                                                 ? list.first.id
                                                 : '';
                                           }
@@ -2834,50 +2976,40 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                                           if (activeP == null &&
                                               list.isNotEmpty) {
                                             activeP = list.first;
-                                            activeId =
-                                                activeP.id;
+                                            activeId = activeP.id;
                                           }
-                                          settings = settings
-                                              .copyWith(
+                                          settings = settings.copyWith(
                                             aiProfiles: list,
-                                            activeAiProfileId:
-                                                activeId,
-                                            aiBaseUrl: activeP
-                                                    ?.baseUrl ??
-                                                settings
-                                                    .aiBaseUrl,
-                                            aiApiKey: activeP
-                                                    ?.apiKey ??
-                                                '',
-                                            aiModel: activeP
-                                                    ?.model ??
-                                                settings
-                                                    .aiModel,
-                                            aiProvider: activeP
-                                                    ?.name ??
-                                                settings
-                                                    .aiProvider,
+                                            activeAiProfileId: activeId,
+                                            aiBaseUrl:
+                                                activeP?.baseUrl ??
+                                                settings.aiBaseUrl,
+                                            aiApiKey: activeP?.apiKey ?? '',
+                                            aiModel:
+                                                activeP?.model ??
+                                                settings.aiModel,
+                                            aiProvider:
+                                                activeP?.name ??
+                                                settings.aiProvider,
                                           );
                                           await _persistSettings();
                                           setModal(() {});
-                                          if (mounted)
-                                            setState(() {});
+                                          if (mounted) setState(() {});
                                         }
                                       },
-                                      itemBuilder: (_) =>
-                                          const [
+                                      itemBuilder: (_) => const [
                                         PopupMenuItem(
-                                            value: 'use',
-                                            child: Text(
-                                                '设为当前')),
+                                          value: 'use',
+                                          child: Text('设为当前'),
+                                        ),
                                         PopupMenuItem(
-                                            value: 'edit',
-                                            child: Text(
-                                                '编辑')),
+                                          value: 'edit',
+                                          child: Text('编辑'),
+                                        ),
                                         PopupMenuItem(
-                                            value: 'delete',
-                                            child: Text(
-                                                '删除')),
+                                          value: 'delete',
+                                          child: Text('删除'),
+                                        ),
                                       ],
                                     ),
                                     onTap: () async {
@@ -2890,8 +3022,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                                       );
                                       await _persistSettings();
                                       setModal(() {});
-                                      if (mounted)
-                                        setState(() {});
+                                      if (mounted) setState(() {});
                                     },
                                   ),
                                 );
@@ -2909,22 +3040,23 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   }
 
   Future<AiProfile?> _editAiProfile(AiProfile? existing) async {
-    final nameCtrl = TextEditingController(
-        text: existing?.name ?? '中转站');
+    final nameCtrl = TextEditingController(text: existing?.name ?? '中转站');
     final baseCtrl = TextEditingController(
-        text: existing?.baseUrl.isNotEmpty == true
-            ? existing!.baseUrl
-            : (settings.aiBaseUrl.isNotEmpty
+      text: existing?.baseUrl.isNotEmpty == true
+          ? existing!.baseUrl
+          : (settings.aiBaseUrl.isNotEmpty
                 ? settings.aiBaseUrl
-                : 'https://api.openai.com/v1'));
+                : 'https://api.openai.com/v1'),
+    );
     final keyCtrl = TextEditingController(
-        text: existing?.apiKey.isNotEmpty == true
-            ? existing!.apiKey
-            : settings.aiApiKey);
+      text: existing?.apiKey.isNotEmpty == true
+          ? existing!.apiKey
+          : settings.aiApiKey,
+    );
     final modelCtrl = TextEditingController(
-        text: existing?.model ?? settings.aiModel);
-    var models = List<String>.from(
-        existing?.cachedModels ?? const <String>[]);
+      text: existing?.model ?? settings.aiModel,
+    );
+    var models = List<String>.from(existing?.cachedModels ?? const <String>[]);
     var selectedModel = existing?.model ?? '';
     var fetching = false;
     var useBearer = existing?.useBearer ?? true;
@@ -2953,12 +3085,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   useBearer: useBearer,
                   cachedModels: models,
                 );
-                final list = await AiService()
-                    .listModels(settings, profile: temp);
+                final list = await AiService().listModels(
+                  settings,
+                  profile: temp,
+                );
                 setDlg(() {
                   models = list;
-                  if (selectedModel.isEmpty &&
-                      list.isNotEmpty) {
+                  if (selectedModel.isEmpty && list.isNotEmpty) {
                     selectedModel = list.first;
                     modelCtrl.text = selectedModel;
                   } else if (selectedModel.isNotEmpty &&
@@ -2981,9 +3114,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             }
 
             return AlertDialog(
-              title: Text(existing == null
-                  ? '新增 AI 配置'
-                  : '编辑 AI 配置'),
+              title: Text(existing == null ? '新增 AI 配置' : '编辑 AI 配置'),
               content: SizedBox(
                 width: 420,
                 child: SingleChildScrollView(
@@ -2994,8 +3125,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                         controller: nameCtrl,
                         decoration: const InputDecoration(
                           labelText: '名称',
-                          hintText:
-                              '如 DeepSeek / 硅基流动 / 自建中转',
+                          hintText: '如 DeepSeek / 硅基流动 / 自建中转',
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -3019,11 +3149,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Bearer 鉴权'),
-                        subtitle: const Text(
-                            '关闭则同时发送 api-key / x-api-key'),
+                        subtitle: const Text('关闭则同时发送 api-key / x-api-key'),
                         value: useBearer,
-                        onChanged: (v) =>
-                            setDlg(() => useBearer = v),
+                        onChanged: (v) => setDlg(() => useBearer = v),
                       ),
                       Row(
                         children: [
@@ -3032,25 +3160,21 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                               controller: modelCtrl,
                               decoration: const InputDecoration(
                                 labelText: '模型',
-                                hintText:
-                                    '可手动填写或从列表选择',
+                                hintText: '可手动填写或从列表选择',
                               ),
-                              onChanged: (v) =>
-                                  selectedModel = v.trim(),
+                              onChanged: (v) => selectedModel = v.trim(),
                             ),
                           ),
                           const SizedBox(width: 8),
                           FilledButton.tonal(
-                            onPressed: fetching
-                                ? null
-                                : fetchModels,
+                            onPressed: fetching ? null : fetchModels,
                             child: fetching
                                 ? const SizedBox(
                                     width: 16,
                                     height: 16,
-                                    child:
-                                        CircularProgressIndicator(
-                                            strokeWidth: 2),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
                                   )
                                 : const Text('获取模型'),
                           ),
@@ -3058,26 +3182,33 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                       ),
                       if (err != null) ...[
                         const SizedBox(height: 8),
-                        Text(err!,
-                            style: const TextStyle(
-                                color: Colors.red,
-                                fontSize: 12)),
+                        Text(
+                          err!,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 12,
+                          ),
+                        ),
                       ],
                       if (models.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
-                          value: models
-                                  .contains(selectedModel)
+                          value: models.contains(selectedModel)
                               ? selectedModel
                               : null,
                           decoration: const InputDecoration(
-                              labelText: '从列表选择模型'),
+                            labelText: '从列表选择模型',
+                          ),
                           items: models
-                              .map((m) => DropdownMenuItem(
+                              .map(
+                                (m) => DropdownMenuItem(
                                   value: m,
-                                  child: Text(m,
-                                      overflow: TextOverflow
-                                          .ellipsis)))
+                                  child: Text(
+                                    m,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              )
                               .toList(),
                           onChanged: (v) {
                             if (v == null) return;
@@ -3094,8 +3225,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               ),
               actions: [
                 TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('取消')),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('取消'),
+                ),
                 FilledButton(
                   onPressed: () {
                     final name = nameCtrl.text.trim().isEmpty
@@ -3116,7 +3248,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                       _showToast('请选择或填写模型');
                       return;
                     }
-                    final id = existing?.id ??
+                    final id =
+                        existing?.id ??
                         'ai_${DateTime.now().millisecondsSinceEpoch}';
                     Navigator.pop(
                       ctx,
@@ -3173,26 +3306,22 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     GithubTokenProfile profile, {
     bool makeActive = false,
   }) async {
-    final list =
-        List<GithubTokenProfile>.from(settings.githubTokens);
-    final byToken =
-        list.indexWhere((e) => e.token == profile.token);
+    final list = List<GithubTokenProfile>.from(settings.githubTokens);
+    final byToken = list.indexWhere((e) => e.token == profile.token);
     final byId = list.indexWhere((e) => e.id == profile.id);
     if (byId >= 0) {
       list[byId] = profile;
     } else if (byToken >= 0) {
-      list[byToken] =
-          profile.copyWith(id: list[byToken].id);
+      list[byToken] = profile.copyWith(id: list[byToken].id);
     } else {
       list.add(profile);
     }
-    final activeId = makeActive ||
-            settings.activeGithubTokenId.isEmpty
+    final activeId = makeActive || settings.activeGithubTokenId.isEmpty
         ? (byId >= 0
-            ? profile.id
-            : byToken >= 0
-                ? list[byToken].id
-                : profile.id)
+              ? profile.id
+              : byToken >= 0
+              ? list[byToken].id
+              : profile.id)
         : settings.activeGithubTokenId;
     GithubTokenProfile? active;
     for (final t in list) {
@@ -3219,15 +3348,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModal) {
-            final tokens = List<GithubTokenProfile>.from(
-                settings.githubTokens);
+            final tokens = List<GithubTokenProfile>.from(settings.githubTokens);
             return Padding(
               padding: EdgeInsets.only(
                 left: 16,
                 right: 16,
                 top: 8,
-                bottom:
-                    MediaQuery.of(ctx).viewInsets.bottom + 16,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
               ),
               child: SizedBox(
                 height: MediaQuery.of(ctx).size.height * 0.75,
@@ -3240,21 +3367,22 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                           child: Text(
                             'GitHub 登录令牌',
                             style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                         TextButton.icon(
                           onPressed: () async {
-                            final created =
-                                await _editGithubToken(null);
+                            final created = await _editGithubToken(null);
                             if (created != null) {
-                              await _upsertGithubToken(created,
-                                  makeActive: true);
+                              await _upsertGithubToken(
+                                created,
+                                makeActive: true,
+                              );
                               setModal(() {});
                               if (mounted) setState(() {});
-                              _showToast(
-                                  '已保存 ${created.displayLabel}');
+                              _showToast('已保存 ${created.displayLabel}');
                             }
                           },
                           icon: const Icon(Icons.add),
@@ -3265,186 +3393,155 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                     const SizedBox(height: 8),
                     const Text(
                       'Token 仅保存在本机。登录后可在多仓库间复用，也可随时切换当前令牌。',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF64748B)),
+                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                     ),
                     const SizedBox(height: 12),
                     Expanded(
                       child: tokens.isEmpty
-                          ? const Center(
-                              child: Text(
-                                  '暂无已登录令牌，点右上角登录'))
+                          ? const Center(child: Text('暂无已登录令牌，点右上角登录'))
                           : ListView.separated(
                               itemCount: tokens.length,
                               separatorBuilder: (_, __) =>
                                   const SizedBox(height: 8),
                               itemBuilder: (_, i) {
                                 final t = tokens[i];
-                                final active = settings
-                                        .activeGithubTokenId ==
-                                    t.id;
+                                final active =
+                                    settings.activeGithubTokenId == t.id;
                                 return Card(
                                   child: ListTile(
                                     leading: Icon(
                                       active
                                           ? Icons.check_circle
-                                          : Icons
-                                              .key_outlined,
+                                          : Icons.key_outlined,
                                       color: active
-                                          ? Theme.of(ctx)
-                                              .colorScheme
-                                              .primary
+                                          ? Theme.of(ctx).colorScheme.primary
                                           : null,
                                     ),
                                     title: Text(t.displayLabel),
                                     subtitle: Text(
                                       [
-                                        if (t.login.isNotEmpty)
-                                          '@${t.login}',
+                                        if (t.login.isNotEmpty) '@${t.login}',
                                         t.maskedToken,
-                                        if (t.lastVerifiedAt !=
-                                            null)
+                                        if (t.lastVerifiedAt != null)
                                           '验证于 ${t.lastVerifiedAt!.toLocal().toString().substring(0, 16)}',
                                       ].join(' · '),
                                     ),
-                                    isThreeLine: t.lastVerifiedAt !=
-                                        null,
-                                    trailing: PopupMenuButton<
-                                        String>(
+                                    isThreeLine: t.lastVerifiedAt != null,
+                                    trailing: PopupMenuButton<String>(
                                       onSelected: (v) async {
                                         if (v == 'use') {
-                                          await _activateGithubToken(
-                                              t.id);
+                                          await _activateGithubToken(t.id);
                                           setModal(() {});
-                                        } else if (v ==
-                                            'edit') {
-                                          final edited =
-                                              await _editGithubToken(
-                                                  t);
+                                        } else if (v == 'edit') {
+                                          final edited = await _editGithubToken(
+                                            t,
+                                          );
                                           if (edited != null) {
                                             await _upsertGithubToken(
-                                                edited,
-                                                makeActive: settings
-                                                        .activeGithubTokenId ==
-                                                    t.id);
+                                              edited,
+                                              makeActive:
+                                                  settings
+                                                      .activeGithubTokenId ==
+                                                  t.id,
+                                            );
                                             setModal(() {});
                                           }
-                                        } else if (v ==
-                                            'verify') {
+                                        } else if (v == 'verify') {
                                           try {
-                                            final user = await github
-                                                .getUser(
-                                                    t.token);
-                                            final login = user[
-                                                        'login']
-                                                    ?.toString() ??
-                                                '';
+                                            final user = await github.getUser(
+                                              t.token,
+                                            );
+                                            final login =
+                                                user['login']?.toString() ?? '';
                                             await _upsertGithubToken(
-                                                t.copyWith(
-                                              login: login,
-                                              avatarUrl: user[
-                                                          'avatar_url']
-                                                      ?.toString() ??
-                                                  '',
-                                              htmlUrl: user[
-                                                          'html_url']
-                                                      ?.toString() ??
-                                                  '',
-                                              lastVerifiedAt:
-                                                  DateTime.now(),
-                                              name: t.name
-                                                              .isEmpty ||
-                                                          t.name ==
-                                                              '默认 Token' ||
-                                                          t.name ==
-                                                              'GitHub Token'
-                                                  ? (login.isNotEmpty
-                                                      ? login
-                                                      : t.name)
-                                                  : t.name,
-                                            ),
-                                                makeActive:
-                                                    active);
+                                              t.copyWith(
+                                                login: login,
+                                                avatarUrl:
+                                                    user['avatar_url']
+                                                        ?.toString() ??
+                                                    '',
+                                                htmlUrl:
+                                                    user['html_url']
+                                                        ?.toString() ??
+                                                    '',
+                                                lastVerifiedAt: DateTime.now(),
+                                                name:
+                                                    t.name.isEmpty ||
+                                                        t.name == '默认 Token' ||
+                                                        t.name == 'GitHub Token'
+                                                    ? (login.isNotEmpty
+                                                          ? login
+                                                          : t.name)
+                                                    : t.name,
+                                              ),
+                                              makeActive: active,
+                                            );
                                             setModal(() {});
-                                            _showToast(login
-                                                    .isEmpty
-                                                ? 'Token 有效'
-                                                : '有效 · @$login');
-                                          } catch (e) {
                                             _showToast(
-                                                '校验失败: $e');
+                                              login.isEmpty
+                                                  ? 'Token 有效'
+                                                  : '有效 · @$login',
+                                            );
+                                          } catch (e) {
+                                            _showToast('校验失败: $e');
                                           }
-                                        } else if (v ==
-                                            'delete') {
+                                        } else if (v == 'delete') {
                                           final ok = await _confirm(
-                                              '删除已保存令牌「${t.displayLabel}」？');
+                                            '删除已保存令牌「${t.displayLabel}」？',
+                                          );
                                           if (!ok) return;
-                                          final list = List<
-                                                      GithubTokenProfile>
-                                                  .from(settings
-                                                      .githubTokens)
-                                                ..removeWhere(
-                                                    (e) =>
-                                                        e.id ==
-                                                        t.id);
-                                          var activeId = settings
-                                              .activeGithubTokenId;
+                                          final list =
+                                              List<GithubTokenProfile>.from(
+                                                settings.githubTokens,
+                                              )..removeWhere(
+                                                (e) => e.id == t.id,
+                                              );
+                                          var activeId =
+                                              settings.activeGithubTokenId;
                                           if (activeId == t.id) {
-                                            activeId = list
-                                                    .isNotEmpty
+                                            activeId = list.isNotEmpty
                                                 ? list.first.id
                                                 : '';
                                           }
-                                          final activeToken = list
-                                                  .isEmpty
+                                          final activeToken = list.isEmpty
                                               ? ''
                                               : list
-                                                  .firstWhere(
-                                                    (e) =>
-                                                        e.id ==
-                                                        activeId,
-                                                    orElse: () =>
-                                                        list.first,
-                                                  )
-                                                  .token;
-                                          settings = settings
-                                              .copyWith(
+                                                    .firstWhere(
+                                                      (e) => e.id == activeId,
+                                                      orElse: () => list.first,
+                                                    )
+                                                    .token;
+                                          settings = settings.copyWith(
                                             githubTokens: list,
-                                            activeGithubTokenId:
-                                                activeId,
-                                            defaultToken:
-                                                activeToken,
+                                            activeGithubTokenId: activeId,
+                                            defaultToken: activeToken,
                                           );
                                           await _persistSettings();
                                           setModal(() {});
-                                          if (mounted)
-                                            setState(() {});
+                                          if (mounted) setState(() {});
                                         }
                                       },
-                                      itemBuilder: (_) =>
-                                          const [
+                                      itemBuilder: (_) => const [
                                         PopupMenuItem(
-                                            value: 'use',
-                                            child: Text(
-                                                '设为当前')),
+                                          value: 'use',
+                                          child: Text('设为当前'),
+                                        ),
                                         PopupMenuItem(
-                                            value: 'verify',
-                                            child: Text(
-                                                '验证')),
+                                          value: 'verify',
+                                          child: Text('验证'),
+                                        ),
                                         PopupMenuItem(
-                                            value: 'edit',
-                                            child: Text(
-                                                '编辑')),
+                                          value: 'edit',
+                                          child: Text('编辑'),
+                                        ),
                                         PopupMenuItem(
-                                            value: 'delete',
-                                            child: Text(
-                                                '删除')),
+                                          value: 'delete',
+                                          child: Text('删除'),
+                                        ),
                                       ],
                                     ),
                                     onTap: () async {
-                                      await _activateGithubToken(
-                                          t.id);
+                                      await _activateGithubToken(t.id);
                                       setModal(() {});
                                     },
                                   ),
@@ -3463,16 +3560,16 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   }
 
   Future<GithubTokenProfile?> _editGithubToken(
-      GithubTokenProfile? existing) async {
+    GithubTokenProfile? existing,
+  ) async {
     final nameCtrl = TextEditingController(
       text: existing?.name.isNotEmpty == true
           ? existing!.name
           : (existing?.login.isNotEmpty == true
-              ? existing!.login
-              : 'GitHub Token'),
+                ? existing!.login
+                : 'GitHub Token'),
     );
-    final tokenCtrl = TextEditingController(
-        text: existing?.token ?? '');
+    final tokenCtrl = TextEditingController(text: existing?.token ?? '');
     var verifying = false;
     String? err;
     String login = existing?.login ?? '';
@@ -3498,20 +3595,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               try {
                 final user = await github.getUser(token);
                 login = user['login']?.toString() ?? '';
-                avatarUrl =
-                    user['avatar_url']?.toString() ?? '';
-                htmlUrl =
-                    user['html_url']?.toString() ?? '';
+                avatarUrl = user['avatar_url']?.toString() ?? '';
+                htmlUrl = user['html_url']?.toString() ?? '';
                 if (nameCtrl.text.trim().isEmpty ||
                     nameCtrl.text.trim() == 'GitHub Token' ||
                     nameCtrl.text.trim() == '默认 Token') {
-                  if (login.isNotEmpty)
-                    nameCtrl.text = login;
+                  if (login.isNotEmpty) nameCtrl.text = login;
                 }
                 setDlg(() => verifying = false);
-                _showToast(login.isEmpty
-                    ? 'Token 有效'
-                    : '验证成功 · @$login');
+                _showToast(login.isEmpty ? 'Token 有效' : '验证成功 · @$login');
               } catch (e) {
                 setDlg(() {
                   verifying = false;
@@ -3521,9 +3613,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             }
 
             return AlertDialog(
-              title: Text(existing == null
-                  ? '登录 GitHub Token'
-                  : '编辑 Token'),
+              title: Text(existing == null ? '登录 GitHub Token' : '编辑 Token'),
               content: SizedBox(
                 width: 420,
                 child: SingleChildScrollView(
@@ -3543,48 +3633,41 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                         obscureText: true,
                         decoration: const InputDecoration(
                           labelText: 'GitHub Token',
-                          hintText:
-                              'ghp_... 或 fine-grained token',
-                          helperText:
-                              '需要 contents:read/write 权限',
+                          hintText: 'ghp_... 或 fine-grained token',
+                          helperText: '需要 contents:read/write 权限',
                         ),
                       ),
                       const SizedBox(height: 8),
                       if (login.isNotEmpty)
                         ListTile(
                           contentPadding: EdgeInsets.zero,
-                          leading: const Icon(
-                              Icons.account_circle_outlined),
+                          leading: const Icon(Icons.account_circle_outlined),
                           title: Text('@$login'),
-                          subtitle: Text(htmlUrl.isEmpty
-                              ? '已验证'
-                              : htmlUrl),
+                          subtitle: Text(htmlUrl.isEmpty ? '已验证' : htmlUrl),
                         ),
                       if (err != null)
-                        Text(err!,
-                            style: const TextStyle(
-                                color: Colors.red,
-                                fontSize: 12)),
+                        Text(
+                          err!,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 12,
+                          ),
+                        ),
                       const SizedBox(height: 8),
                       Align(
                         alignment: Alignment.centerLeft,
                         child: FilledButton.tonalIcon(
-                          onPressed: verifying
-                              ? null
-                              : verifyAndFill,
+                          onPressed: verifying ? null : verifyAndFill,
                           icon: verifying
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
-                                  child:
-                                      CircularProgressIndicator(
-                                          strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 )
-                              : const Icon(
-                                  Icons.verified_user_outlined),
-                          label: Text(verifying
-                              ? '验证中…'
-                              : '验证并识别账号'),
+                              : const Icon(Icons.verified_user_outlined),
+                          label: Text(verifying ? '验证中…' : '验证并识别账号'),
                         ),
                       ),
                     ],
@@ -3593,8 +3676,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               ),
               actions: [
                 TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('取消')),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('取消'),
+                ),
                 FilledButton(
                   onPressed: verifying
                       ? null
@@ -3606,34 +3690,25 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                           }
                           if (login.isEmpty) {
                             try {
-                              final user =
-                                  await github.getUser(token);
-                              login = user['login']
-                                      ?.toString() ??
-                                  '';
-                              avatarUrl =
-                                  user['avatar_url']
-                                          ?.toString() ??
-                                      '';
-                              htmlUrl = user['html_url']
-                                      ?.toString() ??
-                                  '';
+                              final user = await github.getUser(token);
+                              login = user['login']?.toString() ?? '';
+                              avatarUrl = user['avatar_url']?.toString() ?? '';
+                              htmlUrl = user['html_url']?.toString() ?? '';
                             } catch (e) {
                               final force = await _confirm(
-                                  'Token 校验失败：\n$e\n\n仍要保存吗？');
+                                'Token 校验失败：\n$e\n\n仍要保存吗？',
+                              );
                               if (!force) return;
                             }
                           }
-                          final name = nameCtrl
-                                  .text.trim().isEmpty
-                              ? (login.isNotEmpty
-                                  ? login
-                                  : 'GitHub Token')
+                          final name = nameCtrl.text.trim().isEmpty
+                              ? (login.isNotEmpty ? login : 'GitHub Token')
                               : nameCtrl.text.trim();
                           Navigator.pop(
                             ctx,
                             GithubTokenProfile(
-                              id: existing?.id ??
+                              id:
+                                  existing?.id ??
                                   'gh_${DateTime.now().millisecondsSinceEpoch}',
                               name: name,
                               token: token,
@@ -3642,8 +3717,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                               htmlUrl: htmlUrl,
                               lastVerifiedAt: login.isNotEmpty
                                   ? DateTime.now()
-                                  : existing
-                                      ?.lastVerifiedAt,
+                                  : existing?.lastVerifiedAt,
                             ),
                           );
                         },
@@ -3671,8 +3745,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               padding: EdgeInsets.only(
                 left: 16,
                 right: 16,
-                bottom:
-                    MediaQuery.of(ctx).viewInsets.bottom + 16,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
                 top: 8,
               ),
               child: SizedBox(
@@ -3686,8 +3759,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                           child: Text(
                             '多仓库管理',
                             style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                         FilledButton.icon(
@@ -3705,23 +3779,18 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                     Expanded(
                       child: ListView.separated(
                         itemCount: repos.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(height: 8),
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (_, i) {
                           final r = repos[i];
-                          final active =
-                              activeRepo?.id == r.id;
+                          final active = activeRepo?.id == r.id;
                           return Card(
                             child: ListTile(
                               leading: Icon(
                                 active
-                                    ? Icons
-                                        .radio_button_checked
+                                    ? Icons.radio_button_checked
                                     : Icons.radio_button_off,
                                 color: active
-                                    ? Theme.of(context)
-                                        .colorScheme
-                                        .primary
+                                    ? Theme.of(context).colorScheme.primary
                                     : null,
                               ),
                               title: Text(r.name),
@@ -3735,39 +3804,31 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                               dense: false,
                               onTap: () async {
                                 settings = settings.copyWith(
-                                    activeRepoId: r.id);
+                                  activeRepoId: r.id,
+                                );
                                 await _persistSettings();
                                 remotePosts = [];
                                 commits = [];
                                 setState(() {});
                                 setModal(() {});
-                                if (ctx.mounted)
-                                  Navigator.pop(ctx);
+                                if (ctx.mounted) Navigator.pop(ctx);
                               },
-                              trailing: PopupMenuButton<
-                                  String>(
+                              trailing: PopupMenuButton<String>(
                                 onSelected: (v) async {
                                   if (v == 'edit') {
-                                    await _editRepo(
-                                        existing: r);
-                                  } else if (v ==
-                                      'delete') {
+                                    await _editRepo(existing: r);
+                                  } else if (v == 'delete') {
                                     final ok = await _confirm(
-                                        '删除仓库配置「${r.name}」？');
+                                      '删除仓库配置「${r.name}」？',
+                                    );
                                     if (ok) {
-                                      repos.removeWhere(
-                                          (e) => e.id == r.id);
+                                      repos.removeWhere((e) => e.id == r.id);
                                       await _persistRepos();
-                                      if (settings
-                                              .activeRepoId ==
-                                          r.id) {
-                                        settings = settings
-                                            .copyWith(
-                                          activeRepoId: repos
-                                                  .isEmpty
+                                      if (settings.activeRepoId == r.id) {
+                                        settings = settings.copyWith(
+                                          activeRepoId: repos.isEmpty
                                               ? ''
-                                              : repos
-                                                  .first.id,
+                                              : repos.first.id,
                                         );
                                         await _persistSettings();
                                       }
@@ -3776,16 +3837,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                                   setModal(() {});
                                   setState(() {});
                                 },
-                                itemBuilder: (_) =>
-                                    const [
+                                itemBuilder: (_) => const [
                                   PopupMenuItem(
-                                      value: 'edit',
-                                      child:
-                                          Text('编辑')),
+                                    value: 'edit',
+                                    child: Text('编辑'),
+                                  ),
                                   PopupMenuItem(
-                                      value: 'delete',
-                                      child:
-                                          Text('删除')),
+                                    value: 'delete',
+                                    child: Text('删除'),
+                                  ),
                                 ],
                               ),
                             ),
@@ -3805,26 +3865,24 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   }
 
   Future<void> _editRepo({RepoConfig? existing}) async {
-    final name = TextEditingController(
-        text: existing?.name ?? '');
+    final name = TextEditingController(text: existing?.name ?? '');
     final owner = TextEditingController(
-        text: existing?.owner ?? 'caogenfunan123');
-    final repo = TextEditingController(
-        text: existing?.repo ?? 'xiamend');
-    final branch = TextEditingController(
-        text: existing?.branch ?? 'main');
+      text: existing?.owner ?? 'caogenfunan123',
+    );
+    final repo = TextEditingController(text: existing?.repo ?? 'xiamend');
+    final branch = TextEditingController(text: existing?.branch ?? 'main');
     final posts = TextEditingController(
-        text: existing?.postsPath ?? 'source/_posts');
-    final pages = TextEditingController(
-        text: existing?.pagesPath ?? 'source');
+      text: existing?.postsPath ?? 'source/_posts',
+    );
+    final pages = TextEditingController(text: existing?.pagesPath ?? 'source');
     final site = TextEditingController(
-        text: existing?.siteUrl.isNotEmpty == true
-            ? existing!.siteUrl
-            : '');
+      text: existing?.siteUrl.isNotEmpty == true ? existing!.siteUrl : '',
+    );
     final token = TextEditingController(
-        text: existing?.token.isNotEmpty == true
-            ? existing!.token
-            : settings.effectiveGithubToken);
+      text: existing?.token.isNotEmpty == true
+          ? existing!.token
+          : settings.effectiveGithubToken,
+    );
     String frameworkId = existing?.frameworkId ?? 'hexo';
     final String originalFrameworkId = existing?.frameworkId ?? 'hexo';
     int publishTimeZoneOffsetMinutes =
@@ -3846,8 +3904,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         return StatefulBuilder(
           builder: (ctx, setDlg) {
             return AlertDialog(
-              title: Text(
-                  existing == null ? '添加仓库' : '编辑仓库'),
+              title: Text(existing == null ? '添加仓库' : '编辑仓库'),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -3860,10 +3917,16 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                         prefixIcon: Icon(Icons.web, size: 18),
                       ),
                       items: [
-                        ...BlogFramework.presets.map((f) =>
-                          DropdownMenuItem(value: f.id, child: Text('${f.name} (${f.defaultPostsPath})')),
+                        ...BlogFramework.presets.map(
+                          (f) => DropdownMenuItem(
+                            value: f.id,
+                            child: Text('${f.name} (${f.defaultPostsPath})'),
+                          ),
                         ),
-                        const DropdownMenuItem(value: 'custom', child: Text('自定义')),
+                        const DropdownMenuItem(
+                          value: 'custom',
+                          child: Text('自定义'),
+                        ),
                       ],
                       onChanged: (v) {
                         if (v == null) return;
@@ -3886,17 +3949,30 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                       value: publishTimeZoneOffsetMinutes,
                       decoration: const InputDecoration(
                         labelText: '发布时区',
-                        helperText: 'Front Matter 日期带该时区偏移，避免 Cloudflare(UTC) 构建日期错位',
+                        helperText:
+                            'Front Matter 日期带该时区偏移，避免 Cloudflare(UTC) 构建日期错位',
                         prefixIcon: Icon(Icons.schedule, size: 18),
                       ),
                       items: const [
                         DropdownMenuItem(value: 0, child: Text('UTC (UTC+0)')),
                         DropdownMenuItem(value: 480, child: Text('北京 (UTC+8)')),
                         DropdownMenuItem(value: 540, child: Text('东京 (UTC+9)')),
-                        DropdownMenuItem(value: 600, child: Text('悉尼 (UTC+10)')),
-                        DropdownMenuItem(value: -300, child: Text('纽约 (UTC-5)')),
-                        DropdownMenuItem(value: -480, child: Text('洛杉矶 (UTC-8)')),
-                        DropdownMenuItem(value: 330, child: Text('孟买 (UTC+5:30)')),
+                        DropdownMenuItem(
+                          value: 600,
+                          child: Text('悉尼 (UTC+10)'),
+                        ),
+                        DropdownMenuItem(
+                          value: -300,
+                          child: Text('纽约 (UTC-5)'),
+                        ),
+                        DropdownMenuItem(
+                          value: -480,
+                          child: Text('洛杉矶 (UTC-8)'),
+                        ),
+                        DropdownMenuItem(
+                          value: 330,
+                          child: Text('孟买 (UTC+5:30)'),
+                        ),
                       ],
                       onChanged: (v) {
                         if (v != null) {
@@ -3906,32 +3982,36 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                     ),
                     const SizedBox(height: 12),
                     TextField(
-                        controller: name,
-                        decoration: const InputDecoration(
-                            labelText: '显示名称')),
+                      controller: name,
+                      decoration: const InputDecoration(labelText: '显示名称'),
+                    ),
                     TextField(
-                        controller: owner,
-                        decoration: const InputDecoration(
-                            labelText: 'Owner')),
+                      controller: owner,
+                      decoration: const InputDecoration(labelText: 'Owner'),
+                    ),
                     TextField(
-                        controller: repo,
-                        decoration: const InputDecoration(
-                            labelText: 'Repo')),
+                      controller: repo,
+                      decoration: const InputDecoration(labelText: 'Repo'),
+                    ),
                     TextField(
-                        controller: branch,
-                        decoration: const InputDecoration(
-                            labelText: 'Branch')),
+                      controller: branch,
+                      decoration: const InputDecoration(labelText: 'Branch'),
+                    ),
                     // ── 双目录配置 ──
                     TextField(
-                        controller: posts,
-                        decoration: const InputDecoration(
-                            labelText: '博文目录 (posts)',
-                            helperText: '例如: source/_posts, content/posts')),
+                      controller: posts,
+                      decoration: const InputDecoration(
+                        labelText: '博文目录 (posts)',
+                        helperText: '例如: source/_posts, content/posts',
+                      ),
+                    ),
                     TextField(
-                        controller: pages,
-                        decoration: const InputDecoration(
-                            labelText: '页面目录 (pages)',
-                            helperText: '例如: source, content')),
+                      controller: pages,
+                      decoration: const InputDecoration(
+                        labelText: '页面目录 (pages)',
+                        helperText: '例如: source, content',
+                      ),
+                    ),
                     // ── 文件名规则 ──
                     CheckboxListTile(
                       title: const Text('博文自动日期前缀'),
@@ -3939,41 +4019,42 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                       value: postDatePrefix,
                       dense: true,
                       controlAffinity: ListTileControlAffinity.leading,
-                      onChanged: (v) => setDlg(() => postDatePrefix = v ?? false),
+                      onChanged: (v) =>
+                          setDlg(() => postDatePrefix = v ?? false),
                     ),
                     TextField(
-                        controller: site,
-                        decoration: const InputDecoration(
-                            labelText: '站点 URL')),
-                    if (settings
-                        .githubTokens.isNotEmpty) ...[
+                      controller: site,
+                      decoration: const InputDecoration(labelText: '站点 URL'),
+                    ),
+                    if (settings.githubTokens.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
-                        value: settings.githubTokens
-                                .any((e) =>
-                                    e.id == selectedTokenId)
+                        value:
+                            settings.githubTokens.any(
+                              (e) => e.id == selectedTokenId,
+                            )
                             ? selectedTokenId
                             : null,
                         decoration: const InputDecoration(
                           labelText: '选用已登录 Token',
-                          helperText:
-                              '可选择已保存令牌，或下方手动填写',
+                          helperText: '可选择已保存令牌，或下方手动填写',
                         ),
                         items: [
                           ...settings.githubTokens.map(
                             (t) => DropdownMenuItem(
                               value: t.id,
-                              child: Text(t.displayLabel,
-                                  overflow: TextOverflow
-                                      .ellipsis),
+                              child: Text(
+                                t.displayLabel,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ),
                         ],
                         onChanged: (v) {
                           if (v == null) return;
-                          final t = settings.githubTokens
-                              .firstWhere(
-                                  (e) => e.id == v);
+                          final t = settings.githubTokens.firstWhere(
+                            (e) => e.id == v,
+                          );
                           setDlg(() {
                             selectedTokenId = t.id;
                             token.text = t.token;
@@ -3985,20 +4066,21 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                       controller: token,
                       obscureText: true,
                       decoration: const InputDecoration(
-                          labelText: 'GitHub Token'),
+                        labelText: 'GitHub Token',
+                      ),
                     ),
                   ],
                 ),
               ),
               actions: [
                 TextButton(
-                    onPressed: () =>
-                        Navigator.pop(ctx, false),
-                    child: const Text('取消')),
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
                 FilledButton(
-                    onPressed: () =>
-                        Navigator.pop(ctx, true),
-                    child: const Text('保存')),
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('保存'),
+                ),
               ],
             );
           },
@@ -4012,7 +4094,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     // ── 框架变更弹窗询问 ──
     bool updateTemplates = true;
     if (existing != null && frameworkId != originalFrameworkId) {
-      updateTemplates = await showDialog<bool>(
+      updateTemplates =
+          await showDialog<bool>(
             context: context,
             builder: (ctx) => AlertDialog(
               title: const Text('框架已变更'),
@@ -4043,22 +4126,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     }
 
     final cfg = RepoConfig(
-      id: existing?.id ??
-          DateTime.now().millisecondsSinceEpoch.toString(),
-      name: name.text.trim().isEmpty
-          ? repo.text.trim()
-          : name.text.trim(),
+      id: existing?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      name: name.text.trim().isEmpty ? repo.text.trim() : name.text.trim(),
       owner: owner.text.trim(),
       repo: repo.text.trim(),
-      branch: branch.text.trim().isEmpty
-          ? 'main'
-          : branch.text.trim(),
+      branch: branch.text.trim().isEmpty ? 'main' : branch.text.trim(),
       postsPath: posts.text.trim().isEmpty
           ? 'source/_posts'
           : posts.text.trim(),
-      pagesPath: pages.text.trim().isEmpty
-          ? 'source'
-          : pages.text.trim(),
+      pagesPath: pages.text.trim().isEmpty ? 'source' : pages.text.trim(),
       frameworkId: frameworkId,
       postDatePrefix: postDatePrefix,
       fileNameRule: FileNameRule(
@@ -4085,8 +4161,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     await _persistRepos();
 
     if (tokenValue.isNotEmpty) {
-      final exists = settings.githubTokens
-          .any((e) => e.token == tokenValue);
+      final exists = settings.githubTokens.any((e) => e.token == tokenValue);
       if (!exists) {
         await _upsertGithubToken(
           GithubTokenProfile(
@@ -4098,8 +4173,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         );
       } else {
         final pickedTokenId = selectedTokenId;
-        if (pickedTokenId != null &&
-            pickedTokenId.isNotEmpty) {
+        if (pickedTokenId != null && pickedTokenId.isNotEmpty) {
           await _activateGithubToken(pickedTokenId);
         }
       }
@@ -4112,9 +4186,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   Future<void> _showCommitActions(GitCommitItem c) async {
     final pathController = TextEditingController(
-      text: activeRepo == null
-          ? 'source/_posts/'
-          : '${activeRepo!.postsPath}/',
+      text: activeRepo == null ? 'source/_posts/' : '${activeRepo!.postsPath}/',
     );
     await showDialog<void>(
       context: context,
@@ -4128,8 +4200,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             const SizedBox(height: 8),
             Text(
               '${c.sha}\n${c.author} · ${_fmt(c.date)}',
-              style: const TextStyle(
-                  fontSize: 12, color: Color(0xFF64748B)),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -4143,13 +4214,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('关闭')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
           FilledButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              await _doRollback(
-                  pathController.text.trim(), c.sha);
+              await _doRollback(pathController.text.trim(), c.sha);
             },
             child: const Text('回滚该文件'),
           ),
@@ -4172,10 +4243,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         itemBuilder: (_, i) {
           final c = commits[i];
           return ListTile(
-            title: Text(c.message.split('\n').first,
-                maxLines: 1),
-            subtitle: Text(
-                '${c.sha.substring(0, 7)} · ${_fmt(c.date)}'),
+            title: Text(c.message.split('\n').first, maxLines: 1),
+            subtitle: Text('${c.sha.substring(0, 7)} · ${_fmt(c.date)}'),
             onTap: () => Navigator.pop(ctx, c.sha),
           );
         },
@@ -4191,13 +4260,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       _showToast('路径不能为空');
       return;
     }
-    final ok = await _confirm(
-        '将 $path 恢复为 $sha 的内容并新建提交？');
+    final ok = await _confirm('将 $path 恢复为 $sha 的内容并新建提交？');
     if (!ok) return;
     setState(() => busy = true);
     try {
-      final article =
-          await github.rollbackFile(repo, path, sha);
+      final article = await github.rollbackFile(repo, path, sha);
       _showToast('回滚成功: ${article.remotePath}');
       await _refreshRemote();
       await _refreshCommits();
@@ -4252,6 +4319,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     _startAutoSave();
     _saveSession(SessionPageType.editor);
     setState(() => _currentPage = 0);
+    _updateSystemBarStyle();
     logService.add('加载远程文章', '标题: ${post.title}');
     if (mounted) _showToast('已加载远程文章: ${post.title}');
   }
@@ -4277,7 +4345,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     if (adapter == null) return;
     try {
       await adapter.deletePost(post.id!);
-      logService.add('删除远程文章', '已从 ${adapter.config.type.name} 删除: ${post.title}');
+      logService.add(
+        '删除远程文章',
+        '已从 ${adapter.config.type.name} 删除: ${post.title}',
+      );
       if (mounted) _showToast('已删除: ${post.title}');
     } catch (e) {
       logService.add('删除远程文章失败', '$e', success: false);
@@ -4290,17 +4361,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   Future<void> _deleteRemotePost(GitHubFileItem item) async {
     final repo = effectiveRepo;
     if (repo == null) return;
-    final ok = await _confirm(
-        '确认删除远程文章 ${item.path}？此操作会提交到 GitHub，不可撤销。');
+    final ok = await _confirm('确认删除远程文章 ${item.path}？此操作会提交到 GitHub，不可撤销。');
     if (!ok) return;
     setState(() => busy = true);
     try {
       final article = await github.getArticle(repo, item);
       await github.deleteArticle(repo, article);
       final idx = drafts.indexWhere(
-        (d) =>
-            d.remotePath == item.path ||
-            d.fileName == item.name,
+        (d) => d.remotePath == item.path || d.fileName == item.name,
       );
       if (idx >= 0) {
         drafts[idx] = drafts[idx].copyWith(
@@ -4322,8 +4390,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   }
 
   Future<void> _batchDeleteRemote(List<GitHubFileItem> items) async {
-    final ok = await _confirm(
-        '确认批量删除 ${items.length} 篇远程文章？此操作不可撤销。');
+    final ok = await _confirm('确认批量删除 ${items.length} 篇远程文章？此操作不可撤销。');
     if (!ok) return;
     setState(() => busy = true);
     int success = 0;
@@ -4332,11 +4399,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       try {
         final repo = effectiveRepo;
         if (repo == null) continue;
-        final article =
-            await github.getArticle(repo, item);
+        final article = await github.getArticle(repo, item);
         await github.deleteArticle(repo, article);
         success++;
-      } catch (e) { debugPrint('App: site data load failed: $e');
+      } catch (e) {
+        debugPrint('App: site data load failed: $e');
         fail++;
       }
     }
@@ -4369,8 +4436,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         actions: [
           TextButton(
             onPressed: () {
-              Clipboard.setData(
-                  ClipboardData(text: site));
+              Clipboard.setData(ClipboardData(text: site));
               Navigator.pop(ctx);
               _showToast('站点地址已复制');
             },
@@ -4390,8 +4456,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     if (loading)
-      return const Scaffold(
-          body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     // ── 专注模式：全屏沉浸式写作 ──
     if (_focusModeEnabled && _currentPage == 0) {
@@ -4411,8 +4476,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       },
       child: Scaffold(
         key: _scaffoldKey,
-        // 编辑页为纯白无缝画布，其余页面保持主题背景
-        backgroundColor: _currentPage == 0 ? Colors.white : AppTheme.bg,
+        // 编辑页为全屏主题画布（透明承载背景层），其余页面保持主题背景
+        backgroundColor: _currentPage == 0 ? Colors.transparent : AppTheme.bg,
         appBar: _buildAppBar(),
         drawer: _buildDrawer(),
         body: _buildPage(),
@@ -4424,7 +4489,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   Widget _buildFocusMode() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D1117) : const Color(0xFFF8F6F0),
+      backgroundColor: isDark
+          ? const Color(0xFF0D1117)
+          : const Color(0xFFF8F6F0),
       body: SafeArea(
         child: Stack(
           children: [
@@ -4443,7 +4510,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   _onContentChanged();
                   final text = _doc.contentCtrl.text;
                   final cursorPos = _doc.contentCtrl.selection.baseOffset;
-                  final textBefore = text.substring(0, cursorPos.clamp(0, text.length));
+                  final textBefore = text.substring(
+                    0,
+                    cursorPos.clamp(0, text.length),
+                  );
                   final currentLine = '\n'.allMatches(textBefore).length;
                   final totalLines = '\n'.allMatches(text).length + 1;
                   _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
@@ -4463,10 +4533,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   fontSize: 17,
                   height: 1.8,
                   fontFamily: 'monospace',
-                  color: isDark ? const Color(0xFFE6EDF3) : const Color(0xFF1A1A2E),
+                  color: isDark
+                      ? const Color(0xFFE6EDF3)
+                      : const Color(0xFF1A1A2E),
                   fontWeight: FontWeight.w400,
                 ),
-                cursorColor: isDark ? const Color(0xFF58A6FF) : const Color(0xFF1A6DB5),
+                cursorColor: isDark
+                    ? const Color(0xFF58A6FF)
+                    : const Color(0xFF1A6DB5),
                 cursorWidth: 2.5,
               ),
             ),
@@ -4514,7 +4588,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   PreferredSizeWidget _buildAppBar() {
     final cs = Theme.of(context).colorScheme;
     return AppBar(
-      backgroundColor: Colors.white,
+      backgroundColor: _currentPage == 0 ? Colors.transparent : Colors.white,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       shadowColor: Colors.black.withOpacity(0.04),
@@ -4523,40 +4597,63 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           width: 36,
           height: 36,
           decoration: BoxDecoration(
-            color: cs.primary.withOpacity(0.06),
+            color: globalTextColor.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(Icons.menu_rounded, color: cs.primary, size: 20),
+          child: Icon(
+            Icons.menu_rounded,
+            color: _currentPage == 0 ? globalTextColor : cs.primary,
+            size: 20,
+          ),
         ),
         onPressed: _openDrawer,
       ),
       title: _currentPage == 0
           ? _buildEditorAppBarTitle(cs)
-          : Text(_pageTitle,
+          : Text(
+              _pageTitle,
               style: const TextStyle(
-                  color: AppTheme.text,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 18)),
+                color: AppTheme.text,
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+              ),
+            ),
       actions: _currentPage == 0
           ? [
               _WordCountBadge(
                 titleCtrl: _doc.titleCtrl,
                 contentCtrl: _doc.contentCtrl,
+                textColor: globalTextColor,
               ),
               _appBarAction(
-                  icon: Icons.visibility_outlined,
-                  tooltip: '预览',
-                  color: cs.primary,
-                  onTap: _openArticlePreview),
+                icon: Icons.visibility_outlined,
+                tooltip: '预览',
+                color: globalTextColor,
+                onTap: _openArticlePreview,
+              ),
               _appBarAction(
-                  icon: Icons.widgets_outlined,
-                  tooltip: '工具箱',
-                  color: cs.primary,
-                  onTap: () => _showEditorToolbox()),
+                icon: Icons.widgets_outlined,
+                tooltip: '工具箱',
+                color: globalTextColor,
+                onTap: () => _showEditorToolbox(),
+              ),
               _appBarAction(
-                  icon: Icons.more_vert,
-                  tooltip: '更多',
-                  onTap: () => _showEditorMoreMenu()),
+                icon: Icons.more_vert,
+                tooltip: '更多',
+                color: globalTextColor,
+                onTap: () => _showEditorMoreMenu(),
+              ),
+              _appBarAction(
+                icon: Icons.widgets_outlined,
+                tooltip: '工具箱',
+                color: cs.primary,
+                onTap: () => _showEditorToolbox(),
+              ),
+              _appBarAction(
+                icon: Icons.more_vert,
+                tooltip: '更多',
+                onTap: () => _showEditorMoreMenu(),
+              ),
             ]
           : null,
     );
@@ -4572,9 +4669,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       tooltip: tooltip,
       icon: Icon(icon, color: color ?? AppTheme.muted, size: 21),
       onPressed: onTap,
-      style: IconButton.styleFrom(
-        foregroundColor: color ?? AppTheme.muted,
-      ),
+      style: IconButton.styleFrom(foregroundColor: color ?? AppTheme.muted),
     );
   }
 
@@ -4586,10 +4681,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         Container(
           width: 8,
           height: 8,
-          decoration: BoxDecoration(
-            color: cs.primary,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle),
         ),
       ],
     );
@@ -4608,7 +4700,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) {
           final isDynamic = siteManager.isDynamicSite;
-          final siteName = settings.siteName.isNotEmpty ? settings.siteName : '未命名站点';
+          final siteName = settings.siteName.isNotEmpty
+              ? settings.siteName
+              : '未命名站点';
           return SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
@@ -4618,11 +4712,19 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   // ── 头部 ──
                   Row(
                     children: [
-                      Icon(Icons.handyman_outlined, color: cs.primary, size: 20),
+                      Icon(
+                        Icons.handyman_outlined,
+                        color: cs.primary,
+                        size: 20,
+                      ),
                       const SizedBox(width: 8),
-                      const Text('工具箱',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w700)),
+                      const Text(
+                        '工具箱',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                       const Spacer(),
                       IconButton(
                         icon: const Icon(Icons.close, size: 20),
@@ -4633,9 +4735,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                     ],
                   ),
                   const SizedBox(height: 6),
-                  Text('当前站点: $siteName',
-                      style: const TextStyle(
-                          fontSize: 12, color: Color(0xFF64748B))),
+                  Text(
+                    '当前站点: $siteName',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
                   if (_failedImageBytes != null) ...[
                     const SizedBox(height: 10),
                     Material(
@@ -4649,16 +4755,24 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                         },
                         child: const Padding(
                           padding: EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 10),
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
                           child: Row(
                             children: [
-                              Icon(Icons.refresh,
-                                  size: 18, color: Colors.orange),
+                              Icon(
+                                Icons.refresh,
+                                size: 18,
+                                color: Colors.orange,
+                              ),
                               SizedBox(width: 8),
-                              Text('重试上传失败的图片',
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.orange)),
+                              Text(
+                                '重试上传失败的图片',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.orange,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -4676,7 +4790,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                           child: _toolboxTypeChip(
                             icon: Icons.article_outlined,
                             label: '博文',
-                            active: !isDynamic && _doc.articleType == ArticleType.post,
+                            active:
+                                !isDynamic &&
+                                _doc.articleType == ArticleType.post,
                             onTap: () => setSheetState(() {
                               _doc.setArticleType(ArticleType.post);
                               _autoSelectTemplate();
@@ -4688,7 +4804,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                           child: _toolboxTypeChip(
                             icon: Icons.web_outlined,
                             label: '页面',
-                            active: !isDynamic && _doc.articleType == ArticleType.page,
+                            active:
+                                !isDynamic &&
+                                _doc.articleType == ArticleType.page,
                             onTap: () => setSheetState(() {
                               _doc.setArticleType(ArticleType.page);
                               _autoSelectTemplate();
@@ -4707,19 +4825,22 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                       value: _editorRepo?.id,
                       decoration: const InputDecoration(
                         labelText: '目标仓库',
-                        prefixIcon:
-                            Icon(Icons.storage_outlined, size: 18),
+                        prefixIcon: Icon(Icons.storage_outlined, size: 18),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         isDense: true,
                         contentPadding: EdgeInsets.zero,
                       ),
                       items: repos
-                          .map((r) => DropdownMenuItem(
-                                value: r.id,
-                                child: Text('${r.name} (${r.fullName})',
-                                    style: const TextStyle(fontSize: 13)),
-                              ))
+                          .map(
+                            (r) => DropdownMenuItem(
+                              value: r.id,
+                              child: Text(
+                                '${r.name} (${r.fullName})',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
+                          )
                           .toList(),
                       onChanged: (v) => setState(() {
                         _editorRepo = repos.firstWhere((e) => e.id == v);
@@ -4739,9 +4860,12 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                             value: siteManager.activeSiteId,
                             decoration: InputDecoration(
                               labelText: '当前站点',
-                              prefixIcon: Icon(isDynamic
-                                  ? Icons.dns_outlined
-                                  : Icons.storage_outlined, size: 18),
+                              prefixIcon: Icon(
+                                isDynamic
+                                    ? Icons.dns_outlined
+                                    : Icons.storage_outlined,
+                                size: 18,
+                              ),
                               border: InputBorder.none,
                               enabledBorder: InputBorder.none,
                               isDense: true,
@@ -4753,17 +4877,22 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                               final typeLabel = site.isDynamic ? 'CMS' : '静态';
                               return DropdownMenuItem<String>(
                                 value: site.id,
-                                child: Text('${site.name}  [$typeLabel]',
-                                    style: const TextStyle(fontSize: 13),
-                                    overflow: TextOverflow.ellipsis),
+                                child: Text(
+                                  '${site.name}  [$typeLabel]',
+                                  style: const TextStyle(fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               );
                             }).toList(),
                             onChanged: _editorBusy ? null : _onSiteChanged,
                           ),
                         ),
                         IconButton(
-                          icon: Icon(Icons.settings_outlined,
-                              size: 20, color: cs.outline),
+                          icon: Icon(
+                            Icons.settings_outlined,
+                            size: 20,
+                            color: cs.outline,
+                          ),
                           onPressed: _editorBusy
                               ? null
                               : () {
@@ -4771,8 +4900,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                                   _openSiteManagement();
                                 },
                           tooltip: '管理站点',
-                          constraints:
-                              const BoxConstraints(minWidth: 36, minHeight: 36),
+                          constraints: const BoxConstraints(
+                            minWidth: 36,
+                            minHeight: 36,
+                          ),
                           padding: EdgeInsets.zero,
                         ),
                       ],
@@ -4795,7 +4926,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                                   labelText:
                                       '模板 (${_doc.articleType == ArticleType.post ? '博文' : '页面'})',
                                   prefixIcon: const Icon(
-                                      Icons.view_quilt_outlined, size: 18),
+                                    Icons.view_quilt_outlined,
+                                    size: 18,
+                                  ),
                                   border: InputBorder.none,
                                   enabledBorder: InputBorder.none,
                                   isDense: true,
@@ -4804,44 +4937,59 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                                 items: [
                                   const DropdownMenuItem<String>(
                                     value: null,
-                                    child: Text('无模板',
-                                        style: TextStyle(fontSize: 13)),
+                                    child: Text(
+                                      '无模板',
+                                      style: TextStyle(fontSize: 13),
+                                    ),
                                   ),
                                   ...templates
-                                      .where((t) => t.isPost ==
-                                          (_doc.articleType ==
-                                              ArticleType.post))
-                                      .map((t) => DropdownMenuItem<String>(
-                                            value: t.id,
-                                            child: Text(
-                                              '${t.isBuiltin ? "[内置] " : ""}${t.name}',
-                                              style: const TextStyle(
-                                                  fontSize: 13),
-                                              overflow: TextOverflow.ellipsis,
+                                      .where(
+                                        (t) =>
+                                            t.isPost ==
+                                            (_doc.articleType ==
+                                                ArticleType.post),
+                                      )
+                                      .map(
+                                        (t) => DropdownMenuItem<String>(
+                                          value: t.id,
+                                          child: Text(
+                                            '${t.isBuiltin ? "[内置] " : ""}${t.name}',
+                                            style: const TextStyle(
+                                              fontSize: 13,
                                             ),
-                                          )),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ),
                                 ],
                                 onChanged: (v) => setState(
-                                    () => _doc.setSelectedTemplateId(v)),
+                                  () => _doc.setSelectedTemplateId(v),
+                                ),
                               ),
                             ),
                             IconButton(
                               tooltip: '设为本仓库默认模板',
-                              onPressed: _editorRepo != null &&
+                              onPressed:
+                                  _editorRepo != null &&
                                       _doc.selectedTemplateId != null
                                   ? () => _setAsRepoDefault(
-                                      _doc.selectedTemplateId!)
+                                      _doc.selectedTemplateId!,
+                                    )
                                   : null,
-                              icon: const Icon(Icons.bookmark_add_outlined,
-                                  size: 18),
+                              icon: const Icon(
+                                Icons.bookmark_add_outlined,
+                                size: 18,
+                              ),
                               constraints: const BoxConstraints(),
                               padding: const EdgeInsets.all(4),
                             ),
                             IconButton(
                               tooltip: '管理模板',
                               onPressed: () => _showTemplateManager(),
-                              icon: const Icon(Icons.settings_outlined,
-                                  size: 18),
+                              icon: const Icon(
+                                Icons.settings_outlined,
+                                size: 18,
+                              ),
                               constraints: const BoxConstraints(),
                               padding: const EdgeInsets.all(4),
                             ),
@@ -4851,7 +4999,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                         const Text(
                           '小字提示：默认模板可在「博文」或「页面」下分别设置，发布时自动套用所选模板生成 front-matter。',
                           style: TextStyle(
-                              fontSize: 10, color: Color(0xFF94A3B8)),
+                            fontSize: 10,
+                            color: Color(0xFF94A3B8),
+                          ),
                         ),
                       ],
                     ),
@@ -4882,8 +5032,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                             controller: _doc.categoriesCtrl,
                             decoration: const InputDecoration(
                               labelText: '分类',
-                              prefixIcon: Icon(Icons.folder_outlined,
-                                  size: 18),
+                              prefixIcon: Icon(Icons.folder_outlined, size: 18),
                               border: InputBorder.none,
                               enabledBorder: InputBorder.none,
                               isDense: true,
@@ -4903,8 +5052,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                       controller: _doc.coverCtrl,
                       decoration: const InputDecoration(
                         labelText: '封面图 URL（可选）',
-                        prefixIcon:
-                            Icon(Icons.image_outlined, size: 19),
+                        prefixIcon: Icon(Icons.image_outlined, size: 19),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         isDense: true,
@@ -4924,11 +5072,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   Widget _toolboxSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
-      child: Text(title,
-          style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B))),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF64748B),
+        ),
+      ),
     );
   }
 
@@ -4966,16 +5117,20 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon,
-                size: 17,
-                color: active ? cs.primary : const Color(0xFF94A3B8)),
+            Icon(
+              icon,
+              size: 17,
+              color: active ? cs.primary : const Color(0xFF94A3B8),
+            ),
             const SizedBox(width: 6),
-            Text(label,
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 12,
-                  color: active ? cs.primary : const Color(0xFF475569),
-                )),
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+                color: active ? cs.primary : const Color(0xFF475569),
+              ),
+            ),
           ],
         ),
       ),
@@ -5091,6 +5246,45 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                 },
               ),
               const Divider(height: 18),
+              // ── 写作主题 ──
+              _menuGroupTitle('写作主题'),
+              _menuRow(
+                icon: Icons.brightness_high_outlined,
+                label: '纯白背景',
+                color: const Color(0xFF64748B),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _setEditorTheme(_editorTheme.copyWith(bgMode: 0));
+                },
+              ),
+              _menuRow(
+                icon: Icons.dark_mode_outlined,
+                label: '纯黑背景',
+                color: const Color(0xFF0F172A),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _setEditorTheme(_editorTheme.copyWith(bgMode: 1));
+                },
+              ),
+              _menuRow(
+                icon: Icons.text_fields,
+                label: '强制黑色字体',
+                color: const Color(0xFF0F172A),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _setEditorTheme(_editorTheme.copyWith(forceTextMode: 1));
+                },
+              ),
+              _menuRow(
+                icon: Icons.format_color_fill,
+                label: '强制白色字体',
+                color: const Color(0xFF94A3B8),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _setEditorTheme(_editorTheme.copyWith(forceTextMode: 2));
+                },
+              ),
+              const Divider(height: 18),
               // ── 页面操作 ──
               _menuGroupTitle('页面操作'),
               _menuRow(
@@ -5121,12 +5315,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   Widget _menuGroupTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
-      child: Text(title,
-          style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.3,
-              color: Color(0xFF94A3B8))),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.3,
+          color: Color(0xFF94A3B8),
+        ),
+      ),
     );
   }
 
@@ -5154,12 +5351,12 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(label,
-                  style: const TextStyle(
-                      fontSize: 14, color: Color(0xFF1E293B))),
+              child: Text(
+                label,
+                style: const TextStyle(fontSize: 14, color: Color(0xFF1E293B)),
+              ),
             ),
-            const Icon(Icons.chevron_right,
-                size: 18, color: Color(0xFFCBD5E1)),
+            const Icon(Icons.chevron_right, size: 18, color: Color(0xFFCBD5E1)),
           ],
         ),
       ),
@@ -5170,23 +5367,28 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   void _openArticlePreview() {
     if (_editorBusy) return;
     final mdStyle = createMobileMarkdownStyle(context: context);
-    Navigator.of(context).push(MaterialPageRoute(
+    Navigator.of(context).push(
+      MaterialPageRoute(
         builder: (_) => Scaffold(
-              backgroundColor: AppTheme.bg,
-              appBar: AppBar(
-                  title: Text(_doc.titleCtrl.text.isEmpty
-                      ? '预览'
-                      : _doc.titleCtrl.text)),
-              body: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Markdown(
-                    data: _doc.contentCtrl.text.isEmpty
-                        ? '*暂无内容*'
-                        : _doc.contentCtrl.text,
-                    selectable: true,
-                    styleSheet: mdStyle),
-              ),
-            )));
+          backgroundColor: AppTheme.bg,
+          appBar: AppBar(
+            title: Text(
+              _doc.titleCtrl.text.isEmpty ? '预览' : _doc.titleCtrl.text,
+            ),
+          ),
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Markdown(
+              data: _doc.contentCtrl.text.isEmpty
+                  ? '*暂无内容*'
+                  : _doc.contentCtrl.text,
+              selectable: true,
+              styleSheet: mdStyle,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// AI 全功能入口：列出全部 AI 功能
@@ -5206,12 +5408,16 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             children: [
               Row(
                 children: [
-                  Icon(Icons.auto_awesome,
-                      color: const Color(0xFF8B5CF6), size: 20),
+                  Icon(
+                    Icons.auto_awesome,
+                    color: const Color(0xFF8B5CF6),
+                    size: 20,
+                  ),
                   const SizedBox(width: 8),
-                  const Text('AI 全功能',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w700)),
+                  const Text(
+                    'AI 全功能',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
                 ],
               ),
               const SizedBox(height: 10),
@@ -5275,11 +5481,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             children: [
               Icon(icon, size: 15, color: color),
               const SizedBox(width: 5),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w500,
-                      color: color)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  color: color,
+                ),
+              ),
             ],
           ),
         ),
@@ -5338,8 +5547,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         await dir.create(recursive: true);
       }
       const channel = MethodChannel('hexo/native');
-      final ok = await channel
-          .invokeMethod<bool>('openFolder', {'path': dir.path});
+      final ok = await channel.invokeMethod<bool>('openFolder', {
+        'path': dir.path,
+      });
       if (ok != true) {
         if (mounted) _showToast('无法打开文件夹: ${dir.path}');
       }
@@ -5384,11 +5594,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (a.title.isNotEmpty)
-                    Text(a.title,
-                        style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black)),
+                    Text(
+                      a.title,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black,
+                      ),
+                    ),
                   const SizedBox(height: 12),
                   MarkdownBody(
                     data: a.content.isEmpty ? '*（无内容）*' : a.content,
@@ -5402,8 +5615,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       );
       overlay.insert(entry);
       await Future.delayed(const Duration(milliseconds: 300));
-      final boundary = boundaryKey.currentContext?.findRenderObject()
-          as RenderRepaintBoundary?;
+      final boundary =
+          boundaryKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
       if (boundary != null) {
         final image = await boundary.toImage(pixelRatio: 3);
         final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -5411,7 +5625,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           final file = File(filePath);
           await file.writeAsBytes(byteData.buffer.asUint8List());
           if (mounted) {
-            _showToast('PNG 长图已保存到 ${StorageService.dirLongImages}/\n$filePath');
+            _showToast(
+              'PNG 长图已保存到 ${StorageService.dirLongImages}/\n$filePath',
+            );
           }
         }
       }
@@ -5428,7 +5644,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     final l10n = AppLocalizations.ofContext(context);
     final repoName = activeRepo?.name ?? '未配置';
     final repoFullName = activeRepo?.fullName ?? '';
-    final siteName = settings.siteName.isNotEmpty ? settings.siteName : 'Hexo 写作';
+    final siteName = settings.siteName.isNotEmpty
+        ? settings.siteName
+        : 'Hexo 写作';
 
     return Drawer(
       backgroundColor: Colors.white,
@@ -5442,7 +5660,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [cs.primary, Color.lerp(cs.primary, Colors.indigo, 0.4)!],
+                  colors: [
+                    cs.primary,
+                    Color.lerp(cs.primary, Colors.indigo, 0.4)!,
+                  ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -5458,21 +5679,30 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                       color: Colors.white.withOpacity(0.18),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: const Icon(Icons.auto_stories,
-                        color: Colors.white, size: 26),
+                    child: const Icon(
+                      Icons.auto_stories,
+                      color: Colors.white,
+                      size: 26,
+                    ),
                   ),
                   const SizedBox(height: 14),
-                  Text(siteName,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 17,
-                          letterSpacing: -0.2)),
+                  Text(
+                    siteName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 17,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
                   const SizedBox(height: 4),
-                  Text(repoFullName,
-                      style: TextStyle(
-                          color: Colors.white.withOpacity(0.75),
-                          fontSize: 12)),
+                  Text(
+                    repoFullName,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.75),
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -5483,43 +5713,147 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 children: [
                   _drawerSection(l10n.translate('drawer_section_create')),
-                  _drawerItem(0, Icons.edit_square, l10n.translate('nav_write'),
-                      isPrimary: true),
-                  _drawerItem(1, Icons.drafts_outlined, l10n.translate('nav_drafts'),
-                      badge: drafts.where((d) => !d.published).length),
+                  _drawerItem(
+                    0,
+                    Icons.edit_square,
+                    l10n.translate('nav_write'),
+                    isPrimary: true,
+                  ),
+                  _drawerItem(
+                    1,
+                    Icons.drafts_outlined,
+                    l10n.translate('nav_drafts'),
+                    badge: drafts.where((d) => !d.published).length,
+                  ),
                   const SizedBox(height: 8),
                   _drawerSection(l10n.translate('drawer_section_manage')),
-                  _drawerItem(2, Icons.cloud_outlined, l10n.translate('nav_remote')),
-                  _drawerAction(Icons.article_outlined, l10n.translate('static_blog_posts'), _showStaticBlogPosts),
-                  _drawerAction(Icons.library_books_outlined, l10n.translate('all_blog_manage'), _showAllStaticBlogs),
-                  _drawerItem(12, Icons.sync, l10n.translate('nav_sync_status')),
-                  _drawerAction(Icons.wifi, l10n.translate('p2p_sync'), _openP2PSync),
-                  _drawerItem(3, Icons.dashboard_outlined, l10n.translate('nav_dashboard')),
-                  _drawerItem(5, Icons.history_outlined, l10n.translate('nav_history')),
+                  _drawerItem(
+                    2,
+                    Icons.cloud_outlined,
+                    l10n.translate('nav_remote'),
+                  ),
+                  _drawerAction(
+                    Icons.article_outlined,
+                    l10n.translate('static_blog_posts'),
+                    _showStaticBlogPosts,
+                  ),
+                  _drawerAction(
+                    Icons.library_books_outlined,
+                    l10n.translate('all_blog_manage'),
+                    _showAllStaticBlogs,
+                  ),
+                  _drawerItem(
+                    12,
+                    Icons.sync,
+                    l10n.translate('nav_sync_status'),
+                  ),
+                  _drawerAction(
+                    Icons.wifi,
+                    l10n.translate('p2p_sync'),
+                    _openP2PSync,
+                  ),
+                  _drawerItem(
+                    3,
+                    Icons.dashboard_outlined,
+                    l10n.translate('nav_dashboard'),
+                  ),
+                  _drawerItem(
+                    5,
+                    Icons.history_outlined,
+                    l10n.translate('nav_history'),
+                  ),
                   const SizedBox(height: 8),
                   _drawerSection(l10n.translate('drawer_section_tools')),
-                  _drawerItem(6, Icons.drive_folder_upload, l10n.translate('nav_upload')),
+                  _drawerItem(
+                    6,
+                    Icons.drive_folder_upload,
+                    l10n.translate('nav_upload'),
+                  ),
                   _drawerItem(7, Icons.language, l10n.translate('nav_preview')),
-                  _drawerItem(4, Icons.rss_feed_outlined, l10n.translate('nav_rss')),
-                  _drawerAction(Icons.view_quilt_outlined, l10n.translate('template_manager'), _showTemplateManager),
-                  _drawerAction(Icons.content_paste, l10n.translate('snippet_library'), _showSnippetManager),
-                  _drawerAction(Icons.settings_applications, l10n.translate('config_editor'), _showSiteConfigEditor),
-                  _drawerAction(Icons.swap_horiz, l10n.translate('ai_batch_migrate'), _showMigrationTool),
+                  _drawerItem(
+                    4,
+                    Icons.rss_feed_outlined,
+                    l10n.translate('nav_rss'),
+                  ),
+                  _drawerAction(
+                    Icons.view_quilt_outlined,
+                    l10n.translate('template_manager'),
+                    _showTemplateManager,
+                  ),
+                  _drawerAction(
+                    Icons.content_paste,
+                    l10n.translate('snippet_library'),
+                    _showSnippetManager,
+                  ),
+                  _drawerAction(
+                    Icons.settings_applications,
+                    l10n.translate('config_editor'),
+                    _showSiteConfigEditor,
+                  ),
+                  _drawerAction(
+                    Icons.swap_horiz,
+                    l10n.translate('ai_batch_migrate'),
+                    _showMigrationTool,
+                  ),
                   const SizedBox(height: 8),
                   _drawerSection(l10n.translate('drawer_section_ai')),
-                  _drawerAction(Icons.assignment_outlined, l10n.translate('agent_workbench'), _showAgentWorkbench),
-                  _drawerAction(Icons.article_outlined, l10n.translate('ai_post_create'), _showAiArticleChat),
-                  _drawerAction(Icons.web_outlined, l10n.translate('ai_page_create'), _showAiPageChat),
-                  _drawerAction(Icons.palette_outlined, l10n.translate('ai_theme_dev'), _showAiThemeChat),
-                  _drawerItem(10, Icons.auto_fix_high, l10n.translate('nav_ai_theme_migrate')),
-                  _drawerAction(Icons.fact_check_outlined, l10n.translate('ai_site_audit'), _showAiAudit),
-                  _drawerAction(Icons.view_quilt_outlined, l10n.translate('ai_templates'), _showAiTemplateChat),
-                  _drawerAction(Icons.psychology_outlined, l10n.translate('ai_models'), _showAiModelManager),
-                  _drawerAction(Icons.build_outlined, l10n.translate('tool_library'), _showToolLibrary),
+                  _drawerAction(
+                    Icons.assignment_outlined,
+                    l10n.translate('agent_workbench'),
+                    _showAgentWorkbench,
+                  ),
+                  _drawerAction(
+                    Icons.article_outlined,
+                    l10n.translate('ai_post_create'),
+                    _showAiArticleChat,
+                  ),
+                  _drawerAction(
+                    Icons.web_outlined,
+                    l10n.translate('ai_page_create'),
+                    _showAiPageChat,
+                  ),
+                  _drawerAction(
+                    Icons.palette_outlined,
+                    l10n.translate('ai_theme_dev'),
+                    _showAiThemeChat,
+                  ),
+                  _drawerItem(
+                    10,
+                    Icons.auto_fix_high,
+                    l10n.translate('nav_ai_theme_migrate'),
+                  ),
+                  _drawerAction(
+                    Icons.fact_check_outlined,
+                    l10n.translate('ai_site_audit'),
+                    _showAiAudit,
+                  ),
+                  _drawerAction(
+                    Icons.view_quilt_outlined,
+                    l10n.translate('ai_templates'),
+                    _showAiTemplateChat,
+                  ),
+                  _drawerAction(
+                    Icons.psychology_outlined,
+                    l10n.translate('ai_models'),
+                    _showAiModelManager,
+                  ),
+                  _drawerAction(
+                    Icons.build_outlined,
+                    l10n.translate('tool_library'),
+                    _showToolLibrary,
+                  ),
                   const SizedBox(height: 8),
                   _drawerSection(l10n.translate('drawer_section_system')),
-                  _drawerItem(13, Icons.cloud_sync, l10n.translate('nav_cloud_sync')),
-                  _drawerItem(8, Icons.settings_outlined, l10n.translate('nav_settings')),
+                  _drawerItem(
+                    13,
+                    Icons.cloud_sync,
+                    l10n.translate('nav_cloud_sync'),
+                  ),
+                  _drawerItem(
+                    8,
+                    Icons.settings_outlined,
+                    l10n.translate('nav_settings'),
+                  ),
                   _drawerItem(11, Icons.history, l10n.translate('nav_log')),
                 ],
               ),
@@ -5530,37 +5864,48 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 border: Border(
-                    top: BorderSide(
-                        color: Colors.grey.shade100, width: 1)),
+                  top: BorderSide(color: Colors.grey.shade100, width: 1),
+                ),
               ),
-              child: Row(children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: cs.primary.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(10),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: cs.primary.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      Icons.storage_outlined,
+                      size: 18,
+                      color: cs.primary,
+                    ),
                   ),
-                  child: Icon(Icons.storage_outlined,
-                      size: 18, color: cs.primary),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(repoName,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          repoName,
                           style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600)),
-                      Text(repoFullName,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          repoFullName,
                           style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.grey.shade400)),
-                    ],
+                            fontSize: 10,
+                            color: Colors.grey.shade400,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ]),
+                ],
+              ),
             ),
           ],
         ),
@@ -5571,17 +5916,25 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   Widget _drawerSection(String label) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 6, 20, 4),
-      child: Text(label,
-          style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.muted,
-              letterSpacing: 0.8)),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: AppTheme.muted,
+          letterSpacing: 0.8,
+        ),
+      ),
     );
   }
 
-  Widget _drawerItem(int page, IconData icon, String label,
-      {int badge = 0, bool isPrimary = false}) {
+  Widget _drawerItem(
+    int page,
+    IconData icon,
+    String label, {
+    int badge = 0,
+    bool isPrimary = false,
+  }) {
     final cs = Theme.of(context).colorScheme;
     final sel = _currentPage == page;
     final bgColor = sel ? cs.primary.withOpacity(0.07) : Colors.transparent;
@@ -5596,38 +5949,42 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           borderRadius: BorderRadius.circular(10),
           onTap: () => _navigateTo(page),
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-            child: Row(children: [
-              Icon(icon, size: 20, color: fgColor),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(label,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            child: Row(
+              children: [
+                Icon(icon, size: 20, color: fgColor),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    label,
                     style: TextStyle(
-                        fontSize: 14,
-                        fontWeight:
-                            sel ? FontWeight.w600 : FontWeight.w400,
-                        color: fgColor)),
-              ),
-              if (badge > 0)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: sel
-                        ? cs.primary
-                        : const Color(0xFFE2E8F0),
-                    borderRadius: BorderRadius.circular(9),
+                      fontSize: 14,
+                      fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
+                      color: fgColor,
+                    ),
                   ),
-                  child: Text('$badge',
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: sel
-                              ? Colors.white
-                              : AppTheme.muted)),
                 ),
-            ]),
+                if (badge > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: sel ? cs.primary : const Color(0xFFE2E8F0),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: Text(
+                      '$badge',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: sel ? Colors.white : AppTheme.muted,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -5644,19 +6001,23 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           borderRadius: BorderRadius.circular(10),
           onTap: onTap,
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-            child: Row(children: [
-              Icon(icon, size: 20, color: AppTheme.text),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(label,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            child: Row(
+              children: [
+                Icon(icon, size: 20, color: AppTheme.text),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    label,
                     style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                        color: AppTheme.text)),
-              ),
-            ]),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w400,
+                      color: AppTheme.text,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -5671,13 +6032,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         return _buildEditorPage();
       case 1:
         return DraftsScreen(
-            drafts: drafts,
-            repos: repos,
-            blogSiteConfigs: settings.blogSiteConfigs,
-            onOpen: (a) {
-              _openExistingArticle(a);
-            },
-            onDelete: _deleteDraft);
+          drafts: drafts,
+          repos: repos,
+          blogSiteConfigs: settings.blogSiteConfigs,
+          onOpen: (a) {
+            _openExistingArticle(a);
+          },
+          onDelete: _deleteDraft,
+        );
       case 2:
         // 远程文章：支持多站点统一聚合（静态博客 + 动态 CMS）
         final allSiteAdapters = _allSiteAdapters;
@@ -5685,7 +6047,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         final activeSiteId = siteManager.activeSiteId;
         if (allSiteAdapters.length > 1) {
           // 多站点聚合模式：静态 + 动态统一浏览
-          final primary = allSiteAdapters
+          final primary =
+              allSiteAdapters
                   .where((a) => a.config.id == activeSiteId)
                   .firstOrNull ??
               currentAdapter ??
@@ -5714,80 +6077,87 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           );
         }
         return RemoteScreen(
-            posts: remotePosts,
-            activeRepo: activeRepo,
-            effectiveRepo: effectiveRepo,
-            github: github,
-            onRefresh: _refreshRemote,
-            onOpen: (item) async {
-              final repo = effectiveRepo;
-              if (repo == null) return;
-              try {
-                final a = await github.getArticle(repo, item);
-                _openExistingArticle(a);
-              } catch (e) {
-                _showToast('打开失败: $e');
-              }
-            },
-            onDelete: _deleteRemotePost,
-            onBatchDelete: _batchDeleteRemote,
-            onRollback: _rollbackFile);
+          posts: remotePosts,
+          activeRepo: activeRepo,
+          effectiveRepo: effectiveRepo,
+          github: github,
+          onRefresh: _refreshRemote,
+          onOpen: (item) async {
+            final repo = effectiveRepo;
+            if (repo == null) return;
+            try {
+              final a = await github.getArticle(repo, item);
+              _openExistingArticle(a);
+            } catch (e) {
+              _showToast('打开失败: $e');
+            }
+          },
+          onDelete: _deleteRemotePost,
+          onBatchDelete: _batchDeleteRemote,
+          onRollback: _rollbackFile,
+        );
       case 3:
         return DashboardScreen(
-            drafts: drafts,
-            remotePosts: remotePosts,
-            commits: commits,
-            settings: settings,
-            activeRepo: activeRepo,
-            onNewPost: () => _navigateTo(0),
-            onNavigateToRemote: () => _navigateTo(2),
-            onNavigateToHistory: () => _navigateTo(5),
-            onNavigateToSettings: () => _navigateTo(8),
-            onNavigateToPreview: () => _navigateTo(7),
-            onNavigateToDrafts: () => _navigateTo(1));
+          drafts: drafts,
+          remotePosts: remotePosts,
+          commits: commits,
+          settings: settings,
+          activeRepo: activeRepo,
+          onNewPost: () => _navigateTo(0),
+          onNavigateToRemote: () => _navigateTo(2),
+          onNavigateToHistory: () => _navigateTo(5),
+          onNavigateToSettings: () => _navigateTo(8),
+          onNavigateToPreview: () => _navigateTo(7),
+          onNavigateToDrafts: () => _navigateTo(1),
+        );
       case 4:
         return RssScreen(
-            items: rssItems,
-            activeRepo: activeRepo,
-            onRefresh: _refreshRss);
+          items: rssItems,
+          activeRepo: activeRepo,
+          onRefresh: _refreshRss,
+        );
       case 5:
         return HistoryScreen(
-            commits: commits,
-            github: github,
-            effectiveRepo: effectiveRepo,
-            onRefresh: _refreshCommits,
-            onCommitTap: _showCommitActions);
+          commits: commits,
+          github: github,
+          effectiveRepo: effectiveRepo,
+          onRefresh: _refreshCommits,
+          onCommitTap: _showCommitActions,
+        );
       case 6:
         return FolderUploadScreen(
-            repos: repos,
-            github: github,
-            activeRepo: effectiveRepo);
+          repos: repos,
+          github: github,
+          activeRepo: effectiveRepo,
+        );
       case 7:
         return PreviewScreen(
-            activeRepo: activeRepo,
-            sitePreviewUrl: settings.sitePreviewUrl);
+          activeRepo: activeRepo,
+          sitePreviewUrl: settings.sitePreviewUrl,
+        );
       case 8:
         return SettingsScreen(
-            settings: settings,
-            repos: repos,
-            github: github,
-            storage: storage,
-            webdavService: webdavService,
-            onSettingsChanged: _updateSettings,
-            onReposChanged: _updateRepos,
-            onShowWebDavDialog: _showWebDavDialog,
-            onSyncWebDavToLocal: _syncWebDavToLocal,
-            onSyncDraftsToWebDav: _syncDraftsToWebDav,
-            onShowAiManager: _showAiManager,
-            onShowLocalModelManager: _showAiModelManager,
-            onShowGithubTokenManager: _showGithubTokenManager,
-            onShowRepoManager: _showRepoManager,
-            onShowSiteEditor: _showSiteEditor,
-            onShowThemeColorPicker: _showThemeColorPicker,
-            onShowPwaGuide: _showPwaGuide,
-            onPersistSettings: _persistSettings,
-            onShowToast: _showToast,
-            onShowBlogSiteManager: _showBlogSiteManager);
+          settings: settings,
+          repos: repos,
+          github: github,
+          storage: storage,
+          webdavService: webdavService,
+          onSettingsChanged: _updateSettings,
+          onReposChanged: _updateRepos,
+          onShowWebDavDialog: _showWebDavDialog,
+          onSyncWebDavToLocal: _syncWebDavToLocal,
+          onSyncDraftsToWebDav: _syncDraftsToWebDav,
+          onShowAiManager: _showAiManager,
+          onShowLocalModelManager: _showAiModelManager,
+          onShowGithubTokenManager: _showGithubTokenManager,
+          onShowRepoManager: _showRepoManager,
+          onShowSiteEditor: _showSiteEditor,
+          onShowThemeColorPicker: _showThemeColorPicker,
+          onShowPwaGuide: _showPwaGuide,
+          onPersistSettings: _persistSettings,
+          onShowToast: _showToast,
+          onShowBlogSiteManager: _showBlogSiteManager,
+        );
       case 9:
         return ArticleReaderScreen(
           article: _doc.currentArticle,
@@ -5833,11 +6203,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             children: [
               Icon(Icons.sync_disabled, size: 48, color: Colors.grey),
               SizedBox(height: 12),
-              Text('双向同步仅支持动态 CMS 站点',
-                  style: TextStyle(color: Colors.grey, fontSize: 14)),
+              Text(
+                '双向同步仅支持动态 CMS 站点',
+                style: TextStyle(color: Colors.grey, fontSize: 14),
+              ),
               SizedBox(height: 4),
-              Text('请先在设置中添加 WordPress / Ghost / Typecho 站点',
-                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+              Text(
+                '请先在设置中添加 WordPress / Ghost / Typecho 站点',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
             ],
           ),
         );
@@ -5875,172 +6249,288 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     return _resolvedRepo?.name ?? '我的博客';
   }
 
+  // ============================================================
+  // 编辑器主题（写作界面全屏背景 + 全局文字色）
+  // ============================================================
+
+  EditorTheme get _editorTheme => settings.ui.editorTheme;
+
+  /// 编辑器背景颜色：纯白 / 纯黑，壁纸模式下返回透明底色
+  Color get _editorBgColor {
+    return switch (_editorTheme.bgMode) {
+      1 => const Color(0xFF000000),
+      _ => Colors.white,
+    };
+  }
+
+  /// 全局文字颜色：强制黑白 > 自动适配背景亮度
+  Color get globalTextColor {
+    final mode = _editorTheme.forceTextMode;
+    if (mode == 1) return Colors.black;
+    if (mode == 2) return Colors.white;
+    if (_editorTheme.bgMode == 2 && _wallpaperPath.isNotEmpty) {
+      return _wallpaperTextColor;
+    }
+    return _editorBgColor.computeLuminance() > 0.5
+        ? Colors.black
+        : Colors.white;
+  }
+
+  /// 壁纸路径
+  String get _wallpaperPath => _editorTheme.wallpaperPath;
+
+  /// 壁纸模式下自动适配的文字颜色（固定按亮度估算：壁纸视为中等亮度，默认黑字）
+  Color get _wallpaperTextColor => Colors.black;
+
+  /// 是否使用深色系统栏图标（浅背景黑字时用深色图标）
+  bool get _useDarkSystemIcons => globalTextColor.computeLuminance() > 0.5;
+
+  /// 同步系统栏样式：编辑页跟随主题，其余页面恢复浅色默认
+  void _updateSystemBarStyle() {
+    if (_currentPage != 0) {
+      SystemChrome.setSystemUIOverlayStyle(
+        const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          systemNavigationBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
+          systemNavigationBarIconBrightness: Brightness.dark,
+        ),
+      );
+      return;
+    }
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.transparent,
+        statusBarIconBrightness: _useDarkSystemIcons
+            ? Brightness.dark
+            : Brightness.light,
+        statusBarBrightness: _useDarkSystemIcons
+            ? Brightness.light
+            : Brightness.dark,
+        systemNavigationBarIconBrightness: _useDarkSystemIcons
+            ? Brightness.dark
+            : Brightness.light,
+      ),
+    );
+  }
+
+  /// 切换编辑器主题并同步系统栏
+  Future<void> _setEditorTheme(EditorTheme theme) async {
+    _updateSystemBarStyle();
+    await _updateSettings(
+      settings.copyWith(ui: settings.ui.copyWith(editorTheme: theme)),
+    );
+  }
+
   Widget _buildEditorPage() {
     final cs = Theme.of(context).colorScheme;
     final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
-    return Stack(
-      children: [
-        Column(
-          children: [
-            if (_editorBusy) const LinearProgressIndicator(minHeight: 2),
-            if (_editorBusy)
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                child: Row(
-                  children: [
-                    const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(_editorStatus ?? '处理中...',
-                        style: TextStyle(fontSize: 12, color: cs.primary)),
-                    const Spacer(),
-                    TextButton.icon(
-                  onPressed: () {
-                    _publishCancelToken.cancel();
-                    setState(() {
-                      _editorBusy = false;
-                      _editorStatus = '已取消';
-                    });
-                  },
-                  icon: const Icon(Icons.close, size: 16),
-                  label: const Text('取消', style: TextStyle(fontSize: 12)),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    final wallpaper = _editorTheme.bgMode == 2 && _wallpaperPath.isNotEmpty
+        ? File(_wallpaperPath)
+        : null;
+    return Container(
+      // 全屏主题背景：纯白/纯黑/自定义壁纸铺满整机，所有子组件透明
+      decoration: BoxDecoration(
+        color: _editorBgColor,
+        image: wallpaper != null && wallpaper.existsSync()
+            ? DecorationImage(image: FileImage(wallpaper), fit: BoxFit.cover)
+            : null,
+      ),
+      child: Stack(
+        children: [
+          Column(
+            children: [
+              if (_editorBusy) const LinearProgressIndicator(minHeight: 2),
+              if (_editorBusy)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 6,
                   ),
+                  child: Row(
+                    children: [
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _editorStatus ?? '处理中...',
+                        style: TextStyle(fontSize: 12, color: cs.primary),
+                      ),
+                      const Spacer(),
+                      TextButton.icon(
+                        onPressed: () {
+                          _publishCancelToken.cancel();
+                          setState(() {
+                            _editorBusy = false;
+                            _editorStatus = '已取消';
+                          });
+                        },
+                        icon: const Icon(Icons.close, size: 16),
+                        label: const Text('取消', style: TextStyle(fontSize: 12)),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: ListView(
+                  controller: _editorScrollCtrl,
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 40),
+                  children: [
+                    // ── 标题：无边框、无常驻 label、淡提示 ──
+                    TextField(
+                      controller: _doc.titleCtrl,
+                      decoration: InputDecoration(
+                        hintText: '输入标题',
+                        hintStyle: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: globalTextColor.withValues(alpha: 0.35),
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      cursorColor: globalTextColor,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        height: 1.3,
+                        color: globalTextColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    // ── 正文：无边框、无常驻 label，首次进入显示淡提示，输入后永久隐藏 ──
+                    OrientationGuard(
+                      enabled: true,
+                      child: TextField(
+                        controller: _doc.contentCtrl,
+                        focusNode: _doc.contentFocus,
+                        minLines: 20,
+                        maxLines: null,
+                        keyboardType: TextInputType.multiline,
+                        textAlignVertical: TextAlignVertical.top,
+                        enabled: !_editorBusy,
+                        onChanged: (_) {
+                          _onContentChanged();
+                          if (!_contentHintDismissed &&
+                              _doc.contentCtrl.text.isNotEmpty) {
+                            setState(() => _contentHintDismissed = true);
+                          }
+                          // 更新打字机光标位置
+                          final text = _doc.contentCtrl.text;
+                          final cursorPos =
+                              _doc.contentCtrl.selection.baseOffset;
+                          final textBefore = text.substring(
+                            0,
+                            cursorPos.clamp(0, text.length),
+                          );
+                          final currentLine = '\n'
+                              .allMatches(textBefore)
+                              .length;
+                          final totalLines = '\n'.allMatches(text).length + 1;
+                          _typewriterCtrl.updateCursorPosition(
+                            currentLine,
+                            totalLines,
+                          );
+                        },
+                        decoration: InputDecoration(
+                          hintText: _contentHintDismissed
+                              ? null
+                              : '开始写作，支持 Markdown 语法...',
+                          hintStyle: TextStyle(
+                            fontSize: 15,
+                            color: globalTextColor.withValues(alpha: 0.35),
+                          ),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                        ),
+                        cursorColor: globalTextColor,
+                        style: createUnifiedMarkdownStyle(
+                          context: context,
+                          config: const UnifiedMarkdownStyleConfig(
+                            baseFontSize: 15,
+                            lineHeight: 1.7,
+                            fontFamily: 'monospace',
+                          ),
+                        ).p!.copyWith(color: globalTextColor),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // ── 左下角常驻状态文字：当前站点标识 ──
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '已切换到: ${_currentSiteLabel}',
+                    style: TextStyle(
+                      color: globalTextColor.withValues(alpha: 0.6),
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ),
+              // ── 底部 MD 语法工具栏：键盘弹出时紧贴输入法，平时不占编辑区 ──
+              if (keyboardVisible && !_editorBusy) _buildMdToolbar(cs),
+            ],
+          ),
+          // ── 右下角悬浮快捷按钮：MD 导出 + 新建空白文章 ──
+          Positioned(
+            right: 18,
+            bottom: 24,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                FloatingActionButton(
+                  heroTag: 'editor_export_md',
+                  mini: true,
+                  backgroundColor: globalTextColor.withValues(alpha: 0.12),
+                  foregroundColor: globalTextColor,
+                  elevation: 2,
+                  tooltip: 'MD 导出',
+                  onPressed: _saveMdBackup,
+                  child: Text(
+                    'M↓',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: globalTextColor,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FloatingActionButton(
+                  heroTag: 'editor_new_blank',
+                  mini: true,
+                  backgroundColor: _editorBgColor.computeLuminance() > 0.5
+                      ? cs.primary
+                      : Colors.white24,
+                  foregroundColor: Colors.white,
+                  elevation: 3,
+                  tooltip: '新建空白文章',
+                  onPressed: _newBlankArticle,
+                  child: const Icon(Icons.add, size: 22),
                 ),
               ],
             ),
           ),
-        Expanded(
-          child: ListView(
-            controller: _editorScrollCtrl,
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 40),
-            children: [
-              // ── 标题：无边框、无常驻 label、淡提示 ──
-              TextField(
-                controller: _doc.titleCtrl,
-                decoration: InputDecoration(
-                  hintText: '输入标题',
-                  hintStyle: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: cs.outlineVariant),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                style: const TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.w700, height: 1.3),
-              ),
-              const SizedBox(height: 4),
-              // ── 正文：无边框、无常驻 label，首次进入显示淡提示，输入后永久隐藏 ──
-              OrientationGuard(
-                enabled: true,
-                child: TextField(
-                  controller: _doc.contentCtrl,
-                  focusNode: _doc.contentFocus,
-                  minLines: 20,
-                  maxLines: null,
-                  keyboardType: TextInputType.multiline,
-                  textAlignVertical: TextAlignVertical.top,
-                  enabled: !_editorBusy,
-                  onChanged: (_) {
-                    _onContentChanged();
-                    if (!_contentHintDismissed &&
-                        _doc.contentCtrl.text.isNotEmpty) {
-                      setState(() => _contentHintDismissed = true);
-                    }
-                    // 更新打字机光标位置
-                    final text = _doc.contentCtrl.text;
-                    final cursorPos = _doc.contentCtrl.selection.baseOffset;
-                    final textBefore =
-                        text.substring(0, cursorPos.clamp(0, text.length));
-                    final currentLine = '\n'.allMatches(textBefore).length;
-                    final totalLines = '\n'.allMatches(text).length + 1;
-                    _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
-                  },
-                  decoration: InputDecoration(
-                    hintText:
-                        _contentHintDismissed ? null : '开始写作，支持 Markdown 语法...',
-                    hintStyle: TextStyle(fontSize: 15, color: cs.outlineVariant),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                  ),
-                  style: createUnifiedMarkdownStyle(
-                    context: context,
-                    config: const UnifiedMarkdownStyleConfig(
-                      baseFontSize: 15,
-                      lineHeight: 1.7,
-                      fontFamily: 'monospace',
-                    ),
-                  ).p,
-                ),
-              ),
-            ],
-          ),
-        ),
-        // ── 左下角常驻状态文字：当前站点标识 ──
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              '已切换到: ${_currentSiteLabel}',
-              style: TextStyle(
-                color: cs.outline.withValues(alpha: 0.8),
-                fontSize: 11,
-              ),
-            ),
-          ),
-        ),
-        // ── 底部 MD 语法工具栏：键盘弹出时紧贴输入法，平时不占编辑区 ──
-        if (keyboardVisible && !_editorBusy) _buildMdToolbar(cs),
-          ],
-        ),
-        // ── 右下角悬浮快捷按钮：MD 导出 + 新建空白文章 ──
-        Positioned(
-          right: 18,
-          bottom: 24,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              FloatingActionButton(
-                heroTag: 'editor_export_md',
-                mini: true,
-                backgroundColor: Colors.white,
-                foregroundColor: cs.primary,
-                elevation: 2,
-                tooltip: 'MD 导出',
-                onPressed: _saveMdBackup,
-                child: const Text(
-                  'M↓',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                ),
-              ),
-              const SizedBox(height: 12),
-              FloatingActionButton(
-                heroTag: 'editor_new_blank',
-                mini: true,
-                backgroundColor: cs.primary,
-                foregroundColor: Colors.white,
-                elevation: 3,
-                tooltip: '新建空白文章',
-                onPressed: _newBlankArticle,
-                child: const Icon(Icons.add, size: 22),
-              ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -6048,7 +6538,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   Widget _buildMdToolbar(ColorScheme cs) {
     return Container(
       height: 46,
-      color: Colors.white,
+      color: Colors.transparent,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -6061,27 +6551,90 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           _toolChip(Icons.title, 'H2', () => _insertHeading(2)),
           _toolChip(Icons.format_list_bulleted, '列表', () => _insertList('- ')),
           _toolChip(Icons.format_quote, '引用', () => _insertList('> ')),
-          _toolChip(Icons.link, '链接', () => _wrap('[', '](https://)', p: '链接文字')),
-          _toolChip(Icons.grid_on, '表格', () => _insertText('\n| 列1 | 列2 |\n| --- | --- |\n| 值1 | 值2 |\n')),
+          _toolChip(
+            Icons.link,
+            '链接',
+            () => _wrap('[', '](https://)', p: '链接文字'),
+          ),
+          _toolChip(
+            Icons.grid_on,
+            '表格',
+            () => _insertText('\n| 列1 | 列2 |\n| --- | --- |\n| 值1 | 值2 |\n'),
+          ),
           _toolChip(Icons.horizontal_rule, '分割线', () => _insertText('\n---\n')),
-          _toolChip(Icons.format_strikethrough, '删除线', () => _wrap('~~', '~~', p: '删除文字')),
+          _toolChip(
+            Icons.format_strikethrough,
+            '删除线',
+            () => _wrap('~~', '~~', p: '删除文字'),
+          ),
           _toolChip(Icons.checklist, '任务', () => _insertList('- [ ] ')),
-          _toolChip(Icons.more_horiz, 'more', () => _insertText('\n<!--more-->\n')),
-          _toolChip(Icons.image_outlined, '图床', _editorBusy ? null : _insertImage),
-          _toolChip(Icons.collections_outlined, '批量图床', _editorBusy ? null : _batchInsertImages),
-          _toolChip(Icons.auto_awesome, 'AI润色', _editorBusy ? null : () => _aiAction('polish'), color: Colors.purple),
-          _toolChip(Icons.edit_note, 'AI续写', _editorBusy ? null : () => _aiAction('continue'), color: Colors.purple),
-          _toolChip(Icons.summarize_outlined, 'AI摘要', _editorBusy ? null : () => _aiAction('summary'), color: Colors.purple),
-          _toolChip(Icons.developer_mode, 'AI代码', _editorBusy ? null : () => _aiAction('code'), color: Colors.purple),
-          _toolChip(Icons.sync_alt, 'AI改写', _editorBusy ? null : () => _aiAction('rewrite'), color: Colors.purple),
-          _toolChip(Icons.auto_fix_high, 'AI排版', _editorBusy ? null : () => _aiAction('format'), color: Colors.deepPurple),
-          _toolChip(Icons.chat, 'AI对话', () => _showAiArticleChat(), color: Colors.deepPurple),
-          _toolChip(Icons.touch_app, 'AI选区', _editorBusy ? null : _showAiSelectionEdit, color: Colors.deepPurple),
+          _toolChip(
+            Icons.more_horiz,
+            'more',
+            () => _insertText('\n<!--more-->\n'),
+          ),
+          _toolChip(
+            Icons.image_outlined,
+            '图床',
+            _editorBusy ? null : _insertImage,
+          ),
+          _toolChip(
+            Icons.collections_outlined,
+            '批量图床',
+            _editorBusy ? null : _batchInsertImages,
+          ),
+          _toolChip(
+            Icons.auto_awesome,
+            'AI润色',
+            _editorBusy ? null : () => _aiAction('polish'),
+            color: Colors.purple,
+          ),
+          _toolChip(
+            Icons.edit_note,
+            'AI续写',
+            _editorBusy ? null : () => _aiAction('continue'),
+            color: Colors.purple,
+          ),
+          _toolChip(
+            Icons.summarize_outlined,
+            'AI摘要',
+            _editorBusy ? null : () => _aiAction('summary'),
+            color: Colors.purple,
+          ),
+          _toolChip(
+            Icons.developer_mode,
+            'AI代码',
+            _editorBusy ? null : () => _aiAction('code'),
+            color: Colors.purple,
+          ),
+          _toolChip(
+            Icons.sync_alt,
+            'AI改写',
+            _editorBusy ? null : () => _aiAction('rewrite'),
+            color: Colors.purple,
+          ),
+          _toolChip(
+            Icons.auto_fix_high,
+            'AI排版',
+            _editorBusy ? null : () => _aiAction('format'),
+            color: Colors.deepPurple,
+          ),
+          _toolChip(
+            Icons.chat,
+            'AI对话',
+            () => _showAiArticleChat(),
+            color: Colors.deepPurple,
+          ),
+          _toolChip(
+            Icons.touch_app,
+            'AI选区',
+            _editorBusy ? null : _showAiSelectionEdit,
+            color: Colors.deepPurple,
+          ),
         ],
       ),
     );
   }
-
 
   /// 切换站点
   void _onSiteChanged(String? siteId) {
@@ -6106,21 +6659,27 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   /// 打开站点管理面板
   void _openSiteManagement() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => SiteManagementScreen(
-        siteManager: siteManager,
-        repos: repos,
-        onChanged: () {
-          _persistRepos();
-          setState(() {});
-        },
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SiteManagementScreen(
+          siteManager: siteManager,
+          repos: repos,
+          onChanged: () {
+            _persistRepos();
+            setState(() {});
+          },
+        ),
       ),
-    ));
+    );
   }
 
-  Widget _toolChip(IconData icon, String label, VoidCallback? onTap,
-      {Color? color}) {
-    final c = color ?? Theme.of(context).colorScheme.primary;
+  Widget _toolChip(
+    IconData icon,
+    String label,
+    VoidCallback? onTap, {
+    Color? color,
+  }) {
+    final c = color ?? globalTextColor;
     return Material(
       color: c.withOpacity(0.05),
       borderRadius: BorderRadius.circular(8),
@@ -6128,17 +6687,22 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         borderRadius: BorderRadius.circular(8),
         onTap: onTap,
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, size: 14, color: c),
-            const SizedBox(width: 4),
-            Text(label,
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: c),
+              const SizedBox(width: 4),
+              Text(
+                label,
                 style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w500,
-                    color: c)),
-          ]),
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w500,
+                  color: c,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -6176,10 +6740,12 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             ),
             const Divider(height: 1),
             ...repos
-                .map((r) => SimpleDialogOption(
-                      onPressed: () => Navigator.pop(ctx, r),
-                      child: Text('${r.name} (${r.fullName})'),
-                    ))
+                .map(
+                  (r) => SimpleDialogOption(
+                    onPressed: () => Navigator.pop(ctx, r),
+                    child: Text('${r.name} (${r.fullName})'),
+                  ),
+                )
                 .toList(),
           ],
         ),
@@ -6209,9 +6775,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       _showToast('请先在设置中添加仓库');
       return;
     }
-    final resolved = repos
-        .map(_resolvedRepoFor)
-        .toList();
+    final resolved = repos.map(_resolvedRepoFor).toList();
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => AllStaticBlogsScreen(
@@ -6252,7 +6816,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   Future<void> _openStaticBlogPostAsync(BlogPost post) async {
     try {
       final item = await _findStaticFileItem(post);
-      final repo = repos.where((r) => r.id == post.siteId).firstOrNull ?? activeRepo;
+      final repo =
+          repos.where((r) => r.id == post.siteId).firstOrNull ?? activeRepo;
       if (item == null || repo == null) {
         _showToast('未在仓库中找到该文章');
         return;
@@ -6268,7 +6833,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   /// 删除静态博客远程文章
   Future<void> _deleteStaticBlogPost(BlogPost post) async {
     final item = await _findStaticFileItem(post);
-    final repo = repos.where((r) => r.id == post.siteId).firstOrNull ?? activeRepo;
+    final repo =
+        repos.where((r) => r.id == post.siteId).firstOrNull ?? activeRepo;
     if (item == null || repo == null) {
       throw Exception('未在仓库中找到该文章');
     }
@@ -6362,13 +6928,22 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                           final sn = snippets[i];
                           return ListTile(
                             dense: true,
-                            title: Text(sn.name, style: const TextStyle(fontSize: 13)),
-                            subtitle: Text(sn.category, style: const TextStyle(fontSize: 11)),
+                            title: Text(
+                              sn.name,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            subtitle: Text(
+                              sn.category,
+                              style: const TextStyle(fontSize: 11),
+                            ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.content_copy, size: 16),
+                                  icon: const Icon(
+                                    Icons.content_copy,
+                                    size: 16,
+                                  ),
                                   onPressed: () {
                                     _insertText(sn.content);
                                     Navigator.pop(ctx);
@@ -6377,13 +6952,20 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                                   padding: EdgeInsets.zero,
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    size: 16,
+                                    color: Colors.redAccent,
+                                  ),
                                   onPressed: () async {
                                     snippets.removeAt(i);
                                     await storage.saveSnippets(snippets);
                                     setDialogState(() {});
                                     if (mounted) {
-                                      setState(() => this.snippets = List.from(snippets));
+                                      setState(
+                                        () =>
+                                            this.snippets = List.from(snippets),
+                                      );
                                     }
                                   },
                                   constraints: const BoxConstraints(),
@@ -6404,12 +6986,18 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                   // 新增片段
                   TextField(
                     controller: nameCtrl,
-                    decoration: const InputDecoration(labelText: '片段名称', isDense: true),
+                    decoration: const InputDecoration(
+                      labelText: '片段名称',
+                      isDense: true,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
                     value: category,
-                    decoration: const InputDecoration(labelText: '分类', isDense: true),
+                    decoration: const InputDecoration(
+                      labelText: '分类',
+                      isDense: true,
+                    ),
                     items: const [
                       DropdownMenuItem(value: '友链模板', child: Text('友链模板')),
                       DropdownMenuItem(value: '公告片段', child: Text('公告片段')),
@@ -6431,26 +7019,35 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('关闭'),
+              ),
               FilledButton(
                 onPressed: () async {
                   if (nameCtrl.text.trim().isEmpty) return;
                   final now = DateTime.now();
-                  snippets.add(SnippetItem(
-                    id: now.millisecondsSinceEpoch.toString(),
-                    name: nameCtrl.text.trim(),
-                    content: contentCtrl.text,
-                    category: category,
-                    createdAt: now,
-                  ));
+                  snippets.add(
+                    SnippetItem(
+                      id: now.millisecondsSinceEpoch.toString(),
+                      name: nameCtrl.text.trim(),
+                      content: contentCtrl.text,
+                      category: category,
+                      createdAt: now,
+                    ),
+                  );
                   await storage.saveSnippets(snippets);
-                  if (mounted) setState(() => this.snippets = List.from(snippets));
+                  if (mounted)
+                    setState(() => this.snippets = List.from(snippets));
                   Navigator.pop(ctx);
                 },
                 child: const Text('保存片段'),
@@ -6470,7 +7067,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     }
     try {
       // 尝试读取 _config.yml
-      final configPath = repo.frameworkId == 'hugo' ? 'config.toml' : '_config.yml';
+      final configPath = repo.frameworkId == 'hugo'
+          ? 'config.toml'
+          : '_config.yml';
       final result = await github.getRawFile(repo, configPath);
       String content = result?['content'] ?? '';
       String sha = result?['sha'] ?? '';
@@ -6496,7 +7095,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
             FilledButton(
               onPressed: () async {
                 try {
@@ -6692,10 +7294,12 @@ class _DebounceEntry {
 class _WordCountBadge extends StatefulWidget {
   final TextEditingController titleCtrl;
   final TextEditingController contentCtrl;
+  final Color textColor;
 
   const _WordCountBadge({
     required this.titleCtrl,
     required this.contentCtrl,
+    this.textColor = const Color(0xFF94A3B8),
   });
 
   @override
@@ -6726,7 +7330,8 @@ class _WordCountBadgeState extends State<_WordCountBadge> {
     final content = widget.contentCtrl.text;
     final combined = '$title\n$content';
     final stats = countWords(combined);
-    if (stats.totalChars == _totalChars && stats.pureChars == _pureChars) return;
+    if (stats.totalChars == _totalChars && stats.pureChars == _pureChars)
+      return;
     setState(() {
       _totalChars = stats.totalChars;
       _pureChars = stats.pureChars;
@@ -6747,7 +7352,12 @@ class _WordCountBadgeState extends State<_WordCountBadge> {
             const Divider(height: 20),
             _statRow('正文', contentStats),
             const Divider(height: 20),
-            _statRow('总计', countWords('${widget.titleCtrl.text}\n${widget.contentCtrl.text}')),
+            _statRow(
+              '总计',
+              countWords(
+                '${widget.titleCtrl.text}\n${widget.contentCtrl.text}',
+              ),
+            ),
           ],
         ),
         actions: [
@@ -6767,15 +7377,20 @@ class _WordCountBadgeState extends State<_WordCountBadge> {
         children: [
           SizedBox(
             width: 48,
-            child: Text(label,
-                style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+            ),
           ),
           Expanded(
             child: Text(
               '总字符 ${stats.totalChars}  ·  纯写作 ${stats.pureChars}',
               textAlign: TextAlign.end,
               style: const TextStyle(
-                  fontSize: 13.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF0F172A),
+              ),
             ),
           ),
         ],
@@ -6796,11 +7411,12 @@ class _WordCountBadgeState extends State<_WordCountBadge> {
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           child: Text(
             '$_totalChars',
-            style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF94A3B8),
-                height: 1.0),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: widget.textColor,
+              height: 1.0,
+            ),
           ),
         ),
       ),

@@ -3,6 +3,7 @@
 library;
 
 import 'design_config.dart';
+import 'editor_theme.dart';
 
 class UiSettings {
   // 站点信息
@@ -38,6 +39,9 @@ class UiSettings {
   // 应用 UI 设计配置
   final DesignConfig designConfig;
 
+  // 编辑器主题（写作界面全屏背景 + 全局文字色）
+  final EditorTheme editorTheme;
+
   const UiSettings({
     this.siteAvatar = '',
     this.siteName = '',
@@ -56,6 +60,7 @@ class UiSettings {
     this.sitePreviewUrl = '',
     this.cloudflareDeployHook = '',
     this.designConfig = const DesignConfig(),
+    this.editorTheme = const EditorTheme(),
   });
 
   UiSettings copyWith({
@@ -76,6 +81,7 @@ class UiSettings {
     String? sitePreviewUrl,
     String? cloudflareDeployHook,
     DesignConfig? designConfig,
+    EditorTheme? editorTheme,
   }) {
     return UiSettings(
       siteAvatar: siteAvatar ?? this.siteAvatar,
@@ -95,50 +101,64 @@ class UiSettings {
       sitePreviewUrl: sitePreviewUrl ?? this.sitePreviewUrl,
       cloudflareDeployHook: cloudflareDeployHook ?? this.cloudflareDeployHook,
       designConfig: designConfig ?? this.designConfig,
+      editorTheme: editorTheme ?? this.editorTheme,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'siteAvatar': siteAvatar,
-        'siteName': siteName,
-        'siteBio': siteBio,
-        'siteHome': siteHome,
-        'siteAbout': siteAbout,
-        'siteGuestbook': siteGuestbook,
-        'siteNow': siteNow,
-        'siteWorks': siteWorks,
-        'themeColor': themeColor,
-        'nightEyeProtection': nightEyeProtection,
-        'nightEyeIntensity': nightEyeIntensity,
-        'httpTimeoutSeconds': httpTimeoutSeconds,
-        'allowInsecureHttps': allowInsecureHttps,
-        'statusPresets': statusPresets,
-        'sitePreviewUrl': sitePreviewUrl,
-        'cloudflareDeployHook': cloudflareDeployHook,
-        'designConfig': designConfig.toJson(),
-      };
+    'siteAvatar': siteAvatar,
+    'siteName': siteName,
+    'siteBio': siteBio,
+    'siteHome': siteHome,
+    'siteAbout': siteAbout,
+    'siteGuestbook': siteGuestbook,
+    'siteNow': siteNow,
+    'siteWorks': siteWorks,
+    'themeColor': themeColor,
+    'nightEyeProtection': nightEyeProtection,
+    'nightEyeIntensity': nightEyeIntensity,
+    'httpTimeoutSeconds': httpTimeoutSeconds,
+    'allowInsecureHttps': allowInsecureHttps,
+    'statusPresets': statusPresets,
+    'sitePreviewUrl': sitePreviewUrl,
+    'cloudflareDeployHook': cloudflareDeployHook,
+    'designConfig': designConfig.toJson(),
+    'editorTheme': editorTheme.toJson(),
+  };
 
   factory UiSettings.fromJson(Map<String, dynamic> j) => UiSettings(
-        siteAvatar: j['siteAvatar']?.toString() ?? '',
-        siteName: j['siteName']?.toString() ?? '',
-        siteBio: j['siteBio']?.toString() ?? '分享技术、生活和思考',
-        siteHome: j['siteHome']?.toString() ?? '',
-        siteAbout: j['siteAbout']?.toString() ?? '',
-        siteGuestbook: j['siteGuestbook']?.toString() ?? '',
-        siteNow: j['siteNow']?.toString() ?? '',
-        siteWorks: j['siteWorks']?.toString() ?? '',
-        themeColor: (j['themeColor'] as num?)?.toInt() ?? 0xFF0EA5E9,
-        nightEyeProtection: j['nightEyeProtection'] == true,
-        nightEyeIntensity: (j['nightEyeIntensity'] as num?)?.toDouble() ?? 0.5,
-        httpTimeoutSeconds: (j['httpTimeoutSeconds'] as num?)?.toInt() ?? 30,
-        allowInsecureHttps: j['allowInsecureHttps'] == true,
-        statusPresets: _parseList(j['statusPresets'], const ['publish', 'draft', 'pending', 'private']),
-        sitePreviewUrl: j['sitePreviewUrl']?.toString() ?? '',
-        cloudflareDeployHook: j['cloudflareDeployHook']?.toString() ?? '',
-        designConfig: j['designConfig'] is Map
-            ? DesignConfig.fromJson(Map<String, dynamic>.from(j['designConfig'] as Map))
-            : const DesignConfig(),
-      );
+    siteAvatar: j['siteAvatar']?.toString() ?? '',
+    siteName: j['siteName']?.toString() ?? '',
+    siteBio: j['siteBio']?.toString() ?? '分享技术、生活和思考',
+    siteHome: j['siteHome']?.toString() ?? '',
+    siteAbout: j['siteAbout']?.toString() ?? '',
+    siteGuestbook: j['siteGuestbook']?.toString() ?? '',
+    siteNow: j['siteNow']?.toString() ?? '',
+    siteWorks: j['siteWorks']?.toString() ?? '',
+    themeColor: (j['themeColor'] as num?)?.toInt() ?? 0xFF0EA5E9,
+    nightEyeProtection: j['nightEyeProtection'] == true,
+    nightEyeIntensity: (j['nightEyeIntensity'] as num?)?.toDouble() ?? 0.5,
+    httpTimeoutSeconds: (j['httpTimeoutSeconds'] as num?)?.toInt() ?? 30,
+    allowInsecureHttps: j['allowInsecureHttps'] == true,
+    statusPresets: _parseList(j['statusPresets'], const [
+      'publish',
+      'draft',
+      'pending',
+      'private',
+    ]),
+    sitePreviewUrl: j['sitePreviewUrl']?.toString() ?? '',
+    cloudflareDeployHook: j['cloudflareDeployHook']?.toString() ?? '',
+    designConfig: j['designConfig'] is Map
+        ? DesignConfig.fromJson(
+            Map<String, dynamic>.from(j['designConfig'] as Map),
+          )
+        : const DesignConfig(),
+    editorTheme: j['editorTheme'] is Map
+        ? EditorTheme.fromJson(
+            Map<String, dynamic>.from(j['editorTheme'] as Map),
+          )
+        : const EditorTheme(),
+  );
 
   static List<String> _parseList(dynamic raw, List<String> fallback) {
     if (raw is List) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
+import 'dart:io';
 import '../models/app_settings.dart';
 import '../models/repo_config.dart';
 import '../services/github_service.dart';
@@ -81,7 +82,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final newSettings = widget.settings.copyWith(language: languageCode);
     await widget.onSettingsChanged(newSettings);
     widget.onShowToast(
-        AppLocalizations.ofContext(context).translate('language_updated'));
+      AppLocalizations.ofContext(context).translate('language_updated'),
+    );
   }
 
   /// 获取语言显示名称
@@ -107,15 +109,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         } else if (picked.startsWith('content://') ||
             picked.startsWith('tree://')) {
           // SAF tree URI 不可直接用于 dart:io，回退应用外部存储目录
-          final external =
-              await channel.invokeMethod<String>('getExternalFilesDir');
+          final external = await channel.invokeMethod<String>(
+            'getExternalFilesDir',
+          );
           if (external != null && external.isNotEmpty) path = external;
         }
       }
     } catch (_) {
       try {
-        final picked = await FilePicker.platform
-            .getDirectoryPath(dialogTitle: l10n.translate('pick_global_storage_root'));
+        final picked = await FilePicker.platform.getDirectoryPath(
+          dialogTitle: l10n.translate('pick_global_storage_root'),
+        );
         if (picked != null && picked.isNotEmpty) path = picked;
       } catch (_) {}
     }
@@ -125,7 +129,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     final ns = widget.settings.copyWith(storageRootDir: path);
     await widget.onSettingsChanged(ns);
-    widget.onShowToast(l10n.translate('global_storage_set', params: {'path': path}));
+    widget.onShowToast(
+      l10n.translate('global_storage_set', params: {'path': path}),
+    );
   }
 
   /// 复制当前存储根目录路径
@@ -134,7 +140,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final dir = await widget.storage.root;
     await Clipboard.setData(ClipboardData(text: dir.path));
     widget.onShowToast(
-        l10n.translate('export_dir_copied', params: {'path': dir.path}));
+      l10n.translate('export_dir_copied', params: {'path': dir.path}),
+    );
   }
 
   /// 重置为默认存储根目录
@@ -150,7 +157,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final l10n = AppLocalizations.ofContext(context);
     final count = await widget.storage.migrateFrom(oldRoot);
     widget.onShowToast(
-        l10n.translate('global_storage_migrated', params: {'count': '$count'}));
+      l10n.translate('global_storage_migrated', params: {'count': '$count'}),
+    );
+  }
+
+  /// 选择自定义壁纸图片
+  Future<void> _pickWallpaper() async {
+    final l10n = AppLocalizations.ofContext(context);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        dialogTitle: '选择壁纸图片',
+      );
+      if (result == null || result.files.isEmpty) return;
+      final path = result.files.first.path;
+      if (path == null || path.isEmpty) {
+        widget.onShowToast('无法读取所选文件');
+        return;
+      }
+      final file = File(path);
+      if (!file.existsSync()) {
+        widget.onShowToast('所选文件不存在');
+        return;
+      }
+      // 复制到应用存储目录，避免外部路径失效
+      final rootDir = await widget.storage.root;
+      final wallDir = Directory('${rootDir.path}/wallpaper');
+      if (!wallDir.existsSync()) wallDir.createSync(recursive: true);
+      final ext = file.path.contains('.')
+          ? file.path.split('.').last.split('?').first
+          : 'jpg';
+      final target = File(
+        '${wallDir.path}/wallpaper_${DateTime.now().millisecondsSinceEpoch}.$ext',
+      );
+      await file.copy(target.path);
+      final et = widget.settings.ui.editorTheme.copyWith(
+        bgMode: 2,
+        wallpaperPath: target.path,
+      );
+      await widget.onSettingsChanged(
+        widget.settings.copyWith(
+          ui: widget.settings.ui.copyWith(editorTheme: et),
+        ),
+      );
+      widget.onShowToast('壁纸已应用');
+    } catch (_) {
+      widget.onShowToast(l10n.translate('pick_dir_failed'));
+    }
   }
 
   Widget _storageActionBtn({
@@ -215,9 +268,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         : widget.repos.firstWhere(
             (r) => r.id == s.activeRepoId,
             orElse: () => widget.repos.firstWhere(
-                  (r) => r.isDefault,
-                  orElse: () => widget.repos.first,
-                ),
+              (r) => r.isDefault,
+              orElse: () => widget.repos.first,
+            ),
           );
 
     return ListView(
@@ -274,12 +327,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             leading: const Icon(Icons.key_outlined),
             title: Text(
               s.activeGithubToken?.displayLabel ??
-                  (s.effectiveGithubToken.isEmpty ? l10n.translate('not_logged_in') : l10n.translate('token_configured')),
+                  (s.effectiveGithubToken.isEmpty
+                      ? l10n.translate('not_logged_in')
+                      : l10n.translate('token_configured')),
             ),
             subtitle: Text(
               s.githubTokens.isEmpty
                   ? l10n.translate('saved_tokens_reuse')
-                  : l10n.translate('saved_tokens_count').replaceAll('{count}', '${s.githubTokens.length}'),
+                  : l10n
+                        .translate('saved_tokens_count')
+                        .replaceAll('{count}', '${s.githubTokens.length}'),
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onShowGithubTokenManager,
@@ -294,11 +351,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 prefixIcon: Icon(Icons.swap_horiz),
               ),
               items: s.githubTokens
-                  .map((t) => DropdownMenuItem(
-                        value: t.id,
-                        child:
-                            Text(t.displayLabel, overflow: TextOverflow.ellipsis),
-                      ))
+                  .map(
+                    (t) => DropdownMenuItem(
+                      value: t.id,
+                      child: Text(
+                        t.displayLabel,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
                   .toList(),
               onChanged: (v) async {
                 if (v == null) return;
@@ -315,12 +376,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         : widget.repos.firstWhere(
                             (r) => r.id == s.activeRepoId,
                             orElse: () => widget.repos.firstWhere(
-                                  (r) => r.isDefault,
-                                  orElse: () => widget.repos.first,
-                                ),
+                              (r) => r.isDefault,
+                              orElse: () => widget.repos.first,
+                            ),
                           );
                     if (repo != null && repo.token.isEmpty) {
-                      final idx = widget.repos.indexWhere((e) => e.id == repo.id);
+                      final idx = widget.repos.indexWhere(
+                        (e) => e.id == repo.id,
+                      );
                       if (idx >= 0) {
                         final updated = List<RepoConfig>.from(widget.repos);
                         updated[idx] = repo.copyWith(token: t.token);
@@ -328,7 +391,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       }
                     }
                     widget.onShowToast(
-                        '${l10n.translate('switched_to')} ${t.displayLabel}');
+                      '${l10n.translate('switched_to')} ${t.displayLabel}',
+                    );
                     break;
                   }
                 }
@@ -349,7 +413,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: Text(
                 widget.settings.blogSiteConfigs.isEmpty
                     ? 'WordPress / Ghost / Typecho'
-                    : l10n.translate('sites_configured').replaceAll('{count}', '${widget.settings.blogSiteConfigs.length}'),
+                    : l10n
+                          .translate('sites_configured')
+                          .replaceAll(
+                            '{count}',
+                            '${widget.settings.blogSiteConfigs.length}',
+                          ),
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: widget.onShowBlogSiteManager,
@@ -358,7 +427,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: Text(l10n.translate('multi_repo_manage')),
-            subtitle: Text(l10n.translate('repos_count').replaceAll('{count}', '${widget.repos.length}')),
+            subtitle: Text(
+              l10n
+                  .translate('repos_count')
+                  .replaceAll('{count}', '${widget.repos.length}'),
+            ),
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onShowRepoManager,
           ),
@@ -377,9 +450,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.cloud_outlined),
             title: Text(l10n.translate('config_nutstore')),
-            subtitle: Text(s.webdavUrl.isEmpty
-                ? l10n.translate('webdav_placeholder')
-                : l10n.translate('webdav_configured').replaceAll('{url}', s.webdavUrl)),
+            subtitle: Text(
+              s.webdavUrl.isEmpty
+                  ? l10n.translate('webdav_placeholder')
+                  : l10n
+                        .translate('webdav_configured')
+                        .replaceAll('{url}', s.webdavUrl),
+            ),
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onShowWebDavDialog,
           ),
@@ -387,9 +464,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.upload_file_outlined),
             title: Text(l10n.translate('upload_drafts_webdav')),
-            subtitle: Text(s.webdavUrl.isEmpty
-                ? l10n.translate('webdav_not_configured')
-                : l10n.translate('upload_drafts_hint')),
+            subtitle: Text(
+              s.webdavUrl.isEmpty
+                  ? l10n.translate('webdav_not_configured')
+                  : l10n.translate('upload_drafts_hint'),
+            ),
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onSyncDraftsToWebDav,
           ),
@@ -397,9 +476,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.download_outlined),
             title: Text(l10n.translate('sync_webdav_local')),
-            subtitle: Text(s.webdavUrl.isEmpty
-                ? l10n.translate('webdav_not_configured')
-                : l10n.translate('download_drafts_hint')),
+            subtitle: Text(
+              s.webdavUrl.isEmpty
+                  ? l10n.translate('webdav_not_configured')
+                  : l10n.translate('download_drafts_hint'),
+            ),
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onSyncWebDavToLocal,
           ),
@@ -413,8 +494,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: Text(l10n.translate('local_auto_save')),
-            subtitle: Text(l10n.translate('auto_save_interval_hint')
-                .replaceAll('{count}', '${s.autoSaveIntervalSeconds}')),
+            subtitle: Text(
+              l10n
+                  .translate('auto_save_interval_hint')
+                  .replaceAll('{count}', '${s.autoSaveIntervalSeconds}'),
+            ),
             value: s.autoSaveEnabled,
             onChanged: (v) async {
               await widget.onSettingsChanged(s.copyWith(autoSaveEnabled: v));
@@ -437,7 +521,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: (v) async {
                 if (v != null) {
                   await widget.onSettingsChanged(
-                      s.copyWith(autoSaveIntervalSeconds: v));
+                    s.copyWith(autoSaveIntervalSeconds: v),
+                  );
                 }
               },
             ),
@@ -470,15 +555,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: Text(l10n.translate('netdisk_auto_sync')),
             subtitle: Text(
               s.webdavAutoSyncEnabled
-                  ? l10n.translate('webdav_auto_sync_enabled').replaceAll(
-                      '{count}',
-                      '${s.webdavAutoSyncIntervalSeconds ~/ 60}')
+                  ? l10n
+                        .translate('webdav_auto_sync_enabled')
+                        .replaceAll(
+                          '{count}',
+                          '${s.webdavAutoSyncIntervalSeconds ~/ 60}',
+                        )
                   : l10n.translate('webdav_auto_sync_disabled'),
             ),
             value: s.webdavAutoSyncEnabled,
             onChanged: (v) async {
               await widget.onSettingsChanged(
-                  s.copyWith(webdavAutoSyncEnabled: v));
+                s.copyWith(webdavAutoSyncEnabled: v),
+              );
             },
           ),
           if (s.webdavAutoSyncEnabled) ...[
@@ -497,7 +586,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: (v) async {
                 if (v != null) {
                   await widget.onSettingsChanged(
-                      s.copyWith(webdavAutoSyncIntervalSeconds: v));
+                    s.copyWith(webdavAutoSyncIntervalSeconds: v),
+                  );
                 }
               },
             ),
@@ -508,7 +598,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               value: s.webdavSyncWifiOnly,
               onChanged: (v) async {
                 await widget.onSettingsChanged(
-                    s.copyWith(webdavSyncWifiOnly: v));
+                  s.copyWith(webdavSyncWifiOnly: v),
+                );
               },
             ),
           ],
@@ -531,7 +622,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _settingsCard([
           ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.folder_outlined, color: Color(0xFF6366F1)),
+            leading: const Icon(
+              Icons.folder_outlined,
+              color: Color(0xFF6366F1),
+            ),
             title: Text(l10n.translate('global_storage_root')),
             subtitle: Text(
               s.storageRootDir.isEmpty
@@ -618,7 +712,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
             onChanged: (v) async {
               if (v != null) {
-                await widget.onSettingsChanged(s.copyWith(httpTimeoutSeconds: v));
+                await widget.onSettingsChanged(
+                  s.copyWith(httpTimeoutSeconds: v),
+                );
               }
             },
           ),
@@ -640,6 +736,108 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ]),
 
         const SizedBox(height: 20),
+        // ── 写作界面主题与背景 ──
+        _sectionTitle('写作界面主题'),
+        const SizedBox(height: 8),
+        _settingsCard([
+          Text(
+            '全屏背景铺满整机，消除分层边框；标题与正文透明无底色。',
+            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(
+                value: 0,
+                label: Text('纯白'),
+                icon: Icon(Icons.brightness_high_outlined, size: 16),
+              ),
+              ButtonSegment(
+                value: 1,
+                label: Text('纯黑'),
+                icon: Icon(Icons.dark_mode_outlined, size: 16),
+              ),
+              ButtonSegment(
+                value: 2,
+                label: Text('自定义壁纸'),
+                icon: Icon(Icons.wallpaper_outlined, size: 16),
+              ),
+            ],
+            selected: {s.ui.editorTheme.bgMode},
+            onSelectionChanged: (sel) async {
+              final mode = sel.first;
+              final et = s.ui.editorTheme.copyWith(bgMode: mode);
+              await widget.onSettingsChanged(
+                s.copyWith(ui: s.ui.copyWith(editorTheme: et)),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _pickWallpaper,
+                  icon: const Icon(Icons.image_outlined, size: 17),
+                  label: Text(
+                    s.ui.editorTheme.wallpaperPath.isEmpty ? '选择壁纸图片' : '更换壁纸',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 40),
+                    side: const BorderSide(color: Color(0xFFE2E8F0)),
+                  ),
+                ),
+              ),
+              if (s.ui.editorTheme.wallpaperPath.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () async {
+                    final et = s.ui.editorTheme.copyWith(wallpaperPath: '');
+                    await widget.onSettingsChanged(
+                      s.copyWith(ui: s.ui.copyWith(editorTheme: et)),
+                    );
+                  },
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  tooltip: '清除壁纸',
+                ),
+              ],
+            ],
+          ),
+          const Divider(height: 24),
+          Text(
+            '强制字体颜色（互斥）：不勾选时根据背景亮度自动适配。',
+            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: const Text('强制黑色字体'),
+            value: s.ui.editorTheme.forceTextMode == 1,
+            onChanged: (val) async {
+              final mode = (val == true) ? 1 : 0;
+              final et = s.ui.editorTheme.copyWith(forceTextMode: mode);
+              await widget.onSettingsChanged(
+                s.copyWith(ui: s.ui.copyWith(editorTheme: et)),
+              );
+            },
+          ),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: const Text('强制白色字体'),
+            value: s.ui.editorTheme.forceTextMode == 2,
+            onChanged: (val) async {
+              final mode = (val == true) ? 2 : 0;
+              final et = s.ui.editorTheme.copyWith(forceTextMode: mode);
+              await widget.onSettingsChanged(
+                s.copyWith(ui: s.ui.copyWith(editorTheme: et)),
+              );
+            },
+          ),
+        ]),
+
+        const SizedBox(height: 20),
         // ── 图床（GitHub + CDN）──
         _sectionTitle(l10n.translate('settings_image_host')),
         const SizedBox(height: 8),
@@ -651,9 +849,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: Text(
               activeRepo == null
                   ? l10n.translate('image_host_no_repo')
-                  : l10n.translate('image_host_repo_hint')
-                      .replaceAll('{name}', activeRepo.fullName)
-                      .replaceAll('{branch}', activeRepo.branch),
+                  : l10n
+                        .translate('image_host_repo_hint')
+                        .replaceAll('{name}', activeRepo.fullName)
+                        .replaceAll('{branch}', activeRepo.branch),
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () async {
@@ -669,12 +868,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 imageBedToken: s.imageBedToken.isNotEmpty
                     ? s.imageBedToken
                     : s.effectiveGithubToken,
-                imageBedPath:
-                    s.imageBedPath.isEmpty ? 'images' : s.imageBedPath,
+                imageBedPath: s.imageBedPath.isEmpty
+                    ? 'images'
+                    : s.imageBedPath,
               );
               await widget.onSettingsChanged(ns);
-              widget.onShowToast(l10n.translate('image_host_synced')
-                  .replaceAll('{name}', r.fullName));
+              widget.onShowToast(
+                l10n
+                    .translate('image_host_synced')
+                    .replaceAll('{name}', r.fullName),
+              );
             },
           ),
           _field(
@@ -724,7 +927,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             title: Text(l10n.translate('auto_compress_image')),
             subtitle: Text(
-              l10n.translate('compress_hint')
+              l10n
+                  .translate('compress_hint')
                   .replaceAll('{width}', '${s.compressMaxWidth}')
                   .replaceAll('{quality}', '${s.compressQuality}'),
             ),
@@ -751,8 +955,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: Text(
               s.aiProfiles.isEmpty
                   ? l10n.translate('ai_profile_empty_hint')
-                  : l10n.translate('ai_profile_count').replaceAll(
-                      '{count}', '${s.aiProfiles.length}'),
+                  : l10n
+                        .translate('ai_profile_count')
+                        .replaceAll('{count}', '${s.aiProfiles.length}'),
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onShowAiManager,
@@ -765,11 +970,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 prefixIcon: const Icon(Icons.swap_horiz),
               ),
               items: s.aiProfiles
-                  .map((p) => DropdownMenuItem(
-                        value: p.id,
-                        child:
-                            Text(p.displayLabel, overflow: TextOverflow.ellipsis),
-                      ))
+                  .map(
+                    (p) => DropdownMenuItem(
+                      value: p.id,
+                      child: Text(
+                        p.displayLabel,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
                   .toList(),
               onChanged: (v) async {
                 if (v == null) return;
@@ -785,7 +994,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
                 await widget.onSettingsChanged(ns);
                 widget.onShowToast(
-                    '${l10n.translate('switched_to')} ${p.displayLabel}');
+                  '${l10n.translate('switched_to')} ${p.displayLabel}',
+                );
               },
             ),
           const SizedBox(height: 8),
@@ -803,8 +1013,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.memory_outlined),
-            title: Text(l10n.translate('local_gguf_model'),
-                style: const TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(
+              l10n.translate('local_gguf_model'),
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
             subtitle: Text(l10n.translate('local_model_hint')),
             trailing: const Icon(Icons.chevron_right),
             onTap: widget.onShowLocalModelManager,
@@ -871,11 +1083,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.language),
             title: Text(l10n.translate('blog_address')),
-            subtitle: Text(activeRepo?.siteUrl.isNotEmpty == true
-                ? activeRepo!.siteUrl
-                : (s.sitePreviewUrl.isNotEmpty
-                    ? s.sitePreviewUrl
-                    : l10n.translate('site_url_not_set'))),
+            subtitle: Text(
+              activeRepo?.siteUrl.isNotEmpty == true
+                  ? activeRepo!.siteUrl
+                  : (s.sitePreviewUrl.isNotEmpty
+                        ? s.sitePreviewUrl
+                        : l10n.translate('site_url_not_set')),
+            ),
             trailing: const Icon(Icons.copy),
             onTap: () {
               final u = activeRepo?.siteUrl.isNotEmpty == true
@@ -900,9 +1114,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.cloud_upload),
             title: Text(l10n.translate('cloudflare_hook')),
-            subtitle: Text(s.cloudflareDeployHook.isNotEmpty
-                ? l10n.translate('deploy_hook_configured')
-                : l10n.translate('deploy_hook_not_configured')),
+            subtitle: Text(
+              s.cloudflareDeployHook.isNotEmpty
+                  ? l10n.translate('deploy_hook_configured')
+                  : l10n.translate('deploy_hook_not_configured'),
+            ),
             trailing: const Icon(Icons.edit, size: 18),
             onTap: () async {
               final ctrl = TextEditingController(text: s.cloudflareDeployHook);
@@ -916,7 +1132,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Text(
                         l10n.translate('deploy_hook_desc'),
                         style: const TextStyle(
-                            fontSize: 12, color: Colors.grey),
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       TextField(
@@ -944,7 +1162,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               if (ok == true) {
                 await widget.onSettingsChanged(
                   widget.settings.copyWith(
-                      cloudflareDeployHook: ctrl.text.trim()),
+                    cloudflareDeployHook: ctrl.text.trim(),
+                  ),
                 );
                 widget.onShowToast(l10n.translate('cloudflare_hook_saved'));
               }
@@ -1009,7 +1228,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () {
               Clipboard.setData(
                 const ClipboardData(
-                    text: 'https://github.com/caogenfunan123/xiamend'),
+                  text: 'https://github.com/caogenfunan123/xiamend',
+                ),
               );
               widget.onShowToast(l10n.translate('repo_copied'));
             },
@@ -1023,7 +1243,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               final dir = await widget.storage.draftsDir();
               Clipboard.setData(ClipboardData(text: dir.path));
               widget.onShowToast(
-                  l10n.translate('export_dir_copied', params: {'path': dir.path}));
+                l10n.translate('export_dir_copied', params: {'path': dir.path}),
+              );
             },
           ),
         ]),
@@ -1059,7 +1280,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             for (int i = 0; i < children.length; i++) ...[
               children[i],
               if (i != children.length - 1) const SizedBox(height: 12),
-            ]
+            ],
           ],
         ),
       ),
@@ -1105,16 +1326,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: TextFormField(
                     initialValue: status,
                     decoration: InputDecoration(
-                      labelText: l10n.translate('status_label')
+                      labelText: l10n
+                          .translate('status_label')
                           .replaceAll('{index}', '${idx + 1}'),
                       prefixIcon: const Icon(Icons.label_outline, size: 18),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                     ),
                     onChanged: (v) async {
                       final updated = List<String>.from(s.statusPresets);
                       updated[idx] = v.trim();
-                      await widget.onSettingsChanged(s.copyWith(ui: s.ui.copyWith(statusPresets: updated)));
+                      await widget.onSettingsChanged(
+                        s.copyWith(ui: s.ui.copyWith(statusPresets: updated)),
+                      );
                     },
                   ),
                 ),
@@ -1124,7 +1353,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ? () async {
                           final updated = List<String>.from(s.statusPresets);
                           updated.removeAt(idx);
-                          await widget.onSettingsChanged(s.copyWith(ui: s.ui.copyWith(statusPresets: updated)));
+                          await widget.onSettingsChanged(
+                            s.copyWith(
+                              ui: s.ui.copyWith(statusPresets: updated),
+                            ),
+                          );
                         }
                       : null,
                 ),
@@ -1135,7 +1368,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         TextButton.icon(
           onPressed: () async {
             final updated = List<String>.from(s.statusPresets)..add('');
-            await widget.onSettingsChanged(s.copyWith(ui: s.ui.copyWith(statusPresets: updated)));
+            await widget.onSettingsChanged(
+              s.copyWith(ui: s.ui.copyWith(statusPresets: updated)),
+            );
           },
           icon: const Icon(Icons.add, size: 18),
           label: Text(l10n.translate('add_status')),
