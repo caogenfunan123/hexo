@@ -162,7 +162,27 @@ class LocalLlamaProvider {
         // 强制打开 flash attention，避免参数校验失败导致加载崩溃。
         modelParams = modelParams.copyWith(flashAttention: FlashAttention.enabled);
       }
-      await engine.loadModel(normalizedPath, modelParams: modelParams);
+      try {
+        await engine.loadModel(normalizedPath, modelParams: modelParams);
+      } catch (e) {
+        // GPU 加载失败（驱动/后端异常）时自动回退 CPU 重试，避免设备上
+        // 直接中断；llamadart 在加载失败后会清理内部加载状态，可安全重入。
+        if (useGpu && !kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+          _gpuFallbackToCpu = true;
+          modelParams = modelParams.copyWith(
+            gpuLayers: 0,
+            preferredBackend: GpuBackend.cpu,
+          );
+          try {
+            await engine.loadModel(normalizedPath, modelParams: modelParams);
+          } catch (e2) {
+            _lastError = '加载本地模型失败: $e（GPU 回退 CPU 仍失败: $e2）';
+            return _lastError;
+          }
+        } else {
+          rethrow;
+        }
+      }
       _loadedModelPath = normalizedPath;
       _loadedSettings = effective;
       _backendName = null;
