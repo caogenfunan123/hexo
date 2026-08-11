@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import '../core/ai/ai_model_entity.dart';
 import '../core/ai/ai_model_manager.dart';
 import '../core/ai/ai_provider.dart';
@@ -853,6 +854,7 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                             'q4_0': '4-bit（最省内存）',
                           },
                           (v) => update(settings.copyWith(cacheTypeK: v)),
+                          enabled: false,
                         ),
                         _choiceTile<String>(
                           settings.cacheTypeV,
@@ -863,6 +865,7 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                             'q4_0': '4-bit（最省内存）',
                           },
                           (v) => update(settings.copyWith(cacheTypeV: v)),
+                          enabled: false,
                         ),
                         _choiceTile<String>(
                           settings.flashAttention,
@@ -873,12 +876,14 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                             'disabled': '禁用',
                           },
                           (v) => update(settings.copyWith(flashAttention: v)),
+                          enabled: false,
                         ),
                         _toggleTile(
                           '统一 KV Cache（kv_unified）',
                           settings.kvUnified,
                           '统一 K/V 缓存可显著节省内存；个别模型不支持',
                           (v) => update(settings.copyWith(kvUnified: v)),
+                          enabled: false,
                         ),
                         _toggleTile(
                           '内存映射（use_mmap）',
@@ -889,8 +894,9 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                         _toggleTile(
                           '锁定权重常驻（use_mlock）',
                           settings.useMlock,
-                          '将模型权重锁定在内存中，避免被换出（占用更多内存）',
+                          '移动端已强制关闭：无 mlock 权限会导致生成卡住',
                           (v) => update(settings.copyWith(useMlock: v)),
+                          enabled: false,
                         ),
                         _numberField(
                           ctrlThreads,
@@ -1104,10 +1110,10 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
     }
   }
 
-  /// 导出本地模型诊断日志（llama.cpp 原生日志 + 设备/设置信息）。
+  /// 导出本地模型诊断日志（llama.cpp 原生 + Dart 日志 + 设备/设置信息）。
   ///
-  /// 用户在真机遇到"模型卡住/加载不出对话"时，导出此文件后反馈，
-  /// 用于定位后端注册、张量分配、prefill、线程等环节的卡点。
+  /// 导出成功后弹出一个操作面板：可立即把日志文件分享出去、复制文件
+  /// 路径、或直接复制全部日志内容到剪贴板，确保真机上能便捷拿到日志。
   Future<void> _exportLocalDiagLogs(BuildContext sheetContext) async {
     final llama = LocalLlamaProvider.instance;
     final path = await llama.exportDiagnosticLogs();
@@ -1118,15 +1124,87 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
       );
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('诊断日志已导出：$path'),
-        duration: const Duration(seconds: 5),
+    debugPrint('[diag] llama 诊断日志导出路径: $path');
+    if (!mounted) return;
+
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.check_circle_outline),
+              title: const Text('诊断日志已导出', style: TextStyle(fontSize: 15)),
+              subtitle: Text(path, style: const TextStyle(fontSize: 11)),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.share_outlined),
+              title: const Text('分享日志文件'),
+              onTap: () async {
+                Navigator.pop(ctx, 'share');
+                try {
+                  await Share.shareXFiles(
+                    [XFile(path)],
+                    subject: 'Hexo 本地模型诊断日志',
+                  );
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('分享失败: $e')),
+                    );
+                  }
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.copy_all_outlined),
+              title: const Text('复制日志内容到剪贴板'),
+              onTap: () async {
+                Navigator.pop(ctx, 'copyContent');
+                try {
+                  final content = await File(path).readAsString();
+                  await Clipboard.setData(ClipboardData(text: content));
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('日志内容已复制到剪贴板')),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('复制失败: $e')),
+                    );
+                  }
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.content_copy_outlined),
+              title: const Text('复制文件路径'),
+              onTap: () async {
+                Navigator.pop(ctx, 'copyPath');
+                await Clipboard.setData(ClipboardData(text: path));
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('文件路径已复制')),
+                  );
+                }
+              },
+            ),
+          ],
+        ),
       ),
     );
-    // 提示用户可另存到可访问位置
-    if (path.startsWith('导出失败')) return;
-    debugPrint('[diag] llama 诊断日志导出路径: $path');
+    if (action == null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('诊断日志已导出：$path'),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   Widget _settingsSection(String title, List<Widget> children) {
@@ -1154,7 +1232,8 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
 
   /// 单选分组（设备 / KV 类型 / flash attention）。
   Widget _choiceTile<T>(T value, String label,
-      Map<T, String> options, void Function(T) onSelect) {
+      Map<T, String> options, void Function(T) onSelect,
+      {bool enabled = true}) {
     return ListTile(
       dense: true,
       title: Text(label, style: const TextStyle(fontSize: 14)),
@@ -1171,9 +1250,11 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                     ),
                   ))
               .toList(),
-          onChanged: (v) {
-            if (v != null) onSelect(v);
-          },
+          onChanged: enabled
+              ? (v) {
+                  if (v != null) onSelect(v);
+                }
+              : null,
           isExpanded: false,
         ),
       ),
@@ -1239,8 +1320,9 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
     String title,
     bool value,
     String subtitle,
-    void Function(bool) onChanged,
-  ) {
+    void Function(bool) onChanged, {
+    bool enabled = true,
+  }) {
     return SwitchListTile(
       dense: true,
       title: Text(title, style: const TextStyle(fontSize: 14)),
@@ -1249,7 +1331,7 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
         style: const TextStyle(fontSize: 11),
       ),
       value: value,
-      onChanged: onChanged,
+      onChanged: enabled ? onChanged : null,
     );
   }
 

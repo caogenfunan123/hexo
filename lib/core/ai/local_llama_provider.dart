@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:ffi';
 import 'dart:io';
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:llamadart/llamadart.dart';
 import 'package:path_provider/path_provider.dart';
@@ -40,6 +42,13 @@ class LocalLlamaProvider {
   bool _loggingEnabled = false;
   static const int _logRingCapacity = 2000;
 
+  /// 原生日志 FFI 桥接回调（防止被 GC 回收）。
+  NativeCallable<_NativeLogCallback>? _nativeLogCallable;
+  String _nativeLogLine = '';
+
+  /// 最近一次 [_fitToContext] 计算的 prompt token 数（供日志打点）。
+  int _lastPromptTokens = 0;
+
   /// 是否开启了日志记录（默认关闭，避免 debug 日志开销）。
   bool get loggingEnabled => _loggingEnabled;
 
@@ -49,6 +58,16 @@ class LocalLlamaProvider {
     _loggingEnabled = enabled;
     if (enabled) {
       _configureLogging();
+      // 立即把原生层日志级别调到 debug，避免用户开启开关但模型已加载
+      // 时抓不到 info/debug 级别日志。
+      if (!kIsWeb) {
+        final engine = _engine;
+        if (engine != null) {
+          try {
+            engine.setLogLevel(LlamaLogLevel.debug);
+          } catch (_) {}
+        }
+      }
     } else {
       _logRing.clear();
     }
@@ -107,7 +126,18 @@ class LocalLlamaProvider {
       return _lastError;
     }
     final normalizedPath = modelPath.trim();
-    final effective = settings ?? const LocalModelSettings();
+    // 强制钉死一组移动端已知的稳定配置：Android 上 mlock 无权限会导致
+    // 生成阶段异常；非 F16 KV cache / flash attention / kv_unified 在部分
+    // CPU 设备上会卡 prefill。此处无条件覆盖为 llama.cpp 最稳默认，
+    // 避免用户在设置面板误开后再次触发"发送消息后无回复"。
+    final raw = settings ?? const LocalModelSettings();
+    final effective = raw.copyWith(
+      useMlock: false,
+      cacheTypeK: 'f16',
+      cacheTypeV: 'f16',
+      flashAttention: 'auto',
+      kvUnified: true,
+    );
     if (isModelLoaded &&
         _loadedModelPath == normalizedPath &&
         _sameSettings(_loadedSettings, effective)) {
@@ -192,6 +222,11 @@ class LocalLlamaProvider {
         // 强制打开 flash attention，避免参数校验失败导致加载崩溃。
         modelParams = modelParams.copyWith(flashAttention: FlashAttention.enabled);
       }
+      final loadT0 = DateTime.now();
+      _pushLog(
+        '[DART] 开始加载模型: $normalizedPath, '
+        'backend=${modelParams.preferredBackend.name}, gpuLayers=${modelParams.gpuLayers}',
+      );
       try {
         await engine.loadModel(normalizedPath, modelParams: modelParams);
       } catch (e) {
@@ -203,16 +238,22 @@ class LocalLlamaProvider {
             gpuLayers: 0,
             preferredBackend: GpuBackend.cpu,
           );
+          _pushLog('[DART] GPU 加载失败，回退 CPU 重试: $e');
           try {
             await engine.loadModel(normalizedPath, modelParams: modelParams);
           } catch (e2) {
             _lastError = '加载本地模型失败: $e（GPU 回退 CPU 仍失败: $e2）';
+            _pushLog('[DART] 加载最终失败: $_lastError');
             return _lastError;
           }
         } else {
+          _pushLog('[DART] 加载失败: $e');
           rethrow;
         }
       }
+      _pushLog(
+        '[DART] 模型加载成功, 耗时=${DateTime.now().difference(loadT0).inMilliseconds}ms',
+      );
       _loadedModelPath = normalizedPath;
       _loadedSettings = effective;
       _backendName = null;
@@ -233,8 +274,9 @@ class LocalLlamaProvider {
   /// 配置 llamadart 日志写入环形缓冲（幂等，只配置一次）。
   ///
   /// 通过 [LlamaEngine.configureLogging] 挂 handler 捕获 Dart 侧日志；
-  /// 原生层（llama.cpp）日志经 [LlamaEngine.setLogLevel] 走同一 handler
-  /// 输出。debug 级别信息量大，仅保存在内存缓冲中，不影响磁盘写入。
+  /// 再通过 FFI 直接调用 `llama_log_set` 注册原生回调，把 llama.cpp
+  /// 的原生 stderr 日志（后端注册、张量加载、prefill、解码、线程等）
+  /// 一并写入环形缓冲，弥补 llamadart 未桥接原生层日志的盲区。
   void _configureLogging() {
     if (_loggingConfigured) return;
     _loggingConfigured = true;
@@ -242,28 +284,102 @@ class LocalLlamaProvider {
       LlamaEngine.configureLogging(
         level: LlamaLogLevel.debug,
         handler: (record) {
-          if (!_loggingEnabled) return;
-          final line = '[${record.time.toIso8601String()}] '
-              '[${record.level.name.toUpperCase()}] ${record.message}';
-          _logRing.add(line);
-          if (_logRing.length > _logRingCapacity) {
-            _logRing.removeRange(0, _logRing.length - _logRingCapacity);
-          }
+          _pushLog('[${record.level.name.toUpperCase()}] ${record.message}');
         },
       );
     } catch (_) {}
+    _installNativeLogBridge();
+  }
+
+  /// 通过 FFI 调用 llama.cpp 的 `llama_log_set`，把原生层日志写入缓冲。
+  ///
+  /// llamadart 只在 bindings 里声明 `llama_log_set` 却不调用，导致原生
+  /// 日志只进 Android stderr/logcat。这里用 [DynamicLibrary.open] 复用
+  /// 已加载的 `libllamadart.so`（同名 SONAME 返回同一句柄），lookup 出
+  /// `llama_log_set` 符号并注册回调。回调需长期存活，存入字段防 GC。
+  void _installNativeLogBridge() {
+    if (!_loggingEnabled) return;
+    if (_nativeLogCallable != null) return;
+    // llamadart 原生库的实际文件名因平台/打包布局而异，逐一尝试打开，
+    // 取第一个能 lookup 到 llama_log_set 的句柄。
+    const candidates = [
+      'libllamadart.so',
+      'libllamadart.so.0',
+      'libllama.so',
+      'libllama.so.0',
+    ];
+    Object? lastError;
+    for (final name in candidates) {
+      try {
+        final lib = DynamicLibrary.open(name);
+        // llama_log_set 返回 ggml_log_callback（旧回调），参数为
+        // (ggml_log_callback log_callback, void* user_data)。
+        final setLog = lib.lookupFunction<
+            Pointer<NativeFunction<_NativeLogCallback>> Function(
+              Pointer<NativeFunction<_NativeLogCallback>>,
+              Pointer<Void>,
+            ),
+            Pointer<NativeFunction<_NativeLogCallback>> Function(
+              Pointer<NativeFunction<_NativeLogCallback>>,
+              Pointer<Void>,
+            )>('llama_log_set');
+        _nativeLogCallable =
+            NativeCallable<_NativeLogCallback>.listener(_nativeLogSink);
+        setLog(_nativeLogCallable!.nativeFunction, nullptr);
+        _pushLog('[NATIVE] 原生日志桥接已挂载（$name）');
+        return;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    _pushLog('[NATIVE] 原生日志桥接挂载失败: $lastError');
+  }
+
+  /// 原生日志回调入口（来自 llama.cpp 工作线程，经 NativeCallable 调度到
+  /// 本 isolate 事件队列）。text 为以 '\0' 结尾的 C 字符串，逐条累积到
+  /// 当前行，遇到换行再推入缓冲（llama.cpp 常分多次回调同一行日志）。
+  void _nativeLogSink(int level, Pointer<Utf8> text, Pointer<Void> userData) {
+    if (!_loggingEnabled) return;
+    try {
+      final chunk = text.toDartString();
+      _nativeLogLine += chunk;
+      final nl = _nativeLogLine.indexOf('\n');
+      if (nl >= 0) {
+        final line = _nativeLogLine.substring(0, nl).trimRight();
+        if (line.isNotEmpty) {
+          final levelName = switch (level) {
+            1 => 'DEBUG',
+            2 => 'INFO',
+            3 => 'WARN',
+            4 => 'ERROR',
+            _ => 'NATIVE',
+          };
+          _pushLog('[$levelName] $line');
+        }
+        _nativeLogLine = _nativeLogLine.substring(nl + 1);
+      }
+    } catch (_) {}
+  }
+
+  /// 写入一条带时间戳的日志到环形缓冲。
+  void _pushLog(String line) {
+    _logRing.add('[${DateTime.now().toIso8601String()}] $line');
+    if (_logRing.length > _logRingCapacity) {
+      _logRing.removeRange(0, _logRing.length - _logRingCapacity);
+    }
   }
 
   /// 导出诊断日志到 `{modelsDir}/llama_diag_log.txt`，返回导出文件路径。
   ///
-  /// 日志内容包含：设备/平台信息、模型路径与设置、llama.cpp 原生加载与
-  /// 推理日志（环形缓冲）。用于在真机上"卡住加载不出来对话"时定位卡点
-  /// （后端注册、张量分配、prefill、线程等）。
+  /// 日志内容包含：设备/平台/系统信息、存储与内存、模型文件信息、
+  /// 已加载设置、GPU 枚举结果，以及 llama.cpp 原生 + Dart 环形缓冲日志。
+  /// 用于在真机上"卡住加载不出来对话"时定位卡点（后端注册、张量分配、
+  /// prefill、线程等）。
   Future<String?> exportDiagnosticLogs() async {
     try {
       final buf = StringBuffer();
       buf.writeln('===== Hexo 本地模型诊断日志 =====');
-      buf.writeln('时间: ${DateTime.now().toIso8601String()}');
+      buf.writeln('导出时间: ${DateTime.now().toIso8601String()}');
       buf.writeln('平台: ${defaultTargetPlatform.name}');
       buf.writeln('日志记录开关: ${_loggingEnabled ? '开' : '关'}');
       if (!_loggingEnabled) {
@@ -272,11 +388,29 @@ class LocalLlamaProvider {
         buf.writeln('>>> 请先开启「记录诊断日志」开关，重新加载模型/复现卡顿，');
         buf.writeln('>>> 再回到此处导出，才能包含 llama.cpp 原生加载日志。');
       }
+
+      // 系统与设备信息
+      buf.writeln();
+      buf.writeln('===== 系统信息 =====');
       if (!kIsWeb) {
+        try {
+          buf.writeln('操作系统: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}');
+        } catch (_) {}
         try {
           buf.writeln('CPU 核心数: ${Platform.numberOfProcessors}');
         } catch (_) {}
+        try {
+          buf.writeln('操作系统架构: ${Platform.version}');
+        } catch (_) {}
+        try {
+          final fs = await _modelFileInfo(_loadedModelPath);
+          buf.writeln(fs);
+        } catch (_) {}
       }
+
+      // 模型与推理状态
+      buf.writeln();
+      buf.writeln('===== 模型与推理状态 =====');
       buf.writeln('已加载模型: ${_loadedModelPath ?? '（无）'}');
       buf.writeln('后端: ${_backendName ?? '（未知）'}');
       buf.writeln('GPU 回退 CPU: $_gpuFallbackToCpu');
@@ -284,6 +418,27 @@ class LocalLlamaProvider {
       if (_loadedSettings != null) {
         buf.writeln('设置: ${_loadedSettings!.toJson()}');
       }
+      if (!kIsWeb) {
+        final engine = _engine;
+        if (engine != null) {
+          try {
+            final devices = await _safeEngineCall(
+              () => engine.listGpuDevices(),
+            );
+            if (devices != null && devices.isNotEmpty) {
+              buf.writeln('GPU 设备枚举:');
+              for (final d in devices) {
+                buf.writeln('  - ${d.backend.name}: ${d.name}');
+              }
+            } else {
+              buf.writeln('GPU 设备枚举: （无可用设备，走 CPU）');
+            }
+          } catch (_) {}
+        } else {
+          buf.writeln('GPU 设备枚举: （引擎未初始化）');
+        }
+      }
+
       buf.writeln();
       buf.writeln('===== llama.cpp 日志（最近 ${_logRing.length} 条）=====');
       if (_logRing.isEmpty) {
@@ -302,6 +457,31 @@ class LocalLlamaProvider {
       return file.path;
     } catch (e) {
       return '导出失败: $e';
+    }
+  }
+
+  /// 执行引擎调用并吞掉异常（枚举/信息接口在部分后端可能不可用）。
+  Future<T?> _safeEngineCall<T>(Future<T> Function() fn) async {
+    try {
+      return await fn();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 收集已加载模型文件的大小/路径信息（用于确认模型文件本身是否完整）。
+  Future<String> _modelFileInfo(String? path) async {
+    if (path == null || path.isEmpty) return '模型文件: （无）';
+    try {
+      final f = File(path);
+      if (await f.exists()) {
+        final bytes = await f.length();
+        final mb = bytes / (1024 * 1024);
+        return '模型文件: $path（${mb.toStringAsFixed(1)} MB）';
+      }
+      return '模型文件: $path（文件不存在！）';
+    } catch (_) {
+      return '模型文件: $path（读取失败）';
     }
   }
 
@@ -431,6 +611,7 @@ class LocalLlamaProvider {
     } else {
       promptTokens = prompt.length;
     }
+    _lastPromptTokens = promptTokens;
     const safety = 32;
     final usable = contextSize - safety;
     if (promptTokens > usable) {
@@ -473,6 +654,9 @@ class LocalLlamaProvider {
   ///
   /// 基于 llamadart `engine.generate` → `Stream<String>`，每个 token 立即
   /// 产出，首个 token 到达前不做任何缓冲；调用方（UI）可实时展示。
+  ///
+  /// 在生成前/首 token/结束各阶段写入诊断日志（[generateStream] 的 Dart 侧
+  /// 打点），即使原生桥接不可用，也能定位到"卡在 prefill 还是 decode"。
   Stream<String> generateStream(
     String prompt, {
     LocalModelSettings? settings,
@@ -486,18 +670,38 @@ class LocalLlamaProvider {
     }
     final s = settings ?? _loadedSettings ?? const LocalModelSettings();
     final maxOut = maxTokens ?? s.maxTokens;
+    final t0 = DateTime.now();
+    _pushLog('[DART] 生成开始 prompt=${prompt.length} 字符, maxTokens=$maxOut');
     final fit = await _fitToContext(prompt, maxOut);
     if (fit.error != null) {
+      _pushLog('[DART] 生成中止: ${fit.error}');
       yield fit.error!;
       return;
     }
-    yield* engine.generate(
-      prompt,
-      params: _generationParams(
-        s,
-        maxTokens: fit.maxTokens,
-        temperature: temperature,
-      ),
+    _pushLog(
+      '[DART] _fitToContext 完成: promptTokens=${_lastPromptTokens}'
+      ', 输出预算=${fit.maxTokens}, 耗时=${DateTime.now().difference(t0).inMilliseconds}ms',
+    );
+    final params = _generationParams(
+      s,
+      maxTokens: fit.maxTokens,
+      temperature: temperature,
+    );
+    _pushLog('[DART] 提交 llama.cpp 生成 (engine.generate)...');
+    var count = 0;
+    final firstStart = DateTime.now();
+    await for (final token in engine.generate(prompt, params: params)) {
+      if (count == 0) {
+        _pushLog(
+          '[DART] 首个 token 到达: 耗时=${DateTime.now().difference(firstStart).inMilliseconds}ms',
+        );
+      }
+      count++;
+      yield token;
+    }
+    _pushLog(
+      '[DART] 生成结束: 共 $count token, 总耗时='
+      '${DateTime.now().difference(t0).inMilliseconds}ms',
     );
   }
 
@@ -538,6 +742,9 @@ class LocalLlamaProvider {
         await engine.dispose();
       } catch (_) {}
     }
+    _nativeLogCallable?.close();
+    _nativeLogCallable = null;
+    _nativeLogLine = '';
     _lastError = null;
     _backendName = null;
     _vram = null;
@@ -557,3 +764,11 @@ class LocalLlamaProvider {
   bool canFit(int tokenCount, {int contextSize = 2048}) =>
       tokenCount <= contextSize;
 }
+
+/// llama.cpp `llama_log_set` 回调签名：
+/// `void callback(ggml_log_level level, const char * text, void * user_data)`
+typedef _NativeLogCallback = Void Function(
+  Uint32 level,
+  Pointer<Utf8> text,
+  Pointer<Void> userData,
+);

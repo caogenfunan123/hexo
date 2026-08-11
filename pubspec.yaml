@@ -19,6 +19,7 @@ dependencies:
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.3.0
   path: ^1.8.0
+  ffi: ^2.1.0
   # 本地 GGUF 模型推理（llamadart：llama.cpp 绑定，Android 支持 CPU+Vulkan 双后端，
   # 构建期 hook 自动下载预编译 native 运行时，逐 token 真流式）。
   # 0.8.19 升级 llama.cpp native 到 b10333，修复 Android 加载期崩溃回归。
