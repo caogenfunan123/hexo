@@ -122,12 +122,22 @@ extension EditorUiExt on _RootShellState {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: globalTextColor,
-            shape: BoxShape.circle,
+        const Text(
+          '拓墨',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+            letterSpacing: 2,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          'AI 写作',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey.shade600,
+            letterSpacing: 1,
           ),
         ),
       ],

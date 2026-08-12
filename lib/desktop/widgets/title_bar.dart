@@ -11,7 +11,6 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback onAi;
   final String siteName;
   final List<RepoConfig> repos;
-  final bool hasUnsavedChanges;
 
   final ShellActionBus bus;
 
@@ -21,7 +20,6 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
     required this.onAi,
     this.siteName = '当前站点',
     this.repos = const [],
-    this.hasUnsavedChanges = false,
   });
 
   @override
@@ -72,25 +70,6 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
                 letterSpacing: 0.3,
               ),
             ),
-            // 未保存标记
-            if (hasUnsavedChanges)
-              Padding(
-                padding: const EdgeInsets.only(left: 6),
-                child: Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    color: Colors.orange,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.orange.withOpacity(0.4),
-                        blurRadius: 4,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
             const SizedBox(width: 16),
 
             // 站点下拉

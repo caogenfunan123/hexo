@@ -7281,7 +7281,6 @@ $htmlContent
       bus: _bus,
       siteName: activeRepo?.name ?? settings.siteName,
       repos: repos,
-      hasUnsavedChanges: _doc.hasUnsavedChanges,
     );
   }
 
