@@ -68,6 +68,10 @@ class AiService {
     }
     if (b.endsWith('/chat/completions')) {
       b = b.substring(0, b.length - '/chat/completions'.length);
+    } else if (b.endsWith('/responses')) {
+      b = b.substring(0, b.length - '/responses'.length);
+    } else if (b.endsWith('/messages')) {
+      b = b.substring(0, b.length - '/messages'.length);
     }
     return b;
   }
@@ -1107,7 +1111,7 @@ class AiService {
     final allMessages = <Map<String, dynamic>>[];
     final hasSystemPrompt =
         messages.isNotEmpty && messages.first['role'] == 'system';
-    if (!hasSystemPrompt) {
+    if (!hasSystemPrompt && systemPrompt.isNotEmpty) {
       allMessages.add({'role': 'system', 'content': systemPrompt});
     }
     allMessages.addAll(messages);
@@ -1455,7 +1459,7 @@ class AiService {
     final allMessages = <Map<String, dynamic>>[];
     final hasSystemPrompt =
         messages.isNotEmpty && messages.first['role'] == 'system';
-    if (!hasSystemPrompt) {
+    if (!hasSystemPrompt && systemPrompt.isNotEmpty) {
       allMessages.add({'role': 'system', 'content': systemPrompt});
     }
     allMessages.addAll(messages);

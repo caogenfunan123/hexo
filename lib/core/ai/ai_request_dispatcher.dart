@@ -40,6 +40,9 @@ class AiRequestDispatcher {
   StreamController<StreamChunk>? _activeStreamController;
   bool _cancelled = false;
 
+  /// 请求代际：每次新请求（含取消）自增，旧异步任务据此识别自己已被取代而静默退出
+  int _requestGeneration = 0;
+
   /// 模型切换事件回调（UI 展示提示条）
   void Function(SwitchEvent event)? onModelSwitched;
 
@@ -57,10 +60,14 @@ class AiRequestDispatcher {
 
   /// 取消当前正在进行的请求
   void cancelCurrent() {
+    _requestGeneration++; // 使旧请求的所有恢复点失效
     _cancelled = true;
     _activeStreamController?.close();
     _activeStreamController = null;
   }
+
+  /// 当前代际是否已过期（被更新的请求取代）
+  bool _isStale(int generation) => _requestGeneration != generation;
 
   /// 上下文持有器：保存完整会话历史（含 tool_calls），保证切换模型时上下文不丢失
   final List<Map<String, dynamic>> _chatHistory = [];
@@ -103,6 +110,7 @@ class AiRequestDispatcher {
     // 取消之前的请求
     cancelCurrent();
     _cancelled = false;
+    final generation = _requestGeneration;
 
     addUserMessage(userMessage);
 
@@ -112,6 +120,7 @@ class AiRequestDispatcher {
     // 异步构建备选队列并启动处理
     _prepareAndRunStream(
       controller,
+      generation: generation,
       settings: settings,
       preferredModel: preferredModel,
       temperature: temperature,
@@ -126,6 +135,7 @@ class AiRequestDispatcher {
 
   Future<void> _prepareAndRunStream(
     StreamController<StreamChunk> controller, {
+    required int generation,
     required AppSettings settings,
     AiModelEntity? preferredModel,
     double temperature = 0.7,
@@ -144,12 +154,14 @@ class AiRequestDispatcher {
     } catch (_) {
       fallbacks = await _modelManager.getEnabled();
     }
+    if (_isStale(generation)) return; // 已被新请求取代
 
     final effectiveTimeout = timeoutSeconds ?? settings.ai.aiRequestTimeoutSec;
     final effectiveMaxSwitch = maxSwitchCount ?? settings.ai.aiMaxSwitchCount;
 
     await _runStream(
       controller,
+      generation: generation,
       settings: settings,
       preferredModel: preferredModel,
       temperature: temperature,
@@ -162,6 +174,7 @@ class AiRequestDispatcher {
 
   Future<void> _runStream(
     StreamController<StreamChunk> controller, {
+    required int generation,
     required AppSettings settings,
     AiModelEntity? preferredModel,
     double temperature = 0.7,
@@ -179,6 +192,7 @@ class AiRequestDispatcher {
     try {
       // 发送前清洗历史，丢弃残缺的 tool_calls（防止 400）
       ensureHistoryConsistent();
+      if (_isStale(generation)) return;
       AiProfile? profile;
       if (preferredModel != null) {
         profile = _profileFromModel(preferredModel);
@@ -254,13 +268,15 @@ class AiRequestDispatcher {
             );
 
         stopwatch.stop();
+        if (controller.isClosed || _cancelled || _isStale(generation)) return;
         _recordStreamCall(preferredModel, stopwatch, true);
         await _recordUsage(profile, response);
+        if (_isStale(generation)) return;
 
         if (controller.isClosed) return;
 
         if (response.hasToolCalls && toolRound < maxToolRounds) {
-          if (_cancelled) {
+          if (_cancelled || _isStale(generation)) {
             if (!controller.isClosed) await controller.close();
             return;
           }
@@ -300,9 +316,10 @@ class AiRequestDispatcher {
             response.toolCalls!,
             confirmOverride: (request) => _confirmTool(request),
           );
+          if (_isStale(generation)) return;
           onToolsExecuted?.call(response.toolCalls!, results);
 
-          if (_cancelled) {
+          if (_cancelled || _isStale(generation)) {
             if (!controller.isClosed) await controller.close();
             return;
           }
@@ -325,6 +342,7 @@ class AiRequestDispatcher {
 
           await _runStream(
             controller,
+            generation: generation,
             settings: settings,
             preferredModel: preferredModel,
             temperature: temperature,
@@ -391,6 +409,7 @@ class AiRequestDispatcher {
           ));
           await _runStream(
             controller,
+            generation: generation,
             settings: settings,
             preferredModel: preferredModel,
             temperature: temperature,
@@ -417,6 +436,7 @@ class AiRequestDispatcher {
           ));
           await _runStream(
             controller,
+            generation: generation,
             settings: settings,
             preferredModel: next,
             temperature: temperature,
@@ -807,6 +827,7 @@ class AiRequestDispatcher {
 
     var remainingRounds = maxToolRounds;
     var toolRound = 0;
+    bool lastRoundHadTools = false;
     final fullContent = StringBuffer();
 
     while (remainingRounds > 0) {
@@ -826,6 +847,7 @@ class AiRequestDispatcher {
 
       // 如果有工具调用
       if (response.hasToolCalls) {
+        lastRoundHadTools = true;
         for (final tc in response.toolCalls!) {
           onToolStatus?.call(tc.toolId, '执行中...');
         }
@@ -885,6 +907,10 @@ class AiRequestDispatcher {
     final result = fullContent.toString();
     if (result.isNotEmpty) {
       addAssistantMessage(result);
+    } else if (remainingRounds <= 0 && lastRoundHadTools) {
+      const notice = '已达到最大工具轮次，对话被终止。请减少复杂操作或稍后重试。';
+      addAssistantMessage(notice);
+      return notice;
     }
     return result;
   }

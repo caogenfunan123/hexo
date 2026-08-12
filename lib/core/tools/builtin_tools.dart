@@ -2157,6 +2157,16 @@ class BuiltinTools {
           error: 'remote_owner 和 remote_repo 不能为空');
     }
 
+    // 清洗 targetPath：拒绝绝对路径与 .. 穿越，防止写入越界
+    targetPath = targetPath.replaceAll(RegExp(r'^/+|/+$'), '');
+    if (targetPath.split('/').contains('..') || targetPath.contains('\\')) {
+      return ToolCallResult(
+          toolId: 'git_clone',
+          content: '',
+          success: false,
+          error: 'target_path 不能包含 .. 或反斜杠');
+    }
+
     if (gitHubService == null || activeRepo == null) {
       return ToolCallResult(
           toolId: 'git_clone', content: '', success: false, error: '未配置仓库连接');
@@ -2181,7 +2191,14 @@ class BuiltinTools {
               error: '下载仓库失败: HTTP ${res.statusCode}（仓库可能不存在或分支错误）');
         }
         final bytes = await res
-            .fold<List<int>>(<int>[], (acc, chunk) => acc..addAll(chunk))
+            .fold<List<int>>(<int>[], (acc, chunk) {
+              // 下载大小上限 50MB，防止超大仓库/zip 炸弹耗尽内存
+              if (acc.length + chunk.length > 50 * 1024 * 1024) {
+                throw Exception('仓库 zip 超过 50MB 大小限制');
+              }
+              acc.addAll(chunk);
+              return acc;
+            })
             .timeout(const Duration(seconds: 90));
         zipBytes = bytes;
       } finally {
@@ -2219,8 +2236,14 @@ class BuiltinTools {
       var successCount = 0;
       var skipCount = 0;
       final errors = <String>[];
+      // 文件数上限 200，防止 zip 炸弹解压大量文件
+      const maxCloneFiles = 200;
       for (final entry in archive.files) {
         if (!entry.isFile) continue;
+        if (successCount + skipCount + errors.length >= maxCloneFiles) {
+          errors.add('文件数超过 $maxCloneFiles 上限，已截断');
+          break;
+        }
         var name = entry.name;
         if (rootPrefix != null && name.startsWith(rootPrefix)) {
           name = name.substring(rootPrefix.length);

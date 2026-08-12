@@ -54,14 +54,14 @@ class InstructionParser {
     multiLine: true,
   );
 
-  /// 匹配 【MCP_CALL】name=xxx;params={...}
+  /// 匹配 【MCP_CALL】name=xxx;params={...}（params 支持嵌套 JSON，到行尾）
   static final RegExp _mcpCallRegex = RegExp(
-    r'【MCP_CALL】\s*name=([^;]+);\s*params=(\{[^}]+\})',
+    r'【MCP_CALL】\s*name=([^;]+);\s*params=(.+)',
   );
 
-  /// 匹配 【SKILL_RUN】skill_id=xxx;vars={...}
+  /// 匹配 【SKILL_RUN】skill_id=xxx;vars={...}（vars 支持嵌套 JSON，到行尾）
   static final RegExp _skillRunRegex = RegExp(
-    r'【SKILL_RUN】\s*skill_id=([^;]+);\s*vars=(\{[^}]+\})',
+    r'【SKILL_RUN】\s*skill_id=([^;]+);\s*vars=(.+)',
   );
 
   /// 匹配 【联网搜索】关键词
@@ -85,6 +85,43 @@ class InstructionParser {
   );
 
   /// 解析 AI 输出文本，提取所有指令
+  /// 从可能含嵌套对象/数组的文本中截取完整的顶层 JSON 对象。
+  ///
+  /// 从第一个 '{' 开始按括号深度匹配，支持 {"a":{"b":1}} 这类嵌套结构。
+  /// 找不到配对的花括号时返回原样（交给 jsonDecode 报错兜底）。
+  static String _extractJsonObject(String input) {
+    var s = input.trim();
+    if (s.startsWith('{')) {
+      var depth = 0;
+      var inString = false;
+      var escaped = false;
+      for (var i = 0; i < s.length; i++) {
+        final c = s[i];
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+          } else if (c == r'\') {
+            escaped = true;
+          } else if (c == '"') {
+            inString = false;
+          }
+          continue;
+        }
+        if (c == '"') {
+          inString = true;
+        } else if (c == '{') {
+          depth++;
+        } else if (c == '}') {
+          depth--;
+          if (depth == 0) {
+            return s.substring(0, i + 1);
+          }
+        }
+      }
+    }
+    return s;
+  }
+
   static List<ParsedInstruction> parseAll(String text) {
     final instructions = <ParsedInstruction>[];
 
@@ -133,7 +170,7 @@ class InstructionParser {
     // MCP_CALL
     for (final m in _mcpCallRegex.allMatches(text)) {
       final name = m.group(1)?.trim() ?? '';
-      final paramsStr = m.group(2)?.trim() ?? '{}';
+      final paramsStr = _extractJsonObject(m.group(2) ?? '');
       Map<String, String> params = {};
       try {
         final parsed = jsonDecode(paramsStr);
@@ -150,7 +187,7 @@ class InstructionParser {
     // SKILL_RUN
     for (final m in _skillRunRegex.allMatches(text)) {
       final skillId = m.group(1)?.trim() ?? '';
-      final varsStr = m.group(2)?.trim() ?? '{}';
+      final varsStr = _extractJsonObject(m.group(2) ?? '');
       Map<String, String> vars = {};
       try {
         final parsed = jsonDecode(varsStr);

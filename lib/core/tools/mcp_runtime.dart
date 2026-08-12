@@ -704,7 +704,7 @@ class McpRuntime {
   /// 处理【调用工具】
   Future<McpRuntimeResult> _handleCallTool(ParsedInstruction inst) async {
     final text = inst.queryText ?? '';
-    // 解析格式: 工具名称 | 参数xxx 或 工具名称(参数)
+    // 解析格式: 工具名称 | param=value 或 工具名称(param=value) 或 工具名称
     final parts = text.split(RegExp(r'[|(]'));
     final toolName = parts.isNotEmpty ? parts[0].trim() : '';
 
@@ -714,6 +714,18 @@ class McpRuntime {
         message: '调用工具名称不能为空',
         error: '参数缺失',
       );
+    }
+
+    // 解析参数：| k=v 或 (k=v) 形式
+    final args = <String, dynamic>{};
+    if (parts.length > 1) {
+      final argsRaw = parts.sublist(1).join('|').replaceFirst(RegExp(r'\)\s*$'), '');
+      for (final pair in argsRaw.split(RegExp(r'[,;]'))) {
+        final kv = pair.trim().split(RegExp(r'='));
+        if (kv.length == 2) {
+          args[kv[0].trim()] = kv[1].trim();
+        }
+      }
     }
 
     // 从注册表查找工具
@@ -726,12 +738,51 @@ class McpRuntime {
       );
     }
 
-    // 通过 MCP 调用机制执行
-    final subInst = ParsedInstruction(
-      type: InstructionType.mcpCall,
-      rawContent: '【MCP_CALL】name=$toolName',
-      params: {'name': toolName},
-    );
-    return await _handleMcpCall(subInst);
+    // MCP 工具（带 rawDefinition action）走 MCP 调用机制
+    if (tool.type == ToolType.mcp && tool.rawDefinition != null) {
+      final subInst = ParsedInstruction(
+        type: InstructionType.mcpCall,
+        rawContent: '【MCP_CALL】name=$toolName',
+        params: {'name': toolName, ...args},
+      );
+      return await _handleMcpCall(subInst);
+    }
+
+    // 内置工具直接执行（带高风险确认门）
+    final request = ToolCallRequest(toolId: toolName, arguments: args);
+    final isHighRisk = tool.riskLevel == 'high';
+    if (isHighRisk) {
+      if (onHighRiskConfirm == null) {
+        return McpRuntimeResult(
+          success: false,
+          message: '高风险工具 "$toolName" 需要用户确认，当前环境未提供确认回调，已拒绝执行',
+          error: '需要用户确认',
+        );
+      }
+      final allowed = await onHighRiskConfirm!(request, tool.name, _argSummary(args));
+      if (!allowed) {
+        return McpRuntimeResult(
+          success: false,
+          message: '用户拒绝了高风险工具 "$toolName"',
+          error: '用户拒绝',
+        );
+      }
+    }
+
+    try {
+      final result = await BuiltinTools.execute(request);
+      return McpRuntimeResult(
+        success: result.success,
+        message: result.success ? result.content : '工具执行失败: ${result.error}',
+        error: result.error,
+        data: {'result': result.content},
+      );
+    } catch (e) {
+      return McpRuntimeResult(
+        success: false,
+        message: '工具执行异常',
+        error: e.toString(),
+      );
+    }
   }
 }

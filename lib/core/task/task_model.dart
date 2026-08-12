@@ -187,7 +187,15 @@ class TaskRepository {
 
   TaskRepository(this.storage);
 
-  String _key(String siteId, String taskId) => 'task_${siteId}_$taskId.json';
+  String _key(String siteId, String taskId) =>
+      'task_${_sanitize(siteId)}_${_sanitize(taskId)}.json';
+
+  /// 净化输入，防止路径穿越（../）与非法文件名字符
+  String _sanitize(String value) {
+    var v = value.replaceAll(RegExp(r'[/\\]'), '_');
+    v = v.replaceAll('..', '_');
+    return v.isEmpty ? 'unknown' : v;
+  }
 
   String get _indexKey => 'task_index.json';
 

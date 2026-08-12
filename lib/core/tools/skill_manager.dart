@@ -112,10 +112,11 @@ class SkillManager {
 
   /// 删除技能
   Future<bool> deleteSkill(String id) async {
+    final existed = _skills.any((s) => s.id == id);
     _skills.removeWhere((s) => s.id == id);
     _registry.unregister(id);
     await _saveSkills();
-    return true;
+    return existed;
   }
 
   /// 注册 MCP 工具

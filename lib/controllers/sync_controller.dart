@@ -113,6 +113,7 @@ class SyncController extends ChangeNotifier {
     _errorMessage = error;
     if (error != null) {
       _status = SyncStatus.error;
+      _isSyncing = false; // 出错即停止同步中标记，避免 UI 永久"同步中"
     }
     notifyListeners();
   }
@@ -186,10 +187,14 @@ class SyncController extends ChangeNotifier {
 
   Future<void> _runAutoSync() async {
     if (!_autoSyncEnabled) return;
+    if (_isSyncing) return; // 上一次自动同步未完成时不并发触发
+    setStatus(SyncStatus.syncing);
     try {
       await onAutoSyncToCloud?.call();
     } catch (_) {
       // 自动同步失败不提示用户
+    } finally {
+      setStatus(SyncStatus.idle);
     }
   }
 

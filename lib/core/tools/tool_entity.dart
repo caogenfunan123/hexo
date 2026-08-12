@@ -238,7 +238,7 @@ class ToolCallRequest {
     final func = j['function'] as Map<String, dynamic>? ?? {};
     return ToolCallRequest(
       toolId: func['name']?.toString() ?? '',
-      callId: j['id']?.toString() ?? '',
+      callId: _fallbackCallId(func['name']?.toString() ?? '', j['id']?.toString()),
       arguments: _parseArgs(func['arguments']),
     );
   }
@@ -247,21 +247,26 @@ class ToolCallRequest {
   factory ToolCallRequest.fromAnthropic(Map<String, dynamic> block) {
     return ToolCallRequest(
       toolId: block['name']?.toString() ?? '',
-      callId: block['id']?.toString() ?? '',
+      callId: _fallbackCallId(block['name']?.toString() ?? '', block['id']?.toString()),
       arguments: _parseArgs(block['input']),
     );
   }
 
   /// 从 OpenAI Responses 响应解析 function_call output
   factory ToolCallRequest.fromOpenAIResponses(Map<String, dynamic> out) {
-    final args = out['arguments'] is String
-        ? jsonDecode(out['arguments'] as String)
-        : out['arguments'];
+    final args = _parseArgs(out['arguments']);
     return ToolCallRequest(
       toolId: out['name']?.toString() ?? '',
-      callId: out['call_id']?.toString() ?? '',
-      arguments: _parseArgs(args),
+      callId: _fallbackCallId(out['name']?.toString() ?? '', out['call_id']?.toString()),
+      arguments: args,
     );
+  }
+
+  /// 空 callId 兜底：保证 assistant 消息 id 与 tool 回执 tool_call_id 一致，
+  /// 避免 provider 因 id 不匹配/为空拒绝（HTTP 400）
+  static String _fallbackCallId(String toolId, String? raw) {
+    if (raw != null && raw.isNotEmpty) return raw;
+    return 'call_${toolId.isEmpty ? 'unknown' : toolId}_${DateTime.now().microsecondsSinceEpoch}';
   }
 
   static Map<String, dynamic> _parseArgs(dynamic args) {

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -199,7 +200,9 @@ class StorageService {
       final data = jsonDecode(text);
       if (data is Map<String, dynamic>) return data;
       if (data is Map) return Map<String, dynamic>.from(data);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Storage: 读取 $name 失败（文件可能损坏），返回空配置: $e');
+    }
     return {};
   }
 
@@ -211,13 +214,19 @@ class StorageService {
       if (text.trim().isEmpty) return [];
       final data = jsonDecode(text);
       if (data is List) return data;
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Storage: 读取 $name 失败（文件可能损坏），返回空列表: $e');
+    }
     return [];
   }
 
   Future<void> _write(String name, Object data) async {
     final f = await _file(name);
-    await f.writeAsString(const JsonEncoder.withIndent('  ').convert(data));
+    // 临时文件 + rename 原子写入，防止崩溃留下截断文件
+    final tmp = File('${f.path}.tmp');
+    await tmp.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(data), flush: true);
+    await tmp.rename(f.path);
   }
 
   Future<AppSettings> loadSettings() async {
@@ -353,10 +362,11 @@ class StorageService {
     await f.writeAsString(key);
   }
 
-  /// 生成一个伪随机设备密钥
+  /// 生成一个随机设备密钥（Random.secure 替代时间戳伪随机，避免可预测/碰撞）
   String _generateDeviceKey() {
-    final r = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
-    final s = (DateTime.now().hashCode.abs() & 0xFFFF).toRadixString(16);
+    final rand = Random.secure();
+    final r = rand.nextInt(1 << 30).toRadixString(36);
+    final s = rand.nextInt(0x10000).toRadixString(16).padLeft(4, '0');
     return 'hexo_${r}_$s';
   }
 }

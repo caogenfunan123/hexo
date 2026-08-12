@@ -236,7 +236,14 @@ class P2PIncrementalSyncService {
           _setState(SyncState.error);
           _errorMessage = '同步失败: 非法远端路径 ${remoteEntry.path}';
           _progress('同步失败: 非法远端路径 ${remoteEntry.path}');
-          return;
+          return SyncResult(
+            filesScanned: filesScanned,
+            filesChanged: 0,
+            filesSynced: filesSynced,
+            filesSkipped: filesSkipped,
+            conflicts: conflicts,
+            duration: DateTime.now().difference(startTime),
+          );
         }
         final localPath = '${_baseDir.path}${remoteEntry.path}';
         final localFile = File(localPath);
@@ -315,7 +322,15 @@ class P2PIncrementalSyncService {
       _setState(SyncState.error);
       _errorMessage = '同步失败: $e';
       _progress('同步失败: $e');
-      return;
+      return SyncResult(
+        filesScanned: filesScanned,
+        filesChanged: filesChanged,
+        filesSynced: filesSynced,
+        filesSkipped: filesSkipped,
+        conflicts: conflicts,
+        duration: DateTime.now().difference(startTime),
+        conflictDetails: conflictDetails,
+      );
     }
 
     final duration = DateTime.now().difference(startTime);

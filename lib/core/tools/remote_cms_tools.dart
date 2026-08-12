@@ -79,6 +79,7 @@ class RemoteCmsTools {
     description: '删除 WordPress 站点上的文章。需要用户确认后执行。',
     type: ToolType.builtin,
     builtinHandler: 'wp_delete_post',
+    riskLevel: 'high',
     parameters: const [
       ToolParam(name: 'post_id', type: 'number', description: '文章 ID', required: true),
     ],
@@ -149,9 +150,10 @@ class RemoteCmsTools {
   static final ToolEntity ghostDeletePost = ToolEntity(
     id: 'ghost_delete_post',
     name: 'Ghost 删除文章',
-    description: '删除 Ghost 站点上的文章。',
+    description: '删除 Ghost 站点上的文章。需要用户确认后执行。',
     type: ToolType.builtin,
     builtinHandler: 'ghost_delete_post',
+    riskLevel: 'high',
     parameters: const [
       ToolParam(name: 'post_id', type: 'number', description: '文章 ID', required: true),
     ],
@@ -223,9 +225,10 @@ class RemoteCmsTools {
   static final ToolEntity typechoDeletePost = ToolEntity(
     id: 'typecho_delete_post',
     name: 'Typecho 删除文章',
-    description: '删除 Typecho 站点上的文章。',
+    description: '删除 Typecho 站点上的文章。需要用户确认后执行。',
     type: ToolType.builtin,
     builtinHandler: 'typecho_delete_post',
+    riskLevel: 'high',
     parameters: const [
       ToolParam(name: 'post_id', type: 'number', description: '文章 ID', required: true),
     ],
