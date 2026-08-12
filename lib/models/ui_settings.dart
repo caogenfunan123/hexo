@@ -33,8 +33,8 @@ class UiSettings {
   // 站点预览 URL
   final String sitePreviewUrl;
 
-  // Cloudflare
-  final String cloudflareDeployHook;
+  // 部署钩子（多平台可并存，如 Cloudflare/Vercel/Netlify Deploy Hook）
+  final List<String> deployHooks;
 
   // 应用 UI 设计配置
   final DesignConfig designConfig;
@@ -58,10 +58,13 @@ class UiSettings {
     this.allowInsecureHttps = false,
     this.statusPresets = const ['publish', 'draft', 'pending', 'private'],
     this.sitePreviewUrl = '',
-    this.cloudflareDeployHook = '',
+    this.deployHooks = const [],
     this.designConfig = const DesignConfig(),
     this.editorTheme = const EditorTheme(),
   });
+
+  /// 向后兼容：首个部署钩子
+  String get cloudflareDeployHook => deployHooks.isNotEmpty ? deployHooks.first : '';
 
   UiSettings copyWith({
     String? siteAvatar,
@@ -79,7 +82,7 @@ class UiSettings {
     bool? allowInsecureHttps,
     List<String>? statusPresets,
     String? sitePreviewUrl,
-    String? cloudflareDeployHook,
+    List<String>? deployHooks,
     DesignConfig? designConfig,
     EditorTheme? editorTheme,
   }) {
@@ -99,7 +102,7 @@ class UiSettings {
       allowInsecureHttps: allowInsecureHttps ?? this.allowInsecureHttps,
       statusPresets: statusPresets ?? this.statusPresets,
       sitePreviewUrl: sitePreviewUrl ?? this.sitePreviewUrl,
-      cloudflareDeployHook: cloudflareDeployHook ?? this.cloudflareDeployHook,
+      deployHooks: deployHooks ?? this.deployHooks,
       designConfig: designConfig ?? this.designConfig,
       editorTheme: editorTheme ?? this.editorTheme,
     );
@@ -121,7 +124,7 @@ class UiSettings {
     'allowInsecureHttps': allowInsecureHttps,
     'statusPresets': statusPresets,
     'sitePreviewUrl': sitePreviewUrl,
-    'cloudflareDeployHook': cloudflareDeployHook,
+    'deployHooks': deployHooks,
     'designConfig': designConfig.toJson(),
     'editorTheme': editorTheme.toJson(),
   };
@@ -147,7 +150,7 @@ class UiSettings {
       'private',
     ]),
     sitePreviewUrl: j['sitePreviewUrl']?.toString() ?? '',
-    cloudflareDeployHook: j['cloudflareDeployHook']?.toString() ?? '',
+    deployHooks: _parseDeployHooks(j),
     designConfig: j['designConfig'] is Map
         ? DesignConfig.fromJson(
             Map<String, dynamic>.from(j['designConfig'] as Map),
@@ -165,5 +168,15 @@ class UiSettings {
       return raw.map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
     }
     return fallback;
+  }
+
+  /// 解析部署钩子：优先新键 deployHooks（List），回退旧键 cloudflareDeployHook（String）
+  static List<String> _parseDeployHooks(Map<String, dynamic> j) {
+    final raw = j['deployHooks'];
+    if (raw is List) {
+      return raw.map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
+    }
+    final legacy = j['cloudflareDeployHook']?.toString() ?? '';
+    return legacy.isEmpty ? const [] : [legacy];
   }
 }

@@ -1086,16 +1086,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     _editor.setEditorBusy(true); _editor.setEditorStatus('正在发布...');
     try {
       final a = _collect(draft: false);
-      final pub = await github.upsertArticle(repo, a, templates: templates);
+      final pub = await github.publishArticleWithMirrors(repo, a, templates: templates);
       _doc.setCurrentArticle(pub); _editor.setEditorStatus('已发布');
       _lastSavedContent = pub.content;
       _doc.markSaved();
       await _saveDraft(pub.copyWith(isDraft: false, published: true));
       await _refreshRemote();
-      // 触发 Cloudflare Pages 重新部署
-      if (settings.cloudflareDeployHook.isNotEmpty) {
-        final deployed = await GitHubService.triggerCloudflareDeploy(settings.cloudflareDeployHook);
-        logService.add('Cloudflare 部署', deployed ? '已触发重新部署' : '部署钩子触发失败', success: deployed);
+      // 触发全部部署钩子（Cloudflare / Vercel / Netlify 等）
+      if (settings.deployHooks.isNotEmpty) {
+        final ok = await GitHubService.triggerDeployHooks(settings.deployHooks);
+        logService.add('部署钩子', ok == settings.deployHooks.length ? '已触发 ${ok} 个重新部署' : '部署钩子部分失败（${ok}/${settings.deployHooks.length}）', success: ok == settings.deployHooks.length);
       }
       logService.add('发布成功', '已发布到 ${repo.fullName}: ${pub.title}');
       if (mounted) _showToast('已发布到 ${repo.fullName}');
@@ -2939,17 +2939,17 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
         final pubArticle = article.copyWith(isDraft: false, published: true);
         try {
-          final pub = await github.upsertArticle(repo, pubArticle, templates: templates);
+          final pub = await github.publishArticleWithMirrors(repo, pubArticle, templates: templates);
           final idx = drafts.indexWhere((a) => a.id == id);
           if (idx >= 0) drafts[idx] = pub.copyWith(isDraft: false, published: true);
           published++;
         } catch (e) { debugPrint('Shell: site config load failed: $e'); }
       }
       await storage.saveDrafts(drafts);
-      // 批量发布后触发 Cloudflare Pages 重新部署
-      if (published > 0 && settings.cloudflareDeployHook.isNotEmpty) {
-        final deployed = await GitHubService.triggerCloudflareDeploy(settings.cloudflareDeployHook);
-        logService.add('Cloudflare 部署', deployed ? '批量发布后已触发重新部署' : '部署钩子触发失败', success: deployed);
+      // 批量发布后触发全部部署钩子
+      if (published > 0 && settings.deployHooks.isNotEmpty) {
+        final ok = await GitHubService.triggerDeployHooks(settings.deployHooks);
+        logService.add('部署钩子', ok == settings.deployHooks.length ? '批量发布后已触发 ${ok} 个重新部署' : '部署钩子部分失败（${ok}/${settings.deployHooks.length}）', success: ok == settings.deployHooks.length);
       }
       if (mounted) {
         _editor.setEditorBusy(false); _editor.setEditorStatus(null);

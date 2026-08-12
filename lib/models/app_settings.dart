@@ -132,6 +132,7 @@ class AppSettings {
   List<String> get statusPresets => ui.statusPresets;
   String get sitePreviewUrl => ui.sitePreviewUrl;
   String get cloudflareDeployHook => ui.cloudflareDeployHook;
+  List<String> get deployHooks => ui.deployHooks;
 
   // ============================================================
   // 活跃站点
@@ -235,6 +236,7 @@ class AppSettings {
     List<String>? statusPresets,
     String? sitePreviewUrl,
     String? cloudflareDeployHook,
+    List<String>? deployHooks,
   }) {
     // 如果有扁平参数传入，构建对应的子对象
     final bool hasGitHubFlat = githubTokens != null || activeGithubTokenId != null ||
@@ -263,7 +265,7 @@ class AppSettings {
         nightEyeIntensity != null || httpTimeoutSeconds != null ||
         allowInsecureHttps != null || statusPresets != null ||
         sitePreviewUrl != null ||
-        cloudflareDeployHook != null;
+        cloudflareDeployHook != null || deployHooks != null;
 
     final GitHubSettings effectiveGitHub = github ??
         (hasGitHubFlat
@@ -348,7 +350,7 @@ class AppSettings {
                 allowInsecureHttps: allowInsecureHttps,
                 statusPresets: statusPresets,
                 sitePreviewUrl: sitePreviewUrl,
-                cloudflareDeployHook: cloudflareDeployHook,
+                deployHooks: deployHooks ?? (cloudflareDeployHook != null ? [cloudflareDeployHook] : null),
               )
             : this.ui);
 

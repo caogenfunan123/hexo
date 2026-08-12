@@ -356,6 +356,31 @@ class GitHubService {
     );
   }
 
+  /// 发布到主仓库并同步到全部镜像仓库（如 GitHub + Gitee）。
+  /// 返回主仓库发布结果；镜像推送失败不阻断主仓库发布。
+  Future<Article> publishArticleWithMirrors(RepoConfig repo, Article article,
+      {String? commitMessage, List<TemplateItem>? templates}) async {
+    final published = await upsertArticle(repo, article,
+        commitMessage: commitMessage, templates: templates);
+    for (final mirror in repo.mirrorRemotes) {
+      final mirrorRepo = repo.copyWith(
+        id: '${repo.id}_mirror_${mirror.fullName}',
+        name: mirror.fullName,
+        owner: mirror.owner,
+        repo: mirror.repo,
+        branch: mirror.branch.isEmpty ? repo.branch : mirror.branch,
+        token: mirror.token,
+      );
+      try {
+        await upsertArticle(mirrorRepo, article,
+            commitMessage: commitMessage, templates: templates);
+      } catch (e) {
+        debugPrint('Mirror publish to ${mirror.fullName} failed: $e');
+      }
+    }
+    return published;
+  }
+
   /// 读取仓库关键文件用于 AI 分析（配置文件 + 示例文章）
   ///
   /// 返回一个 Map，key 为文件路径，value 为文件内容
@@ -701,6 +726,7 @@ class GitHubService {
   /// 触发 Cloudflare Pages 重新部署
   /// [deployHookUrl] 为 Cloudflare Pages 的 Deploy Hook URL
   /// 成功返回 true，失败返回 false
+  /// 触发部署钩子（Cloudflare/Vercel/Netlify Deploy Hook 均为通用 POST webhook）
   static Future<bool> triggerCloudflareDeploy(String deployHookUrl) async {
     if (deployHookUrl.isEmpty) return false;
     try {
@@ -715,9 +741,18 @@ class GitHubService {
         client.close(force: true);
       }
     } catch (e) {
-      debugPrint('Cloudflare deploy hook failed: $e');
+      debugPrint('Deploy hook failed: $e');
       return false;
     }
+  }
+
+  /// 批量触发全部部署钩子，返回成功数量
+  static Future<int> triggerDeployHooks(List<String> urls) async {
+    var ok = 0;
+    for (final url in urls) {
+      if (await triggerCloudflareDeploy(url)) ok++;
+    }
+    return ok;
   }
 }
 

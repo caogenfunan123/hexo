@@ -275,6 +275,13 @@ extension EditorRepoExt on _RootShellState {
     int publishTimeZoneOffsetMinutes =
         existing?.publishTimeZoneOffsetMinutes ?? 480;
     bool postDatePrefix = existing?.fileNameRule.postDatePrefix ?? false;
+    // 镜像仓库：每行 owner/repo|branch|token，同一文章同步推送
+    final mirrorsCtrl = TextEditingController(
+      text: (existing?.mirrorRemotes ?? const [])
+          .map((m) =>
+              '${m.fullName}|${m.branch.isEmpty ? 'main' : m.branch}|${m.token}')
+          .join('\n'),
+    );
     String? selectedTokenId = settings.activeGithubTokenId;
     if (existing?.token.isNotEmpty == true) {
       for (final t in settings.githubTokens) {
@@ -456,6 +463,18 @@ extension EditorRepoExt on _RootShellState {
                         labelText: 'GitHub Token',
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: mirrorsCtrl,
+                      maxLines: 4,
+                      minLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: '镜像仓库（可选）',
+                        helperText:
+                            '每行一个: owner/repo|branch|token，发布时同步推送到该远程（如 Gitee）',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -512,6 +531,26 @@ extension EditorRepoExt on _RootShellState {
       defaultPageId = RepoConfig.defaultPageTemplateForFramework(frameworkId);
     }
 
+    // 解析镜像仓库行：owner/repo|branch|token
+    final mirrors = <RepoMirror>[];
+    for (final raw in mirrorsCtrl.text.split('\n')) {
+      final line = raw.trim();
+      if (line.isEmpty) continue;
+      final parts = line.split('|');
+      if (parts.isEmpty || !parts[0].contains('/')) continue;
+      final full = parts[0].trim();
+      final slash = full.indexOf('/');
+      if (slash <= 0 || slash == full.length - 1) continue;
+      mirrors.add(RepoMirror(
+        owner: full.substring(0, slash).trim(),
+        repo: full.substring(slash + 1).trim(),
+        branch: (parts.length > 1 ? parts[1].trim() : 'main').isEmpty
+            ? 'main'
+            : parts[1].trim(),
+        token: parts.length > 2 ? parts[2].trim() : '',
+      ));
+    }
+
     final cfg = RepoConfig(
       id: existing?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
       name: name.text.trim().isEmpty ? repo.text.trim() : name.text.trim(),
@@ -534,6 +573,7 @@ extension EditorRepoExt on _RootShellState {
       defaultPostTemplateId: defaultPostId,
       defaultPageTemplateId: defaultPageId,
       publishTimeZoneOffsetMinutes: publishTimeZoneOffsetMinutes,
+      mirrorRemotes: mirrors,
     );
     if (existing == null) {
       repos.add(cfg);

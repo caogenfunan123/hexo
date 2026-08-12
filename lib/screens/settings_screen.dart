@@ -1120,13 +1120,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             leading: const Icon(Icons.cloud_upload),
             title: Text(l10n.translate('cloudflare_hook')),
             subtitle: Text(
-              s.cloudflareDeployHook.isNotEmpty
-                  ? l10n.translate('deploy_hook_configured')
+              s.deployHooks.isNotEmpty
+                  ? l10n.translate('deploy_hook_configured', params: {'count': '${s.deployHooks.length}'})
                   : l10n.translate('deploy_hook_not_configured'),
             ),
             trailing: const Icon(Icons.edit, size: 18),
             onTap: () async {
-              final ctrl = TextEditingController(text: s.cloudflareDeployHook);
+              final ctrl = TextEditingController(
+                text: s.deployHooks.join('\n'),
+              );
               final ok = await showDialog<bool>(
                 context: context,
                 builder: (ctx) => AlertDialog(
@@ -1144,6 +1146,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       const SizedBox(height: 12),
                       TextField(
                         controller: ctrl,
+                        maxLines: 5,
+                        minLines: 2,
                         decoration: InputDecoration(
                           labelText: l10n.translate('deploy_hook_label'),
                           hintText: l10n.translate('deploy_hook_hint'),
@@ -1165,10 +1169,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               );
               if (ok == true) {
+                final hooks = ctrl.text
+                    .split('\n')
+                    .map((e) => e.trim())
+                    .where((e) => e.isNotEmpty)
+                    .toList();
                 await widget.onSettingsChanged(
-                  widget.settings.copyWith(
-                    cloudflareDeployHook: ctrl.text.trim(),
-                  ),
+                  widget.settings.copyWith(deployHooks: hooks),
                 );
                 widget.onShowToast(l10n.translate('cloudflare_hook_saved'));
               }

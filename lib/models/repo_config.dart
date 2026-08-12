@@ -61,6 +61,9 @@ class RepoConfig {
   // Cloudflare Pages 构建机为 UTC，front matter 日期需带正确偏移，避免日期偏移
   final int publishTimeZoneOffsetMinutes;
 
+  // 镜像仓库：同一篇文章同时推送到多个远程（如 GitHub + Gitee）
+  final List<RepoMirror> mirrorRemotes;
+
   RepoConfig({
     required this.id,
     required this.name,
@@ -79,6 +82,7 @@ class RepoConfig {
     this.defaultPageTemplateId,
     this.syncType = SyncType.gitRemote,
     this.publishTimeZoneOffsetMinutes = 480,
+    this.mirrorRemotes = const [],
   }) : fileNameRule = fileNameRule ??
             FileNameRule.fromFramework(frameworkId);
 
@@ -100,6 +104,7 @@ class RepoConfig {
     Object? defaultPageTemplateId = _sentinel,
     SyncType? syncType,
     int? publishTimeZoneOffsetMinutes,
+    List<RepoMirror>? mirrorRemotes,
   }) {
     // 切换框架时，如果未显式传入 fileNameRule，自动从框架预设生成
     final effectiveFrameworkId = frameworkId ?? this.frameworkId;
@@ -130,6 +135,7 @@ class RepoConfig {
       syncType: syncType ?? this.syncType,
       publishTimeZoneOffsetMinutes:
           publishTimeZoneOffsetMinutes ?? this.publishTimeZoneOffsetMinutes,
+      mirrorRemotes: mirrorRemotes ?? this.mirrorRemotes,
     );
   }
 
@@ -153,6 +159,7 @@ class RepoConfig {
         'defaultPageTemplateId': defaultPageTemplateId,
         'syncType': syncType.name,
         'publishTimeZoneOffsetMinutes': publishTimeZoneOffsetMinutes,
+        'mirrorRemotes': mirrorRemotes.map((m) => m.toJson()).toList(),
       };
 
   factory RepoConfig.fromJson(Map<String, dynamic> j) {
@@ -222,6 +229,12 @@ class RepoConfig {
       syncType: st,
       publishTimeZoneOffsetMinutes:
           (j['publishTimeZoneOffsetMinutes'] as num?)?.toInt() ?? 480,
+      mirrorRemotes: j['mirrorRemotes'] is List
+          ? (j['mirrorRemotes'] as List)
+              .whereType<Map>()
+              .map((m) => RepoMirror.fromJson(Map<String, dynamic>.from(m)))
+              .toList()
+          : const [],
     );
   }
 
@@ -258,4 +271,49 @@ class RepoConfig {
       default: return 'builtin_hexo_page'; // 通用回退
     }
   }
+}
+
+/// 镜像仓库（同一文章同步推送的目标远程）
+class RepoMirror {
+  final String owner;
+  final String repo;
+  final String branch;
+  final String token;
+
+  const RepoMirror({
+    required this.owner,
+    required this.repo,
+    this.branch = 'main',
+    required this.token,
+  });
+
+  String get fullName => '$owner/$repo';
+
+  RepoMirror copyWith({
+    String? owner,
+    String? repo,
+    String? branch,
+    String? token,
+  }) {
+    return RepoMirror(
+      owner: owner ?? this.owner,
+      repo: repo ?? this.repo,
+      branch: branch ?? this.branch,
+      token: token ?? this.token,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'owner': owner,
+        'repo': repo,
+        'branch': branch,
+        'token': token,
+      };
+
+  factory RepoMirror.fromJson(Map<String, dynamic> j) => RepoMirror(
+        owner: j['owner']?.toString() ?? '',
+        repo: j['repo']?.toString() ?? '',
+        branch: j['branch']?.toString() ?? 'main',
+        token: j['token']?.toString() ?? '',
+      );
 }

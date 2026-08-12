@@ -176,7 +176,7 @@ extension EditorPublishExt on _RootShellState {
     });
     try {
       final a = _collect(draft: false);
-      final pub = await github.upsertArticle(repo, a, templates: templates);
+      final pub = await github.publishArticleWithMirrors(repo, a, templates: templates);
       if (mounted)
         _applyState(() {
           _doc.setCurrentArticle(pub);
@@ -184,15 +184,15 @@ extension EditorPublishExt on _RootShellState {
         });
       await _saveDraft(pub.copyWith(isDraft: false, published: true));
       await _refreshRemote();
-      // 触发 Cloudflare Pages 重新部署
-      if (settings.cloudflareDeployHook.isNotEmpty) {
-        final deployed = await GitHubService.triggerCloudflareDeploy(
-          settings.cloudflareDeployHook,
-        );
+      // 触发全部部署钩子（Cloudflare / Vercel / Netlify 等）
+      if (settings.deployHooks.isNotEmpty) {
+        final ok = await GitHubService.triggerDeployHooks(settings.deployHooks);
         logService.add(
-          'Cloudflare 部署',
-          deployed ? '已触发重新部署' : '部署钩子触发失败',
-          success: deployed,
+          '部署钩子',
+          ok == settings.deployHooks.length
+              ? '已触发 ${ok} 个重新部署'
+              : '部署钩子部分失败（${ok}/${settings.deployHooks.length}）',
+          success: ok == settings.deployHooks.length,
         );
       }
       logService.add('发布成功', '已发布到 ${repo.fullName}: ${pub.title}');
