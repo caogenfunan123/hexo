@@ -118,32 +118,6 @@ extension EditorUiExt on _RootShellState {
   }
 
   /// 极简顶部标识：仅保留当前站点小圆点，不显示「写文章」文字
-  Widget _buildEditorAppBarTitle(ColorScheme cs) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Text(
-          '拓墨',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 18,
-            letterSpacing: 2,
-          ),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          'AI 写作',
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            color: Colors.grey.shade600,
-            letterSpacing: 1,
-          ),
-        ),
-      ],
-    );
-  }
-
   /// 工具箱抽屉：静态博客类型 / 目标仓库 / 博文页面设置 / 模板配置 / 标签分类 / 封面 URL
   void _showEditorToolbox() {
     final cs = Theme.of(context).colorScheme;
@@ -967,32 +941,14 @@ extension EditorUiExt on _RootShellState {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Logo 文字标志
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      const Text(
-                        '拓墨',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 24,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 3),
-                        child: Text(
-                          'AI 写作',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.75),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: 1,
-                          ),
-                        ),
-                      ),
-                    ],
+                  const Text(
+                    '拓墨',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 24,
+                      letterSpacing: 2,
+                    ),
                   ),
                   const SizedBox(height: 14),
                   Text(

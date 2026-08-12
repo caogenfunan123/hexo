@@ -60,7 +60,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
 
             // 应用名称
             Text(
-              'AI 博客编辑器',
+              '拓墨',
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,

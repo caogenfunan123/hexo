@@ -251,17 +251,6 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
               letterSpacing: 0.5,
             ),
           ),
-          const SizedBox(width: 6),
-          Text(
-            'AI 写作',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-              color: isDark
-                  ? Colors.white.withOpacity(0.4)
-                  : const Color(0xFF9CA3AF),
-            ),
-          ),
           const Spacer(),
           _iconButton(
             Icons.chevron_left,

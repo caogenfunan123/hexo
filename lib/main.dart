@@ -1024,16 +1024,29 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       elevation: 0,
       shadowColor: Colors.transparent,
       centerTitle: _currentPage == 0,
-      leading: IconButton(
-        icon: Icon(
-          Icons.menu_rounded,
-          color: _currentPage == 0 ? globalTextColor : cs.primary,
-          size: 22,
-        ),
-        onPressed: _openDrawer,
+      leading: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: Icon(
+              Icons.menu_rounded,
+              color: _currentPage == 0 ? globalTextColor : cs.primary,
+              size: 22,
+            ),
+            onPressed: _openDrawer,
+          ),
+          const Text(
+            '拓墨',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+              letterSpacing: 2,
+            ),
+          ),
+        ],
       ),
       title: _currentPage == 0
-          ? _buildEditorAppBarTitle(cs)
+          ? null
           : Text(
               _pageTitle,
               style: const TextStyle(
