@@ -185,6 +185,7 @@ class AiChatPanelState extends State<AiChatPanel> {
       ToolRegistry(),
       siteId: widget.activeRepo?.id ?? '',
       allowAutoSave: widget.settings.ai.aiAllowAutoSaveTools,
+      onHighRiskConfirm: _mcpHighRiskConfirm,
     );
     _initTools();
     _loadModels();
@@ -251,13 +252,24 @@ class AiChatPanelState extends State<AiChatPanel> {
         : null;
   }
 
+  /// MCP 指令执行高风险工具时复用同一确认框
+  Future<bool> _mcpHighRiskConfirm(
+    ToolCallRequest request,
+    String toolName,
+    String argSummary,
+  ) {
+    if (!widget.settings.ai.aiConfirmHighRiskTools) {
+      return Future.value(true);
+    }
+    return _confirmToolExecution(request, toolName, argSummary);
+  }
+
   /// 弹出高风险工具执行确认框；返回 true 允许执行
   Future<bool> _confirmToolExecution(
     ToolCallRequest request,
     String toolName,
     String argSummary,
-  ) async {
-    if (!mounted) return false;
+  ) async {    if (!mounted) return false;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(

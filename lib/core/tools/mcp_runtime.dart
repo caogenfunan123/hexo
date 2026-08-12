@@ -34,11 +34,17 @@ class McpRuntime {
   /// 是否允许 AI 自动保存工具（设置页总开关）
   bool allowAutoSave = true;
 
+  /// 高风险工具执行确认回调（由 UI 注入）。null 时高风险工具直接拒绝，
+  /// 避免绕过确认机制静默执行删除/回滚等危险操作
+  Future<bool> Function(ToolCallRequest request, String toolName, String argSummary)?
+      onHighRiskConfirm;
+
   McpRuntime(
     this._skillManager,
     this._registry, {
     String? siteId,
     this.allowAutoSave = true,
+    this.onHighRiskConfirm,
   })  : _validator = ToolSchemaValidator(),
         siteId = siteId;
 
@@ -366,6 +372,31 @@ class McpRuntime {
 
     final request = ToolCallRequest(toolId: builtinId, arguments: args);
 
+    // 高风险工具确认门：与 ToolExecutor 的 riskLevel=='high' 一致。
+    // 未注入确认回调时不静默放行，直接拒绝，防止 AI 绕过确认删除/回滚
+    final isHighRisk = tool.riskLevel == 'high';
+    if (isHighRisk) {
+      if (onHighRiskConfirm == null) {
+        return McpRuntimeResult(
+          success: false,
+          message: '高风险工具 "$name" 需要用户确认，当前环境未提供确认回调，已拒绝执行',
+          error: '需要用户确认',
+        );
+      }
+      final allowed = await onHighRiskConfirm!(
+        request,
+        tool.name,
+        _argSummary(args),
+      );
+      if (!allowed) {
+        return McpRuntimeResult(
+          success: false,
+          message: '用户拒绝了高风险工具 "$name"',
+          error: '用户拒绝',
+        );
+      }
+    }
+
     try {
       final result = await BuiltinTools.execute(request);
       return McpRuntimeResult(
@@ -381,6 +412,16 @@ class McpRuntime {
         error: e.toString(),
       );
     }
+  }
+
+  /// 生成参数摘要供确认框展示
+  String _argSummary(Map<String, dynamic> args) {
+    if (args.isEmpty) return '';
+    final buf = StringBuffer();
+    args.forEach((k, v) {
+      buf.write('$k=$v, ');
+    });
+    return buf.toString().replaceAll(RegExp(r', $'), '');
   }
 
   /// 从 MCP 工具的 rawDefinition 中提取 action 并映射到内置工具 ID

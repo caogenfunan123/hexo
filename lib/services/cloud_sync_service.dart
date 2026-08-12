@@ -146,9 +146,11 @@ class GitHubSyncBackend implements SyncBackend {
     if (_repo == null) return [];
 
     try {
-      final items = await _github.listPosts(_repo!, path: _syncPath);
+      final items =
+          await _github.listFiles(_repo!, _syncPath, recursive: true);
       final result = <SyncFileInfo>[];
       for (final item in items) {
+        if (item.type == 'dir') continue;
         final relativePath = item.path.startsWith('$_syncPath/')
             ? item.path.substring(_syncPath.length + 1)
             : item.path;
@@ -253,7 +255,8 @@ class WebDavSyncBackend implements SyncBackend {
     if (!isConfigured) return [];
 
     try {
-      final items = await _webdav.list(_url, _username, _password, _folder);
+      final items =
+          await _webdav.list(_url, _username, _password, _folder, recursive: true);
       final result = <SyncFileInfo>[];
       for (final item in items) {
         if (!item.isDir && (prefix.isEmpty || item.name.startsWith(prefix))) {

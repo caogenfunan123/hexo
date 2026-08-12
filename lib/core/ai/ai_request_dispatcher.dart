@@ -379,7 +379,10 @@ class AiRequestDispatcher {
         final isVolcengine = preferredModel != null
             ? VolcengineAdapter.isVolcengineArk(preferredModel.apiBase)
             : false;
-        if (isVolcengine && toolRound == 0) {
+        // 仅在首次（未降级工具）时降级为无工具模式重试一次；
+        // 已 disableTools 仍 400 说明参数本身不被支持，直接走模型切换/报错，
+        // 避免无限递归
+        if (isVolcengine && toolRound == 0 && !disableTools) {
           onModelSwitched?.call(SwitchEvent(
             fromModel: preferredModel.modelName,
             toModel: preferredModel.modelName,

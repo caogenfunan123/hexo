@@ -6,6 +6,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -19,11 +20,11 @@ class SiteEncryptionService {
   static const int _keyLength = 32; // 256 bits
   static const int _pbkdf2Iterations = 100000;
 
-  /// 从密码派生密钥
+  /// 从密码派生密钥（使用 UTF-8 字节，保证非 ASCII 密码跨端一致）
   static Uint8List _deriveKey(String password, Uint8List salt) {
     final pbkdf2 = PBKDF2KeyDerivator(HMac(SHA256Digest(), 64))
       ..init(Pbkdf2Parameters(salt, _pbkdf2Iterations, _keyLength));
-    return pbkdf2.process(Uint8List.fromList(password.codeUnits));
+    return pbkdf2.process(Uint8List.fromList(utf8.encode(password)));
   }
 
   /// 生成随机字节
@@ -67,6 +68,10 @@ class SiteEncryptionService {
   /// 返回解密后的明文
   static String decrypt(String encryptedBase64, String password) {
     final data = base64.decode(encryptedBase64);
+    final minLen = _saltLength + _ivLength + _tagLength;
+    if (data.length < minLen) {
+      throw ArgumentError('加密数据长度不足，可能已损坏');
+    }
 
     final salt = data.sublist(0, _saltLength);
     final iv = data.sublist(_saltLength, _saltLength + _ivLength);
@@ -126,11 +131,12 @@ class SiteEncryptionService {
   }
 
   static Future<void> _writeFile(String path, String content) async {
-    // 实际文件写入由调用方处理
+    await File(path).writeAsString(content);
   }
 
   static Future<String> _getFile(String path) async {
-    // 实际文件读取由调用方处理
-    return '';
+    final file = File(path);
+    if (!await file.exists()) return '';
+    return file.readAsString();
   }
 }

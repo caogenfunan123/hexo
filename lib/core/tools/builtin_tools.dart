@@ -1432,7 +1432,7 @@ class BuiltinTools {
     }
     try {
       // 获取文件历史提交记录
-      final commits = await gitHubService!.listCommits(activeRepo!);
+      final commits = await gitHubService!.listCommits(activeRepo!, path: path);
       if (commits.isEmpty) {
         return ToolCallResult(
             toolId: 'git_rollback',
@@ -1441,7 +1441,7 @@ class BuiltinTools {
             error: '仓库无提交记录');
       }
 
-      // 如果指定了 commitSha，尝试从该 commit 恢复文件
+      // 如果指定了 commitSha，从该 commit 恢复文件
       if (commitSha != null && commitSha.isNotEmpty) {
         final targetCommit = commits
             .where((c) => c.sha.startsWith(commitSha) == true)
@@ -1453,45 +1453,38 @@ class BuiltinTools {
               success: false,
               error: '未找到指定commit: $commitSha');
         }
-      }
-
-      // 先备份当前文件
-      final current = await gitHubService!.getRawFile(activeRepo!, path);
-      if (current == null) {
-        return ToolCallResult(
-            toolId: 'git_rollback',
-            content: '',
-            success: false,
-            error: '文件不存在: $path');
-      }
-      await gitHubService!.putRawFile(
-        activeRepo!,
-        '$path.bak',
-        current['content'] ?? '',
-        commitMessage: 'backup before rollback: $path',
-      );
-
-      // 获取上一个版本的文件内容并恢复
-      // 注意：GitHub Contents API 默认返回当前分支HEAD版本
-      // 如需回滚到更早版本，需要先获取commits列表找到目标sha再通过git API获取
-      final prevContent = await gitHubService!.getRawFile(activeRepo!, path);
-      if (prevContent != null && prevContent['content'] != null) {
-        await gitHubService!.putRawFile(
+        // 真正回滚：读取历史版本内容并覆盖当前文件
+        await gitHubService!.rollbackFile(
           activeRepo!,
           path,
-          prevContent['content'] ?? '',
-          commitMessage: 'rollback: restore $path (backup saved as $path.bak)',
+          targetCommit.sha,
         );
         return ToolCallResult(
           toolId: 'git_rollback',
-          content: '已回滚 $path（备份保存为 $path.bak）',
+          content: '已回滚 $path 到 commit ${targetCommit.sha.substring(0, 7)}',
+          success: true,
+        );
+      }
+
+      // 未指定 commitSha：回滚到上一个版本（最近一次修改前的内容）
+      if (commits.length > 1) {
+        final previous = commits[1];
+        await gitHubService!.rollbackFile(
+          activeRepo!,
+          path,
+          previous.sha,
+        );
+        return ToolCallResult(
+          toolId: 'git_rollback',
+          content:
+              '已回滚 $path 到上一版本 (commit ${previous.sha.substring(0, 7)})',
           success: true,
         );
       }
 
       return ToolCallResult(
         toolId: 'git_rollback',
-        content: '已创建备份 $path.bak，但未能获取历史版本内容。请手动从Git历史恢复。',
+        content: '',
         success: false,
         error: '无法获取历史版本',
       );

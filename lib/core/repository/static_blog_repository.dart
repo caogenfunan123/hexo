@@ -58,10 +58,13 @@ class StaticBlogRepository implements BlogRepository {
     try {
       final posts = await githubService.listPosts(repoConfig, recursive: true);
       
-      // 转换为 BlogPost 格式
+      // 转换为 BlogPost 格式。GitHub SHA 是 40 位 hex，无法直接 int.tryParse，
+      // 用稳定哈希生成 int id，保证列表→详情可按 id 找回
       final blogPosts = posts.map((fileItem) {
         return BlogPost(
-          id: fileItem.sha != null ? int.tryParse(fileItem.sha!) : null,
+          id: fileItem.sha != null
+              ? (fileItem.sha.hashCode & 0x7fffffff)
+              : (fileItem.path.hashCode & 0x7fffffff),
           title: _extractTitleFromFileItem(fileItem),
           contentMd: '', // 实际内容在点击时加载
           contentHtml: '',
@@ -100,11 +103,12 @@ class StaticBlogRepository implements BlogRepository {
       // 获取所有文章
       final posts = await githubService.listPosts(repoConfig);
 
-      // 根据ID查找文章（使用SHA或路径作为ID）
+      // 根据ID查找文章（SHA 哈希或路径匹配）
       for (final item in posts) {
-        if (item.sha == id.toString() ||
-            item.path.contains(id.toString()) ||
-            _extractTitleFromFileItem(item) == id.toString()) {
+        final hashId = item.sha != null
+            ? (item.sha.hashCode & 0x7fffffff)
+            : (item.path.hashCode & 0x7fffffff);
+        if (hashId == id) {
           return await getPostContent(item.sha ?? item.path);
         }
       }

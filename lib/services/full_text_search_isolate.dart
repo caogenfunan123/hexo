@@ -129,17 +129,26 @@ class FullTextSearchIsolate {
   /// 进度端口订阅
   StreamSubscription<dynamic>? _progressSubscription;
 
+  /// 当前搜索代标记：cancel/超时只影响最新代，防止误杀后续搜索
+  int _searchToken = 0;
+
+  /// 当前搜索的 Completer，用于取消时立即返回而不是挂起等超时
+  Completer<List<SearchResult>>? _completer;
+
   FullTextSearchIsolate(this._logService);
 
   /// 取消当前正在进行的搜索
-  ///
-  /// 立即终止 Isolate 并清理资源。已取消的搜索返回空结果列表。
+
+  /// 取消当前搜索。已取消的搜索返回空结果列表。
   void cancel() {
     _cancelled = true;
     _progressSubscription?.cancel();
     _progressSubscription = null;
     _currentIsolate?.kill(priority: Isolate.immediate);
     _currentIsolate = null;
+    _completer?.complete(<SearchResult>[]);
+    _completer = null;
+    _searchToken++;
     _logService.add('全文检索(Isolate)', '搜索已取消', success: true);
   }
 
@@ -168,11 +177,16 @@ class FullTextSearchIsolate {
     void Function(SearchProgress progress)? onProgress,
   }) async {
     _cancelled = false;
+    // 递增 token，标识本次搜索的隔离代；cancel() 只影响当前代，
+    // 防止上一次搜索的超时回调误杀最新搜索的 isolate
+    final token = ++_searchToken;
 
     // 取消之前的搜索（如果存在）
     if (_currentIsolate != null) {
       _currentIsolate!.kill(priority: Isolate.immediate);
       _currentIsolate = null;
+      _completer?.complete(<SearchResult>[]);
+      _completer = null;
     }
 
     // 创建通信端口
@@ -208,6 +222,7 @@ class FullTextSearchIsolate {
 
       // 等待搜索结果（带超时保护）
       final completer = Completer<List<SearchResult>>();
+      _completer = completer;
       late StreamSubscription<dynamic> subscription;
 
       subscription = resultPort.listen((message) {
@@ -221,20 +236,28 @@ class FullTextSearchIsolate {
         subscription.cancel();
       });
 
-      // 超时保护：30 秒后自动取消
+      // 超时保护：30 秒后自动取消（仅当仍是当前代时生效，
+      // 避免误杀后一次搜索的 isolate）
       final results = await completer.future.timeout(
         const Duration(seconds: 30),
         onTimeout: () {
+          if (token != _searchToken) {
+            // 已有更新的搜索开始，放弃本次超时处理
+            return <SearchResult>[];
+          }
           _logService.add(
             '全文检索(Isolate)',
             '搜索超时，已自动取消',
             success: false,
           );
-          cancel();
+          _killCurrentSearch();
           return <SearchResult>[];
         },
       );
 
+      if (token != _searchToken) {
+        return <SearchResult>[];
+      }
       if (_cancelled) {
         return <SearchResult>[];
       }
@@ -245,6 +268,9 @@ class FullTextSearchIsolate {
       );
       return results;
     } catch (e) {
+      if (token != _searchToken) {
+        return <SearchResult>[];
+      }
       if (_cancelled) {
         return <SearchResult>[];
       }
@@ -255,11 +281,26 @@ class FullTextSearchIsolate {
       );
       return <SearchResult>[];
     } finally {
-      // 清理资源
-      resultPort.close();
-      progressPort?.close();
-      _currentIsolate = null;
+      // 仅当仍是当前代时清理共享状态，避免影响后一次搜索
+      if (token == _searchToken) {
+        resultPort.close();
+        progressPort?.close();
+        _currentIsolate = null;
+        _completer = null;
+      }
     }
+  }
+
+  /// 仅终止当前搜索的 isolate 与 completer，不影响新启动的搜索
+  void _killCurrentSearch() {
+    _cancelled = true;
+    _progressSubscription?.cancel();
+    _progressSubscription = null;
+    _currentIsolate?.kill(priority: Isolate.immediate);
+    _currentIsolate = null;
+    _completer?.complete(<SearchResult>[]);
+    _completer = null;
+    _logService.add('全文检索(Isolate)', '搜索已取消', success: true);
   }
 
   /// 释放资源

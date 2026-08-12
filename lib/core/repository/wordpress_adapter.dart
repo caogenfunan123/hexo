@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import '../../models/app_settings.dart';
 import '../../models/blog_post.dart';
 import '../../models/blog_site_config.dart';
@@ -251,10 +253,80 @@ class WordPressAdapter implements BlogRepository {
       body['slug'] = post.slug;
     }
 
+    // WP REST 的 PUT 是全量替换语义：不带 tags/categories 会把远程的分类/标签清空。
+    // 这里按名称反查 term ID 一并提交
+    final termIds = await _resolveTermIds(post);
+    if (termIds['tags'] != null) body['tags'] = termIds['tags'];
+    if (termIds['categories'] != null) {
+      body['categories'] = termIds['categories'];
+    }
+
     final uri = _apiUri('/posts/${post.id}');
     final data = await _request('PUT', uri, body: body);
 
     return _wpPostToBlogPost(data);
+  }
+
+  /// 按名称反查 tag/category 的 term ID，返回 null 表示该字段无需更新
+  Future<Map<String, List<int>?>> _resolveTermIds(BlogPost post) async {
+    final result = <String, List<int>?>{'tags': null, 'categories': null};
+
+    if (post.tags.isNotEmpty) {
+      final ids = <int>[];
+      for (final name in post.tags) {
+        final id = await _findTermId(name, taxonomy: 'post_tag');
+        if (id != null) ids.add(id);
+      }
+      result['tags'] = ids;
+    }
+
+    if (post.categories.isNotEmpty) {
+      final ids = <int>[];
+      for (final name in post.categories) {
+        final id = await _findTermId(name, taxonomy: 'category');
+        if (id != null) ids.add(id);
+      }
+      result['categories'] = ids;
+    }
+
+    return result;
+  }
+
+  /// 查找指定分类法下名称为 [name] 的 term ID，不存在则创建
+  Future<int?> _findTermId(String name, {required String taxonomy}) async {
+    try {
+      final resp = await _js.send(
+        'GET',
+        _apiUri('/taxonomies/$taxonomy/terms', {
+          'search': name,
+          'per_page': '100',
+        }),
+        headers: _commonHeaders(),
+      );
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        final list = jsonDecode(resp.text) as List;
+        for (final item in list) {
+          if (item is Map && item['name']?.toString() == name) {
+            return (item['id'] as num?)?.toInt();
+          }
+        }
+        // 未找到，创建该 term
+        final created = await _js.send(
+          'POST',
+          _apiUri('/taxonomies/$taxonomy/terms'),
+          headers: _commonHeaders(json: true),
+          body: jsonEncode({'name': name}),
+        );
+        if (created.statusCode >= 200 && created.statusCode < 300) {
+          final map = jsonDecode(created.text);
+          if (map is Map) return (map['id'] as num?)?.toInt();
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('WordPress findTermId failed ($taxonomy/$name): $e');
+      return null;
+    }
   }
 
   @override
@@ -312,17 +384,64 @@ class WordPressAdapter implements BlogRepository {
     // HTML → Markdown 反向转换，支持线上文章拉回编辑
     final contentMd = HtmlToMarkdown.fromGutenberg(contentHtml);
 
+    // WP REST 返回的数字 ID 数组 + _embed 时 _embedded.wp:term 里的 term 对象
+    final termNames = <int, String>{};
+    final embedded = data['_embedded'] is Map
+        ? (data['_embedded'] as Map)['wp:term']
+        : null;
+    if (embedded is List) {
+      for (final group in embedded) {
+        if (group is List) {
+          for (final t in group) {
+            if (t is Map) {
+              final id = (t['id'] as num?)?.toInt();
+              final name = t['name']?.toString() ?? '';
+              if (id != null && name.isNotEmpty) termNames[id] = name;
+            }
+          }
+        }
+      }
+    }
+
     final tags = <String>[];
     if (data['tags'] is List) {
       for (final t in data['tags'] as List) {
-        if (t is Map) tags.add(t['name']?.toString() ?? '');
+        if (t is Map) {
+          final n = t['name']?.toString() ?? '';
+          if (n.isNotEmpty) tags.add(n);
+        } else if (t is num) {
+          final n = termNames[t.toInt()] ?? '';
+          if (n.isNotEmpty) tags.add(n);
+        } else if (t is String) {
+          final parsed = int.tryParse(t);
+          if (parsed != null) {
+            final n = termNames[parsed] ?? '';
+            if (n.isNotEmpty) tags.add(n);
+          } else {
+            tags.add(t);
+          }
+        }
       }
     }
 
     final categories = <String>[];
     if (data['categories'] is List) {
       for (final c in data['categories'] as List) {
-        if (c is Map) categories.add(c['name']?.toString() ?? '');
+        if (c is Map) {
+          final n = c['name']?.toString() ?? '';
+          if (n.isNotEmpty) categories.add(n);
+        } else if (c is num) {
+          final n = termNames[c.toInt()] ?? '';
+          if (n.isNotEmpty) categories.add(n);
+        } else if (c is String) {
+          final parsed = int.tryParse(c);
+          if (parsed != null) {
+            final n = termNames[parsed] ?? '';
+            if (n.isNotEmpty) categories.add(n);
+          } else {
+            categories.add(c);
+          }
+        }
       }
     }
 

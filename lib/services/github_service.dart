@@ -178,10 +178,44 @@ class GitHubService {
     return [];
   }
 
+  /// 列出目录下的全部文件（不限扩展名），供云同步等非文章场景使用
+  ///
+  /// [recursive] 为 true 时递归遍历子目录；否则仅列出直接子项。
+  /// 返回结果含文件与目录（目录的 [GitHubFileItem.isDir] 为 true）。
+  Future<List<GitHubFileItem>> listFiles(RepoConfig repo, String path,
+      {bool recursive = false}) async {
+    final all = <GitHubFileItem>[];
+    await _collectAllFiles(repo, path, all, recursive: recursive);
+    return all;
+  }
+
+  /// 递归收集指定目录下的全部文件（含子目录项）
+  Future<void> _collectAllFiles(RepoConfig repo, String dirPath,
+      List<GitHubFileItem> out, {required bool recursive}) async {
+    final p = dirPath.replaceAll(RegExp(r'/+$'), '');
+    final url =
+        '${repo.apiBase}/contents/${_encPath(p)}?ref=${Uri.encodeComponent(repo.branch)}';
+    final data = await _request('GET', url, repo.token);
+    if (data is! List) return;
+    final entries = data
+        .whereType<Map>()
+        .map((e) => GitHubFileItem.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+    for (final e in entries) {
+      if (e.type == 'dir') {
+        out.add(e);
+        if (recursive) {
+          await _collectAllFiles(repo, e.path, out, recursive: recursive);
+        }
+      } else if (e.type == 'file') {
+        out.add(e);
+      }
+    }
+  }
+
   /// 递归收集指定目录下的全部 .md 文件
   Future<void> _collectMarkdownFiles(
-      RepoConfig repo, String dirPath, List<GitHubFileItem> out) async {
-    final p = dirPath.replaceAll(RegExp(r'/+$'), '');
+      RepoConfig repo, String dirPath, List<GitHubFileItem> out) async {    final p = dirPath.replaceAll(RegExp(r'/+$'), '');
     final url =
         '${repo.apiBase}/contents/${_encPath(p)}?ref=${Uri.encodeComponent(repo.branch)}';
     final data = await _request('GET', url, repo.token);
@@ -451,9 +485,12 @@ class GitHubService {
   }
 
   Future<List<GitCommitItem>> listCommits(RepoConfig repo,
-      {int perPage = 30}) async {
+      {int perPage = 30, String? path}) async {
+    final pathParam = (path != null && path.isNotEmpty)
+        ? '&path=${Uri.encodeComponent(path)}'
+        : '';
     final url =
-        '${repo.apiBase}/commits?sha=${Uri.encodeComponent(repo.branch)}&per_page=$perPage';
+        '${repo.apiBase}/commits?sha=${Uri.encodeComponent(repo.branch)}&per_page=$perPage$pathParam';
     final data = await _request('GET', url, repo.token);
     if (data is List) {
       return data
@@ -491,7 +528,8 @@ class GitHubService {
     }
 
     final body = <String, dynamic>{
-      'message': 'revert: restore $path to ${commitSha.substring(0, 7)}',
+      'message':
+          'revert: restore $path to ${commitSha.length >= 7 ? commitSha.substring(0, 7) : commitSha}',
       'content': base64Encode(utf8.encode(md)),
       'branch': repo.branch,
     };

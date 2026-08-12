@@ -237,6 +237,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   Timer? _autoSaveTimer;
   Timer? _autoSyncTimer;
   final Map<String, Timer> _debounceTimers = {};
+  final Map<String, _PendingSave> _pendingSaveMap = {};
   final Map<String, String> _lastSavedContentMap = {};
   String _lastSavedContent = '';
 
@@ -572,13 +573,17 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   void _flushAllPendingSaves() {
     for (final entry in _debounceTimers.entries) {
       entry.value.cancel();
-      final articleId = entry.key;
-      final content = _doc.contentCtrl.text;
-      if (content.isNotEmpty && content != _lastSavedContentMap[articleId]) {
-        _autoSaveSnapshot();
+      final pending = _pendingSaveMap[entry.key];
+      if (pending != null && pending.content.isNotEmpty) {
+        _autoSaveSnapshot(
+          articleId: pending.articleId,
+          content: pending.content,
+          title: pending.title,
+        );
       }
     }
     _debounceTimers.clear();
+    _pendingSaveMap.clear();
   }
 
   void _onContentChanged() {
@@ -597,10 +602,25 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
     // 每草稿独立防抖，杜绝多草稿相互阻塞
     final articleId = _doc.currentArticle.id;
+    final title = _doc.titleCtrl.text;
     _debounceTimers[articleId]?.cancel();
+    // 闭包捕获当时的 articleId/content/title，触发时校验仍是该文章才保存，
+    // 防止切文章后旧文章的防抖把新内容误存到旧文章、或旧改动静默丢失
     _debounceTimers[articleId] = Timer(const Duration(seconds: 2), () {
-      _autoSaveSnapshot();
       _debounceTimers.remove(articleId);
+      if (_doc.currentArticle.id != articleId) {
+        _pendingSaveMap[articleId] = _PendingSave(
+          articleId: articleId,
+          content: current,
+          title: title,
+        );
+        return;
+      }
+      _autoSaveSnapshot(
+        articleId: articleId,
+        content: current,
+        title: title,
+      );
     });
   }
 
@@ -639,24 +659,30 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     );
   }
 
-  Future<void> _autoSaveSnapshot() async {
-    final content = _doc.contentCtrl.text;
-    final articleId = _doc.currentArticle.id;
-    if (content.isEmpty || content == _lastSavedContentMap[articleId]) return;
-    final title = _doc.titleCtrl.text;
+  Future<void> _autoSaveSnapshot({
+    String? articleId,
+    String? content,
+    String? title,
+  }) async {
+    final aid = articleId ?? _doc.currentArticle.id;
+    final c = content ?? _doc.contentCtrl.text;
+    if (c.isEmpty || c == _lastSavedContentMap[aid]) return;
+    final t = title ?? _doc.titleCtrl.text;
     try {
       await sessionService.saveAutoSnapshot(
-        articleId: articleId,
-        content: content,
-        title: title.isEmpty ? '未命名' : title,
+        articleId: aid,
+        content: c,
+        title: t.isEmpty ? '未命名' : t,
         tags: _doc.tagsCtrl.text,
         categories: _doc.categoriesCtrl.text,
         cover: _doc.coverCtrl.text,
       );
-      _lastSavedContent = content;
-      _lastSavedContentMap[articleId] = content;
-      _doc.markSaved();
-      await sessionService.cleanupSnapshots(articleId);
+      _lastSavedContent = c;
+      _lastSavedContentMap[aid] = c;
+      if (articleId == null) {
+        _doc.markSaved();
+      }
+      await sessionService.cleanupSnapshots(aid);
       await _saveDraft(_collect(draft: true));
       if (mounted) _showToast('草稿已自动保存');
     } catch (e) {
@@ -7912,6 +7938,19 @@ $htmlContent
 // ============================================================
 // 辅助数据类
 // ============================================================
+
+/// 防抖保存的待保存内容（捕获切换文章时的旧改动，避免丢失）
+class _PendingSave {
+  final String articleId;
+  final String content;
+  final String title;
+
+  const _PendingSave({
+    required this.articleId,
+    required this.content,
+    required this.title,
+  });
+}
 
 /// 最近打开文件记录
 class RecentFile {

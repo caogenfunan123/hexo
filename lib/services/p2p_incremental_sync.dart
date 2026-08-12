@@ -231,6 +231,13 @@ class P2PIncrementalSyncService {
 
       for (final remoteEntry in remoteFiles) {
         filesScanned++;
+        // 安全校验：拒绝绝对路径与目录穿越，防止远端写入 baseDir 之外
+        if (!_isSafeRelativePath(remoteEntry.path)) {
+          _setState(SyncState.error);
+          _errorMessage = '同步失败: 非法远端路径 ${remoteEntry.path}';
+          _progress('同步失败: 非法远端路径 ${remoteEntry.path}');
+          return;
+        }
         final localPath = '${_baseDir.path}${remoteEntry.path}';
         final localFile = File(localPath);
 
@@ -308,6 +315,7 @@ class P2PIncrementalSyncService {
       _setState(SyncState.error);
       _errorMessage = '同步失败: $e';
       _progress('同步失败: $e');
+      return;
     }
 
     final duration = DateTime.now().difference(startTime);
@@ -330,6 +338,21 @@ class P2PIncrementalSyncService {
   /// 计算文件的 SHA256 哈希
   static String computeSha256(String content) {
     return sha256.convert(utf8.encode(content)).toString();
+  }
+
+  /// 校验远端路径是否为安全的相对路径：必须以 / 开头，不含 .. 段，
+  /// 且不包含空字节/反斜杠。防止路径穿越写 baseDir 之外
+  static bool _isSafeRelativePath(String path) {
+    if (path.isEmpty) return false;
+    if (!path.startsWith('/')) return false;
+    if (path.contains('\\')) return false;
+    if (path.contains('\u0000')) return false;
+    final segments = path.split('/');
+    for (final seg in segments) {
+      if (seg == '..') return false;
+      if (seg.isEmpty) return false;
+    }
+    return true;
   }
 
   /// 获取上次同步时间

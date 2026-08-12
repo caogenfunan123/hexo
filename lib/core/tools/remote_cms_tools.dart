@@ -564,11 +564,23 @@ class RemoteCmsTools {
     }
 
     try {
+      // 安全校验：file_path 禁止绝对路径与目录穿越，防止任意本地文件被上传外泄
+      if (filePath.isNotEmpty) {
+        final pathErr = _validateUploadPath(filePath);
+        if (pathErr != null) {
+          return ToolCallResult(
+            toolId: 'remote_media_upload', content: '', success: false,
+            error: pathErr,
+          );
+        }
+      }
+      final safeFileName = _safeFileName(fileName);
+
       // 如果是 base64 数据，先写入临时文件
       String actualPath = filePath;
       if (base64Data.isNotEmpty) {
         final tempDir = await Directory.systemTemp.createTemp('hexo_upload_');
-        actualPath = '${tempDir.path}/$fileName';
+        actualPath = '${tempDir.path}/$safeFileName';
         final bytes = base64Decode(base64Data);
         await File(actualPath).writeAsBytes(bytes);
       }
@@ -602,5 +614,28 @@ class RemoteCmsTools {
         error: '媒体上传异常: $e',
       );
     }
+  }
+
+  /// 校验上传文件路径：禁止绝对路径与目录穿越
+  static String? _validateUploadPath(String path) {
+    if (path.isEmpty) return '路径不能为空';
+    if (path.startsWith('/') ||
+        path.startsWith(r'\') ||
+        path.startsWith('\\\\')) {
+      return '不允许使用绝对路径: $path';
+    }
+    if (path.contains('..')) return '不允许使用目录遍历: $path';
+    return null;
+  }
+
+  /// 清洗文件名，去掉路径分隔符，防止逃逸临时目录
+  static String _safeFileName(String name) {
+    final cleaned = name
+        .split('/')
+        .last
+        .split(r'\')
+        .last
+        .replaceAll('..', '_');
+    return cleaned.isEmpty ? 'image.png' : cleaned;
   }
 }
