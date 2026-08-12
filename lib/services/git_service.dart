@@ -60,9 +60,9 @@ class GitService {
     if (repoConfig.token.isEmpty) {
       throw Exception('仓库未配置 Token，无法推送');
     }
-    // GitHub Contents API 提交后即生效，无需额外推送动作。
+    // Contents API 提交后即生效，无需额外推送动作。
     // 此处校验仓库与 Token 是否有效，失败抛出异常。
-    await _createGithub().getUser(repoConfig.token);
+    await _createGithub().getUser(repoConfig.token, provider: repoConfig.provider);
   }
 
   /// 获取仓库状态

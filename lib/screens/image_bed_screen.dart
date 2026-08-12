@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +5,8 @@ import 'package:flutter/services.dart';
 
 import '../models/app_settings.dart';
 import '../models/article.dart';
+import '../models/git_provider.dart';
+import '../models/repo_config.dart';
 import '../services/github_service.dart';
 import '../services/image_service.dart';
 
@@ -164,54 +165,32 @@ class _ImageBedScreenState extends State<ImageBedScreen>
   String get _branch => widget.settings.imageBedBranch;
   String get _imagePath => widget.settings.imageBedPath;
 
+  GitProviderType get _provider => GitProviderTypeX.fromKey(
+        widget.settings.imageBedType.isNotEmpty
+            ? widget.settings.imageBedType
+            : null,
+      );
+
+  RepoConfig get _tmpRepo => RepoConfig(
+        id: '',
+        name: '',
+        owner: _owner,
+        repo: _repo,
+        branch: _branch,
+        token: _token,
+        provider: _provider,
+      );
+
   String _cdnUrlForPath(String path) {
     if (widget.settings.imageBedCdn.isNotEmpty) {
       final cdn = widget.settings.imageBedCdn.replaceAll(RegExp(r'/+$'), '');
       return '$cdn/$path';
     }
-    return 'https://cdn.jsdelivr.net/gh/$_owner/$_repo@$_branch/$path';
-  }
-
-  Future<Map<String, String>> _apiHeaders() async => {
-        'Accept': 'application/vnd.github+json',
-        'Authorization': 'Bearer $_token',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'HexoBlogManager',
-        'Content-Type': 'application/json',
-      };
-
-  Future<dynamic> _apiRequest(String method, String url,
-      {Object? body}) async {
-    final client = _httpClient ??= HttpClient();
-    try {
-      final req = await client.openUrl(method, Uri.parse(url));
-      final headers = await _apiHeaders();
-      headers.forEach(req.headers.set);
-      if (body != null) {
-        final bytes = utf8.encode(jsonEncode(body));
-        req.headers.contentLength = bytes.length;
-        req.add(bytes);
-      }
-      final res = await req.close();
-      final text = await res.transform(utf8.decoder).join();
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        if (text.isEmpty) return null;
-        return jsonDecode(text);
-      }
-      throw Exception('GitHub $method ${res.statusCode}: $text');
-    } catch (e) {
-      // If the client is broken, reset it
-      _httpClient?.close(force: true);
-      _httpClient = null;
-      rethrow;
+    if (_provider == GitProviderType.github) {
+      return 'https://cdn.jsdelivr.net/gh/$_owner/$_repo@$_branch/$path';
     }
+    return GitHubService.adapterFor(_provider).rawUrl(_tmpRepo, path);
   }
-
-  String _encPath(String path) => path
-      .split('/')
-      .where((e) => e.isNotEmpty)
-      .map(Uri.encodeComponent)
-      .join('/');
 
   // ═══════════════════════════════════════════════════════════
   // 浏览图床
@@ -233,23 +212,12 @@ class _ImageBedScreenState extends State<ImageBedScreen>
     });
 
     try {
-      final url =
-          'https://api.github.com/repos/$_owner/$_repo/contents/${_encPath(_imagePath)}?ref=${Uri.encodeComponent(_branch)}';
-      final data = await _apiRequest('GET', url);
-      if (data is! List) {
-        setState(() {
-          _isLoadingImages = false;
-          _images = [];
-        });
-        return;
-      }
-
+      final entries = await GitHubService.adapterFor(_provider)
+          .listContents(_tmpRepo, _imagePath);
       final items = <_ImageBedItem>[];
-      for (final e in data) {
-        if (e is! Map) continue;
-        final type = e['type']?.toString() ?? '';
-        if (type == 'dir') continue;
-        final name = e['name']?.toString() ?? '';
+      for (final e in entries) {
+        if (e.isDir) continue;
+        final name = e.name;
         // 过滤图片文件
         final lower = name.toLowerCase();
         if (!lower.endsWith('.png') &&
@@ -262,17 +230,16 @@ class _ImageBedScreenState extends State<ImageBedScreen>
             !lower.endsWith('.ico')) {
           continue;
         }
-        final path = e['path']?.toString() ?? '';
-        final sha = e['sha']?.toString() ?? '';
-        final size = (e['size'] as num?)?.toInt() ?? 0;
-        final downloadUrl = e['download_url']?.toString() ?? '';
+        final downloadUrl = (e.downloadUrl?.isNotEmpty ?? false)
+            ? e.downloadUrl!
+            : GitHubService.adapterFor(_provider).rawUrl(_tmpRepo, e.path);
         items.add(_ImageBedItem(
           name: name,
-          path: path,
-          sha: sha,
-          size: size,
+          path: e.path,
+          sha: e.sha ?? '',
+          size: e.size ?? 0,
           downloadUrl: downloadUrl,
-          cdnUrl: _cdnUrlForPath(path),
+          cdnUrl: _cdnUrlForPath(e.path),
         ));
       }
 
@@ -295,19 +262,9 @@ class _ImageBedScreenState extends State<ImageBedScreen>
   Future<void> _fetchLastModifiedDates(List<_ImageBedItem> items) async {
     for (var i = 0; i < items.length; i++) {
       try {
-        final url =
-            'https://api.github.com/repos/$_owner/$_repo/commits?path=${_encPath(items[i].path)}&sha=${Uri.encodeComponent(_branch)}&per_page=1';
-        final data = await _apiRequest('GET', url);
-        if (data is List && data.isNotEmpty) {
-          final commit = (data[0] as Map)['commit'] as Map?;
-          final author = commit?['author'] as Map?;
-          if (author != null) {
-            final dateStr = author['date']?.toString();
-            if (dateStr != null) {
-              items[i].lastModified = DateTime.tryParse(dateStr);
-            }
-          }
-        }
+        final d = await GitHubService.adapterFor(_provider)
+            .latestCommitDate(_tmpRepo, items[i].path);
+        if (d != null) items[i].lastModified = d;
       } catch (e) { debugPrint('ImageBed: fetch date failed: $e'); }
     }
     if (mounted) setState(() {});
@@ -347,13 +304,12 @@ class _ImageBedScreenState extends State<ImageBedScreen>
       if (idx >= _images.length) continue;
       final item = _images[idx];
       try {
-        final url =
-            'https://api.github.com/repos/$_owner/$_repo/contents/${_encPath(item.path)}';
-        await _apiRequest('DELETE', url, body: {
-          'message': 'chore: delete ${item.name}',
-          'sha': item.sha,
-          'branch': _branch,
-        });
+        await GitHubService.adapterFor(_provider).deleteFile(
+              _tmpRepo,
+              item.path,
+              item.sha,
+              message: 'chore: delete ${item.name}',
+            );
         deleted++;
       } catch (e) { debugPrint('ImageBed: delete failed: $e');
         failed++;

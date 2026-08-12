@@ -22,6 +22,7 @@ import 'models/blog_framework.dart';
 import 'models/blog_site_config.dart';
 import 'models/blog_post.dart';
 import 'models/github_token_profile.dart';
+import 'models/git_provider.dart';
 import 'models/repo_config.dart';
 import 'models/session_state.dart';
 import 'models/template_item.dart';

@@ -278,8 +278,9 @@ class StaticBlogBatchPublishService {
     var verified = false;
     String? error;
     try {
-      verified = await _githubService.verifyToken(token);
-      if (!verified) error = 'GitHub Token 校验失败';
+      verified =
+          await _githubService.verifyToken(token, provider: repo.provider);
+      if (!verified) error = 'Token 校验失败';
     } catch (e) {
       error = 'Token 校验异常: $e';
     }

@@ -95,6 +95,7 @@ extension EditorRepoExt on _RootShellState {
     String login = existing?.login ?? '';
     String avatarUrl = existing?.avatarUrl ?? '';
     String htmlUrl = existing?.htmlUrl ?? '';
+    var provider = existing?.provider ?? GitProviderType.github;
 
     return showDialog<GithubTokenProfile>(
       context: context,
@@ -113,7 +114,7 @@ extension EditorRepoExt on _RootShellState {
                 err = null;
               });
               try {
-                final user = await github.getUser(token);
+                final user = await github.getUser(token, provider: provider);
                 login = user['login']?.toString() ?? '';
                 avatarUrl = user['avatar_url']?.toString() ?? '';
                 htmlUrl = user['html_url']?.toString() ?? '';
@@ -133,13 +134,40 @@ extension EditorRepoExt on _RootShellState {
             }
 
             return AlertDialog(
-              title: Text(existing == null ? '登录 GitHub Token' : '编辑 Token'),
+              title: Text(existing == null ? '登录仓库 Token' : '编辑 Token'),
               content: SizedBox(
                 width: 420,
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      DropdownButtonFormField<GitProviderType>(
+                        key: ValueKey(provider),
+                        initialValue: provider,
+                        decoration: const InputDecoration(
+                          labelText: '仓库平台',
+                          helperText: '选择 Token 所属的平台',
+                        ),
+                        items: [
+                          for (final p in GitProviderType.values)
+                            DropdownMenuItem(
+                              value: p,
+                              child: Text(p.label),
+                            ),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) {
+                            setDlg(() {
+                              provider = v;
+                              login = '';
+                              avatarUrl = '';
+                              htmlUrl = '';
+                              err = null;
+                            });
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 8),
                       TextField(
                         controller: nameCtrl,
                         decoration: const InputDecoration(
@@ -152,9 +180,9 @@ extension EditorRepoExt on _RootShellState {
                         controller: tokenCtrl,
                         obscureText: true,
                         decoration: const InputDecoration(
-                          labelText: 'GitHub Token',
-                          hintText: 'ghp_... 或 fine-grained token',
-                          helperText: '需要 contents:read/write 权限',
+                          labelText: 'Token',
+                          hintText: '平台访问令牌（PAT / App Password）',
+                          helperText: '需要仓库 contents 读写权限',
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -210,7 +238,8 @@ extension EditorRepoExt on _RootShellState {
                           }
                           if (login.isEmpty) {
                             try {
-                              final user = await github.getUser(token);
+                              final user = await github.getUser(token,
+                                  provider: provider);
                               login = user['login']?.toString() ?? '';
                               avatarUrl = user['avatar_url']?.toString() ?? '';
                               htmlUrl = user['html_url']?.toString() ?? '';
@@ -222,19 +251,20 @@ extension EditorRepoExt on _RootShellState {
                             }
                           }
                           final name = nameCtrl.text.trim().isEmpty
-                              ? (login.isNotEmpty ? login : 'GitHub Token')
+                              ? (login.isNotEmpty ? login : provider.label)
                               : nameCtrl.text.trim();
                           Navigator.pop(
                             ctx,
                             GithubTokenProfile(
                               id:
                                   existing?.id ??
-                                  'gh_${DateTime.now().millisecondsSinceEpoch}',
+                                  '${provider.key}_${DateTime.now().millisecondsSinceEpoch}',
                               name: name,
                               token: token,
                               login: login,
                               avatarUrl: avatarUrl,
                               htmlUrl: htmlUrl,
+                              provider: provider,
                               lastVerifiedAt: login.isNotEmpty
                                   ? DateTime.now()
                                   : existing?.lastVerifiedAt,
@@ -272,14 +302,15 @@ extension EditorRepoExt on _RootShellState {
     );
     String frameworkId = existing?.frameworkId ?? 'hexo';
     final String originalFrameworkId = existing?.frameworkId ?? 'hexo';
+    GitProviderType repoProvider = existing?.provider ?? GitProviderType.github;
     int publishTimeZoneOffsetMinutes =
         existing?.publishTimeZoneOffsetMinutes ?? 480;
     bool postDatePrefix = existing?.fileNameRule.postDatePrefix ?? false;
-    // 镜像仓库：每行 owner/repo|branch|token，同一文章同步推送
+    // 镜像仓库：每行 owner/repo|branch|token|provider，同一文章同步推送
     final mirrorsCtrl = TextEditingController(
       text: (existing?.mirrorRemotes ?? const [])
           .map((m) =>
-              '${m.fullName}|${m.branch.isEmpty ? 'main' : m.branch}|${m.token}')
+              '${m.fullName}|${m.branch.isEmpty ? 'main' : m.branch}|${m.token}|${m.provider.key}')
           .join('\n'),
     );
     String? selectedTokenId = settings.activeGithubTokenId;
@@ -391,6 +422,27 @@ extension EditorRepoExt on _RootShellState {
                       controller: branch,
                       decoration: const InputDecoration(labelText: 'Branch'),
                     ),
+                    // ── 仓库平台选择 ──
+                    DropdownButtonFormField<GitProviderType>(
+                      key: ValueKey(repoProvider),
+                      initialValue: repoProvider,
+                      decoration: const InputDecoration(
+                        labelText: '仓库平台',
+                        helperText: '选择仓库托管平台，Token 需匹配该平台',
+                      ),
+                      items: [
+                        for (final p in GitProviderType.values)
+                          DropdownMenuItem(
+                            value: p,
+                            child: Text(p.label),
+                          ),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) {
+                          setDlg(() => repoProvider = v);
+                        }
+                      },
+                    ),
                     // ── 双目录配置 ──
                     TextField(
                       controller: posts,
@@ -452,6 +504,7 @@ extension EditorRepoExt on _RootShellState {
                           setDlg(() {
                             selectedTokenId = t.id;
                             token.text = t.token;
+                            repoProvider = t.provider;
                           });
                         },
                       ),
@@ -471,7 +524,7 @@ extension EditorRepoExt on _RootShellState {
                       decoration: const InputDecoration(
                         labelText: '镜像仓库（可选）',
                         helperText:
-                            '每行一个: owner/repo|branch|token，发布时同步推送到该远程（如 Gitee）',
+                            '每行一个: owner/repo|branch|token|平台(github/gitlab/gitee/bitbucket)，发布时同步推送到该远程',
                         border: OutlineInputBorder(),
                       ),
                     ),
@@ -548,6 +601,8 @@ extension EditorRepoExt on _RootShellState {
             ? 'main'
             : parts[1].trim(),
         token: parts.length > 2 ? parts[2].trim() : '',
+        provider: GitProviderTypeX.fromKey(
+            parts.length > 3 ? parts[3].trim() : null),
       ));
     }
 
@@ -574,6 +629,7 @@ extension EditorRepoExt on _RootShellState {
       defaultPageTemplateId: defaultPageId,
       publishTimeZoneOffsetMinutes: publishTimeZoneOffsetMinutes,
       mirrorRemotes: mirrors,
+      provider: repoProvider,
     );
     if (existing == null) {
       repos.add(cfg);
@@ -595,6 +651,7 @@ extension EditorRepoExt on _RootShellState {
             id: 'gh_${DateTime.now().millisecondsSinceEpoch}',
             name: '仓库 ${cfg.name}',
             token: tokenValue,
+            provider: repoProvider,
           ),
           makeActive: settings.githubTokens.isEmpty,
         );

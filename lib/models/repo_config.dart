@@ -1,3 +1,5 @@
+import 'git_provider.dart';
+
 /// 同步类型
 enum SyncType {
   gitRemote,   // Git 远程仓库（手机端）
@@ -64,6 +66,9 @@ class RepoConfig {
   // 镜像仓库：同一篇文章同时推送到多个远程（如 GitHub + Gitee）
   final List<RepoMirror> mirrorRemotes;
 
+  // 仓库托管平台
+  final GitProviderType provider;
+
   RepoConfig({
     required this.id,
     required this.name,
@@ -83,6 +88,7 @@ class RepoConfig {
     this.syncType = SyncType.gitRemote,
     this.publishTimeZoneOffsetMinutes = 480,
     this.mirrorRemotes = const [],
+    this.provider = GitProviderType.github,
   }) : fileNameRule = fileNameRule ??
             FileNameRule.fromFramework(frameworkId);
 
@@ -105,6 +111,7 @@ class RepoConfig {
     SyncType? syncType,
     int? publishTimeZoneOffsetMinutes,
     List<RepoMirror>? mirrorRemotes,
+    GitProviderType? provider,
   }) {
     // 切换框架时，如果未显式传入 fileNameRule，自动从框架预设生成
     final effectiveFrameworkId = frameworkId ?? this.frameworkId;
@@ -136,6 +143,7 @@ class RepoConfig {
       publishTimeZoneOffsetMinutes:
           publishTimeZoneOffsetMinutes ?? this.publishTimeZoneOffsetMinutes,
       mirrorRemotes: mirrorRemotes ?? this.mirrorRemotes,
+      provider: provider ?? this.provider,
     );
   }
 
@@ -160,6 +168,7 @@ class RepoConfig {
         'syncType': syncType.name,
         'publishTimeZoneOffsetMinutes': publishTimeZoneOffsetMinutes,
         'mirrorRemotes': mirrorRemotes.map((m) => m.toJson()).toList(),
+        'provider': provider.key,
       };
 
   factory RepoConfig.fromJson(Map<String, dynamic> j) {
@@ -235,11 +244,11 @@ class RepoConfig {
               .map((m) => RepoMirror.fromJson(Map<String, dynamic>.from(m)))
               .toList()
           : const [],
+      provider: GitProviderTypeX.fromKey(j['provider']?.toString()),
     );
   }
 
   String get fullName => '$owner/$repo';
-  String get apiBase => 'https://api.github.com/repos/$owner/$repo';
 
   /// 根据框架预设自动绑定默认模板ID
   static String? defaultPostTemplateForFramework(String frameworkId) {
@@ -279,12 +288,14 @@ class RepoMirror {
   final String repo;
   final String branch;
   final String token;
+  final GitProviderType provider;
 
   const RepoMirror({
     required this.owner,
     required this.repo,
     this.branch = 'main',
     required this.token,
+    this.provider = GitProviderType.github,
   });
 
   String get fullName => '$owner/$repo';
@@ -294,12 +305,14 @@ class RepoMirror {
     String? repo,
     String? branch,
     String? token,
+    GitProviderType? provider,
   }) {
     return RepoMirror(
       owner: owner ?? this.owner,
       repo: repo ?? this.repo,
       branch: branch ?? this.branch,
       token: token ?? this.token,
+      provider: provider ?? this.provider,
     );
   }
 
@@ -308,6 +321,7 @@ class RepoMirror {
         'repo': repo,
         'branch': branch,
         'token': token,
+        'provider': provider.key,
       };
 
   factory RepoMirror.fromJson(Map<String, dynamic> j) => RepoMirror(
@@ -315,5 +329,6 @@ class RepoMirror {
         repo: j['repo']?.toString() ?? '',
         branch: j['branch']?.toString() ?? 'main',
         token: j['token']?.toString() ?? '',
+        provider: GitProviderTypeX.fromKey(j['provider']?.toString()),
       );
 }

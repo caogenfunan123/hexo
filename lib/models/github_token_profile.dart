@@ -1,3 +1,5 @@
+import 'git_provider.dart';
+
 class GithubTokenProfile {
   final String id;
   final String name;
@@ -6,6 +8,7 @@ class GithubTokenProfile {
   final String avatarUrl;
   final String htmlUrl;
   final DateTime? lastVerifiedAt;
+  final GitProviderType provider;
 
   const GithubTokenProfile({
     required this.id,
@@ -15,6 +18,7 @@ class GithubTokenProfile {
     this.avatarUrl = '',
     this.htmlUrl = '',
     this.lastVerifiedAt,
+    this.provider = GitProviderType.github,
   });
 
   GithubTokenProfile copyWith({
@@ -25,6 +29,7 @@ class GithubTokenProfile {
     String? avatarUrl,
     String? htmlUrl,
     DateTime? lastVerifiedAt,
+    GitProviderType? provider,
   }) {
     return GithubTokenProfile(
       id: id ?? this.id,
@@ -34,6 +39,7 @@ class GithubTokenProfile {
       avatarUrl: avatarUrl ?? this.avatarUrl,
       htmlUrl: htmlUrl ?? this.htmlUrl,
       lastVerifiedAt: lastVerifiedAt ?? this.lastVerifiedAt,
+      provider: provider ?? this.provider,
     );
   }
 
@@ -45,6 +51,7 @@ class GithubTokenProfile {
         'avatarUrl': avatarUrl,
         'htmlUrl': htmlUrl,
         'lastVerifiedAt': lastVerifiedAt?.toIso8601String(),
+        'provider': provider.key,
       };
 
   factory GithubTokenProfile.fromJson(Map<String, dynamic> j) {
@@ -57,6 +64,7 @@ class GithubTokenProfile {
       avatarUrl: j['avatarUrl']?.toString() ?? '',
       htmlUrl: j['htmlUrl']?.toString() ?? '',
       lastVerifiedAt: DateTime.tryParse(j['lastVerifiedAt']?.toString() ?? ''),
+      provider: GitProviderTypeX.fromKey(j['provider']?.toString()),
     );
   }
 

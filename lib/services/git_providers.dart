@@ -1,0 +1,793 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+
+import '../models/git_provider.dart';
+import '../models/repo_config.dart';
+import 'git_http.dart';
+import 'git_models.dart';
+import 'git_provider_adapter.dart';
+
+/// GitHub 适配器（默认平台）
+class GitHubProvider implements GitProviderAdapter {
+  const GitHubProvider();
+
+  @override
+  GitProviderType get type => GitProviderType.github;
+
+  @override
+  String apiBase(RepoConfig repo) =>
+      'https://api.github.com/repos/${repo.owner}/${repo.repo}';
+
+  @override
+  Future<GitAccount> getUser(String token) async {
+    final data = await request('GET', 'https://api.github.com/user', token);
+    if (data is! Map) throw Exception('无法解析 GitHub 用户信息');
+    return GitAccount(
+      login: data['login']?.toString() ?? '',
+      avatarUrl: data['avatar_url']?.toString() ?? '',
+      htmlUrl: data['html_url']?.toString() ?? '',
+    );
+  }
+
+  @override
+  Future<dynamic> request(
+    String method,
+    String url,
+    String token, {
+    Object? body,
+  }) async {
+    final headers = <String, String>{
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'HexoBlogManager',
+      'Content-Type': 'application/json',
+    };
+    if (token.isNotEmpty) headers['Authorization'] = 'Bearer $token';
+    return gitHttpRequest(method, url, headers, jsonBody: body);
+  }
+
+  @override
+  Future<List<GitHubFileItem>> listContents(
+      RepoConfig repo, String path) async {
+    final p = path.replaceAll(RegExp(r'/+$'), '');
+    final url =
+        '${apiBase(repo)}/contents/${encPathSegments(p)}?ref=${Uri.encodeComponent(repo.branch)}';
+    final data = await request('GET', url, repo.token);
+    if (data is! List) return [];
+    return data
+        .whereType<Map>()
+        .map((e) => GitHubFileItem.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  @override
+  Future<Map<String, String>?> readFile(
+      RepoConfig repo, String path) async {
+    return _read(repo, path, repo.branch);
+  }
+
+  @override
+  Future<Map<String, String>?> readFileAtRef(
+      RepoConfig repo, String path, String ref) async {
+    return _read(repo, path, ref);
+  }
+
+  Future<Map<String, String>?> _read(
+      RepoConfig repo, String path, String ref) async {
+    final url =
+        '${apiBase(repo)}/contents/${encPathSegments(path)}?ref=${Uri.encodeComponent(ref)}';
+    try {
+      final data = await request('GET', url, repo.token);
+      if (data is! Map) return null;
+      final contentB64 =
+          (data['content']?.toString() ?? '').replaceAll('\n', '');
+      if (contentB64.isEmpty) return null;
+      return {
+        'content': utf8.decode(base64Decode(contentB64)),
+        'sha': data['sha']?.toString() ?? '',
+      };
+    } catch (e) {
+      debugPrint('GitHub: readFile failed: $e');
+      return null;
+    }
+  }
+
+  @override
+  Future<String?> writeFile(
+    RepoConfig repo,
+    String path,
+    List<int> bytes, {
+    String? sha,
+    required String message,
+  }) async {
+    final body = <String, dynamic>{
+      'message': message,
+      'content': base64Encode(bytes),
+      'branch': repo.branch,
+    };
+    if (sha != null && sha.isNotEmpty) body['sha'] = sha;
+    final data = await request(
+      'PUT',
+      '${apiBase(repo)}/contents/${encPathSegments(path)}',
+      repo.token,
+      body: body,
+    );
+    if (data is Map && data['content'] is Map) {
+      return (data['content'] as Map)['sha']?.toString();
+    }
+    return null;
+  }
+
+  @override
+  Future<void> deleteFile(
+    RepoConfig repo,
+    String path,
+    String sha, {
+    required String message,
+  }) async {
+    final body = <String, dynamic>{
+      'message': message,
+      'sha': sha,
+      'branch': repo.branch,
+    };
+    await request(
+      'DELETE',
+      '${apiBase(repo)}/contents/${encPathSegments(path)}',
+      repo.token,
+      body: body,
+    );
+  }
+
+  @override
+  Future<List<GitCommitItem>> listCommits(
+    RepoConfig repo, {
+    int perPage = 30,
+    String? path,
+  }) async {
+    final pathParam = (path != null && path.isNotEmpty)
+        ? '&path=${Uri.encodeComponent(path)}'
+        : '';
+    final url =
+        '${apiBase(repo)}/commits?sha=${Uri.encodeComponent(repo.branch)}&per_page=$perPage$pathParam';
+    final data = await request('GET', url, repo.token);
+    if (data is! List) return [];
+    return data
+        .whereType<Map>()
+        .map((e) => GitCommitItem.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  @override
+  Future<DateTime?> latestCommitDate(RepoConfig repo, String path) async {
+    final url =
+        '${apiBase(repo)}/commits?path=${encPathSegments(path)}&sha=${Uri.encodeComponent(repo.branch)}&per_page=1';
+    final data = await request('GET', url, repo.token);
+    if (data is List && data.isNotEmpty) {
+      final cm = (data[0] as Map)['commit'] as Map?;
+      final au = cm?['author'] as Map?;
+      return DateTime.tryParse(au?['date']?.toString() ?? '');
+    }
+    return null;
+  }
+
+  @override
+  String rawUrl(RepoConfig repo, String path) =>
+      'https://raw.githubusercontent.com/${repo.owner}/${repo.repo}/${repo.branch}/${encPathSegments(path)}';
+}
+
+/// GitLab 适配器（gitlab.com）
+class GitLabProvider implements GitProviderAdapter {
+  const GitLabProvider();
+
+  @override
+  GitProviderType get type => GitProviderType.gitlab;
+
+  @override
+  String apiBase(RepoConfig repo) =>
+      'https://gitlab.com/api/v4/projects/${Uri.encodeComponent('${repo.owner}/${repo.repo}')}';
+
+  @override
+  Future<GitAccount> getUser(String token) async {
+    final data =
+        await request('GET', 'https://gitlab.com/api/v4/user', token);
+    if (data is! Map) throw Exception('无法解析 GitLab 用户信息');
+    return GitAccount(
+      login: data['username']?.toString() ?? '',
+      avatarUrl: data['avatar_url']?.toString() ?? '',
+      htmlUrl: data['web_url']?.toString() ?? '',
+    );
+  }
+
+  @override
+  Future<dynamic> request(
+    String method,
+    String url,
+    String token, {
+    Object? body,
+  }) async {
+    final headers = <String, String>{
+      'Accept': 'application/json',
+      'User-Agent': 'HexoBlogManager',
+      'Content-Type': 'application/json',
+    };
+    if (token.isNotEmpty) headers['PRIVATE-TOKEN'] = token;
+    return gitHttpRequest(method, url, headers, jsonBody: body);
+  }
+
+  @override
+  Future<List<GitHubFileItem>> listContents(
+      RepoConfig repo, String path) async {
+    final p = path.replaceAll(RegExp(r'/+$'), '');
+    final items = <GitHubFileItem>[];
+    final pathParam = p.isEmpty ? '' : '&path=${Uri.encodeComponent(p)}';
+    // GitLab tree 接口按 100/页 分页，最多拉取 5 页避免无限循环
+    for (var page = 1; page <= 5; page++) {
+      final url =
+          '${apiBase(repo)}/repository/tree?ref=${Uri.encodeComponent(repo.branch)}$pathParam&per_page=100&page=$page';
+      final data = await request('GET', url, repo.token);
+      if (data is! List || data.isEmpty) break;
+      for (final e in data.whereType<Map>()) {
+        final m = Map<String, dynamic>.from(e);
+        items.add(GitHubFileItem(
+          name: m['name']?.toString() ?? '',
+          path: m['path']?.toString() ?? '',
+          type: m['type']?.toString() == 'tree' ? 'dir' : 'file',
+        ));
+      }
+      if (data.length < 100) break;
+    }
+    return items;
+  }
+
+  @override
+  Future<Map<String, String>?> readFile(
+      RepoConfig repo, String path) async {
+    return _read(repo, path, repo.branch);
+  }
+
+  @override
+  Future<Map<String, String>?> readFileAtRef(
+      RepoConfig repo, String path, String ref) async {
+    return _read(repo, path, ref);
+  }
+
+  Future<Map<String, String>?> _read(
+      RepoConfig repo, String path, String ref) async {
+    final url =
+        '${apiBase(repo)}/repository/files/${encPathFull(path)}?ref=${Uri.encodeComponent(ref)}';
+    try {
+      final data = await request('GET', url, repo.token);
+      if (data is! Map) return null;
+      final contentB64 =
+          (data['content']?.toString() ?? '').replaceAll('\n', '');
+      if (contentB64.isEmpty) return null;
+      return {
+        'content': utf8.decode(base64Decode(contentB64)),
+        'sha': data['blob_id']?.toString() ?? '',
+      };
+    } catch (e) {
+      debugPrint('GitLab: readFile failed: $e');
+      return null;
+    }
+  }
+
+  @override
+  Future<String?> writeFile(
+    RepoConfig repo,
+    String path,
+    List<int> bytes, {
+    String? sha,
+    required String message,
+  }) async {
+    final body = <String, dynamic>{
+      'branch': repo.branch,
+      'content': base64Encode(bytes),
+      'encoding': 'base64',
+      'commit_message': message,
+    };
+    final data = await request(
+      'PUT',
+      '${apiBase(repo)}/repository/files/${encPathFull(path)}',
+      repo.token,
+      body: body,
+    );
+    if (data is Map) {
+      return data['blob_id']?.toString();
+    }
+    return null;
+  }
+
+  @override
+  Future<void> deleteFile(
+    RepoConfig repo,
+    String path,
+    String sha, {
+    required String message,
+  }) async {
+    final body = <String, dynamic>{
+      'branch': repo.branch,
+      'commit_message': message,
+    };
+    await request(
+      'DELETE',
+      '${apiBase(repo)}/repository/files/${encPathFull(path)}',
+      repo.token,
+      body: body,
+    );
+  }
+
+  @override
+  Future<List<GitCommitItem>> listCommits(
+    RepoConfig repo, {
+    int perPage = 30,
+    String? path,
+  }) async {
+    final pathParam = (path != null && path.isNotEmpty)
+        ? '&path=${Uri.encodeComponent(path)}'
+        : '';
+    final url =
+        '${apiBase(repo)}/repository/commits?ref_name=${Uri.encodeComponent(repo.branch)}&per_page=$perPage$pathParam';
+    final data = await request('GET', url, repo.token);
+    if (data is! List) return [];
+    return data.whereType<Map>().map((e) {
+      final m = Map<String, dynamic>.from(e);
+      return GitCommitItem(
+        sha: m['id']?.toString() ?? '',
+        message: m['message']?.toString() ?? m['title']?.toString() ?? '',
+        author: m['author_name']?.toString() ?? '',
+        date:
+            DateTime.tryParse(m['committed_date']?.toString() ?? '') ??
+            DateTime.now(),
+        htmlUrl: m['web_url']?.toString() ?? '',
+      );
+    }).toList();
+  }
+
+  @override
+  Future<DateTime?> latestCommitDate(RepoConfig repo, String path) async {
+    final url =
+        '${apiBase(repo)}/repository/commits?path=${Uri.encodeComponent(path)}&ref_name=${Uri.encodeComponent(repo.branch)}&per_page=1';
+    final data = await request('GET', url, repo.token);
+    if (data is List && data.isNotEmpty) {
+      return DateTime.tryParse(
+          (data[0] as Map)['committed_date']?.toString() ?? '');
+    }
+    return null;
+  }
+
+  @override
+  String rawUrl(RepoConfig repo, String path) =>
+      'https://gitlab.com/${repo.owner}/${repo.repo}/-/raw/${repo.branch}/${encPathSegments(path)}';
+}
+
+/// Gitee 适配器（gitee.com，API 结构与 GitHub 高度一致）
+class GiteeProvider implements GitProviderAdapter {
+  const GiteeProvider();
+
+  @override
+  GitProviderType get type => GitProviderType.gitee;
+
+  @override
+  String apiBase(RepoConfig repo) =>
+      'https://gitee.com/api/v5/repos/${repo.owner}/${repo.repo}';
+
+  @override
+  Future<GitAccount> getUser(String token) async {
+    final data = await request('GET', 'https://gitee.com/api/v5/user', token);
+    if (data is! Map) throw Exception('无法解析 Gitee 用户信息');
+    return GitAccount(
+      login: data['login']?.toString() ?? '',
+      avatarUrl: data['avatar_url']?.toString() ?? '',
+      htmlUrl: data['html_url']?.toString() ?? '',
+    );
+  }
+
+  @override
+  Future<dynamic> request(
+    String method,
+    String url,
+    String token, {
+    Object? body,
+  }) async {
+    final headers = <String, String>{
+      'Accept': 'application/json',
+      'User-Agent': 'HexoBlogManager',
+      'Content-Type': 'application/json',
+    };
+    // Gitee 个人访问令牌既支持 header 也支持 access_token query 参数，
+    // 双通道携带确保私有仓库读写可靠
+    if (token.isNotEmpty) headers['Authorization'] = 'token $token';
+    var u = url;
+    if (token.isNotEmpty) {
+      final sep = u.contains('?') ? '&' : '?';
+      u = '$u$sep${Uri.encodeQueryComponent('access_token')}=${Uri.encodeQueryComponent(token)}';
+    }
+    return gitHttpRequest(method, u, headers, jsonBody: body);
+  }
+
+  @override
+  Future<List<GitHubFileItem>> listContents(
+      RepoConfig repo, String path) async {
+    final p = path.replaceAll(RegExp(r'/+$'), '');
+    final url =
+        '${apiBase(repo)}/contents/${encPathSegments(p)}?ref=${Uri.encodeComponent(repo.branch)}';
+    final data = await request('GET', url, repo.token);
+    if (data is! List) return [];
+    return data
+        .whereType<Map>()
+        .map((e) => GitHubFileItem.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  @override
+  Future<Map<String, String>?> readFile(
+      RepoConfig repo, String path) async {
+    return _read(repo, path, repo.branch);
+  }
+
+  @override
+  Future<Map<String, String>?> readFileAtRef(
+      RepoConfig repo, String path, String ref) async {
+    return _read(repo, path, ref);
+  }
+
+  Future<Map<String, String>?> _read(
+      RepoConfig repo, String path, String ref) async {
+    final url =
+        '${apiBase(repo)}/contents/${encPathSegments(path)}?ref=${Uri.encodeComponent(ref)}';
+    try {
+      final data = await request('GET', url, repo.token);
+      if (data is! Map) return null;
+      final contentB64 =
+          (data['content']?.toString() ?? '').replaceAll('\n', '');
+      if (contentB64.isEmpty) return null;
+      return {
+        'content': utf8.decode(base64Decode(contentB64)),
+        'sha': data['sha']?.toString() ?? '',
+      };
+    } catch (e) {
+      debugPrint('Gitee: readFile failed: $e');
+      return null;
+    }
+  }
+
+  @override
+  Future<String?> writeFile(
+    RepoConfig repo,
+    String path,
+    List<int> bytes, {
+    String? sha,
+    required String message,
+  }) async {
+    final body = <String, dynamic>{
+      'message': message,
+      'content': base64Encode(bytes),
+      'branch': repo.branch,
+    };
+    if (sha != null && sha.isNotEmpty) body['sha'] = sha;
+    final data = await request(
+      'PUT',
+      '${apiBase(repo)}/contents/${encPathSegments(path)}',
+      repo.token,
+      body: body,
+    );
+    if (data is Map && data['content'] is Map) {
+      return (data['content'] as Map)['sha']?.toString();
+    }
+    return null;
+  }
+
+  @override
+  Future<void> deleteFile(
+    RepoConfig repo,
+    String path,
+    String sha, {
+    required String message,
+  }) async {
+    final body = <String, dynamic>{
+      'message': message,
+      'sha': sha,
+      'branch': repo.branch,
+    };
+    await request(
+      'DELETE',
+      '${apiBase(repo)}/contents/${encPathSegments(path)}',
+      repo.token,
+      body: body,
+    );
+  }
+
+  @override
+  Future<List<GitCommitItem>> listCommits(
+    RepoConfig repo, {
+    int perPage = 30,
+    String? path,
+  }) async {
+    final pathParam = (path != null && path.isNotEmpty)
+        ? '&path=${Uri.encodeComponent(path)}'
+        : '';
+    final url =
+        '${apiBase(repo)}/commits/${Uri.encodeComponent(repo.branch)}?per_page=$perPage$pathParam';
+    final data = await request('GET', url, repo.token);
+    if (data is! List) return [];
+    return data
+        .whereType<Map>()
+        .map((e) => GitCommitItem.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  @override
+  Future<DateTime?> latestCommitDate(RepoConfig repo, String path) async {
+    final url =
+        '${apiBase(repo)}/commits/${Uri.encodeComponent(repo.branch)}?path=${encPathSegments(path)}&per_page=1';
+    final data = await request('GET', url, repo.token);
+    if (data is List && data.isNotEmpty) {
+      final cm = (data[0] as Map)['commit'] as Map?;
+      final au = cm?['author'] as Map?;
+      return DateTime.tryParse(au?['date']?.toString() ?? '');
+    }
+    return null;
+  }
+
+  @override
+  String rawUrl(RepoConfig repo, String path) =>
+      'https://gitee.com/${repo.owner}/${repo.repo}/raw/${repo.branch}/${encPathSegments(path)}';
+}
+
+/// Bitbucket 适配器（api.bitbucket.org）。
+///
+/// 使用 App Password 鉴权，token 格式约定为 `username:app_password`；
+/// 无文件 SHA 语义，[writeFile] 返回 null。
+class BitbucketProvider implements GitProviderAdapter {
+  const BitbucketProvider();
+
+  @override
+  GitProviderType get type => GitProviderType.bitbucket;
+
+  @override
+  String apiBase(RepoConfig repo) =>
+      'https://api.bitbucket.org/2.0/repositories/${repo.owner}/${repo.repo}';
+
+  @override
+  Future<GitAccount> getUser(String token) async {
+    final data = await request('GET', 'https://api.bitbucket.org/2.0/user', token);
+    if (data is! Map) throw Exception('无法解析 Bitbucket 用户信息');
+    final links = data['links'] is Map
+        ? Map<String, dynamic>.from(data['links'] as Map)
+        : <String, dynamic>{};
+    String? hrefOf(String key) {
+      final l = links[key];
+      if (l is Map) return l['href']?.toString();
+      return null;
+    }
+
+    return GitAccount(
+      login: data['username']?.toString() ?? '',
+      avatarUrl: hrefOf('avatar') ?? '',
+      htmlUrl: hrefOf('html') ?? '',
+    );
+  }
+
+  String _basicAuth(String token) {
+    final t = token.trim();
+    final sep = t.indexOf(':');
+    final username = sep > 0 ? t.substring(0, sep) : t;
+    final password = sep > 0 ? t.substring(sep + 1) : '';
+    return 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
+  }
+
+  @override
+  Future<dynamic> request(
+    String method,
+    String url,
+    String token, {
+    Object? body,
+  }) async {
+    final headers = <String, String>{
+      'Accept': 'application/json',
+      'User-Agent': 'HexoBlogManager',
+      'Content-Type': 'application/json',
+    };
+    if (token.isNotEmpty) headers['Authorization'] = _basicAuth(token);
+    return gitHttpRequest(method, url, headers, jsonBody: body);
+  }
+
+  @override
+  Future<List<GitHubFileItem>> listContents(
+      RepoConfig repo, String path) async {
+    final p = path.replaceAll(RegExp(r'/+$'), '');
+    final branch = Uri.encodeComponent(repo.branch);
+    final url = p.isEmpty
+        ? '${apiBase(repo)}/src/$branch?pagelen=100'
+        : '${apiBase(repo)}/src/$branch/${encPathSegments(p)}?pagelen=100';
+    final data = await request('GET', url, repo.token);
+    if (data is! Map) return [];
+    final values = data['values'];
+    if (values is! List) return [];
+    final prefix = p.isEmpty ? '' : '$p/';
+    final result = <String, GitHubFileItem>{};
+    for (final v in values.whereType<Map>()) {
+      final full = v['path']?.toString() ?? '';
+      final rest = full.startsWith(prefix) ? full.substring(prefix.length) : full;
+      final segs = rest.split('/').where((e) => e.isNotEmpty).toList();
+      if (segs.isEmpty) continue;
+      final vtype = v['type']?.toString() ?? '';
+      final isDir = vtype == 'commit_directory' || segs.length > 1;
+      final key = segs.first;
+      if (result.containsKey(key)) continue;
+      result[key] = GitHubFileItem(
+        name: key,
+        path: '$p${p.isEmpty ? '' : '/'}$key',
+        type: isDir ? 'dir' : 'file',
+        size: isDir ? null : (v['size'] as num?)?.toInt(),
+      );
+    }
+    return result.values.toList();
+  }
+
+  @override
+  Future<Map<String, String>?> readFile(
+      RepoConfig repo, String path) async {
+    return _read(repo, path, repo.branch);
+  }
+
+  @override
+  Future<Map<String, String>?> readFileAtRef(
+      RepoConfig repo, String path, String ref) async {
+    return _read(repo, path, ref);
+  }
+
+  Future<Map<String, String>?> _read(
+      RepoConfig repo, String path, String ref) async {
+    final url =
+        '${apiBase(repo)}/src/${Uri.encodeComponent(ref)}/${encPathSegments(path)}';
+    try {
+      final res = await _rawGet(url, repo.token);
+      final body = res.body;
+      if (body.isEmpty) return null;
+      // 目录请求返回 JSON 列表结构，判为非文件
+      final trimmed = body.trimLeft();
+      if (trimmed.startsWith('{') && trimmed.startsWith('{"pagelen"')) {
+        return null;
+      }
+      return {'content': body, 'sha': ''};
+    } catch (e) {
+      debugPrint('Bitbucket: readFile failed: $e');
+      return null;
+    }
+  }
+
+  Future<_RawResponse> _rawGet(String url, String token) async {
+    final headers = <String, String>{
+      'Accept': 'application/json',
+      'User-Agent': 'HexoBlogManager',
+    };
+    if (token.isNotEmpty) headers['Authorization'] = _basicAuth(token);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
+    try {
+      final req = await client.openUrl('GET', Uri.parse(url));
+      headers.forEach(req.headers.set);
+      final res = await req.close().timeout(const Duration(seconds: 30));
+      final bytes = await res
+          .fold<List<int>>(<int>[], (acc, chunk) => acc..addAll(chunk))
+          .timeout(const Duration(seconds: 30));
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        return _RawResponse(utf8.decode(bytes, allowMalformed: true));
+      }
+      throw Exception('HTTP ${res.statusCode}: ${utf8.decode(bytes)}');
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  @override
+  Future<String?> writeFile(
+    RepoConfig repo,
+    String path,
+    List<int> bytes, {
+    String? sha,
+    required String message,
+  }) async {
+    final headers = <String, String>{
+      'User-Agent': 'HexoBlogManager',
+      'Content-Type': 'application/x-www-form-urlencoded',
+    };
+    if (repo.token.isNotEmpty) {
+      headers['Authorization'] = _basicAuth(repo.token);
+    }
+    final formBody = [
+      'message=${Uri.encodeQueryComponent(message)}',
+      'branch=${Uri.encodeQueryComponent(repo.branch)}',
+      'content=${Uri.encodeQueryComponent(utf8.decode(bytes, allowMalformed: true))}',
+    ].join('&');
+    await gitHttpRequest(
+      'PUT',
+      '${apiBase(repo)}/src/${Uri.encodeComponent(repo.branch)}/${encPathSegments(path)}',
+      headers,
+      formBody: formBody,
+    );
+    return null;
+  }
+
+  @override
+  Future<void> deleteFile(
+    RepoConfig repo,
+    String path,
+    String sha, {
+    required String message,
+  }) async {
+    final headers = <String, String>{
+      'Accept': 'application/json',
+      'User-Agent': 'HexoBlogManager',
+      'Content-Type': 'application/json',
+    };
+    if (repo.token.isNotEmpty) {
+      headers['Authorization'] = _basicAuth(repo.token);
+    }
+    final url =
+        '${apiBase(repo)}/src/${Uri.encodeComponent(repo.branch)}/${encPathSegments(path)}?message=${Uri.encodeQueryComponent(message)}';
+    await gitHttpRequest('DELETE', url, headers);
+  }
+
+  @override
+  Future<List<GitCommitItem>> listCommits(
+    RepoConfig repo, {
+    int perPage = 30,
+    String? path,
+  }) async {
+    final pathParam = (path != null && path.isNotEmpty)
+        ? '&path=${Uri.encodeQueryComponent(path)}'
+        : '';
+    final url =
+        '${apiBase(repo)}/commits/${Uri.encodeComponent(repo.branch)}?pagelen=$perPage$pathParam';
+    final data = await request('GET', url, repo.token);
+    if (data is! Map) return [];
+    final values = data['values'];
+    if (values is! List) return [];
+    return values.whereType<Map>().map((e) {
+      final m = Map<String, dynamic>.from(e);
+      final author = m['author'] is Map
+          ? Map<String, dynamic>.from(m['author'] as Map)
+          : <String, dynamic>{};
+      return GitCommitItem(
+        sha: m['hash']?.toString() ?? '',
+        message: m['message']?.toString() ?? '',
+        author: author['raw']?.toString() ?? '',
+        date: DateTime.tryParse(m['date']?.toString() ?? '') ?? DateTime.now(),
+        htmlUrl: m['links'] is Map
+            ? (m['links'] as Map)['html'] is Map
+                ? ((m['links'] as Map)['html'] as Map)['href']?.toString() ?? ''
+                : ''
+            : '',
+      );
+    }).toList();
+  }
+
+  @override
+  Future<DateTime?> latestCommitDate(RepoConfig repo, String path) async {
+    final url =
+        '${apiBase(repo)}/commits/${Uri.encodeComponent(repo.branch)}?path=${Uri.encodeQueryComponent(path)}&pagelen=1';
+    final data = await request('GET', url, repo.token);
+    if (data is Map) {
+      final values = data['values'];
+      if (values is List && values.isNotEmpty) {
+        return DateTime.tryParse((values[0] as Map)['date']?.toString() ?? '');
+      }
+    }
+    return null;
+  }
+
+  @override
+  String rawUrl(RepoConfig repo, String path) =>
+      'https://bitbucket.org/${repo.owner}/${repo.repo}/raw/${repo.branch}/${encPathSegments(path)}';
+}
+
+class _RawResponse {
+  final String body;
+  const _RawResponse(this.body);
+}
+
+

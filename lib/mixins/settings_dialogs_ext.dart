@@ -506,6 +506,7 @@ extension SettingsDialogsExt on _RootShellState {
                                     title: Text(t.displayLabel),
                                     subtitle: Text(
                                       [
+                                        t.provider.label,
                                         if (t.login.isNotEmpty) '@${t.login}',
                                         t.maskedToken,
                                         if (t.lastVerifiedAt != null)
@@ -536,6 +537,7 @@ extension SettingsDialogsExt on _RootShellState {
                                           try {
                                             final user = await github.getUser(
                                               t.token,
+                                              provider: t.provider,
                                             );
                                             final login =
                                                 user['login']?.toString() ?? '';

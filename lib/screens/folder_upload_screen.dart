@@ -136,6 +136,7 @@ class _FolderUploadScreenState extends State<FolderUploadScreen> {
           path: targetPath,
           bytes: bytes,
           message: '$msg: $relPath',
+          provider: repo.provider,
         );
         _uploaded++;
         if (mounted) {

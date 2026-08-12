@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../models/app_settings.dart';
+import '../models/git_provider.dart';
+import '../models/repo_config.dart';
 import 'github_service.dart';
 
 class ImageService {
@@ -207,6 +209,10 @@ class ImageService {
     if (owner.isEmpty || repo.isEmpty) {
       throw Exception('请在设置中配置图床仓库 owner/repo');
     }
+    final provider =
+        GitProviderTypeX.fromKey(settings.imageBedType.isNotEmpty
+            ? settings.imageBedType
+            : null);
     final path =
         '${settings.imageBedPath.replaceAll(RegExp(r'/+$'), '')}/$name'
             .replaceAll(RegExp(r'^/+'), '');
@@ -218,13 +224,26 @@ class ImageService {
       path: path,
       bytes: compressed,
       message: 'chore: upload $name',
+      provider: provider,
     );
     if (settings.imageBedCdn.isNotEmpty) {
       final cdn = settings.imageBedCdn.replaceAll(RegExp(r'/+$'), '');
       return '$cdn/$path';
     }
-    // jsDelivr fallback
-    return 'https://cdn.jsdelivr.net/gh/$owner/$repo@${settings.imageBedBranch}/$path';
+    if (provider == GitProviderType.github) {
+      // jsDelivr fallback
+      return 'https://cdn.jsdelivr.net/gh/$owner/$repo@${settings.imageBedBranch}/$path';
+    }
+    final tmp = RepoConfig(
+      id: '',
+      name: '',
+      owner: owner,
+      repo: repo,
+      branch: settings.imageBedBranch,
+      token: token,
+      provider: provider,
+    );
+    return GitHubService.adapterFor(provider).rawUrl(tmp, path);
   }
 
   String markdownImage(String url, {String alt = 'image'}) => '![$alt]($url)';

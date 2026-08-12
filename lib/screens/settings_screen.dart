@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:io';
 import '../models/app_settings.dart';
+import '../models/git_provider.dart';
 import '../models/repo_config.dart';
 import '../services/github_service.dart';
 import '../services/storage_service.dart';
@@ -877,6 +878,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 imageBedOwner: r.owner,
                 imageBedRepo: r.repo,
                 imageBedBranch: r.branch,
+                imageBedType: r.provider.key,
                 imageBedToken: s.imageBedToken.isNotEmpty
                     ? s.imageBedToken
                     : s.effectiveGithubToken,
@@ -890,6 +892,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     .translate('image_host_synced')
                     .replaceAll('{name}', r.fullName),
               );
+            },
+          ),
+          DropdownButtonFormField<GitProviderType>(
+            key: ValueKey(s.imageBedType),
+            initialValue: GitProviderTypeX.fromKey(s.imageBedType),
+            decoration: InputDecoration(
+              labelText: '图床平台',
+              prefixIcon: const Icon(Icons.cloud_outlined),
+            ),
+            items: [
+              for (final p in GitProviderType.values)
+                DropdownMenuItem(value: p, child: Text(p.label)),
+            ],
+            onChanged: (v) async {
+              if (v == null) return;
+              await widget.onSettingsChanged(s.copyWith(imageBedType: v.key));
             },
           ),
           _field(
