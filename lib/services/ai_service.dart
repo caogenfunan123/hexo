@@ -18,12 +18,16 @@ class StreamChunk {
   final List<Map<String, dynamic>>? toolCalls;
   final String? reasoningContent;
 
+  /// 断线重连标记：UI 收到后应清空当前消息的累积内容（重连从头重发）
+  final bool resetStream;
+
   const StreamChunk({
     required this.content,
     this.isDone = false,
     this.finishReason,
     this.toolCalls,
     this.reasoningContent,
+    this.resetStream = false,
   });
 }
 
@@ -151,6 +155,179 @@ class AiService {
     } finally {
       client.close(force: true);
     }
+  }
+
+  /// 发送 SSE 流式 POST 请求，逐事件回调 [onEvent]。
+  /// 兼容 OpenAI Chat（data: 单行 JSON）、Anthropic（event: + data:）、[DONE] 终止。
+  Future<void> _ssePost({
+    required String url,
+    required String apiKey,
+    required Map<String, dynamic> body,
+    bool useBearer = true,
+    bool anthropic = false,
+    required void Function(String? event, String data) onEvent,
+  }) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 30);
+    try {
+      final req = await client.postUrl(Uri.parse(url));
+      req.headers.set('Content-Type', 'application/json');
+      req.headers.set('Accept', 'text/event-stream');
+      if (anthropic) {
+        if (useBearer) {
+          req.headers.set('Authorization', 'Bearer $apiKey');
+        } else {
+          req.headers.set('x-api-key', apiKey);
+        }
+        req.headers.set('anthropic-version', '2023-06-01');
+      } else if (apiKey.isNotEmpty) {
+        if (useBearer) {
+          req.headers.set('Authorization', 'Bearer $apiKey');
+        } else {
+          req.headers.set('Authorization', apiKey);
+          req.headers.set('api-key', apiKey);
+          req.headers.set('x-api-key', apiKey);
+        }
+      }
+      final bytes = utf8.encode(jsonEncode(body));
+      req.contentLength = bytes.length;
+      req.add(bytes);
+      final res = await req.close().timeout(const Duration(seconds: 60));
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        final err = await res
+            .transform(utf8.decoder)
+            .join()
+            .timeout(const Duration(seconds: 60));
+        throw Exception('HTTP ${res.statusCode}: $err');
+      }
+      await _sseRead(res, onEvent);
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// 逐行解析 SSE 字节流，按空行切分事件，回调 [onEvent]。
+  /// 每事件间隔超过 60s（空闲超时）抛 TimeoutException，避免模型卡死。
+  Future<void> _sseRead(
+    HttpClientResponse res,
+    void Function(String? event, String data) onEvent,
+  ) async {
+    String? pendingEvent;
+    final dataLines = <String>[];
+    final lineBuf = StringBuffer();
+    await for (final chunk in res
+        .transform(utf8.decoder)
+        .timeout(const Duration(seconds: 60))) {
+      lineBuf.write(chunk);
+      while (true) {
+        final s = lineBuf.toString();
+        final nl = s.indexOf('\n');
+        if (nl < 0) break;
+        var line = s.substring(0, nl);
+        if (line.endsWith('\r')) {
+          line = line.substring(0, line.length - 1);
+        }
+        lineBuf.clear();
+        lineBuf.write(s.substring(nl + 1));
+        if (line.isEmpty) {
+          if (dataLines.isNotEmpty) {
+            onEvent(pendingEvent, dataLines.join('\n'));
+            dataLines.clear();
+            pendingEvent = null;
+          }
+        } else if (line.startsWith('event:')) {
+          pendingEvent = line.substring(6).trim();
+        } else if (line.startsWith('data:')) {
+          dataLines.add(line.substring(5).trim());
+        }
+      }
+    }
+    if (dataLines.isNotEmpty) {
+      onEvent(pendingEvent, dataLines.join('\n'));
+    }
+  }
+
+  /// 流式版 completeWithTools：逐块通过 [onChunk] 回调文本/推理内容，
+  /// 返回与 [completeWithTools] 一致的完整 [ToolCallResponse]（含 toolCalls）。
+  Future<ToolCallResponse> completeWithToolsStreaming({
+    required AppSettings settings,
+    required String systemPrompt,
+    required List<Map<String, dynamic>> messages,
+    AiProfile? profile,
+    List<Map<String, dynamic>>? tools,
+    double temperature = 0.7,
+    int toolRound = 0,
+    required void Function(StreamChunk chunk) onChunk,
+  }) async {
+    final p = resolveProfile(settings, override: profile);
+    if (p.apiKey.isEmpty) {
+      throw Exception('请先在设置中配置 AI 中转站并填写 API Key');
+    }
+    if (p.model.isEmpty) {
+      throw Exception('请先选择模型');
+    }
+
+    // 断线重连：最多重试 1 次。重连前通过 resetStream 通知 UI 清空已累积内容，
+    // 避免与重连后从头流式输出的内容重复（对标 MonkeyCode 的断线重连+去重）。
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        switch (p.interfaceType) {
+          case InterfaceType.anthropic:
+            return await _streamAnthropic(
+              p,
+              systemPrompt: systemPrompt,
+              messages: messages,
+              tools: tools,
+              temperature: temperature,
+              onChunk: onChunk,
+            );
+          case InterfaceType.openaiResponses:
+            // Responses 接口暂回退非流式，通过 onChunk 一次性透出
+            final resp = await _completeWithToolsOpenAIResponses(
+              p,
+              systemPrompt: systemPrompt,
+              messages: messages,
+              tools: tools,
+              temperature: temperature,
+            ).timeout(const Duration(seconds: 90));
+            if (resp.content != null && resp.content!.isNotEmpty) {
+              onChunk(StreamChunk(
+                  content: resp.content!,
+                  reasoningContent: resp.reasoningContent));
+            }
+            return resp;
+          default:
+            return await _streamOpenAIChat(
+              p,
+              systemPrompt: systemPrompt,
+              messages: messages,
+              tools: tools,
+              temperature: temperature,
+              toolRound: toolRound,
+              onChunk: onChunk,
+            );
+        }
+      } on SocketException {
+        if (attempt == 0) {
+          onChunk(const StreamChunk(content: '', resetStream: true));
+          continue;
+        }
+        rethrow;
+      } on HttpException {
+        if (attempt == 0) {
+          onChunk(const StreamChunk(content: '', resetStream: true));
+          continue;
+        }
+        rethrow;
+      } on TimeoutException {
+        if (attempt == 0) {
+          onChunk(const StreamChunk(content: '', resetStream: true));
+          continue;
+        }
+        rethrow;
+      }
+    }
+    throw Exception('断线重连失败');
   }
 
   AiProfile resolveProfile(AppSettings settings, {AiProfile? override}) {
@@ -912,6 +1089,357 @@ class AiService {
     throw Exception('OpenAI Responses 返回空内容');
   }
 
+  /// OpenAI Chat 流式实现：SSE 逐块解析 delta.content / delta.reasoning_content /
+  /// delta.tool_calls，实时通过 [onChunk] 回调，结束时返回完整 ToolCallResponse。
+  Future<ToolCallResponse> _streamOpenAIChat(
+    AiProfile p, {
+    required String systemPrompt,
+    required List<Map<String, dynamic>> messages,
+    List<Map<String, dynamic>>? tools,
+    double temperature = 0.7,
+    int toolRound = 0,
+    required void Function(StreamChunk chunk) onChunk,
+  }) async {
+    final url = _chatUrl(p);
+    final allMessages = <Map<String, dynamic>>[];
+    final hasSystemPrompt =
+        messages.isNotEmpty && messages.first['role'] == 'system';
+    if (!hasSystemPrompt) {
+      allMessages.add({'role': 'system', 'content': systemPrompt});
+    }
+    allMessages.addAll(messages);
+
+    final body = <String, dynamic>{
+      'model': p.model,
+      'messages': allMessages,
+      'temperature': temperature,
+      'stream': true,
+    };
+
+    if (p.thinkingEnabled) {
+      if (!VolcengineAdapter.isVolcengineArk(p.baseUrl)) {
+        body['reasoning_effort'] = p.reasoningEffort;
+      }
+    }
+
+    if (tools != null && tools.isNotEmpty) {
+      body['tools'] = tools;
+      body['tool_choice'] = 'auto';
+    }
+
+    final isVolcengine = VolcengineAdapter.isVolcengineArk(p.baseUrl);
+    final finalBody = isVolcengine
+        ? VolcengineAdapter.transformRequest(
+            originBody: body,
+            toolRound: toolRound,
+          )
+        : body;
+
+    final textBuf = StringBuffer();
+    final reasoningBuf = StringBuffer();
+    final toolAcc = <int, _StreamToolCallAcc>{};
+    String? finishReason;
+    Map<String, dynamic>? usage;
+    var completed = false;
+
+    try {
+      await _ssePost(
+        url: url,
+        apiKey: p.apiKey,
+        body: finalBody,
+        useBearer: p.useBearer,
+        onEvent: (event, data) {
+          if (data == '[DONE]') {
+            completed = true;
+            return;
+          }
+          dynamic parsed;
+          try {
+            parsed = jsonDecode(data);
+          } catch (_) {
+            return;
+          }
+          if (parsed is! Map) return;
+          if (parsed['usage'] is Map && usage == null) {
+            usage = Map<String, dynamic>.from(parsed['usage'] as Map);
+          }
+          final choices = parsed['choices'];
+          if (choices is! List || choices.isEmpty) return;
+          final choice = choices.first;
+          if (choice is! Map) return;
+          final fr = choice['finish_reason']?.toString();
+          if (fr != null && fr.isNotEmpty) {
+            finishReason = fr;
+            completed = true;
+          }
+          final delta = choice['delta'];
+          if (delta is! Map) return;
+
+          final c = delta['content']?.toString();
+          if (c != null && c.isNotEmpty) {
+            textBuf.write(c);
+            onChunk(StreamChunk(content: c));
+          }
+          final reasoning = delta['reasoning_content']?.toString() ??
+              delta['reasoning']?.toString();
+          if (reasoning != null && reasoning.isNotEmpty) {
+            reasoningBuf.write(reasoning);
+            onChunk(StreamChunk(content: '', reasoningContent: reasoning));
+          }
+          final tcs = delta['tool_calls'];
+          if (tcs is List) {
+            for (final t in tcs) {
+              if (t is! Map) continue;
+              final index = (t['index'] as num?)?.toInt() ?? 0;
+              final acc = toolAcc.putIfAbsent(index, () => _StreamToolCallAcc());
+              if (t['id'] != null) acc.id = t['id'].toString();
+              final fn = t['function'];
+              if (fn is Map) {
+                if (fn['name'] != null) acc.name = fn['name'].toString();
+                final args = fn['arguments']?.toString();
+                if (args != null && args.isNotEmpty) acc.arguments.write(args);
+              }
+            }
+          }
+        },
+      );
+    } on SocketException {
+      if (!completed) rethrow;
+    } on HttpException {
+      if (!completed) rethrow;
+    } on TimeoutException {
+      if (!completed) rethrow;
+    }
+
+    final reasoningText = reasoningBuf.isEmpty ? null : reasoningBuf.toString();
+    final toolCalls = toolAcc.values
+        .where((a) => a.name.isNotEmpty)
+        .map((a) => ToolCallRequest.fromOpenAi({
+              'id': a.id,
+              'function': {'name': a.name, 'arguments': a.arguments.toString()},
+            }))
+        .toList();
+
+    final assistantMsg = <String, dynamic>{
+      'role': 'assistant',
+      if (textBuf.isNotEmpty) 'content': textBuf.toString(),
+      if (toolCalls.isNotEmpty)
+        'tool_calls': toolCalls
+            .map(
+              (tc) => {
+                'id': tc.callId,
+                'type': 'function',
+                'function': {
+                  'name': tc.toolId,
+                  'arguments': jsonEncode(tc.arguments),
+                },
+              },
+            )
+            .toList(),
+    };
+    final allMsgs = <Map<String, dynamic>>[...messages, assistantMsg];
+    final parsedUsage = usage == null ? null : UsageParser.fromOpenAiChat(usage!);
+
+    if (toolCalls.isNotEmpty) {
+      return ToolCallResponse(
+        content: textBuf.isEmpty ? null : textBuf.toString(),
+        toolCalls: toolCalls,
+        allMessages: allMsgs,
+        usage: parsedUsage,
+        reasoningContent: reasoningText,
+      );
+    }
+    final content = textBuf.toString();
+    if (content.isNotEmpty) {
+      return ToolCallResponse(
+        content: content,
+        allMessages: allMsgs,
+        usage: parsedUsage,
+        reasoningContent: reasoningText,
+      );
+    }
+    throw Exception(
+      'AI 流式返回空内容（finish_reason=$finishReason）',
+    );
+  }
+
+  /// Anthropic 流式实现：SSE 事件 content_block_start / content_block_delta /
+  /// message_delta / message_stop 逐块解析。
+  Future<ToolCallResponse> _streamAnthropic(
+    AiProfile p, {
+    required String systemPrompt,
+    required List<Map<String, dynamic>> messages,
+    List<Map<String, dynamic>>? tools,
+    double temperature = 0.7,
+    required void Function(StreamChunk chunk) onChunk,
+  }) async {
+    final url = _joinUrl(_normalizeBase(p.baseUrl), '/messages');
+    final body = <String, dynamic>{
+      'model': p.model,
+      'max_tokens': 4096,
+      'temperature': temperature,
+      'system': systemPrompt,
+      'messages': _toAnthropicMessages(messages),
+      'stream': true,
+    };
+    if (p.thinkingEnabled) {
+      body['thinking'] = {
+        'type': 'enabled',
+        'budget_tokens': p.reasoningBudgetTokens,
+      };
+    }
+    if (tools != null && tools.isNotEmpty) {
+      body['tools'] = toAnthropicTools(tools);
+      body['tool_choice'] = {'type': 'auto'};
+    }
+
+    final textBlocks = <int, StringBuffer>{};
+    final thinkingBlocks = <int, StringBuffer>{};
+    final toolBlocks = <int, _StreamToolCallAcc>{};
+    final blockOrder = <int>[];
+    Map<String, dynamic>? usage;
+    var completed = false;
+
+    try {
+      await _ssePost(
+        url: url,
+        apiKey: p.apiKey,
+        body: body,
+        useBearer: p.useBearer,
+        anthropic: true,
+        onEvent: (event, data) {
+          if (data == '[DONE]') {
+            completed = true;
+            return;
+          }
+          dynamic parsed;
+          try {
+            parsed = jsonDecode(data);
+          } catch (_) {
+            return;
+          }
+          if (parsed is! Map) return;
+          final type = parsed['type']?.toString();
+          final index = (parsed['index'] as num?)?.toInt() ?? 0;
+          switch (type) {
+            case 'content_block_start':
+              final block = parsed['content_block'];
+              if (block is Map) {
+                if (!blockOrder.contains(index)) blockOrder.add(index);
+                final btype = block['type']?.toString();
+                if (btype == 'text') {
+                  textBlocks.putIfAbsent(index, () => StringBuffer());
+                } else if (btype == 'thinking' ||
+                    btype == 'redacted_thinking') {
+                  thinkingBlocks.putIfAbsent(index, () => StringBuffer());
+                } else if (btype == 'tool_use') {
+                  toolBlocks.putIfAbsent(index, () => _StreamToolCallAcc())
+                    ..id = block['id']?.toString() ?? ''
+                    ..name = block['name']?.toString() ?? '';
+                }
+              }
+            case 'content_block_delta':
+              final delta = parsed['delta'];
+              if (delta is Map) {
+                final dtype = delta['type']?.toString();
+                if (dtype == 'text_delta') {
+                  final t = delta['text']?.toString() ?? '';
+                  if (t.isNotEmpty) {
+                    textBlocks.putIfAbsent(index, () => StringBuffer()).write(t);
+                    onChunk(StreamChunk(content: t));
+                  }
+                } else if (dtype == 'thinking_delta') {
+                  final t = delta['thinking']?.toString() ?? '';
+                  if (t.isNotEmpty) {
+                    thinkingBlocks
+                        .putIfAbsent(index, () => StringBuffer())
+                        .write(t);
+                    onChunk(StreamChunk(content: '', reasoningContent: t));
+                  }
+                } else if (dtype == 'input_json_delta') {
+                  final t = delta['partial_json']?.toString() ?? '';
+                  if (t.isNotEmpty) {
+                    toolBlocks
+                        .putIfAbsent(index, () => _StreamToolCallAcc())
+                        .arguments
+                        .write(t);
+                  }
+                }
+              }
+            case 'message_delta':
+              final u = parsed['usage'];
+              if (u is Map) usage = Map<String, dynamic>.from(u);
+            case 'message_stop':
+              completed = true;
+              break;
+          }
+        },
+      );
+    } on SocketException {
+      if (!completed) rethrow;
+    } on HttpException {
+      if (!completed) rethrow;
+    } on TimeoutException {
+      if (!completed) rethrow;
+    }
+
+    final textBuf = StringBuffer();
+    final thinkingBuf = StringBuffer();
+    final contentBlocks = <Map<String, dynamic>>[];
+    final toolCalls = <ToolCallRequest>[];
+    for (final index in blockOrder) {
+      final t = textBlocks[index]?.toString();
+      if (t != null && t.isNotEmpty) {
+        textBuf.write(t);
+        contentBlocks.add({'type': 'text', 'text': t});
+      }
+      final acc = toolBlocks[index];
+      if (acc != null && acc.name.isNotEmpty) {
+        toolCalls.add(ToolCallRequest.fromAnthropic({
+          'id': acc.id,
+          'name': acc.name,
+          'input': acc.arguments.toString(),
+        }));
+        contentBlocks.add({
+          'type': 'tool_use',
+          'id': acc.id,
+          'name': acc.name,
+          'input': _parseJsonArg(acc.arguments.toString()),
+        });
+      }
+    }
+    for (final b in thinkingBlocks.values) {
+      thinkingBuf.write(b.toString());
+    }
+    final reasoningText = thinkingBuf.isEmpty ? null : thinkingBuf.toString();
+    final parsedUsage = usage == null ? null : UsageParser.fromAnthropic(usage!);
+    final assistantMsg = <String, dynamic>{
+      'role': 'assistant',
+      if (contentBlocks.isNotEmpty) 'content': contentBlocks,
+    };
+    final allMsgs = <Map<String, dynamic>>[...messages, assistantMsg];
+
+    if (toolCalls.isNotEmpty) {
+      return ToolCallResponse(
+        content: textBuf.isEmpty ? null : textBuf.toString(),
+        toolCalls: toolCalls,
+        allMessages: allMsgs,
+        usage: parsedUsage,
+        reasoningContent: reasoningText,
+      );
+    }
+    final content = textBuf.toString();
+    if (content.isNotEmpty) {
+      return ToolCallResponse(
+        content: content,
+        allMessages: allMsgs,
+        usage: parsedUsage,
+        reasoningContent: reasoningText,
+      );
+    }
+    throw Exception('Anthropic 流式返回空内容');
+  }
+
   Future<ToolCallResponse> _completeWithToolsOpenAIChat(
     AiProfile p, {
     required String systemPrompt,
@@ -1187,4 +1715,11 @@ class ToolCallResponse {
   });
 
   bool get hasToolCalls => toolCalls != null && toolCalls!.isNotEmpty;
+}
+
+/// SSE 流式中 tool_call 增量累积器（按 index 区分并行调用）
+class _StreamToolCallAcc {
+  String id = '';
+  String name = '';
+  final StringBuffer arguments = StringBuffer();
 }

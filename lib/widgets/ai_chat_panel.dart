@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/ai/ai_model_entity.dart';
 import '../core/ai/ai_model_manager.dart';
@@ -148,6 +149,12 @@ class AiChatPanelState extends State<AiChatPanel> {
   /// 工具调用卡片展开状态（按 callId）
   final Set<String> _expandedToolCalls = {};
 
+  /// 工具调用执行状态（按 callId）：running / success / failure
+  final Map<String, _ToolCallUiState> _toolCallStates = {};
+
+  /// 工具执行结果摘要（按 callId）
+  final Map<String, ToolCallResult> _toolCallResults = {};
+
   /// 工具系统
   late final SkillManager _skillManager;
   late final McpRuntime _mcpRuntime;
@@ -159,6 +166,12 @@ class AiChatPanelState extends State<AiChatPanel> {
 
   /// 当前实际使用的模型（自动择优时可能切换）
   AiModelEntity? _activeModel;
+
+  /// 技能选择：选中的技能 ID 集合。null/空 = 全部启用（保持向后兼容）
+  Set<String>? _selectedSkillIds;
+
+  /// 思考块手动折叠覆盖（按 reasoning 内容）：用户手动点击后的状态
+  final Map<String, bool> _collapsedReasoning = {};
 
   List<ChatMessage> get messages => _messages;
 
@@ -213,8 +226,98 @@ class AiChatPanelState extends State<AiChatPanel> {
       _addSystemMessage('🔄 ${event.reason}\n已自动切换至「${event.toModel}」继续处理');
     };
     widget.dispatcher.onToolsExecuted = (requests, results) {
+      if (mounted) {
+        setState(() {
+          for (var i = 0; i < requests.length; i++) {
+            final r = requests[i];
+            final result = i < results.length ? results[i] : null;
+            _toolCallStates[r.callId] = (result == null || result.success)
+                ? _ToolCallUiState.success
+                : _ToolCallUiState.failure;
+            if (result != null) _toolCallResults[r.callId] = result;
+          }
+        });
+      }
       widget.onToolsExecuted?.call(requests, results);
     };
+    // 高风险工具执行前确认（对标 MonkeyCode ask_user_question）
+    widget.dispatcher.onToolConfirm =
+        (request, toolName, argSummary) => _confirmToolExecution(
+              request,
+              toolName,
+              argSummary,
+            );
+  }
+
+  /// 弹出高风险工具执行确认框；返回 true 允许执行
+  Future<bool> _confirmToolExecution(
+    ToolCallRequest request,
+    String toolName,
+    String argSummary,
+  ) async {
+    if (!mounted) return false;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded,
+                color: Color(0xFFF9A825), size: 22),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('确认执行该操作？',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('工具：$toolName',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              if (argSummary.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(ctx)
+                        .colorScheme
+                        .surfaceContainerHighest
+                        .withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    argSummary,
+                    style: const TextStyle(
+                        fontSize: 12, fontFamily: 'monospace'),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              const Text('该操作影响较大（删除/回滚/克隆等），请确认后再继续。',
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('拒绝'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFE53935),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('确认执行'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
   }
 
   Future<void> _reloadHistoryScope() async {
@@ -503,6 +606,7 @@ class AiChatPanelState extends State<AiChatPanel> {
         userMessage: msg,
         preferredModel: _selectedModel,
         autoOptimal: widget.settings.ai.aiAutoOptimalModel,
+        enabledSkillIds: _selectedSkillIds,
       );
 
       _streamSub = stream.listen(
@@ -510,6 +614,23 @@ class AiChatPanelState extends State<AiChatPanel> {
           if (!mounted) return;
           if (chunk.isDone) {
             _finishStreaming();
+            return;
+          }
+          // 断线重连标记：清空当前消息累积内容，重连后从头重新流式输出
+          if (chunk.resetStream) {
+            final idx = _streamingMsgIndex;
+            if (idx != null && idx < _messages.length) {
+              setState(() {
+                _streamBuffer.clear();
+                _status = '连接中断，正在重连...';
+                _messages[idx] = ChatMessage(
+                  role: 'assistant',
+                  content: '',
+                  time: _messages[idx].time,
+                );
+              });
+              _scrollToBottom();
+            }
             return;
           }
           final reasoning = chunk.reasoningContent;
@@ -539,6 +660,31 @@ class AiChatPanelState extends State<AiChatPanel> {
                   content: _streamBuffer.toString(),
                   time: _messages[idx].time,
                   reasoningContent: _messages[idx].reasoningContent,
+                );
+              });
+              _scrollToBottom();
+            }
+          }
+          if (chunk.toolCalls != null && chunk.toolCalls!.isNotEmpty) {
+            final idx = _streamingMsgIndex;
+            for (final tc in chunk.toolCalls!) {
+              final callId = tc['id']?.toString() ??
+                  tc['call_id']?.toString() ??
+                  tc['name']?.toString() ??
+                  'tool';
+              _toolCallStates[callId] = _ToolCallUiState.running;
+              _expandedToolCalls.add(callId);
+            }
+            if (idx != null && idx < _messages.length) {
+              setState(() {
+                final existing = _messages[idx].toolCalls ?? [];
+                final merged = [...existing, ...chunk.toolCalls!];
+                _messages[idx] = ChatMessage(
+                  role: 'assistant',
+                  content: _messages[idx].content,
+                  time: _messages[idx].time,
+                  reasoningContent: _messages[idx].reasoningContent,
+                  toolCalls: merged,
                 );
               });
               _scrollToBottom();
@@ -642,6 +788,12 @@ class AiChatPanelState extends State<AiChatPanel> {
       _streamingMsgIndex = null;
     });
     _streamBuffer = StringBuffer();
+    // 工具卡片状态只保留到本轮流结束，避免跨轮残留"运行中"
+    for (final entry in _toolCallStates.entries) {
+      if (entry.value == _ToolCallUiState.running) {
+        _toolCallStates[entry.key] = _ToolCallUiState.success;
+      }
+    }
     _scrollToBottom();
   }
 
@@ -1166,42 +1318,195 @@ class AiChatPanelState extends State<AiChatPanel> {
         color: cs.surface,
         border: Border(top: BorderSide(color: cs.outlineVariant.withOpacity(0.3))),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: TextField(
-              controller: _chatCtrl,
-              decoration: const InputDecoration(
-                hintText: '输入指令...',
-                border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                isDense: true,
+          _buildSkillSelector(cs),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _chatCtrl,
+                  decoration: const InputDecoration(
+                    hintText: '输入指令...',
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    isDense: true,
+                  ),
+                  minLines: 1,
+                  maxLines: 4,
+                  enabled: !_busy,
+                  onSubmitted: _busy ? null : (_) => sendMessage(),
+                ),
               ),
-              minLines: 1,
-              maxLines: 4,
-              enabled: !_busy,
-              onSubmitted: _busy ? null : (_) => sendMessage(),
-            ),
+              const SizedBox(width: 8),
+              if (_busy)
+                IconButton.filled(
+                  onPressed: _cancelStream,
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                  icon: const Icon(Icons.stop),
+                  tooltip: '打断对话',
+                )
+              else
+                IconButton.filled(
+                  onPressed: () => sendMessage(),
+                  icon: const Icon(Icons.send),
+                ),
+            ],
           ),
-          const SizedBox(width: 8),
-          if (_busy)
-            IconButton.filled(
-              onPressed: _cancelStream,
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
-              icon: const Icon(Icons.stop),
-              tooltip: '打断对话',
-            )
-          else
-            IconButton.filled(
-              onPressed: () => sendMessage(),
-              icon: const Icon(Icons.send),
-            ),
         ],
       ),
     );
+  }
+
+  /// 技能选择器：发送消息前选择启用哪些自定义技能（对标 MonkeyCode skill picker）
+  Widget _buildSkillSelector(ColorScheme cs) {
+    final skills = _skillManager.skills;
+    if (skills.isEmpty) return const SizedBox.shrink();
+
+    final selected = _selectedSkillIds;
+    final selectedCount = selected?.length ?? skills.length;
+    final allSelected = selected == null || selected.isEmpty;
+    final label =
+        allSelected ? '技能：全部' : '技能：$selectedCount/${skills.length}';
+    return SizedBox(
+      width: double.infinity,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: ActionChip(
+          avatar: Icon(Icons.extension_outlined,
+              size: 16, color: allSelected ? cs.primary : cs.tertiary),
+          label: Text(
+            label,
+            style: TextStyle(
+                fontSize: 12,
+                color: allSelected ? cs.primary : cs.tertiary),
+          ),
+          side: BorderSide(color: cs.outlineVariant.withOpacity(0.5)),
+          backgroundColor: cs.surfaceContainerHighest.withOpacity(0.4),
+          onPressed: _busy ? null : () => _openSkillPicker(cs),
+        ),
+      ),
+    );
+  }
+
+  /// 弹出技能多选面板
+  Future<void> _openSkillPicker(ColorScheme cs) async {
+    final skills = _skillManager.skills;
+    if (skills.isEmpty || !mounted) return;
+
+    final current = _selectedSkillIds ?? skills.map((s) => s.id).toSet();
+    final result = await showModalBottomSheet<Set<String>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: cs.surface,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          var pending = Set<String>.from(current);
+          return SizedBox(
+            height: MediaQuery.of(ctx).size.height * 0.7,
+            child: Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withOpacity(0.5),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.extension_outlined, size: 18, color: cs.primary),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text('选择本轮对话启用的技能',
+                                style: TextStyle(
+                                    fontSize: 15, fontWeight: FontWeight.w600)),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 20),
+                            onPressed: () => Navigator.of(ctx).pop(pending),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          TextButton.icon(
+                            onPressed: () => setSheetState(() {
+                              pending = skills.map((s) => s.id).toSet();
+                            }),
+                            icon: const Icon(Icons.select_all, size: 16),
+                            label: const Text('全部'),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => setSheetState(() {
+                              pending = <String>{};
+                            }),
+                            icon: const Icon(Icons.deselect, size: 16),
+                            label: const Text('不选'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: skills.length,
+                    itemBuilder: (_, i) {
+                      final s = skills[i];
+                      final isSel = pending.contains(s.id);
+                      return CheckboxListTile(
+                        value: isSel,
+                        title: Text(s.name,
+                            style: const TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.w600)),
+                        subtitle: Text(
+                          s.description,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: cs.outline),
+                        ),
+                        secondary: Icon(Icons.extension_outlined,
+                            size: 18,
+                            color: isSel ? cs.primary : cs.outlineVariant),
+                        onChanged: (v) => setSheetState(() {
+                          if (v == true) {
+                            pending.add(s.id);
+                          } else {
+                            pending.remove(s.id);
+                          }
+                        }),
+                      );
+                    },
+                  ),
+                ),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(ctx).pop(pending),
+                    child: Text('应用（${pending.length} 个技能）'),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    if (result == null || !mounted) return;
+    setState(() {
+      _selectedSkillIds = result.isEmpty ? null : result;
+    });
   }
 
   /// 思考动画：跳动的三个点
@@ -1210,7 +1515,19 @@ class AiChatPanelState extends State<AiChatPanel> {
   }
 
   /// 推理过程渲染：可折叠的思考区块（与正文视觉区分）
-  Widget _buildReasoningBlock(String reasoning, ColorScheme cs) {
+  /// 思考过程渲染：可折叠的思考区块。
+  /// [autoCollapse] 为 true（历史消息）时默认折叠为单行，[isLatest] 最新消息默认展开。
+  /// 对标 MonkeyCode ThoughtMessageItem（collapsed = !isLatest）。
+  Widget _buildReasoningBlock(
+    String reasoning,
+    ColorScheme cs, {
+    bool isLatest = false,
+    bool isStreaming = false,
+  }) {
+    // 流式过程中始终展开（可见实时推理）；否则最新消息默认展开、历史默认折叠
+    final autoCollapsed = !isStreaming && !isLatest;
+    final collapsed = _collapsedReasoning[reasoning] ?? autoCollapsed;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1231,11 +1548,33 @@ class AiChatPanelState extends State<AiChatPanel> {
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: cs.outline)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => setState(() {
+                  _collapsedReasoning[reasoning] = !collapsed;
+                }),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      collapsed ? '展开' : '折叠',
+                      style: TextStyle(fontSize: 11, color: cs.primary),
+                    ),
+                    Icon(
+                      collapsed ? Icons.expand_more : Icons.expand_less,
+                      size: 16,
+                      color: cs.primary,
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 6),
           Text(
             reasoning,
+            maxLines: collapsed ? 1 : null,
+            overflow: collapsed ? TextOverflow.ellipsis : null,
             style: TextStyle(
               fontSize: 12.5,
               fontStyle: FontStyle.italic,
@@ -1280,7 +1619,17 @@ class AiChatPanelState extends State<AiChatPanel> {
     final allWritten = hasFiles && fileOps.every((f) => f.written);
     final canWrite = widget.gitHubService != null && widget.activeRepo != null;
 
-    return Align(
+    // 消息时间戳：悬停气泡显示 MM-DD HH:mm:ss
+    String ts() {
+      final t = msg.time;
+      String two(int n) => n.toString().padLeft(2, '0');
+      return '${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
+    }
+
+    return Tooltip(
+      message: ts(),
+      waitDuration: const Duration(milliseconds: 400),
+      child: Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
@@ -1306,7 +1655,12 @@ class AiChatPanelState extends State<AiChatPanel> {
               if (isAssistant &&
                   msg.reasoningContent != null &&
                   msg.reasoningContent!.isNotEmpty) ...[
-                _buildReasoningBlock(msg.reasoningContent!, cs),
+                _buildReasoningBlock(
+                  msg.reasoningContent!,
+                  cs,
+                  isLatest: msgIndex == _messages.length - 1,
+                  isStreaming: isStreaming,
+                ),
                 const SizedBox(height: 8),
               ],
               _buildMessageContent(msg, cs, isUser, isAssistant, isStreaming),
@@ -1426,15 +1780,18 @@ class AiChatPanelState extends State<AiChatPanel> {
           ],
         ),
       ),
+      ),
     );
   }
 
-  /// 工具调用卡片：名称 + 参数摘要 + 展开详情（对标 MonkeyCode toolcalls 组件）
+  /// 工具调用卡片：状态 + 名称 + 参数摘要 + 执行结果（对标 MonkeyCode toolcalls 组件）
   Widget _buildToolCallCard(Map<String, dynamic> tc, ColorScheme cs) {
     final function = tc['function'] as Map<String, dynamic>? ?? {};
     final name = function['name']?.toString() ?? tc['name']?.toString() ?? 'unknown';
     final callId = tc['id']?.toString() ?? tc['call_id']?.toString() ?? name;
     final isExpanded = _expandedToolCalls.contains(callId);
+    final state = _toolCallStates[callId] ?? _ToolCallUiState.running;
+    final result = _toolCallResults[callId];
 
     String argSummary = '';
     final rawArgs = function['arguments'] ?? tc['arguments'] ?? tc['input'];
@@ -1459,12 +1816,35 @@ class AiChatPanelState extends State<AiChatPanel> {
     }
 
     final icon = _toolIcon(name);
+    final title = _toolDisplayTitle(name, argSummary);
+    final borderColor = switch (state) {
+      _ToolCallUiState.running => cs.primary,
+      _ToolCallUiState.success => const Color(0xFF4CAF50),
+      _ToolCallUiState.failure => const Color(0xFFE53935),
+    };
+    final statusIcon = switch (state) {
+      _ToolCallUiState.running => const SizedBox(
+          width: 13,
+          height: 13,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      _ToolCallUiState.success => const Icon(Icons.check_circle,
+          size: 15, color: Color(0xFF4CAF50)),
+      _ToolCallUiState.failure => const Icon(Icons.error,
+          size: 15, color: Color(0xFFE53935)),
+    };
+    final statusLabel = switch (state) {
+      _ToolCallUiState.running => '运行中',
+      _ToolCallUiState.success => '成功',
+      _ToolCallUiState.failure => '失败',
+    };
+
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.3)),
+        border: Border.all(color: borderColor.withOpacity(0.45)),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
@@ -1482,11 +1862,11 @@ class AiChatPanelState extends State<AiChatPanel> {
             children: [
               Row(
                 children: [
-                  Icon(icon, size: 15, color: cs.primary),
+                  Icon(icon, size: 15, color: borderColor),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      name,
+                      title,
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -1497,6 +1877,25 @@ class AiChatPanelState extends State<AiChatPanel> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  statusIcon,
+                  const SizedBox(width: 4),
+                  Text(
+                    statusLabel,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                      color: borderColor,
+                    ),
+                  ),
+                  if (result != null && result.durationMs > 0) ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      '${_fmtMs(result.durationMs)}',
+                      style: TextStyle(fontSize: 10, color: cs.outline),
+                    ),
+                  ],
+                  const SizedBox(width: 4),
                   Icon(
                     isExpanded
                         ? Icons.keyboard_arrow_up
@@ -1525,11 +1924,175 @@ class AiChatPanelState extends State<AiChatPanel> {
                   ),
                 ),
               ],
+              if (isExpanded && result != null) ...[
+                const SizedBox(height: 6),
+                _buildToolResultDetail(name, result, state, cs),
+              ],
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// 工具结果专属渲染（对标 MonkeyCode 各工具 renderDetail）：
+  /// web_search 结果列表 / file_read 文件内容 / git_clone 仓库信息 / 其余纯文本
+  Widget _buildToolResultDetail(
+    String name,
+    ToolCallResult result,
+    _ToolCallUiState state,
+    ColorScheme cs,
+  ) {
+    final isFailure = state == _ToolCallUiState.failure;
+    final content = isFailure && result.error != null
+        ? '❌ ${result.error}'
+        : result.content;
+
+    if (name.contains('search') && !isFailure) {
+      final entries = _parseSearchResults(content);
+      if (entries.isNotEmpty) {
+        return Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final e in entries)
+                InkWell(
+                  onTap: e.url.isNotEmpty
+                      ? () => _openUrl(e.url)
+                      : null,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          e.title,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'monospace',
+                            color: cs.onSurface,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (e.url.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            e.url,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontFamily: 'monospace',
+                              color: cs.primary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      }
+    }
+
+    if (name.contains('read') || name.contains('view')) {
+      return _resultBlock(content, cs, isFailure,
+          maxLines: null, fontSize: 11.5);
+    }
+
+    if (name.contains('git_clone') && !isFailure) {
+      final info = _parseGitCloneSummary(content);
+      if (info != null) {
+        return _resultBlock(info, cs, false, maxLines: null, fontSize: 11);
+      }
+    }
+
+    return _resultBlock(content, cs, isFailure,
+        maxLines: 6, fontSize: 11);
+  }
+
+  Widget _resultBlock(
+    String text,
+    ColorScheme cs,
+    bool isFailure, {
+    int? maxLines,
+    double fontSize = 11,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: isFailure ? const Color(0x1AE53935) : cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        maxLines: maxLines,
+        overflow: maxLines == null ? null : TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: fontSize,
+          fontFamily: 'monospace',
+          height: 1.4,
+          color: isFailure ? const Color(0xFFE53935) : cs.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+
+  /// 解析 web_search 输出「1. 标题\n   URL\n」为条目列表
+  List<_SearchEntry> _parseSearchResults(String content) {
+    final entries = <_SearchEntry>[];
+    final lines = content.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i].trim();
+      final numbered = RegExp(r'^\d+\.\s+(.+)$').firstMatch(line);
+      if (numbered == null) continue;
+      final title = numbered.group(1)!.trim();
+      var url = '';
+      if (i + 1 < lines.length) {
+        final next = lines[i + 1].trim();
+        if (next.startsWith('http://') || next.startsWith('https://')) {
+          url = next;
+        }
+      }
+      if (title.isEmpty) continue;
+      entries.add(_SearchEntry(title, url));
+      i++; // 跳过已消费的 URL 行
+    }
+    return entries;
+  }
+
+  /// 从 git_clone 输出中提取仓库摘要（首行 + 文件计数）
+  String? _parseGitCloneSummary(String content) {
+    final lines = content.split('\n').where((l) => l.trim().isNotEmpty);
+    if (lines.isEmpty) return null;
+    final first = lines.first.trim();
+    final fileCount = RegExp(r'(\d+)\s*个?(文件|文件?)\b').firstMatch(content);
+    final buf = StringBuffer()..writeln(first);
+    if (fileCount != null) buf.writeln(fileCount.group(0));
+    return buf.toString().trim();
+  }
+
+  void _openUrl(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  /// 毫秒 → 可读耗时
+  String _fmtMs(int ms) {
+    if (ms < 1000) return '${ms}ms';
+    return '${(ms / 1000).toStringAsFixed(1)}s';
   }
 
   /// 参数值摘要（长文本截断，避免撑爆卡片）
@@ -1541,8 +2104,7 @@ class AiChatPanelState extends State<AiChatPanel> {
   }
 
   /// 按工具名返回图标
-  IconData _toolIcon(String name) {
-    if (name.contains('search') || name.contains('search_web')) return Icons.search;
+  IconData _toolIcon(String name) {    if (name.contains('search') || name.contains('search_web')) return Icons.search;
     if (name.contains('web') || name.contains('fetch') || name.contains('http')) return Icons.public;
     if (name.contains('read')) return Icons.menu_book;
     if (name.contains('write') || name.contains('edit') || name.contains('diff')) return Icons.edit_note;
@@ -1552,6 +2114,69 @@ class AiChatPanelState extends State<AiChatPanel> {
     if (name.contains('site') || name.contains('health')) return Icons.monitor_heart;
     return Icons.code;
   }
+
+  /// 生成工具卡片的自然语言标题（对标 MonkeyCode 各工具专属 renderTitle）
+  String _toolDisplayTitle(String name, String argSummary) {
+    final args = _parseArgMap(argSummary);
+    String? path = _firstNonNull(args, ['path', 'file_path', 'filePath', 'cwd']);
+    final pattern = _firstNonNull(args, ['pattern', 'query']);
+    final command = _firstNonNull(args, ['command', 'cmd', 'message', 'prompt']);
+    final url = _firstNonNull(args, ['url', 'repo']);
+
+    if (name.contains('search')) {
+      return pattern != null ? '搜索「$pattern」' : '搜索文件';
+    }
+    if (name.contains('git_clone')) {
+      return url != null ? '克隆仓库 $url' : '克隆仓库';
+    }
+    if (name.contains('read') || name.contains('view')) {
+      return path != null ? '读取文件 $path' : '读取内容';
+    }
+    if (name.contains('write') || name.contains('edit') || name.contains('diff')) {
+      return path != null ? '修改文件 $path' : '编辑文件';
+    }
+    if (name.contains('bash') || name.contains('shell') || name.contains('terminal')) {
+      return command != null ? '执行命令' : '执行命令';
+    }
+    if (name.contains('http') || name.contains('fetch') || name.contains('web')) {
+      return url != null ? '访问 $url' : '访问网络';
+    }
+    if (name.contains('mcp') || name.contains('remote')) {
+      return '调用远端服务';
+    }
+    if (name.contains('skill') || name.contains('load_skill')) {
+      return '加载技能';
+    }
+    return name;
+  }
+
+  Map<String, dynamic> _parseArgMap(String argSummary) {
+    final out = <String, dynamic>{};
+    for (final line in argSummary.split('\n')) {
+      final idx = line.indexOf(': ');
+      if (idx <= 0) continue;
+      out[line.substring(0, idx)] = line.substring(idx + 2);
+    }
+    return out;
+  }
+
+  String? _firstNonNull(Map<String, dynamic> map, List<String> keys) {
+    for (final k in keys) {
+      final v = map[k];
+      if (v != null && v.toString().trim().isNotEmpty) return v.toString().trim();
+    }
+    return null;
+  }
+}
+
+/// 工具调用执行状态
+enum _ToolCallUiState { running, success, failure }
+
+/// web_search 结果条目
+class _SearchEntry {
+  final String title;
+  final String url;
+  const _SearchEntry(this.title, this.url);
 }
 
 class ChatMessage {

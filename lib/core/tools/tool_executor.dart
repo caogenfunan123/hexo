@@ -14,7 +14,10 @@ class ToolExecutor {
   final ToolRegistry _registry = ToolRegistry();
 
   /// 执行单个工具调用
-  Future<ToolCallResult> execute(ToolCallRequest request) async {
+  Future<ToolCallResult> execute(
+    ToolCallRequest request, {
+    Future<bool> Function(ToolCallRequest request)? confirmOverride,
+  }) async {
     final stopwatch = Stopwatch()..start();
     final tool = _registry.get(request.toolId);
     if (tool == null) {
@@ -37,6 +40,20 @@ class ToolExecutor {
       );
     }
 
+    // 高风险工具执行前确认（用户拒绝则跳过）
+    if (tool.riskLevel == 'high' && confirmOverride != null) {
+      final allowed = await confirmOverride(request);
+      if (!allowed) {
+        return ToolCallResult(
+          toolId: request.toolId,
+          content: '',
+          success: false,
+          error: '用户拒绝了该操作',
+          durationMs: stopwatch.elapsedMilliseconds,
+        );
+      }
+    }
+
     ToolCallResult result;
     switch (tool.type) {
       case ToolType.builtin:
@@ -55,10 +72,12 @@ class ToolExecutor {
 
   /// 批量执行多个工具调用
   Future<List<ToolCallResult>> executeAll(
-      List<ToolCallRequest> requests) async {
+    List<ToolCallRequest> requests, {
+    Future<bool> Function(ToolCallRequest request)? confirmOverride,
+  }) async {
     final results = <ToolCallResult>[];
     for (final req in requests) {
-      results.add(await execute(req));
+      results.add(await execute(req, confirmOverride: confirmOverride));
     }
     return results;
   }

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
+
 import '../../models/app_settings.dart';
 import '../../models/design_config.dart';
 import '../../models/template_item.dart';
@@ -175,6 +177,7 @@ class BuiltinTools {
     description: '从GitHub仓库删除指定文件。需要用户确认后才执行。',
     type: ToolType.builtin,
     builtinHandler: 'file_delete',
+    riskLevel: 'high',
     parameters: const [
       ToolParam(
         name: 'path',
@@ -241,6 +244,7 @@ class BuiltinTools {
     description: '回滚指定文件到之前的版本。需要用户确认后才执行。',
     type: ToolType.builtin,
     builtinHandler: 'git_rollback',
+    riskLevel: 'high',
     parameters: const [
       ToolParam(
         name: 'path',
@@ -574,6 +578,7 @@ class BuiltinTools {
         '从公开 GitHub 仓库拉取指定目录下的文件内容到当前仓库目标位置。用于复制主题、模板、示例代码等。限制最多 200 个文件。',
     type: ToolType.builtin,
     builtinHandler: 'git_clone',
+    riskLevel: 'high',
     parameters: const [
       ToolParam(
         name: 'remote_owner',
@@ -1223,11 +1228,7 @@ class BuiltinTools {
     if (path.startsWith('/')) return '不允许使用绝对路径: $path';
     // 禁止目录遍历
     if (path.contains('..')) return '不允许使用目录遍历: $path';
-    // 禁止访问隐藏文件/系统目录
-    final parts = path.split('/');
-    for (final p in parts) {
-      if (p.startsWith('.') && p != '.') return '不允许访问隐藏文件/目录: $path';
-    }
+    // 隐藏文件/目录（.github、.gitignore 等）允许访问，仓库属于用户自己
     return null;
   }
 
@@ -2145,7 +2146,7 @@ class BuiltinTools {
     return result;
   }
 
-  // ── 克隆远程仓库内容 ──
+  // ── 克隆远程仓库内容（zip 下载，支持大仓库与二进制文件） ──
   static Future<ToolCallResult> _executeGitClone(ToolCallRequest req) async {
     final owner = req.arguments['remote_owner']?.toString().trim() ?? '';
     final repo = req.arguments['remote_repo']?.toString().trim() ?? '';
@@ -2169,21 +2170,49 @@ class BuiltinTools {
     }
 
     try {
-      final items = await gitHubService!.listRemoteDirContents(
-        owner: owner,
-        repo: repo,
-        branch: branch,
-        path: remotePath,
-        maxFiles: 200,
-      );
+      // 下载整仓库 zip（codeload 官方端点，无文件数/二进制限制）
+      final zipUrl =
+          'https://codeload.github.com/$owner/$repo/zip/refs/heads/$branch';
+      final client = HttpClient()
+        ..connectionTimeout = const Duration(seconds: 30);
+      List<int> zipBytes;
+      try {
+        final reqGet = await client.getUrl(Uri.parse(zipUrl));
+        reqGet.headers.set('Accept', 'application/zip');
+        final res = await reqGet.close().timeout(const Duration(seconds: 90));
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          return ToolCallResult(
+              toolId: 'git_clone',
+              content: '',
+              success: false,
+              error: '下载仓库失败: HTTP ${res.statusCode}（仓库可能不存在或分支错误）');
+        }
+        final bytes = await res
+            .fold<List<int>>(<int>[], (acc, chunk) => acc..addAll(chunk))
+            .timeout(const Duration(seconds: 90));
+        zipBytes = bytes;
+      } finally {
+        client.close(force: true);
+      }
 
-      final files = items.where((e) => e.type == 'file').toList();
-      if (files.isEmpty) {
+      if (zipBytes.isEmpty) {
         return ToolCallResult(
-            toolId: 'git_clone',
-            content: '',
-            success: false,
-            error: '远程目录中未找到文件');
+            toolId: 'git_clone', content: '', success: false, error: '仓库 zip 为空');
+      }
+
+      final archive = ZipDecoder().decodeBytes(zipBytes);
+      // zip 顶层含一个 "<repo>-<branch>/" 目录，剥离它
+      final entries = archive.files
+          .where((f) => !f.isFile)
+          .map((f) => f.name)
+          .toList();
+      String? rootPrefix;
+      final topLevel = entries
+          .map((n) => n.split('/').first)
+          .where((n) => n.isNotEmpty)
+          .toSet();
+      if (topLevel.length == 1 && topLevel.first.contains('-')) {
+        rootPrefix = '${topLevel.first}/';
       }
 
       // 自动推断目标目录：remotePath 的最后一段，或仓库名
@@ -2191,46 +2220,73 @@ class BuiltinTools {
         targetPath = remotePath.isNotEmpty ? remotePath.split('/').last : repo;
       }
 
+      final filterPrefix =
+          remotePath.isNotEmpty ? '${remotePath.replaceAll(RegExp(r'^/|/$'), '')}/' : null;
+
       var successCount = 0;
+      var skipCount = 0;
       final errors = <String>[];
-      for (final file in files) {
+      for (final entry in archive.files) {
+        if (!entry.isFile) continue;
+        var name = entry.name;
+        if (rootPrefix != null && name.startsWith(rootPrefix)) {
+          name = name.substring(rootPrefix.length);
+        }
+        // 仅克隆指定子目录
+        if (filterPrefix != null) {
+          if (!name.startsWith(filterPrefix)) continue;
+          name = name.substring(filterPrefix.length);
+        }
+        if (name.isEmpty || name.startsWith('/') || name.split('/').contains('..')) {
+          skipCount++;
+          continue;
+        }
+
+        final target = '$targetPath/$name'.replaceAll(RegExp(r'/+'), '/');
+
+        String? existingSha;
         try {
-          final content = await gitHubService!.getRemoteRawFile(
-            owner: owner,
-            repo: repo,
-            branch: branch,
-            path: file.path,
-          );
-          if (content == null) {
-            errors.add('${file.path}: 无法读取内容');
-            continue;
+          final existing = await gitHubService!.getRawFile(activeRepo!, target);
+          existingSha = existing?['sha']?.toString();
+        } catch (_) {}
+
+        try {
+          final raw = entry.content;
+          // 二进制检测：非法 UTF-8 序列按二进制写入
+          final isText = utf8.decode(raw, allowMalformed: true).contains('\uFFFD') == false;
+          if (isText) {
+            await gitHubService!.putRawFile(
+              activeRepo!,
+              target,
+              utf8.decode(raw),
+              sha: existingSha,
+              commitMessage: commitMsg,
+            );
+          } else {
+            await gitHubService!.putRawBytes(
+              activeRepo!,
+              target,
+              raw,
+              sha: existingSha,
+              commitMessage: commitMsg,
+            );
           }
-          final relativePath = _relativePath(remotePath, file.path);
-          final target =
-              '$targetPath/$relativePath'.replaceAll(RegExp(r'/+'), '/');
-
-          String? existingSha;
-          try {
-            final existing =
-                await gitHubService!.getRawFile(activeRepo!, target);
-            existingSha = existing?['sha']?.toString();
-          } catch (_) {}
-
-          await gitHubService!.putRawFile(
-            activeRepo!,
-            target,
-            content,
-            sha: existingSha,
-            commitMessage: commitMsg,
-          );
           successCount++;
         } catch (e) {
-          errors.add('${file.path}: $e');
+          errors.add('$name: $e');
         }
       }
 
+      if (successCount == 0 && errors.isEmpty) {
+        return ToolCallResult(
+            toolId: 'git_clone',
+            content: '',
+            success: false,
+            error: '远程目录中未找到文件${filterPrefix != null ? ': $remotePath' : ''}');
+      }
+
       final buf = StringBuffer();
-      buf.writeln('克隆完成: 成功 $successCount/${files.length} 个文件');
+      buf.writeln('克隆完成: 成功 $successCount 个文件${skipCount > 0 ? '（跳过 $skipCount 个无效路径）' : ''}');
       buf.writeln('目标目录: $targetPath');
       if (errors.isNotEmpty) {
         buf.writeln('失败 ${errors.length} 个:');
@@ -2289,16 +2345,5 @@ class BuiltinTools {
           success: false,
           error: '创建文件夹失败: $e');
     }
-  }
-
-  /// 计算远程文件相对于源目录的路径
-  static String _relativePath(String remotePath, String filePath) {
-    if (remotePath.isEmpty) return filePath;
-    if (filePath.startsWith(remotePath)) {
-      return filePath
-          .substring(remotePath.length)
-          .replaceFirst(RegExp(r'^/'), '');
-    }
-    return filePath;
   }
 }

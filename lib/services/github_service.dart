@@ -423,6 +423,21 @@ class GitHubService {
     await _request('PUT', url, repo.token, body: body);
   }
 
+  /// 写入仓库二进制文件（图片、字体、压缩包等非文本内容）
+  Future<void> putRawBytes(RepoConfig repo, String path, List<int> bytes,
+      {String? sha, String? commitMessage}) async {
+    final body = <String, dynamic>{
+      'message': commitMessage ?? 'chore: update $path',
+      'content': base64Encode(bytes),
+      'branch': repo.branch,
+    };
+    if (sha != null && sha.isNotEmpty) {
+      body['sha'] = sha;
+    }
+    final url = '${repo.apiBase}/contents/${_encPath(path)}';
+    await _request('PUT', url, repo.token, body: body);
+  }
+
   /// 删除仓库任意文件
   Future<void> deleteRawFile(RepoConfig repo, String path, String sha,
       {String? commitMessage}) async {

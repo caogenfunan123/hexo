@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import '../../models/ai_profile.dart';
 import '../../models/app_settings.dart';
@@ -44,6 +45,11 @@ class AiRequestDispatcher {
   /// 工具执行结果回调（工作台时间线/审计）
   void Function(List<ToolCallRequest> requests, List<ToolCallResult> results)?
       onToolsExecuted;
+
+  /// 高风险工具确认回调：返回 true 允许执行，false 拒绝。
+  /// 传入工具名与参数摘要，UI 弹确认框。为 null 时高风险工具自动执行。
+  Future<bool> Function(
+      ToolCallRequest request, String toolName, String argSummary)? onToolConfirm;
 
   AiRequestDispatcher(this._aiService, this._modelManager)
       : _probeService = AiModelProbeService(_modelManager);
@@ -91,6 +97,7 @@ class AiRequestDispatcher {
     bool autoOptimal = true,
     int? timeoutSeconds,
     int? maxSwitchCount,
+    Set<String>? enabledSkillIds,
   }) {
     // 取消之前的请求
     cancelCurrent();
@@ -110,6 +117,7 @@ class AiRequestDispatcher {
       autoOptimal: autoOptimal,
       timeoutSeconds: timeoutSeconds,
       maxSwitchCount: maxSwitchCount,
+      enabledSkillIds: enabledSkillIds,
     );
 
     return controller.stream;
@@ -123,6 +131,7 @@ class AiRequestDispatcher {
     bool autoOptimal = true,
     int? timeoutSeconds,
     int? maxSwitchCount,
+    Set<String>? enabledSkillIds,
   }) async {
     List<AiModelEntity> fallbacks = [];
     try {
@@ -146,6 +155,7 @@ class AiRequestDispatcher {
       fallbackModels: fallbacks,
       maxSwitchCount: effectiveMaxSwitch,
       timeoutSeconds: effectiveTimeout,
+      enabledSkillIds: enabledSkillIds,
     );
   }
 
@@ -160,6 +170,7 @@ class AiRequestDispatcher {
     int timeoutSeconds = 50,
     int switchCount = 0,
     bool disableTools = false,
+    Set<String>? enabledSkillIds,
   }) async {
     const maxToolRounds = 5;
     final fullContent = StringBuffer();
@@ -175,14 +186,26 @@ class AiRequestDispatcher {
         ..._chatHistory,
       ];
 
-      final tools = !disableTools && ToolRegistry().enabledTools.isNotEmpty
-          ? ToolRegistry().toOpenAiTools()
+      // 技能选择：内置 + MCP 始终可用；自定义技能按 enabledSkillIds 过滤
+      // 未指定时（null/空）表示全部启用，保持向后兼容
+      final registry = ToolRegistry();
+      final skillIds = enabledSkillIds;
+      final toolList = registry.enabledTools.where((t) {
+        if (t.type != ToolType.skill) return true;
+        if (skillIds == null || skillIds.isEmpty) return true;
+        return skillIds.contains(t.id);
+      }).toList();
+
+      final tools = !disableTools && toolList.isNotEmpty
+          ? toolList.map((t) => t.toOpenAiFunction()).toList()
           : null;
 
       final stopwatch = Stopwatch()..start();
+      var streamedContent = false;
+      var streamedReasoning = false;
       try {
         final response = await _aiService
-            .completeWithTools(
+            .completeWithToolsStreaming(
               settings: settings,
               systemPrompt: _systemPrompt,
               messages: messages,
@@ -190,8 +213,19 @@ class AiRequestDispatcher {
               tools: tools,
               temperature: temperature,
               toolRound: toolRound,
+              onChunk: (chunk) {
+                if (controller.isClosed || _cancelled) return;
+                if (chunk.content.isNotEmpty) streamedContent = true;
+                if (chunk.reasoningContent != null &&
+                    chunk.reasoningContent!.isNotEmpty) {
+                  streamedReasoning = true;
+                }
+                controller.add(chunk);
+              },
             )
-            .timeout(Duration(seconds: timeoutSeconds));
+            .timeout(
+              Duration(seconds: (timeoutSeconds * 3) + 60),
+            );
 
         stopwatch.stop();
         _recordStreamCall(preferredModel, stopwatch, true);
@@ -211,14 +245,35 @@ class AiRequestDispatcher {
           }
 
           if (response.reasoningContent != null &&
-              response.reasoningContent!.isNotEmpty) {
+              response.reasoningContent!.isNotEmpty &&
+              !streamedReasoning) {
             controller.add(StreamChunk(
                 content: '',
                 reasoningContent: response.reasoningContent));
           }
 
+          // 先发出工具调用状态，UI 据此显示"运行中"卡片
+          if (!controller.isClosed) {
+            controller.add(StreamChunk(
+              content: '',
+              toolCalls: response.toolCalls!
+                  .map((tc) => {
+                        'id': tc.callId,
+                        'type': 'function',
+                        'function': {
+                          'name': tc.toolId,
+                          'arguments': jsonEncode(tc.arguments),
+                        },
+                      })
+                  .toList(),
+            ));
+          }
+
           final toolExecutor = ToolExecutor();
-          final results = await toolExecutor.executeAll(response.toolCalls!);
+          final results = await toolExecutor.executeAll(
+            response.toolCalls!,
+            confirmOverride: (request) => _confirmTool(request),
+          );
           onToolsExecuted?.call(response.toolCalls!, results);
 
           if (_cancelled) {
@@ -252,20 +307,25 @@ class AiRequestDispatcher {
             maxSwitchCount: maxSwitchCount,
             timeoutSeconds: timeoutSeconds,
             switchCount: switchCount,
+            enabledSkillIds: enabledSkillIds,
           );
           return;
         }
 
         if (response.content != null && response.content!.isNotEmpty) {
           fullContent.write(response.content);
-          controller.add(StreamChunk(
-              content: response.content!,
-              reasoningContent: response.reasoningContent));
+          if (!streamedContent) {
+            controller.add(StreamChunk(
+                content: response.content!,
+                reasoningContent: response.reasoningContent));
+          }
         } else if (response.hasToolCalls && toolRound >= maxToolRounds) {
           const tip = '已达最大工具调用轮次，未获得最终回复。';
           fullContent.write(tip);
-          controller.add(StreamChunk(
-              content: tip, reasoningContent: response.reasoningContent));
+          if (!streamedContent) {
+            controller.add(StreamChunk(
+                content: tip, reasoningContent: response.reasoningContent));
+          }
         }
 
         if (fullContent.isNotEmpty) {
@@ -311,6 +371,7 @@ class AiRequestDispatcher {
             timeoutSeconds: timeoutSeconds,
             switchCount: switchCount + 1,
             disableTools: true,
+            enabledSkillIds: enabledSkillIds,
           );
           return;
         }
@@ -335,6 +396,7 @@ class AiRequestDispatcher {
             maxSwitchCount: maxSwitchCount,
             timeoutSeconds: timeoutSeconds,
             switchCount: switchCount + 1,
+            enabledSkillIds: enabledSkillIds,
           );
           return;
         }
@@ -345,6 +407,17 @@ class AiRequestDispatcher {
         await controller.close();
       }
     }
+  }
+
+  /// 高风险工具执行前确认：按 riskLevel 判断，回调 UI 弹确认框
+  Future<bool> _confirmTool(ToolCallRequest request) async {
+    final tool = ToolRegistry().get(request.toolId);
+    if (tool == null || tool.riskLevel != 'high') return true;
+    if (onToolConfirm == null) return true;
+    final argSummary = request.arguments.entries
+        .map((e) => '${e.key}: ${e.value}')
+        .join('\n');
+    return onToolConfirm!(request, tool.name, argSummary);
   }
 
   /// 记录单次流式调用（成功/失败）到模型管理器，供择优评分
@@ -670,7 +743,10 @@ class AiRequestDispatcher {
         }
 
         // 执行工具
-        final results = await toolExecutor.executeAll(response.toolCalls!);
+        final results = await toolExecutor.executeAll(
+          response.toolCalls!,
+          confirmOverride: (request) => _confirmTool(request),
+        );
         onToolsExecuted?.call(response.toolCalls!, results);
 
         // 格式化工具结果
