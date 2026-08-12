@@ -1006,7 +1006,13 @@ extension EditorUiExt on _RootShellState {
                       ),
                     if (navVisible('home') || navVisible('new_article') || navVisible('drafts'))
                       const SizedBox(height: 8),
-                    if (navVisible('remote_posts') || navVisible('sync_status') || navVisible('history'))
+                    if (navVisible('remote_posts') ||
+                        navVisible('site_manager') ||
+                        navVisible('add_site') ||
+                        navVisible('sync_status') ||
+                        navVisible('p2p_sync') ||
+                        navVisible('dashboard') ||
+                        navVisible('history'))
                       _drawerSection(l10n.translate('drawer_section_manage')),
                     if (navVisible('remote_posts'))
                       _drawerItem(
@@ -1050,9 +1056,21 @@ extension EditorUiExt on _RootShellState {
                         Icons.history_outlined,
                         l10n.translate('nav_history'),
                       ),
-                    if (navVisible('remote_posts') || navVisible('sync_status') || navVisible('history'))
+                    if (navVisible('remote_posts') ||
+                        navVisible('site_manager') ||
+                        navVisible('add_site') ||
+                        navVisible('sync_status') ||
+                        navVisible('p2p_sync') ||
+                        navVisible('dashboard') ||
+                        navVisible('history'))
                       const SizedBox(height: 8),
-                    if (navVisible('batch_upload') || navVisible('preview') || navVisible('rss'))
+                    if (navVisible('batch_upload') ||
+                        navVisible('preview') ||
+                        navVisible('rss') ||
+                        navVisible('template_manager') ||
+                        navVisible('snippets') ||
+                        navVisible('config_editor') ||
+                        navVisible('theme_migration'))
                       _drawerSection(l10n.translate('drawer_section_tools')),
                     if (navVisible('batch_upload'))
                       _drawerItem(

@@ -427,6 +427,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         return l10n.translate('nav_sync_status');
       case 13:
         return l10n.translate('nav_cloud_sync');
+      case 14:
+        return l10n.translate('nav_home');
       default:
         return '';
     }
