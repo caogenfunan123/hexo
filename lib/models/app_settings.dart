@@ -37,6 +37,10 @@ class AppSettings {
   // 为空时使用默认目录；设置后本地导出/云同步/Git/分享缓存统一读写该目录
   final String storageRootDir;
 
+  // ── 运行时标志（不持久化）──
+  // 存量用户升级后首次进入时，若设置文件存在但尚无 appMode 记录，置 true 以弹出模式选择引导
+  final bool needsModeGuide;
+
   const AppSettings({
     this.github = const GitHubSettings(),
     this.ai = const AiSettings(),
@@ -48,6 +52,7 @@ class AppSettings {
     this.activeRepoId = '',
     this.language = 'zh-CN',
     this.storageRootDir = '',
+    this.needsModeGuide = false,
   });
 
   // ============================================================
@@ -133,6 +138,8 @@ class AppSettings {
   String get sitePreviewUrl => ui.sitePreviewUrl;
   String get cloudflareDeployHook => ui.cloudflareDeployHook;
   List<String> get deployHooks => ui.deployHooks;
+  AppMode get appMode => ui.appMode;
+  List<String> get simpleModeExtras => ui.simpleModeExtras;
 
   // ============================================================
   // 活跃站点
@@ -237,6 +244,7 @@ class AppSettings {
     String? sitePreviewUrl,
     String? cloudflareDeployHook,
     List<String>? deployHooks,
+    bool? needsModeGuide,
   }) {
     // 如果有扁平参数传入，构建对应的子对象
     final bool hasGitHubFlat = githubTokens != null || activeGithubTokenId != null ||
@@ -365,6 +373,7 @@ class AppSettings {
       activeRepoId: activeRepoId ?? this.activeRepoId,
       language: language ?? this.language,
       storageRootDir: storageRootDir ?? this.storageRootDir,
+      needsModeGuide: needsModeGuide ?? this.needsModeGuide,
     );
   }
 
@@ -385,7 +394,8 @@ class AppSettings {
         'storageRootDir': storageRootDir,
       };
 
-  factory AppSettings.fromJson(Map<String, dynamic> j) {
+  factory AppSettings.fromJson(Map<String, dynamic> j,
+      {bool needsModeGuide = false}) {
     return AppSettings(
       github: GitHubSettings.fromJson(j),
       ai: AiSettings.fromJson(j),
@@ -397,6 +407,7 @@ class AppSettings {
       activeRepoId: j['activeRepoId']?.toString() ?? '',
       language: j['language']?.toString() ?? 'zh-CN',
       storageRootDir: j['storageRootDir']?.toString() ?? '',
+      needsModeGuide: needsModeGuide,
     );
   }
 

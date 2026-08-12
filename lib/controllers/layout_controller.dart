@@ -29,6 +29,7 @@ enum MobilePage {
   logs,         // 11
   sync,         // 12
   cloudSync,    // 13
+  home,         // 14 首页（卷宗文章列表，简易模式默认页）
 }
 
 /// 右侧抽屉标签页（桌面端专用）

@@ -5,8 +5,10 @@ library;
 import 'package:flutter/material.dart';
 import '../../models/repo_config.dart';
 import '../../models/article.dart';
+import '../../models/ui_settings.dart';
 import '../../core/site_manager.dart';
 import '../shell_action_bus.dart';
+import '../feature_entries.dart';
 
 class DesktopLeftPanel extends StatefulWidget {
   final double width;
@@ -17,6 +19,10 @@ class DesktopLeftPanel extends StatefulWidget {
   final List<RepoConfig> repos;
   final List<Article> drafts;
   final SiteManager siteManager;
+
+  // 界面模式（简易/标准）
+  final AppMode mode;
+  final List<String> simpleModeExtras;
 
   // 统一回调总线
   final ShellActionBus bus;
@@ -30,6 +36,8 @@ class DesktopLeftPanel extends StatefulWidget {
     this.drafts = const [],
     required this.siteManager,
     required this.bus,
+    this.mode = AppMode.simple,
+    this.simpleModeExtras = const [],
   });
 
   @override
@@ -84,14 +92,22 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                       collapsed: _collapsedSections.contains('create'),
                       onToggle: () => _toggleSection('create'),
                       children: [
-                        _navItem(
+                        ..._nav(
+                          id: 'home',
+                          icon: Icons.home_outlined,
+                          label: '首页',
+                          onTap: widget.bus.onOpenHome,
+                        ),
+                        ..._nav(
+                          id: 'new_article',
                           icon: Icons.add_circle_outline,
                           label: '新建文章',
                           onTap: widget.bus.onNewArticle,
                           isPrimary: true,
                           shortcut: 'Ctrl+N',
                         ),
-                        _navItem(
+                        ..._nav(
+                          id: 'drafts',
                           icon: Icons.drafts_outlined,
                           label: '草稿箱',
                           onTap: widget.bus.onOpenDrafts,
@@ -135,9 +151,6 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 2),
-
-                    // 管理
                     _buildSection(
                       key: 'manage',
                       title: '管理',
@@ -145,10 +158,10 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                       collapsed: _collapsedSections.contains('manage'),
                       onToggle: () => _toggleSection('manage'),
                       children: [
-                        _navItem(icon: Icons.cloud_outlined, label: '远程文章', onTap: widget.bus.onOpenRemote),
-                        _navItem(icon: Icons.sync, label: '同步状态', onTap: widget.bus.onOpenSync),
-                        _navItem(icon: Icons.dashboard_outlined, label: '仪表盘', onTap: widget.bus.onOpenDashboard),
-                        _navItem(icon: Icons.history_outlined, label: '提交历史', onTap: widget.bus.onOpenHistory),
+                        ..._nav(id: 'remote_posts', icon: Icons.cloud_outlined, label: '远程文章', onTap: widget.bus.onOpenRemote),
+                        ..._nav(id: 'sync_status', icon: Icons.sync, label: '同步状态', onTap: widget.bus.onOpenSync),
+                        ..._nav(id: 'dashboard', icon: Icons.dashboard_outlined, label: '仪表盘', onTap: widget.bus.onOpenDashboard),
+                        ..._nav(id: 'history', icon: Icons.history_outlined, label: '提交历史', onTap: widget.bus.onOpenHistory),
                       ],
                     ),
                     const SizedBox(height: 2),
@@ -161,17 +174,17 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                       collapsed: _collapsedSections.contains('tools'),
                       onToggle: () => _toggleSection('tools'),
                       children: [
-                        _navItem(icon: Icons.drive_folder_upload, label: '批量上传', onTap: widget.bus.onOpenBatchUpload),
-                        _navItem(icon: Icons.language, label: '网站预览', onTap: widget.bus.onOpenPreview),
-                        _navItem(icon: Icons.rss_feed_outlined, label: 'RSS 订阅', onTap: widget.bus.onOpenRss),
-                        _navItem(icon: Icons.view_quilt_outlined, label: '模板管理', onTap: widget.bus.onShowTemplateManager),
-                        _navItem(icon: Icons.content_paste, label: '片段素材库', onTap: widget.bus.onShowSnippetManager),
-                        _navItem(icon: Icons.settings_applications, label: '配置编辑器', onTap: widget.bus.onShowConfigEditor),
-                        _navItem(icon: Icons.swap_horiz, label: 'AI 批量迁移', onTap: widget.bus.onOpenThemeMigration),
-                        _navItem(icon: Icons.photo_library_outlined, label: '图床管理', onTap: widget.bus.onOpenImageBedManager),
-                        _navItem(icon: Icons.link_off, label: '链接检测', onTap: widget.bus.onOpenLinkChecker),
-                        _navItem(icon: Icons.build_circle, label: '批量工具箱', onTap: widget.bus.onOpenBatchTools),
-                        _navItem(icon: Icons.vpn_lock_outlined, label: '代理设置', onTap: widget.bus.onOpenProxySettings),
+                        ..._nav(id: 'batch_upload', icon: Icons.drive_folder_upload, label: '批量上传', onTap: widget.bus.onOpenBatchUpload),
+                        ..._nav(id: 'preview', icon: Icons.language, label: '网站预览', onTap: widget.bus.onOpenPreview),
+                        ..._nav(id: 'rss', icon: Icons.rss_feed_outlined, label: 'RSS 订阅', onTap: widget.bus.onOpenRss),
+                        ..._nav(id: 'template_manager', icon: Icons.view_quilt_outlined, label: '模板管理', onTap: widget.bus.onShowTemplateManager),
+                        ..._nav(id: 'snippets', icon: Icons.content_paste, label: '片段素材库', onTap: widget.bus.onShowSnippetManager),
+                        ..._nav(id: 'config_editor', icon: Icons.settings_applications, label: '配置编辑器', onTap: widget.bus.onShowConfigEditor),
+                        ..._nav(id: 'theme_migration', icon: Icons.swap_horiz, label: 'AI 批量迁移', onTap: widget.bus.onOpenThemeMigration),
+                        ..._nav(id: 'image_bed', icon: Icons.photo_library_outlined, label: '图床管理', onTap: widget.bus.onOpenImageBedManager),
+                        ..._nav(id: 'link_checker', icon: Icons.link_off, label: '链接检测', onTap: widget.bus.onOpenLinkChecker),
+                        ..._nav(id: 'batch_tools', icon: Icons.build_circle, label: '批量工具箱', onTap: widget.bus.onOpenBatchTools),
+                        ..._nav(id: 'proxy_settings', icon: Icons.vpn_lock_outlined, label: '代理设置', onTap: widget.bus.onOpenProxySettings),
                       ],
                     ),
                     const SizedBox(height: 2),
@@ -184,13 +197,13 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                       collapsed: _collapsedSections.contains('ai'),
                       onToggle: () => _toggleSection('ai'),
                       children: [
-                        _navItem(icon: Icons.article_outlined, label: 'AI 博文创作', onTap: widget.bus.onShowAiArticleChat),
-                        _navItem(icon: Icons.web_outlined, label: 'AI 页面创作', onTap: widget.bus.onShowAiPageChat),
-                        _navItem(icon: Icons.palette_outlined, label: 'AI 主题开发', onTap: widget.bus.onShowAiThemeChat),
-                        _navItem(icon: Icons.fact_check_outlined, label: 'AI 站点巡检', onTap: widget.bus.onShowAiAudit),
-                        _navItem(icon: Icons.design_services_outlined, label: 'AI 应用 UI 设计', onTap: widget.bus.onShowAiAppDesign),
-                        _navItem(icon: Icons.psychology_outlined, label: 'AI 模型管理', onTap: widget.bus.onShowAiModelManager),
-                        _navItem(icon: Icons.text_snippet_outlined, label: 'AI 提示词模板', onTap: widget.bus.onOpenAiPromptTemplates),
+                        ..._nav(id: 'ai_article', icon: Icons.article_outlined, label: 'AI 博文创作', onTap: widget.bus.onShowAiArticleChat),
+                        ..._nav(id: 'ai_page', icon: Icons.web_outlined, label: 'AI 页面创作', onTap: widget.bus.onShowAiPageChat),
+                        ..._nav(id: 'ai_theme', icon: Icons.palette_outlined, label: 'AI 主题开发', onTap: widget.bus.onShowAiThemeChat),
+                        ..._nav(id: 'ai_audit', icon: Icons.fact_check_outlined, label: 'AI 站点巡检', onTap: widget.bus.onShowAiAudit),
+                        ..._nav(id: 'ai_app_design', icon: Icons.design_services_outlined, label: 'AI 应用 UI 设计', onTap: widget.bus.onShowAiAppDesign),
+                        ..._nav(id: 'ai_model_manager', icon: Icons.psychology_outlined, label: 'AI 模型管理', onTap: widget.bus.onShowAiModelManager),
+                        ..._nav(id: 'ai_prompt_templates', icon: Icons.text_snippet_outlined, label: 'AI 提示词模板', onTap: widget.bus.onOpenAiPromptTemplates),
                       ],
                     ),
                     const SizedBox(height: 2),
@@ -203,16 +216,16 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                       collapsed: _collapsedSections.contains('system'),
                       onToggle: () => _toggleSection('system'),
                       children: [
-                        _navItem(icon: Icons.cloud_sync, label: '云同步', onTap: widget.bus.onOpenSyncSettings),
-                        _navItem(icon: Icons.wifi, label: 'P2P 同步', onTap: widget.bus.onOpenP2PSync),
-                        _navItem(icon: Icons.settings_outlined, label: '设置', onTap: widget.bus.onOpenSettings),
-                        _navItem(icon: Icons.history, label: '操作日志', onTap: widget.bus.onOpenLogs),
-                        _navItem(icon: Icons.delete_outline, label: '回收站', onTap: widget.bus.onOpenRecycleBin),
-                        _navItem(icon: Icons.cleaning_services_outlined, label: '缓存清理', onTap: widget.bus.onOpenCacheCleanup),
-                        _navItem(icon: Icons.bug_report_outlined, label: '导出日志', onTap: widget.bus.onExportLogs),
-                        _navItem(icon: Icons.dns_outlined, label: '动态博客登录', onTap: widget.bus.onShowBlogSiteManager),
-                        _navItem(icon: Icons.storage_outlined, label: '站点管理', onTap: widget.bus.onShowSiteEditor),
-                        _navItem(icon: Icons.help_outline, label: '帮助 / 快捷键', onTap: widget.bus.onShowHelp),
+                        ..._nav(id: 'cloud_sync', icon: Icons.cloud_sync, label: '云同步', onTap: widget.bus.onOpenSyncSettings),
+                        ..._nav(id: 'p2p_sync', icon: Icons.wifi, label: 'P2P 同步', onTap: widget.bus.onOpenP2PSync),
+                        ..._nav(id: 'settings', icon: Icons.settings_outlined, label: '设置', onTap: widget.bus.onOpenSettings),
+                        ..._nav(id: 'logs', icon: Icons.history, label: '操作日志', onTap: widget.bus.onOpenLogs),
+                        ..._nav(id: 'recycle_bin', icon: Icons.delete_outline, label: '回收站', onTap: widget.bus.onOpenRecycleBin),
+                        ..._nav(id: 'cache_cleanup', icon: Icons.cleaning_services_outlined, label: '缓存清理', onTap: widget.bus.onOpenCacheCleanup),
+                        ..._nav(id: 'export_logs', icon: Icons.bug_report_outlined, label: '导出日志', onTap: widget.bus.onExportLogs),
+                        ..._nav(id: 'blog_site_manager', icon: Icons.dns_outlined, label: '动态博客登录', onTap: widget.bus.onShowBlogSiteManager),
+                        ..._nav(id: 'site_manager', icon: Icons.storage_outlined, label: '站点管理', onTap: widget.bus.onShowSiteEditor),
+                        ..._nav(id: 'help', icon: Icons.help_outline, label: '帮助 / 快捷键', onTap: widget.bus.onShowHelp),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -275,6 +288,8 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
     required List<Widget> children,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // 简易模式下分组内无可见项时整组隐藏
+    if (children.isEmpty) return const SizedBox.shrink();
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -327,6 +342,33 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
   // ============================================================
   // 导航项
   // ============================================================
+  /// 按入口 id 过滤后展开导航项（简易模式下隐藏专业入口）
+  List<Widget> _nav({
+    required String id,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    bool isPrimary = false,
+    bool isSubtle = false,
+    String? shortcut,
+    int badge = 0,
+  }) {
+    final visible =
+        NavEntries.visibleEntry(id, widget.mode, widget.simpleModeExtras);
+    if (!visible) return const [];
+    return [
+      _navItem(
+        icon: icon,
+        label: label,
+        onTap: onTap,
+        isPrimary: isPrimary,
+        isSubtle: isSubtle,
+        shortcut: shortcut,
+        badge: badge,
+      ),
+    ];
+  }
+
   Widget _navItem({
     required IconData icon,
     required String label,

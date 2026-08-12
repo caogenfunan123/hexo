@@ -21,6 +21,9 @@ class ShellActionBus {
   final VoidCallback onOpenBatchUpload;
   final VoidCallback onOpenPreview;
 
+  // ── 导航：首页 ──
+  final VoidCallback onOpenHome;
+
   // ── 导航：工具 & 设置 ──
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenSyncSettings;
@@ -79,6 +82,7 @@ class ShellActionBus {
     required this.onOpenRemote,
     required this.onOpenBatchUpload,
     required this.onOpenPreview,
+    required this.onOpenHome,
     required this.onOpenSettings,
     required this.onOpenSyncSettings,
     required this.onOpenLogs,

@@ -230,8 +230,12 @@ class StorageService {
   }
 
   Future<AppSettings> loadSettings() async {
+    final f = await _file(_settingsFile);
+    final exists = await f.exists();
     final m = await _readMap(_settingsFile);
-    return AppSettings.fromJson(m);
+    // 存量用户升级引导：设置文件已存在但尚无 appMode 记录 → 弹出模式选择
+    final needsGuide = exists && !m.containsKey('appMode');
+    return AppSettings.fromJson(m, needsModeGuide: needsGuide);
   }
 
   Future<void> saveSettings(AppSettings s) => _write(_settingsFile, s.toJson());

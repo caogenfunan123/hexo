@@ -917,6 +917,12 @@ extension EditorUiExt on _RootShellState {
         ? settings.siteName
         : '拓墨 写作';
 
+    final mode = settings.ui.appMode;
+    final extras = settings.ui.simpleModeExtras;
+
+    bool navVisible(String id) =>
+        NavEntries.visibleEntry(id, mode, extras);
+
     return Drawer(
       backgroundColor: Colors.white,
       width: 280,
@@ -973,156 +979,202 @@ extension EditorUiExt on _RootShellState {
             ),
 
             // ── 菜单项 ──
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                children: [
-                  _drawerSection(l10n.translate('drawer_section_create')),
-                  _drawerItem(
-                    0,
-                    Icons.edit_square,
-                    l10n.translate('nav_write'),
-                    isPrimary: true,
-                  ),
-                  _drawerItem(
-                    1,
-                    Icons.drafts_outlined,
-                    l10n.translate('nav_drafts'),
-                    badge: drafts.where((d) => !d.published).length,
-                  ),
-                  const SizedBox(height: 8),
-                  _drawerSection(l10n.translate('drawer_section_manage')),
-                  _drawerItem(
-                    2,
-                    Icons.cloud_outlined,
-                    l10n.translate('nav_remote'),
-                  ),
-                  _drawerAction(
-                    Icons.article_outlined,
-                    l10n.translate('static_blog_posts'),
-                    _showStaticBlogPosts,
-                  ),
-                  _drawerAction(
-                    Icons.library_books_outlined,
-                    l10n.translate('all_blog_manage'),
-                    _showAllStaticBlogs,
-                  ),
-                  _drawerItem(
-                    12,
-                    Icons.sync,
-                    l10n.translate('nav_sync_status'),
-                  ),
-                  _drawerAction(
-                    Icons.wifi,
-                    l10n.translate('p2p_sync'),
-                    _openP2PSync,
-                  ),
-                  _drawerItem(
-                    3,
-                    Icons.dashboard_outlined,
-                    l10n.translate('nav_dashboard'),
-                  ),
-                  _drawerItem(
-                    5,
-                    Icons.history_outlined,
-                    l10n.translate('nav_history'),
-                  ),
-                  const SizedBox(height: 8),
-                  _drawerSection(l10n.translate('drawer_section_tools')),
-                  _drawerItem(
-                    6,
-                    Icons.drive_folder_upload,
-                    l10n.translate('nav_upload'),
-                  ),
-                  _drawerItem(7, Icons.language, l10n.translate('nav_preview')),
-                  _drawerItem(
-                    4,
-                    Icons.rss_feed_outlined,
-                    l10n.translate('nav_rss'),
-                  ),
-                  _drawerAction(
-                    Icons.view_quilt_outlined,
-                    l10n.translate('template_manager'),
-                    _showTemplateManager,
-                  ),
-                  _drawerAction(
-                    Icons.content_paste,
-                    l10n.translate('snippet_library'),
-                    _showSnippetManager,
-                  ),
-                  _drawerAction(
-                    Icons.settings_applications,
-                    l10n.translate('config_editor'),
-                    _showSiteConfigEditor,
-                  ),
-                  _drawerAction(
-                    Icons.swap_horiz,
-                    l10n.translate('ai_batch_migrate'),
-                    _showMigrationTool,
-                  ),
-                  const SizedBox(height: 8),
-                  _drawerSection(l10n.translate('drawer_section_ai')),
-                  _drawerAction(
-                    Icons.assignment_outlined,
-                    l10n.translate('agent_workbench'),
-                    _showAgentWorkbench,
-                  ),
-                  _drawerAction(
-                    Icons.article_outlined,
-                    l10n.translate('ai_post_create'),
-                    _showAiArticleChat,
-                  ),
-                  _drawerAction(
-                    Icons.web_outlined,
-                    l10n.translate('ai_page_create'),
-                    _showAiPageChat,
-                  ),
-                  _drawerAction(
-                    Icons.palette_outlined,
-                    l10n.translate('ai_theme_dev'),
-                    _showAiThemeChat,
-                  ),
-                  _drawerItem(
-                    10,
-                    Icons.auto_fix_high,
-                    l10n.translate('nav_ai_theme_migrate'),
-                  ),
-                  _drawerAction(
-                    Icons.fact_check_outlined,
-                    l10n.translate('ai_site_audit'),
-                    _showAiAudit,
-                  ),
-                  _drawerAction(
-                    Icons.view_quilt_outlined,
-                    l10n.translate('ai_templates'),
-                    _showAiTemplateChat,
-                  ),
-                  _drawerAction(
-                    Icons.psychology_outlined,
-                    l10n.translate('ai_models'),
-                    _showAiModelManager,
-                  ),
-                  _drawerAction(
-                    Icons.build_outlined,
-                    l10n.translate('tool_library'),
-                    _showToolLibrary,
-                  ),
-                  const SizedBox(height: 8),
-                  _drawerSection(l10n.translate('drawer_section_system')),
-                  _drawerItem(
-                    13,
-                    Icons.cloud_sync,
-                    l10n.translate('nav_cloud_sync'),
-                  ),
-                  _drawerItem(
-                    8,
-                    Icons.settings_outlined,
-                    l10n.translate('nav_settings'),
-                  ),
-                  _drawerItem(11, Icons.history, l10n.translate('nav_log')),
-                ],
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  children: [
+                    if (navVisible('home'))
+                      _drawerItem(
+                        14,
+                        Icons.home_outlined,
+                        l10n.translate('nav_home'),
+                      ),
+                    _drawerSection(l10n.translate('drawer_section_create')),
+                    if (navVisible('new_article'))
+                      _drawerItem(
+                        0,
+                        Icons.edit_square,
+                        l10n.translate('nav_write'),
+                        isPrimary: true,
+                      ),
+                    if (navVisible('drafts'))
+                      _drawerItem(
+                        1,
+                        Icons.drafts_outlined,
+                        l10n.translate('nav_drafts'),
+                        badge: drafts.where((d) => !d.published).length,
+                      ),
+                    if (navVisible('home') || navVisible('new_article') || navVisible('drafts'))
+                      const SizedBox(height: 8),
+                    if (navVisible('remote_posts') || navVisible('sync_status') || navVisible('history'))
+                      _drawerSection(l10n.translate('drawer_section_manage')),
+                    if (navVisible('remote_posts'))
+                      _drawerItem(
+                        2,
+                        Icons.cloud_outlined,
+                        l10n.translate('nav_remote'),
+                      ),
+                    if (navVisible('site_manager'))
+                      _drawerAction(
+                        Icons.article_outlined,
+                        l10n.translate('static_blog_posts'),
+                        _showStaticBlogPosts,
+                      ),
+                    if (navVisible('add_site'))
+                      _drawerAction(
+                        Icons.library_books_outlined,
+                        l10n.translate('all_blog_manage'),
+                        _showAllStaticBlogs,
+                      ),
+                    if (navVisible('sync_status'))
+                      _drawerItem(
+                        12,
+                        Icons.sync,
+                        l10n.translate('nav_sync_status'),
+                      ),
+                    if (navVisible('p2p_sync'))
+                      _drawerAction(
+                        Icons.wifi,
+                        l10n.translate('p2p_sync'),
+                        _openP2PSync,
+                      ),
+                    if (navVisible('dashboard'))
+                      _drawerItem(
+                        3,
+                        Icons.dashboard_outlined,
+                        l10n.translate('nav_dashboard'),
+                      ),
+                    if (navVisible('history'))
+                      _drawerItem(
+                        5,
+                        Icons.history_outlined,
+                        l10n.translate('nav_history'),
+                      ),
+                    if (navVisible('remote_posts') || navVisible('sync_status') || navVisible('history'))
+                      const SizedBox(height: 8),
+                    if (navVisible('batch_upload') || navVisible('preview') || navVisible('rss'))
+                      _drawerSection(l10n.translate('drawer_section_tools')),
+                    if (navVisible('batch_upload'))
+                      _drawerItem(
+                        6,
+                        Icons.drive_folder_upload,
+                        l10n.translate('nav_upload'),
+                      ),
+                    if (navVisible('preview'))
+                      _drawerItem(7, Icons.language, l10n.translate('nav_preview')),
+                    if (navVisible('rss'))
+                      _drawerItem(
+                        4,
+                        Icons.rss_feed_outlined,
+                        l10n.translate('nav_rss'),
+                      ),
+                    if (navVisible('template_manager'))
+                      _drawerAction(
+                        Icons.view_quilt_outlined,
+                        l10n.translate('template_manager'),
+                        _showTemplateManager,
+                      ),
+                    if (navVisible('snippets'))
+                      _drawerAction(
+                        Icons.content_paste,
+                        l10n.translate('snippet_library'),
+                        _showSnippetManager,
+                      ),
+                    if (navVisible('config_editor'))
+                      _drawerAction(
+                        Icons.settings_applications,
+                        l10n.translate('config_editor'),
+                        _showSiteConfigEditor,
+                      ),
+                    if (navVisible('theme_migration'))
+                      _drawerAction(
+                        Icons.swap_horiz,
+                        l10n.translate('ai_batch_migrate'),
+                        _showMigrationTool,
+                      ),
+                    if (navVisible('agent_workbench') ||
+                        navVisible('ai_article') ||
+                        navVisible('ai_page') ||
+                        navVisible('ai_theme') ||
+                        navVisible('theme_migration') ||
+                        navVisible('ai_audit') ||
+                        navVisible('ai_template_chat') ||
+                        navVisible('ai_model_manager') ||
+                        navVisible('tool_library'))
+                      _drawerSection(l10n.translate('drawer_section_ai')),
+                    if (navVisible('agent_workbench'))
+                      _drawerAction(
+                        Icons.assignment_outlined,
+                        l10n.translate('agent_workbench'),
+                        _showAgentWorkbench,
+                      ),
+                    if (navVisible('ai_article'))
+                      _drawerAction(
+                        Icons.article_outlined,
+                        l10n.translate('ai_post_create'),
+                        _showAiArticleChat,
+                      ),
+                    if (navVisible('ai_page'))
+                      _drawerAction(
+                        Icons.web_outlined,
+                        l10n.translate('ai_page_create'),
+                        _showAiPageChat,
+                      ),
+                    if (navVisible('ai_theme'))
+                      _drawerAction(
+                        Icons.palette_outlined,
+                        l10n.translate('ai_theme_dev'),
+                        _showAiThemeChat,
+                      ),
+                    if (navVisible('theme_migration'))
+                      _drawerItem(
+                        10,
+                        Icons.auto_fix_high,
+                        l10n.translate('nav_ai_theme_migrate'),
+                      ),
+                    if (navVisible('ai_audit'))
+                      _drawerAction(
+                        Icons.fact_check_outlined,
+                        l10n.translate('ai_site_audit'),
+                        _showAiAudit,
+                      ),
+                    if (navVisible('ai_template_chat'))
+                      _drawerAction(
+                        Icons.view_quilt_outlined,
+                        l10n.translate('ai_templates'),
+                        _showAiTemplateChat,
+                      ),
+                    if (navVisible('ai_model_manager'))
+                      _drawerAction(
+                        Icons.psychology_outlined,
+                        l10n.translate('ai_models'),
+                        _showAiModelManager,
+                      ),
+                    if (navVisible('tool_library'))
+                      _drawerAction(
+                        Icons.build_outlined,
+                        l10n.translate('tool_library'),
+                        _showToolLibrary,
+                      ),
+                    if (navVisible('cloud_sync') || navVisible('settings') || navVisible('logs'))
+                      _drawerSection(l10n.translate('drawer_section_system')),
+                    if (navVisible('cloud_sync'))
+                      _drawerItem(
+                        13,
+                        Icons.cloud_sync,
+                        l10n.translate('nav_cloud_sync'),
+                      ),
+                    if (navVisible('settings'))
+                      _drawerItem(
+                        8,
+                        Icons.settings_outlined,
+                        l10n.translate('nav_settings'),
+                      ),
+                    if (navVisible('logs'))
+                      _drawerItem(11, Icons.history, l10n.translate('nav_log')),
+                  ],
+                ),
               ),
-            ),
 
             // ── 底部信息 ──
             Container(
@@ -1375,6 +1427,22 @@ extension EditorUiExt on _RootShellState {
           onSettingsChanged: _updateSettings,
           onPushAll: _pushAllToCloud,
           onPullAll: _pullAllFromCloud,
+        );
+      case 14:
+        return HomeScreen(
+          articles: drafts,
+          onOpenArticle: (a) => _openExistingArticle(a),
+          onNewArticle: () {
+            _resetEditor();
+            _navigateTo(0);
+          },
+          onNewArticleInVolume: (vol) {
+            _resetEditor();
+            if (vol.isNotEmpty) {
+              _doc.setCurrentArticle(_doc.currentArticle.copyWith(volume: vol));
+            }
+            _navigateTo(0);
+          },
         );
       default:
         return const SizedBox();

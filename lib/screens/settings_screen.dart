@@ -11,6 +11,8 @@ import '../services/github_service.dart';
 import '../services/storage_service.dart';
 import '../services/webdav_service.dart';
 import '../l10n/app_localizations.dart';
+import '../models/ui_settings.dart';
+import '../desktop/feature_entries.dart';
 
 class SettingsScreen extends StatefulWidget {
   final AppSettings settings;
@@ -276,6 +278,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final s = widget.settings;
     final l10n = AppLocalizations.ofContext(context);
+    final mode = s.ui.appMode;
+    final extras = s.ui.simpleModeExtras;
+    bool sectionVisible(String id) =>
+        SettingsEntries.visibleEntry(id, mode, extras);
     final activeRepo = widget.repos.isEmpty
         ? null
         : widget.repos.firstWhere(
@@ -331,6 +337,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ]),
 
         const SizedBox(height: 20),
+        // ── 简易普通用户模式 ──
+        if (sectionVisible('app_mode')) ...[
+          _sectionTitle('简易普通用户模式'),
+          const SizedBox(height: 8),
+          _settingsCard([
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: mode == AppMode.simple,
+              title: const Text(
+                '简易普通用户模式',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              subtitle: const Text(
+                '隐藏专业开发与运维入口，保留写作、同步与 AI 配置',
+                style: TextStyle(fontSize: 12),
+              ),
+              secondary: const Icon(Icons.auto_stories_outlined),
+              onChanged: (v) async {
+                final ns = s.copyWith(
+                  ui: s.ui.copyWith(
+                    appMode: v ? AppMode.simple : AppMode.standard,
+                  ),
+                );
+                await widget.onSettingsChanged(ns);
+              },
+            ),
+          ]),
+          const SizedBox(height: 20),
+          if (mode == AppMode.simple) ...[
+            _sectionTitle('简易模式显示功能'),
+            const SizedBox(height: 8),
+            _settingsCard([
+              const Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Text(
+                  '以下功能在简易模式下默认隐藏，可按需加回侧边栏：',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                ),
+              ),
+              ..._buildOptInTiles(s),
+            ]),
+            const SizedBox(height: 20),
+          ],
+        ],
+
         // ── GitHub 登录令牌 ──
         _sectionTitle(l10n.translate('settings_github_token')),
         const SizedBox(height: 8),
@@ -1099,6 +1150,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── 站点与 PWA ──
+        if (sectionVisible('site_pwa')) ...[
         _sectionTitle(l10n.translate('settings_site_pwa')),
         const SizedBox(height: 8),
         _settingsCard([
@@ -1219,6 +1271,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: widget.onShowThemeColorPicker,
           ),
         ]),
+        ],
 
         const SizedBox(height: 20),
         // ── 关于 ──
@@ -1361,6 +1414,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  /// 简易模式可加回入口清单（optIn 条目 → 中文名称）
+  static const Map<String, String> _optInLabels = {
+    'ai_prompt_templates': 'AI 提示词模板',
+    'ai_page': 'AI 页面创作',
+    'ai_template_chat': 'AI 模板创作',
+    'preview': '网站预览',
+    'rss': 'RSS 订阅',
+    'recycle_bin': '回收站',
+    'snippets': '片段素材库',
+  };
+
+  /// 简易模式额外入口开关列表
+  List<Widget> _buildOptInTiles(AppSettings s) {
+    final extras = s.ui.simpleModeExtras.toSet();
+    return _optInLabels.entries.map((e) {
+      final enabled = extras.contains(e.key);
+      return SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        dense: true,
+        value: enabled,
+        title: Text(e.value, style: const TextStyle(fontSize: 13.5)),
+        onChanged: (v) async {
+          final next = v
+              ? extras.union({e.key})
+              : extras.difference({e.key});
+          final ns = s.copyWith(
+            ui: s.ui.copyWith(simpleModeExtras: next.toList()..sort()),
+          );
+          await widget.onSettingsChanged(ns);
+        },
+      );
+    }).toList();
   }
 
   Widget _settingsCard(List<Widget> children) {

@@ -20,6 +20,9 @@ class Article {
   final ArticleType articleType;
   final String? templateId;
 
+  /// 卷宗分类（如 卷1 / 卷2），简易模式首页按此分组；null 归「未分类」
+  final String? volume;
+
   const Article({
     required this.id,
     required this.title,
@@ -36,6 +39,7 @@ class Article {
     this.published = false,
     this.articleType = ArticleType.post,
     this.templateId,
+    this.volume,
   });
 
   /// copyWith 哨兵值：区分"未传递"与"传 null"的标记
@@ -58,6 +62,7 @@ class Article {
     bool? published,
     ArticleType? articleType,
     Object? templateId = _undefined,
+    Object? volume = _undefined,
   }) {
     return Article(
       id: id ?? this.id,
@@ -75,6 +80,7 @@ class Article {
       published: published ?? this.published,
       articleType: articleType ?? this.articleType,
       templateId: identical(templateId, _undefined) ? this.templateId : templateId as String?,
+      volume: identical(volume, _undefined) ? this.volume : volume as String?,
     );
   }
 
@@ -94,6 +100,7 @@ class Article {
         'published': published,
         'articleType': articleType.value,
         'templateId': templateId,
+        'volume': volume,
       };
 
   factory Article.fromJson(Map<String, dynamic> j) => Article(
@@ -113,6 +120,7 @@ class Article {
         published: j['published'] == true,
         articleType: ArticleType.fromJson(j['articleType']),
         templateId: j['templateId']?.toString(),
+        volume: j['volume']?.toString(),
       );
 
   /// 用指定框架预设生成 FrontMatter + 正文

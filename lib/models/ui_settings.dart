@@ -5,6 +5,16 @@ library;
 import 'design_config.dart';
 import 'editor_theme.dart';
 
+/// 应用界面模式
+enum AppMode {
+  simple, // 简易普通用户模式（默认）
+  standard; // 标准专业模式
+
+  /// 反查：非法/缺失值回退 simple
+  static AppMode fromKey(Object? key) =>
+      key?.toString() == 'standard' ? AppMode.standard : AppMode.simple;
+}
+
 class UiSettings {
   // 站点信息
   final String siteAvatar;
@@ -42,6 +52,12 @@ class UiSettings {
   // 编辑器主题（写作界面全屏背景 + 全局文字色）
   final EditorTheme editorTheme;
 
+  // 界面模式（简易普通用户模式 / 标准专业模式）
+  final AppMode appMode;
+
+  // 简易模式下手动加回显示的入口 id 集合（见 FeatureEntry）
+  final List<String> simpleModeExtras;
+
   const UiSettings({
     this.siteAvatar = '',
     this.siteName = '',
@@ -61,6 +77,8 @@ class UiSettings {
     this.deployHooks = const [],
     this.designConfig = const DesignConfig(),
     this.editorTheme = const EditorTheme(),
+    this.appMode = AppMode.simple,
+    this.simpleModeExtras = const [],
   });
 
   /// 向后兼容：首个部署钩子
@@ -85,6 +103,8 @@ class UiSettings {
     List<String>? deployHooks,
     DesignConfig? designConfig,
     EditorTheme? editorTheme,
+    AppMode? appMode,
+    List<String>? simpleModeExtras,
   }) {
     return UiSettings(
       siteAvatar: siteAvatar ?? this.siteAvatar,
@@ -105,6 +125,8 @@ class UiSettings {
       deployHooks: deployHooks ?? this.deployHooks,
       designConfig: designConfig ?? this.designConfig,
       editorTheme: editorTheme ?? this.editorTheme,
+      appMode: appMode ?? this.appMode,
+      simpleModeExtras: simpleModeExtras ?? this.simpleModeExtras,
     );
   }
 
@@ -127,6 +149,8 @@ class UiSettings {
     'deployHooks': deployHooks,
     'designConfig': designConfig.toJson(),
     'editorTheme': editorTheme.toJson(),
+    'appMode': appMode.name,
+    'simpleModeExtras': simpleModeExtras,
   };
 
   factory UiSettings.fromJson(Map<String, dynamic> j) => UiSettings(
@@ -161,6 +185,8 @@ class UiSettings {
             Map<String, dynamic>.from(j['editorTheme'] as Map),
           )
         : const EditorTheme(),
+    appMode: AppMode.fromKey(j['appMode']),
+    simpleModeExtras: _parseList(j['simpleModeExtras'], const []),
   );
 
   static List<String> _parseList(dynamic raw, List<String> fallback) {

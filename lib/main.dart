@@ -95,6 +95,9 @@ import 'services/full_text_search_isolate.dart';
 import 'services/recycle_bin_service.dart';
 import 'services/version_snapshot_service.dart';
 import 'widgets/word_count_badge.dart';
+import 'screens/home_screen.dart';
+import 'models/ui_settings.dart';
+import 'desktop/feature_entries.dart';
 
 part 'mixins/editor_publish_ext.dart';
 part 'mixins/editor_sync_ext.dart';
@@ -588,6 +591,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       _doc.setTemplates(templates);
       // 初始化站点管理器（统一管理静态仓库和动态 CMS 站点）
       _updateSiteManager();
+      // 存量用户首次升级进入：弹出界面模式选择引导
+      if (s.needsModeGuide) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _showModeGuideDialog(s));
+      }
       // 会话恢复
       if (s.restoreSession) {
         await _restoreSession();
@@ -666,6 +673,14 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   }
 
   void _navigateTo(int page) {
+    // 简易普通用户模式：目标页面入口不可见时重定向首页
+    if (settings.ui.appMode == AppMode.simple) {
+      final targetId = _pageEntryId(page);
+      if (targetId != null &&
+          !NavEntries.visibleEntry(targetId, AppMode.simple, settings.ui.simpleModeExtras)) {
+        page = MobilePage.home.index;
+      }
+    }
     // 离开编辑器时停止自动保存
     if (_currentPage == 0 && page != 0) {
       _stopAutoSave();
@@ -683,6 +698,27 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     if (page == 2 && remotePosts.isEmpty) _refreshRemote();
     if (page == 4 && rssItems.isEmpty) _refreshRss();
     if (page == 5 && commits.isEmpty) _refreshCommits();
+  }
+
+  /// 移动端页面索引 → 入口 id 映射（阅读页 reader 无对应入口，返回 null）
+  static String? _pageEntryId(int page) {
+    return switch (page) {
+      0 => 'new_article',
+      1 => 'drafts',
+      2 => 'remote_posts',
+      3 => 'dashboard',
+      4 => 'rss',
+      5 => 'history',
+      6 => 'batch_upload',
+      7 => 'preview',
+      8 => 'settings',
+      10 => 'theme_migration',
+      11 => 'logs',
+      12 => 'sync_status',
+      13 => 'cloud_sync',
+      14 => 'home',
+      _ => null,
+    };
   }
 
   void _openDrawer() => _scaffoldKey.currentState?.openDrawer();
@@ -886,6 +922,36 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   Future<void> _persistSettings() => storage.saveSettings(settings);
   Future<void> _persistRepos() => storage.saveRepos(repos);
 
+  /// 存量用户首次升级进入：弹出界面模式选择引导
+  Future<void> _showModeGuideDialog(AppSettings s) async {
+    final choice = await showDialog<AppMode>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('选择使用模式'),
+        content: const Text(
+          '「简易普通用户模式」面向写作用户，隐藏专业开发与运维入口，保留写作、同步与 AI 配置；'
+          '「标准专业模式」展示全部功能入口。可在设置中随时切换。',
+          style: TextStyle(fontSize: 13, height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, AppMode.standard),
+            child: const Text('标准专业模式'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, AppMode.simple),
+            child: const Text('简易普通用户模式'),
+          ),
+        ],
+      ),
+    );
+    if (choice != null) {
+      await _updateSettings(s.copyWith(ui: s.ui.copyWith(appMode: choice)));
+      _showToast(choice == AppMode.simple ? '已切换到简易普通用户模式' : '已切换到标准专业模式');
+    }
+  }
+
 
   void _showToast(String msg) {
     if (!mounted) return;
@@ -1036,14 +1102,16 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             ),
             onPressed: _openDrawer,
           ),
-          const Text(
-            '拓墨',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 18,
-              letterSpacing: 2,
+          // 仅编辑页显示软件名，避免与其他页面标题重叠
+          if (_currentPage == 0)
+            const Text(
+              '拓墨',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+                letterSpacing: 2,
+              ),
             ),
-          ),
         ],
       ),
       title: _currentPage == 0

@@ -117,6 +117,8 @@ import 'widgets/status_bar.dart';
 import 'widgets/editor_themes.dart';
 import 'widgets/desktop_split_editor.dart';
 import 'widgets/frontmatter_card.dart';
+import '../screens/home_screen.dart';
+import '../models/ui_settings.dart';
 import 'widgets/markdown_syntax_highlighter.dart';
 import 'widgets/editor_drop_target.dart';
 import 'widgets/spell_check_panel.dart';
@@ -476,8 +478,41 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     widget.onLanguageChanged?.call(s.language);
     _ui.setLoading(false);
     _updateSiteManager();
+    if (s.needsModeGuide) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showModeGuideDialog(s));
+    }
     if (s.restoreSession) {
       await _restoreSession();
+    }
+  }
+
+  /// 存量用户首次升级进入：弹出界面模式选择引导
+  Future<void> _showModeGuideDialog(AppSettings s) async {
+    final choice = await showDialog<AppMode>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('选择使用模式'),
+        content: const Text(
+          '「简易普通用户模式」面向写作用户，隐藏专业开发与运维入口，保留写作、同步与 AI 配置；'
+          '「标准专业模式」展示全部功能入口。可在设置中随时切换。',
+          style: TextStyle(fontSize: 13, height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, AppMode.standard),
+            child: const Text('标准专业模式'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, AppMode.simple),
+            child: const Text('简易普通用户模式'),
+          ),
+        ],
+      ),
+    );
+    if (choice != null) {
+      await _updateSettings(s.copyWith(ui: s.ui.copyWith(appMode: choice)));
+      _showToast(choice == AppMode.simple ? '已切换到简易普通用户模式' : '已切换到标准专业模式');
     }
   }
 
@@ -1381,7 +1416,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     }
   }
 
-  void _newArticle() {
+  void _newArticle([String? volume]) {
     final repo = activeRepo;
     _editorRepo = repo;
     _doc.setArticleType(ArticleType.post);
@@ -1391,6 +1426,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: '', content: '', createdAt: DateTime.now(), updatedAt: DateTime.now(),
       isDraft: true, repoId: repo?.id, articleType: _doc.articleType, templateId: autoTemplateId,
+      volume: (volume == null || volume.isEmpty) ? null : volume,
     ));
     _doc.titleCtrl.text = '';
     _doc.contentCtrl.text = '';
@@ -2966,6 +3002,15 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ============================================================
   // 导航方法 - 复刻手机版全部功能入口
   // ============================================================
+
+  void _openHome() {
+    _openTab('home', '首页', Icons.home_outlined, HomeScreen(
+      articles: drafts,
+      onOpenArticle: (a) => _openExistingArticle(a),
+      onNewArticle: _newArticle,
+      onNewArticleInVolume: _newArticle,
+    ));
+  }
 
   void _openDrafts() {
     _openTab('drafts', '草稿箱', Icons.drafts_outlined, DraftsScreen(
@@ -7215,6 +7260,7 @@ $htmlContent
   ShellActionBus get _bus => ShellActionBus(
     // 导航
     onNewArticle: _newArticle,
+    onOpenHome: _openHome,
     onOpenDrafts: _openDrafts,
     onOpenRemote: _openRemote,
     onOpenBatchUpload: _openBatchUpload,
@@ -7345,6 +7391,8 @@ $htmlContent
           repos: repos,
           drafts: drafts,
           siteManager: siteManager,
+          mode: settings.ui.appMode,
+          simpleModeExtras: settings.ui.simpleModeExtras,
         ),
 
       if (!layout.leftPanelExpanded) _collapseToggle(),
