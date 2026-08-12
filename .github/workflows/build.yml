@@ -107,6 +107,15 @@ jobs:
           # Android SDK 组件由 AGP 自动安装。
           echo "Android SDK ready"
 
+      - name: Fetch release signing keystore
+        if: always()
+        run: |
+          # 从私有签名仓库拉取固定签名密钥，保证 APK 签名一致可覆盖升级
+          git clone --depth 1 https://x-access-token:${{ secrets.KEYSTORE_REPO_TOKEN }}@github.com/caogenfunan123/hexo-android-signing.git /tmp/signing
+          cp /tmp/signing/hexo-release.keystore android/app/
+          cp /tmp/signing/key.properties android/
+          echo "Signing keystore ready"
+
       - name: Build APK
         run: |
           set -o pipefail

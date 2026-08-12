@@ -5,3 +5,8 @@
 build/
 android/.gradle/
 android/local.properties
+# Android 签名文件（从私有仓库获取，禁止提交）
+android/key.properties
+android/app/hexo-release.keystore
+android/app/*.keystore
+android/*.keystore
