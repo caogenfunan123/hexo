@@ -19,6 +19,7 @@ class AiSettings {
   final int aiMaxSwitchCount;      // 最大自动切换次数，默认 3
   final bool aiAutoOptimalModel;   // 自动择优模式，默认开启
   final bool aiAllowAutoSaveTools; // 允许 AI 自动保存工具到工具箱，默认开启
+  final bool aiConfirmHighRiskTools; // 高风险工具（删除/回滚/克隆）执行前需用户确认，默认关闭（AI 全权）
 
   const AiSettings({
     this.aiProvider = 'openai',
@@ -33,6 +34,7 @@ class AiSettings {
     this.aiMaxSwitchCount = 3,
     this.aiAutoOptimalModel = true,
     this.aiAllowAutoSaveTools = true,
+    this.aiConfirmHighRiskTools = false,
   });
 
   AiProfile? get activeAiProfile {
@@ -71,6 +73,7 @@ class AiSettings {
     int? aiMaxSwitchCount,
     bool? aiAutoOptimalModel,
     bool? aiAllowAutoSaveTools,
+    bool? aiConfirmHighRiskTools,
   }) {
     return AiSettings(
       aiProvider: aiProvider ?? this.aiProvider,
@@ -85,6 +88,8 @@ class AiSettings {
       aiMaxSwitchCount: aiMaxSwitchCount ?? this.aiMaxSwitchCount,
       aiAutoOptimalModel: aiAutoOptimalModel ?? this.aiAutoOptimalModel,
       aiAllowAutoSaveTools: aiAllowAutoSaveTools ?? this.aiAllowAutoSaveTools,
+      aiConfirmHighRiskTools:
+          aiConfirmHighRiskTools ?? this.aiConfirmHighRiskTools,
     );
   }
 
@@ -101,6 +106,7 @@ class AiSettings {
         'aiMaxSwitchCount': aiMaxSwitchCount,
         'aiAutoOptimalModel': aiAutoOptimalModel,
         'aiAllowAutoSaveTools': aiAllowAutoSaveTools,
+        'aiConfirmHighRiskTools': aiConfirmHighRiskTools,
       };
 
   factory AiSettings.fromJson(Map<String, dynamic> j) {
@@ -142,6 +148,7 @@ class AiSettings {
       aiMaxSwitchCount: (j['aiMaxSwitchCount'] as num?)?.toInt() ?? 3,
       aiAutoOptimalModel: j['aiAutoOptimalModel'] != false,
       aiAllowAutoSaveTools: j['aiAllowAutoSaveTools'] != false,
+      aiConfirmHighRiskTools: j['aiConfirmHighRiskTools'] == true,
     );
   }
 }

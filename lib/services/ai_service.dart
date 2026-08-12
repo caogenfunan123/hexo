@@ -192,12 +192,13 @@ class AiService {
       final bytes = utf8.encode(jsonEncode(body));
       req.contentLength = bytes.length;
       req.add(bytes);
-      final res = await req.close().timeout(const Duration(seconds: 60));
+      // 响应头超时 2 分钟：推理模型首 token 可能思考较久
+      final res = await req.close().timeout(const Duration(seconds: 120));
       if (res.statusCode < 200 || res.statusCode >= 300) {
         final err = await res
             .transform(utf8.decoder)
             .join()
-            .timeout(const Duration(seconds: 60));
+            .timeout(const Duration(seconds: 120));
         throw Exception('HTTP ${res.statusCode}: $err');
       }
       await _sseRead(res, onEvent);
@@ -215,9 +216,11 @@ class AiService {
     String? pendingEvent;
     final dataLines = <String>[];
     final lineBuf = StringBuffer();
+    // 空闲超时 5 分钟：推理模型思考期可能长时间无数据输出，
+    // 之前 60s 太短导致"莫名其妙断开"（调用工具多/时间长时尤其明显）
     await for (final chunk in res
         .transform(utf8.decoder)
-        .timeout(const Duration(seconds: 60))) {
+        .timeout(const Duration(minutes: 5))) {
       lineBuf.write(chunk);
       while (true) {
         final s = lineBuf.toString();

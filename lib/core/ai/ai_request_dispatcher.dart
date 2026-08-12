@@ -172,7 +172,7 @@ class AiRequestDispatcher {
     bool disableTools = false,
     Set<String>? enabledSkillIds,
   }) async {
-    const maxToolRounds = 5;
+    const maxToolRounds = 12;
     final fullContent = StringBuffer();
 
     try {
@@ -224,7 +224,7 @@ class AiRequestDispatcher {
               },
             )
             .timeout(
-              Duration(seconds: (timeoutSeconds * 3) + 60),
+              Duration(seconds: (timeoutSeconds * 6) + 300),
             );
 
         stopwatch.stop();

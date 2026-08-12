@@ -1044,6 +1044,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(l10n.translate('confirm_high_risk_tools')),
+            subtitle: Text(l10n.translate('confirm_high_risk_tools_hint')),
+            value: s.ai.aiConfirmHighRiskTools,
+            onChanged: (v) async {
+              await widget.onSettingsChanged(
+                s.copyWith(ai: s.ai.copyWith(aiConfirmHighRiskTools: v)),
+              );
+            },
+          ),
           _field(
             label: l10n.translate('ai_request_timeout'),
             value: s.ai.aiRequestTimeoutSec.toString(),

@@ -240,13 +240,15 @@ class AiChatPanelState extends State<AiChatPanel> {
       }
       widget.onToolsExecuted?.call(requests, results);
     };
-    // 高风险工具执行前确认（对标 MonkeyCode ask_user_question）
-    widget.dispatcher.onToolConfirm =
-        (request, toolName, argSummary) => _confirmToolExecution(
+    // 高风险工具执行前确认（对标 MonkeyCode ask_user_question）。
+    // 由设置 aiConfirmHighRiskTools 控制：默认关闭 = AI 全权，直接执行
+    widget.dispatcher.onToolConfirm = widget.settings.ai.aiConfirmHighRiskTools
+        ? (request, toolName, argSummary) => _confirmToolExecution(
               request,
               toolName,
               argSummary,
-            );
+            )
+        : null;
   }
 
   /// 弹出高风险工具执行确认框；返回 true 允许执行
