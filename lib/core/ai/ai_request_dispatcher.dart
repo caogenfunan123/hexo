@@ -13,6 +13,7 @@ import '../tools/tool_registry.dart';
 import 'ai_model_entity.dart';
 import 'ai_model_manager.dart';
 import 'ai_model_probe_service.dart';
+import 'ai_provider.dart';
 
 /// 模型切换事件（UI 提示条用）
 class SwitchEvent {
@@ -176,9 +177,34 @@ class AiRequestDispatcher {
     final fullContent = StringBuffer();
 
     try {
+      // 发送前清洗历史，丢弃残缺的 tool_calls（防止 400）
+      ensureHistoryConsistent();
       AiProfile? profile;
       if (preferredModel != null) {
         profile = _profileFromModel(preferredModel);
+      } else {
+        // 未指定具体模型时，从 settings 兜底构造临时 profile，
+        // 避免 preferredModel 为 null（模型列表未加载/为空）时走入
+        // "请先选择模型" 抛错路径
+        final ai = settings.ai;
+        if (ai.effectiveAiModel.isNotEmpty &&
+            ai.effectiveAiApiKey.isNotEmpty) {
+          profile = AiProfile(
+            id: 'fallback',
+            name: '默认配置',
+            baseUrl: ai.effectiveAiBaseUrl,
+            apiKey: ai.effectiveAiApiKey,
+            model: ai.effectiveAiModel,
+            interfaceType:
+                ai.activeAiProfile?.interfaceType ?? InterfaceType.openaiChat,
+            thinkingEnabled: ai.activeAiProfile?.thinkingEnabled ?? false,
+            reasoningEffort:
+                ai.activeAiProfile?.reasoningEffort ?? 'medium',
+            reasoningBudgetTokens:
+                ai.activeAiProfile?.reasoningBudgetTokens ?? 1024,
+            useBearer: ai.activeAiProfile?.useBearer ?? true,
+          );
+        }
       }
 
       final messages = [
@@ -420,6 +446,71 @@ class AiRequestDispatcher {
     return onToolConfirm!(request, tool.name, argSummary);
   }
 
+  /// 清洗历史：删除"带 tool_calls 但缺少后续 tool 回执"的残缺 assistant 消息。
+  /// 避免历史中断点/异常导致 400 "tool_calls must be followed by tool messages"。
+  /// 规则：assistant 消息若声明了 tool_calls，其后必须紧跟覆盖全部 callId 的
+  /// tool 回执；若不完整，则该 assistant 消息与其后孤立的 tool 消息整体丢弃。
+  List<Map<String, dynamic>> _sanitizeHistory(
+      List<Map<String, dynamic>> history) {
+    final out = <Map<String, dynamic>>[];
+    var i = 0;
+    while (i < history.length) {
+      final m = history[i];
+      final role = m['role']?.toString();
+      if (role == 'assistant') {
+        final tc = m['tool_calls'];
+        final hasCalls = tc is List && tc.isNotEmpty;
+        if (!hasCalls) {
+          // 纯文本 assistant 消息：直接保留
+          out.add(m);
+          i++;
+          continue;
+        }
+        // 带 tool_calls：向后收集连续的 tool 回执，校验完整性
+        final callIds = tc
+            .whereType<Map>()
+            .map((e) => e['id']?.toString() ?? '')
+            .where((s) => s.isNotEmpty)
+            .toSet();
+        var j = i + 1;
+        final toolMsgs = <Map<String, dynamic>>[];
+        while (j < history.length &&
+            history[j]['role']?.toString() == 'tool') {
+          toolMsgs.add(history[j]);
+          j++;
+        }
+        final repliedIds = toolMsgs
+            .map((tm) => tm['tool_call_id']?.toString() ?? '')
+            .where((s) => s.isNotEmpty)
+            .toSet();
+        final complete = callIds.isNotEmpty &&
+            callIds.every(repliedIds.contains);
+        if (complete) {
+          out.add(m);
+          out.addAll(toolMsgs);
+        }
+        // 残缺则整体跳过（assistant + 其后的孤立 tool 消息都不输出）
+        i = j;
+      } else if (role == 'tool') {
+        // 孤立的 tool 消息（没有前面的 assistant tool_calls）：丢弃
+        i++;
+      } else {
+        out.add(m);
+        i++;
+      }
+    }
+    return out;
+  }
+
+  /// 发送请求前确保历史中不带残缺的 tool_calls（防止 400）
+  void ensureHistoryConsistent() {
+    if (_chatHistory.isEmpty) return;
+    final cleaned = _sanitizeHistory(_chatHistory);
+    _chatHistory
+      ..clear()
+      ..addAll(cleaned);
+  }
+
   /// 记录单次流式调用（成功/失败）到模型管理器，供择优评分
   void _recordStreamCall(
     AiModelEntity? model,
@@ -510,6 +601,8 @@ class AiRequestDispatcher {
     String? lastError;
 
     final stopwatch = Stopwatch();
+    // 发送前清洗历史，丢弃残缺的 tool_calls（防止 400）
+    ensureHistoryConsistent();
     while (attemptIndex <= maxRetries) {
       try {
         // 确定当前使用的 profile
@@ -703,6 +796,7 @@ class AiRequestDispatcher {
         : null;
 
     // 构建消息列表（使用 Map<String, dynamic> 以支持 tool_calls）
+    ensureHistoryConsistent();
     final messages = <Map<String, dynamic>>[
       {'role': 'system', 'content': _systemPrompt},
       ..._chatHistory.map((m) => Map<String, dynamic>.from(m)),

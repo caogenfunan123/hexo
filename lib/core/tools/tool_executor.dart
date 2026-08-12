@@ -55,16 +55,27 @@ class ToolExecutor {
     }
 
     ToolCallResult result;
-    switch (tool.type) {
-      case ToolType.builtin:
-        result = await BuiltinTools.execute(request);
-        break;
-      case ToolType.skill:
-        result = await _executeSkill(tool, request);
-        break;
-      case ToolType.mcp:
-        result = await _executeMcp(tool, request);
-        break;
+    try {
+      switch (tool.type) {
+        case ToolType.builtin:
+          result = await BuiltinTools.execute(request);
+          break;
+        case ToolType.skill:
+          result = await _executeSkill(tool, request);
+          break;
+        case ToolType.mcp:
+          result = await _executeMcp(tool, request);
+          break;
+      }
+    } catch (e) {
+      // 工具执行抛异常时兜底为失败结果，确保每个 tool_call 都有 tool 回执，
+      // 避免"tool_calls must be followed by tool messages"的 400 错误
+      result = ToolCallResult(
+        toolId: request.toolId,
+        content: '',
+        success: false,
+        error: '工具执行异常: $e',
+      );
     }
     stopwatch.stop();
     return result.copyWith(durationMs: stopwatch.elapsedMilliseconds);
