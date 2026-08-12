@@ -1,5 +1,5 @@
 name: hexo
-description: Hexo 博客写作与发布管理系统 - 全平台 (Android / iOS / Web / 桌面)
+description: 拓墨 - AI Markdown 写作与静态博客发布工具 - 全平台 (Android / iOS / Web / 桌面)
 publish_to: 'none'
 version: 1.0.4+5
 
@@ -37,6 +37,10 @@ dependencies:
   provider: ^6.1.1
   # 工具
   path_provider: ^2.1.0
+  # 打开外部链接
+  url_launcher: ^6.3.2
+  # 版本信息
+  package_info_plus: ^9.0.1
   # 编码
   gbk_codec: ^0.4.0
   # ZIP 压缩/解压 (DOCX 导入导出)

@@ -931,7 +931,7 @@ extension EditorUiExt on _RootShellState {
     final repoFullName = activeRepo?.fullName ?? '';
     final siteName = settings.siteName.isNotEmpty
         ? settings.siteName
-        : 'Hexo 写作';
+        : '拓墨 写作';
 
     return Drawer(
       backgroundColor: Colors.white,
@@ -956,19 +956,33 @@ extension EditorUiExt on _RootShellState {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Logo icon
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.18),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(
-                      Icons.auto_stories,
-                      color: Colors.white,
-                      size: 26,
-                    ),
+                  // Logo 文字标志
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      const Text(
+                        '拓墨',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 24,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 3),
+                        child: Text(
+                          'AI 写作',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.75),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 14),
                   Text(

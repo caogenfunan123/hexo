@@ -242,21 +242,24 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
       padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
       child: Row(
         children: [
-          Icon(
-            Icons.auto_stories,
-            size: 18,
-            color: cs.primary,
-          ),
-          const SizedBox(width: 8),
           Text(
-            '导航',
+            '拓墨',
             style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: isDark
-                  ? cs.onSurface.withOpacity(0.5)
-                  : const Color(0xFF6B7280),
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: isDark ? Colors.white : const Color(0xFF0F172A),
               letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'AI 写作',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              color: isDark
+                  ? Colors.white.withOpacity(0.4)
+                  : const Color(0xFF9CA3AF),
             ),
           ),
           const Spacer(),

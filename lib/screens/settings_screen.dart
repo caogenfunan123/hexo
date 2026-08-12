@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:io';
 import '../models/app_settings.dart';
 import '../models/repo_config.dart';
@@ -58,6 +60,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  static String _cachedVersion = '1.0.4';
   late TextEditingController _siteNameCtrl;
   late TextEditingController _siteBioCtrl;
 
@@ -66,6 +69,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _siteNameCtrl = TextEditingController(text: widget.settings.siteName);
     _siteBioCtrl = TextEditingController(text: widget.settings.siteBio);
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (info.version.isNotEmpty) {
+        _cachedVersion = info.version;
+        if (mounted) setState(() {});
+      }
+    } catch (_) {}
   }
 
   @override
@@ -1177,18 +1191,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _settingsCard([
           ListTile(
             contentPadding: EdgeInsets.zero,
-            title: Text(l10n.translate('hexo_writing_system')),
+            title: Text(
+              l10n.translate('hexo_writing_system'),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             subtitle: Text(l10n.translate('local_drafts')),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(l10n.translate('about_version')),
+            subtitle: Text(_cachedVersion),
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: Text(l10n.translate('about_author')),
             subtitle: Text(l10n.translate('about_developer')),
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(l10n.translate('about_version')),
-            subtitle: const Text('1.0.1'),
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -1203,16 +1223,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: Text(l10n.translate('repository')),
-            subtitle: const Text('github.com/caogenfunan123/xiamend'),
-            trailing: const Icon(Icons.copy),
-            onTap: () {
-              Clipboard.setData(
-                const ClipboardData(
-                  text: 'https://github.com/caogenfunan123/xiamend',
-                ),
-              );
-              widget.onShowToast(l10n.translate('repo_copied'));
-            },
+            subtitle: const Text('github.com/caogenfunan123/hexo'),
+            trailing: const Icon(Icons.open_in_new),
+            onTap: () => _openUrl('https://github.com/caogenfunan123/hexo'),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.help_outline),
+            title: Text(l10n.translate('about_help')),
+            subtitle: Text(l10n.translate('about_help_hint')),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _showHelpDialog,
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -1229,6 +1250,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ]),
         const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  void _openUrl(String url) async {
+    final l10n = AppLocalizations.ofContext(context);
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      Clipboard.setData(ClipboardData(text: url));
+      widget.onShowToast(l10n.translate('repo_copied'));
+    }
+  }
+
+  void _showHelpDialog() {
+    final l10n = AppLocalizations.ofContext(context);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.translate('help_title')),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _helpSection('help_quick_start', 'help_quick_start_body', l10n),
+              const SizedBox(height: 16),
+              _helpSection('help_ai', 'help_ai_body', l10n),
+              const SizedBox(height: 16),
+              _helpSection('help_publish', 'help_publish_body', l10n),
+              const SizedBox(height: 16),
+              _helpSection('help_issue', 'help_issue_body', l10n),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(l10n.translate('confirm')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _helpSection(String titleKey, String bodyKey, AppLocalizations l10n) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          l10n.translate(titleKey),
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          l10n.translate(bodyKey),
+          style: const TextStyle(fontSize: 13, height: 1.5, color: Color(0xFF475569)),
+        ),
       ],
     );
   }
