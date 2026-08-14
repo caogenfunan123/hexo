@@ -983,13 +983,53 @@ extension EditorUiExt on _RootShellState {
                 child: ListView(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   children: [
+                    // ── 最近文章（可折叠平铺） ──
+                    _drawerCollapsibleHeader(
+                      l10n.translate('drawer_recent_articles'),
+                      expanded: _drawerArticlesExpanded,
+                      onToggle: () => _applyState(
+                        () => _drawerArticlesExpanded = !_drawerArticlesExpanded,
+                      ),
+                    ),
+                    if (_drawerArticlesExpanded) ...[
+                      if (drafts.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(20, 2, 20, 6),
+                          child: Text(
+                            '暂无文章',
+                            style: TextStyle(fontSize: 12, color: AppTheme.muted),
+                          ),
+                        )
+                      else
+                        ...((drafts
+                                .where((d) =>
+                                    !SystemLogFiles.isSystemLogFileName(
+                                        d.title) &&
+                                    !SystemLogFiles.isSystemLogFileName(
+                                        d.fileName()))
+                                .toList()
+                              ..sort((a, b) =>
+                                  b.updatedAt.compareTo(a.updatedAt)))
+                            .take(10))
+                            .map(_drawerArticleItem),
+                      const Divider(height: 8),
+                    ],
                     if (navVisible('home'))
                       _drawerItem(
                         14,
                         Icons.home_outlined,
                         l10n.translate('nav_home'),
                       ),
-                    _drawerSection(l10n.translate('drawer_section_create')),
+                    _drawerCollapsibleHeader(
+                      l10n.translate('drawer_section_functions'),
+                      expanded: _drawerFunctionsExpanded,
+                      onToggle: () => _applyState(
+                        () => _drawerFunctionsExpanded =
+                            !_drawerFunctionsExpanded,
+                      ),
+                    ),
+                    if (_drawerFunctionsExpanded) ...[
+                      _drawerSection(l10n.translate('drawer_section_create')),
                     if (navVisible('new_article'))
                       _drawerItem(
                         0,
@@ -1196,6 +1236,7 @@ extension EditorUiExt on _RootShellState {
                       ),
                     if (navVisible('logs'))
                       _drawerItem(11, Icons.history, l10n.translate('nav_log')),
+                    ],
                   ],
                 ),
               ),

@@ -67,6 +67,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static String _cachedVersion = '1.0.4';
   late TextEditingController _siteNameCtrl;
   late TextEditingController _siteBioCtrl;
+  late TextEditingController _quickNoteAnchorCtrl;
 
   /// 设置页折叠的分区 key 集合（默认全部折叠，保持上次状态）
   late final Set<String> _collapsedSettingsSections;
@@ -76,6 +77,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _siteNameCtrl = TextEditingController(text: widget.settings.siteName);
     _siteBioCtrl = TextEditingController(text: widget.settings.siteBio);
+    _quickNoteAnchorCtrl =
+        TextEditingController(text: widget.settings.ui.quickNoteAnchor);
     _collapsedSettingsSections =
         (widget.settings.ui.collapsedSettingsSections.isNotEmpty
                 ? widget.settings.ui.collapsedSettingsSections
@@ -98,6 +101,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _siteNameCtrl.dispose();
     _siteBioCtrl.dispose();
+    _quickNoteAnchorCtrl.dispose();
     super.dispose();
   }
 
@@ -168,6 +172,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// 判断是否为 Android 应用私有沙盒路径
+  bool _isAppPrivatePath(String path) {
+    final p = path.toLowerCase();
+    return p.contains('/android/data/') ||
+        p.startsWith('/android/data') ||
+        p.contains('/android/obb/') ||
+        p.startsWith('/android/obb');
+  }
+
+  /// 打开当前存储根目录（原生文件管理器）；私有目录时提示无法打开
+  Future<void> _openStorageFolderInSettings() async {
+    final l10n = AppLocalizations.ofContext(context);
+    final dir = await widget.storage.root;
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    if (_isAppPrivatePath(dir.path)) {
+      widget.onShowToast(l10n.translate('global_storage_private_hint'));
+      return;
+    }
+    try {
+      const channel = MethodChannel('hexo/native');
+      final ok = await channel.invokeMethod<bool>('openFolder', {
+        'path': dir.path,
+      });
+      if (ok != true) {
+        widget.onShowToast(
+          l10n.translate('open_folder_failed', params: {'path': dir.path}),
+        );
+      }
+    } catch (e) {
+      widget.onShowToast('打开文件夹失败: $e');
+    }
+  }
+
   /// 重置为默认存储根目录
   Future<void> _resetStorageRoot() async {
     final l10n = AppLocalizations.ofContext(context);
@@ -234,9 +273,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onTap,
+    bool enabled = true,
   }) {
     return OutlinedButton.icon(
-      onPressed: onTap,
+      onPressed: enabled ? onTap : null,
       icon: Icon(icon, size: 17, color: const Color(0xFF475569)),
       label: Text(label, style: const TextStyle(color: Color(0xFF475569))),
       style: OutlinedButton.styleFrom(
@@ -717,6 +757,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _storageActionBtn(
+                  icon: Icons.folder_open_outlined,
+                  label: l10n.translate('open_save_dir'),
+                  onTap: () => _openStorageFolderInSettings(),
+                ),
+              ),
+            ],
+          ),
           if (s.storageRootDir.isNotEmpty) ...[
             const SizedBox(height: 10),
             Row(
@@ -1132,6 +1184,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ]),
 
         const SizedBox(height: 20),
+        // ── 速记与快捷入口 ──
+        _section('quick_note', '速记与快捷入口', [
+          // 桌面小部件 / 通知栏磁贴引导
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.widgets_outlined, color: Color(0xFF0EA5E9)),
+            title: const Text('桌面小部件 / 通知栏磁贴'),
+            subtitle: const Text(
+              '长按桌面 → 添加小部件「速记」；下拉通知栏 → 编辑磁贴 → 拖入「速记」',
+              style: TextStyle(fontSize: 12, height: 1.4),
+            ),
+          ),
+          const Divider(height: 20),
+          // 速记锚点
+          TextField(
+            controller: _quickNoteAnchorCtrl,
+            decoration: const InputDecoration(
+              labelText: '速记锚点（可选，写在开头）',
+              hintText: '例如 # 灵感速记',
+              prefixIcon: Icon(Icons.anchor_outlined, size: 20),
+            ),
+            onSubmitted: (v) async {
+              await widget.onSettingsChanged(
+                s.copyWith(ui: s.ui.copyWith(quickNoteAnchor: v.trim())),
+              );
+              widget.onShowToast('速记锚点已保存');
+            },
+          ),
+          const SizedBox(height: 12),
+          // 速记时间戳
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('速记自动插入时间戳'),
+            value: s.ui.quickNoteTimestamp,
+            onChanged: (v) async {
+              await widget.onSettingsChanged(
+                s.copyWith(ui: s.ui.copyWith(quickNoteTimestamp: v)),
+              );
+            },
+          ),
+          if (s.ui.quickNoteTimestamp) ...[
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: s.ui.timestampFormat,
+              decoration: const InputDecoration(
+                labelText: '时间戳格式',
+                prefixIcon: Icon(Icons.schedule, size: 20),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'date', child: Text('日期')),
+                DropdownMenuItem(value: 'time', child: Text('时间')),
+                DropdownMenuItem(value: 'datetime', child: Text('日期+时间')),
+                DropdownMenuItem(value: 'iso', child: Text('ISO 完整')),
+                DropdownMenuItem(value: 'slash', child: Text('斜杠日期')),
+                DropdownMenuItem(value: 'cn', child: Text('中文格式')),
+                DropdownMenuItem(value: 'compact', child: Text('紧凑格式')),
+              ],
+              onChanged: (v) async {
+                if (v == null) return;
+                await widget.onSettingsChanged(
+                  s.copyWith(ui: s.ui.copyWith(timestampFormat: v)),
+                );
+              },
+            ),
+          ],
+        ]),
+
+        const SizedBox(height: 20),
         // ── 隐私与加密 ──
         _section('privacy_encryption', '隐私与加密', [
           _buildDraftEncryptionTile(),
@@ -1401,6 +1521,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'image_host',
     'ai_relay',
     'ai_scheduler',
+    'quick_note',
     'privacy_encryption',
     'site_pwa',
     'about',

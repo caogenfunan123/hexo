@@ -17,6 +17,100 @@ extension EditorDrawerExt on _RootShellState {
     );
   }
 
+  /// 可折叠分区头（标题行 + 展开/收起箭头）
+  Widget _drawerCollapsibleHeader(
+    String label, {
+    required bool expanded,
+    required VoidCallback onToggle,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 2, 12, 0),
+      child: InkWell(
+        onTap: onToggle,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.muted,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+              Icon(
+                expanded ? Icons.expand_less : Icons.expand_more,
+                size: 18,
+                color: AppTheme.muted,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 最近文章列表项（抽屉平铺）
+  Widget _drawerArticleItem(Article a) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => _openExistingArticle(a),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.description_outlined,
+                  size: 16,
+                  color: AppTheme.muted,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    a.title.isEmpty ? '(无标题)' : a.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13, color: AppTheme.text),
+                  ),
+                ),
+                if (!a.published)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: cs.primary.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '草稿',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        color: cs.primary,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _drawerItem(
     int page,
     IconData icon,

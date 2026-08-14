@@ -282,6 +282,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   String? error;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
+  // ── 抽屉分区折叠状态（最近文章 / 功能区） ──
+  bool _drawerArticlesExpanded = false;
+  bool _drawerFunctionsExpanded = true;
+
   bool _sessionRestored = false;
 
   // ── 自动保存（P0 修复：每草稿独立防抖 + 三重落盘） ──
@@ -755,7 +759,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     }
   }
 
-  /// 处理速记请求：直达新建草稿，预填文本
+  /// 处理速记请求：直达新建草稿，预填文本，聚焦输入框弹出键盘
   void _handleQuickNote(QuickNoteRequest req) {
     if (req.mode != 'new') return;
     // 当前有内容时先保存到草稿箱，避免丢失
@@ -777,6 +781,12 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     _startAutoSave();
     setState(() => _currentPage = 0);
     _updateSystemBarStyle();
+    // 聚焦输入框，立即弹出键盘开始记录
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _doc.contentFocus.requestFocus();
+      FocusScope.of(context).requestFocus(_doc.contentFocus);
+    });
     if (mounted) _showToast('速记草稿已创建');
   }
 
@@ -1264,6 +1274,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             ),
       actions: _currentPage == 0
           ? [
+              _appBarAction(
+                icon: Icons.check,
+                tooltip: '保存',
+                color: globalTextColor,
+                onTap: () {
+                  _saveLocal();
+                  _flushAllPendingSaves();
+                },
+              ),
               WordCountBadge(
                 titleCtrl: _doc.titleCtrl,
                 contentCtrl: _doc.contentCtrl,

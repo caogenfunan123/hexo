@@ -87,6 +87,13 @@ public class MainActivity extends FlutterActivity {
                                     ? getExternalFilesDir(null).getAbsolutePath()
                                     : getFilesDir().getAbsolutePath());
                             break;
+                        case "getPublicDocumentsDir":
+                            result.success(getPublicDocumentsDir());
+                            break;
+                        case "isAppPrivatePath":
+                            String p = call.argument("path");
+                            result.success(p != null && isAppPrivatePath(p));
+                            break;
                         case "getLaunchQuickNote":
                             // 拉取并清空缓存的速记参数
                             java.util.Map<String, String> cached = pendingQuickNote;
@@ -172,6 +179,15 @@ public class MainActivity extends FlutterActivity {
                 result.error("BAD_PATH", "路径为空", null);
                 return;
             }
+            // Android 11+ 沙盒：应用私有目录（Android/data、Android/obb）
+            // 无法通过 Intent 交给外部文件管理器打开
+            if (isAppPrivatePath(path)) {
+                result.error(
+                        "PRIVATE_PATH",
+                        "应用私有目录，系统文件管理器无法打开，请在应用内查看",
+                        null);
+                return;
+            }
             Uri uri = Uri.parse(path);
             if (uri.getScheme() == null || uri.getScheme().equals("file")) {
                 java.io.File dir = new java.io.File(path);
@@ -195,6 +211,26 @@ public class MainActivity extends FlutterActivity {
         } catch (Exception e) {
             result.error("OPEN_FAILED", e.getMessage(), null);
         }
+    }
+
+    /** 判断是否为 Android 应用私有沙盒路径（外部文件管理器无法打开） */
+    private boolean isAppPrivatePath(String path) {
+        String p = path.toLowerCase();
+        return p.contains("/android/data/")
+                || p.startsWith("/android/data")
+                || p.contains("/android/obb/")
+                || p.startsWith("/android/obb");
+    }
+
+    /** 获取公共 Documents 目录下的应用目录（/storage/emulated/0/Documents/Tuomo） */
+    private String getPublicDocumentsDir() {
+        java.io.File dir = new java.io.File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+                "Tuomo");
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+        return dir.getAbsolutePath();
     }
 
     @Override

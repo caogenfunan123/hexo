@@ -126,6 +126,8 @@ class AppLocalizations {
       'language_selector_hint': '选择应用界面显示语言',
 
       // ── 导航抽屉 ──
+      'drawer_recent_articles': '最近文章',
+      'drawer_section_functions': '功能区',
       'drawer_section_create': '创作',
       'drawer_section_manage': '管理',
       'drawer_section_tools': '工具',
@@ -314,6 +316,9 @@ class AppLocalizations {
       'global_storage_set': '已设置全局存储目录: {path}',
       'global_storage_reset': '已重置为默认存储目录',
       'global_storage_migrated': '已迁移 {count} 个文件到新目录',
+      'global_storage_private_hint': '该目录为应用私有目录，系统无法直接打开，请在应用内浏览文档',
+      'open_folder_failed': '无法打开文件夹: {path}',
+      'open_save_dir': '打开保存目录',
       'copy_path': '复制路径',
       'reset_storage_root': '重置目录',
       'migrate_storage_root': '迁移历史文件',
@@ -431,6 +436,8 @@ class AppLocalizations {
       'language_selector_hint': 'Select app interface language',
 
       // ── Navigation drawer ──
+      'drawer_recent_articles': 'Recent Articles',
+      'drawer_section_functions': 'Functions',
       'drawer_section_create': 'Create',
       'drawer_section_manage': 'Manage',
       'drawer_section_tools': 'Tools',
@@ -619,6 +626,9 @@ class AppLocalizations {
       'global_storage_set': 'Global storage directory set: {path}',
       'global_storage_reset': 'Reset to default storage directory',
       'global_storage_migrated': 'Migrated {count} files to the new directory',
+      'global_storage_private_hint': 'This is an app-private directory and cannot be opened by the system file manager. Browse your documents inside the app.',
+      'open_folder_failed': 'Failed to open folder: {path}',
+      'open_save_dir': 'Open save directory',
       'copy_path': 'Copy Path',
       'reset_storage_root': 'Reset',
       'migrate_storage_root': 'Migrate Files',
@@ -736,6 +746,8 @@ class AppLocalizations {
       'language_selector_hint': 'アプリの表示言語を選択',
 
       // ── ナビゲーションドロワー ──
+      'drawer_recent_articles': '最近文章',
+      'drawer_section_functions': '功能區',
       'drawer_section_create': '創作',
       'drawer_section_manage': '管理',
       'drawer_section_tools': 'ツール',
@@ -924,6 +936,9 @@ class AppLocalizations {
       'global_storage_set': 'グローバル保存ディレクトリを設定: {path}',
       'global_storage_reset': 'デフォルト保存ディレクトリにリセット',
       'global_storage_migrated': '{count} 個のファイルを新ディレクトリに移行',
+      'global_storage_private_hint': 'アプリ専用ディレクトリのため、システムのファイルマネージャーでは開けません。アプリ内でドキュメントを参照してください。',
+      'open_folder_failed': 'フォルダを開けません: {path}',
+      'open_save_dir': '保存先を開く',
       'copy_path': 'パスをコピー',
       'reset_storage_root': 'リセット',
       'migrate_storage_root': 'ファイルを移行',
@@ -1041,6 +1056,8 @@ class AppLocalizations {
       'language_selector_hint': '앱 인터페이스 언어 선택',
 
       // ── 내비게이션 드로어 ──
+      'drawer_recent_articles': '최근 글',
+      'drawer_section_functions': '기능',
       'drawer_section_create': '작성',
       'drawer_section_manage': '관리',
       'drawer_section_tools': '도구',
@@ -1227,6 +1244,9 @@ class AppLocalizations {
       'global_storage_set': '글로벌 저장 디렉터리 설정: {path}',
       'global_storage_reset': '기본 저장 디렉터리로 재설정',
       'global_storage_migrated': '{count}개 파일을 새 디렉터리로 마이그레이션',
+      'global_storage_private_hint': '앱 전용 디렉터리라 시스템 파일 관리자에서 열 수 없습니다. 앱 내에서 문서를 확인하세요.',
+      'open_folder_failed': '폴더를 열 수 없음: {path}',
+      'open_save_dir': '저장 디렉터리 열기',
       'copy_path': '경로 복사',
       'reset_storage_root': '재설정',
       'migrate_storage_root': '파일 마이그레이션',

@@ -10,7 +10,9 @@ import android.widget.RemoteViews;
 /**
  * 桌面小部件：一键速记。
  *
- * 点击任意区域 → 拉起 MainActivity 并进入新建草稿（带 QuickNoteIntent.EXTRA_MODE）。
+ * 复刻 QuickDaily 极简设计：白色圆角卡片 + 居中加号。
+ * 点击任意区域 → 拉起 MainActivity 并直达速记（带 QuickNoteIntent.EXTRA_MODE），
+ * Flutter 侧自动聚焦输入框弹出键盘，输入后自动保存。
  */
 public class QuickNoteWidgetProvider extends AppWidgetProvider {
 
@@ -24,7 +26,7 @@ public class QuickNoteWidgetProvider extends AppWidgetProvider {
     private void updateWidget(Context context, AppWidgetManager appWidgetManager, int appWidgetId) {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_quick_note);
 
-        // 整块点击 → 新建草稿
+        // 整块点击 → 直达速记
         Intent intent = QuickNoteIntent.build(context, QuickNoteIntent.MODE_NEW, null);
         PendingIntent pi = PendingIntent.getActivity(
                 context,
@@ -32,9 +34,6 @@ public class QuickNoteWidgetProvider extends AppWidgetProvider {
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         views.setOnClickPendingIntent(R.id.widget_root, pi);
-
-        views.setTextViewText(R.id.widget_date, android.text.format.DateFormat.getDateFormat(context)
-                .format(new java.util.Date()));
 
         appWidgetManager.updateAppWidget(appWidgetId, views);
     }
