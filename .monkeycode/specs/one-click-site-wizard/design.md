@@ -75,6 +75,9 @@ GitHubProvider 新增：
 - `Future<void> enablePages(String token, String owner, String name)` → `POST /repos/{owner}/{name}/pages`（source=GitHub Actions）
 - `Future<Map> getActionsRun(String token, String owner, String name)` → 查询最近 workflow run 状态
 - `Future<void> deleteRepository(String token, String owner, String name)` → `DELETE /repos/{owner}/{name}`（回滚用）
+- `Future<Map> verifyScopes(String token)` → `GET /user` 响应头 `X-OAuth-Scopes`，校验 `repo` + `workflow`
+- `Future<void> updateVisibility(String token, String owner, String name, bool private)` → `PATCH /repos/{owner}/{name}`（站点管理切换可见性）
+- `Future<void> setCustomDomain(String token, String owner, String name, String cname)` → `PUT /repos/{owner}/{name}/pages` 设置 `cname` 字段
 
 GitLabProvider 新增：
 - `Future<Map> createProject(String token, String name, bool private)` → `POST https://gitlab.com/api/v4/projects`
@@ -82,6 +85,8 @@ GitLabProvider 新增：
 - `Future<void> enablePages(String token, String projectId)` → `PUT /api/v4/projects/{id}/pages`
 - `Future<Map> getPipeline(String token, String projectId)` → 查询最近 pipeline 状态
 - `Future<void> deleteProject(String token, String projectId)` → `DELETE /api/v4/projects/{id}`（回滚用）
+- `Future<Map> verifyScopes(String token)` → `GET /user` 响应中 `scopes` 字段，校验 `api`
+- `Future<void> setCustomDomain(String token, String projectId, String cname)` → `PUT /api/v4/projects/{id}/pages` 设置自定义域
 
 ### 3. CloudflarePagesProvider（新增 `lib/services/cloudflare_pages_provider.dart`）
 
@@ -159,6 +164,45 @@ class RollbackManager {
 - **模式二引导页**：逐步展示「在 Cloudflare 控制台连接 Git → 创建 Pages 项目」的对照文案
   （每步描述"你现在应该看到什么"），App 后台轮询检测项目，检测到后自动衔接
 - **模式一进度页**：展示 Actions run / GitLab pipeline 的构建进度轮询
+- **取消对话框**：向导过程中用户点击取消/返回主页，若已创建资源则弹出确认框：
+  - 未投入网页操作 → 提示"将清理本次已创建的资源"并触发 `RollbackManager`（复用失败回滚路径）
+  - 模式二已投入网页操作 → 提示"仓库将保留，可稍后在站点管理继续"，不触发回滚
+
+### 6.1 账号连接补充（scope 预校验）
+
+- 令牌有效校验后，进一步校验 scope：
+  - GitHub：`GET /user` 响应头 `X-OAuth-Scopes` 需包含 `repo` + `workflow`，
+    缺失时在账号连接步直接列出缺失项并引导重新生成令牌（早失败，避免建仓/启用 Pages 阶段才报错）
+  - GitLab：`GET /user` 的 `scopes` 字段需包含 `api`
+- 校验落点：`GitHubProvider.verifyScopes` / `GitLabProvider.verifyScopes`
+
+### 6.2 首次构建轮询超时
+
+- 首次构建轮询上限默认 **10 分钟**（可配置常量 `wizardBuildPollTimeout`）
+- 超时处理：停止轮询，完成页展示"构建仍在进行"提示，站点仍写入站点管理
+  （`siteUrl` 置空），后续构建完成后通过既有状态轮询/下次访问回填 `siteUrl`
+- 进度页提供「放弃等待」按钮，点击后回到站点管理，不触发回滚
+
+### 6.3 站点管理可见性切换（建站后）
+
+- 站点管理新增「切换可见性」操作，调用 `GitHubProvider.updateVisibility`（`PATCH /repos/{owner}/{name}`）
+- 免费账号从 `public` 切到 `private` 时，提示「GitHub 免费账号私有仓库无法启用 Pages，
+  该操作可能导致站点停用」
+- 仅模式一 GitHub 提供此入口；GitLab 与 Cloudflare 场景不提供（可见性由平台侧管理）
+
+### 6.4 自定义域名绑定引导（完成页/站点管理入口）
+
+- 完成页与站点管理新增「绑定自定义域名」入口，按平台走分步引导：
+  - **GitHub**：Step 1 提示在 DNS 服务商添加 CNAME `{repo}.{user}.github.io` →
+    Step 2 App 调用 `GitHubProvider.setCustomDomain`（`PUT /repos/{owner}/{repo}/pages` 设 `cname`）→
+    Step 3 提示等待 HTTPS 生效并展示验证状态
+  - **GitLab**：Step 1 提示在 DNS 服务商添加记录 → Step 2 引导在 GitLab Pages 设置填写域名 →
+    Step 3 提示验证 DNS 生效
+  - **Cloudflare**：引导在 CF 控制台 Pages 项目「自定义域」中添加域名，走 CF 自有 DNS 绑定流程
+    （CF 账号可自动完成 DNS 配置，App 仅跳转引导）
+- 每步展示「现在你应该看到什么 / 下一步做什么」对照文案，并标注需前往的控制台
+- 域名绑定成功后更新 `RepoConfig.siteUrl` 为自定义域名
+- 对应需求：Requirement 10（自定义域名绑定引导）
 
 ### 7. 建站结果自动接入（登录令牌 + 多仓库 + 一键发布）
 
@@ -258,23 +302,27 @@ class RollbackManager {
    不依赖 App 端执行任何构建。
 7. **接入幂等**：令牌注册 / 站点注册 / Deploy Hook 追加均为"存在则跳过"，重复建站不会产生重复条目。
 8. **发布零配置**：新站建立后无需任何额外配置即可被既有发布链路识别并一键发布。
-3. **Token 不出端**：Token 仅保存在本机安全存储，不上传第三方，不入日志。
-4. **分支一致性**：建仓后先建 `main` 分支再 `writeBatch`，保证 Git API 写文件不依赖本地 git。
-5. **可见性默认**：新建仓库默认 `private`，用户显式选择才改为 `public`。
-6. **CI 自部署**：模式一的 Pages 部署由仓库内 CI 流水线完成（Actions/GitLab CI），App 只推送源码，
-   不依赖 App 端执行任何构建。
+9. **取消即清理**：用户主动取消且未投入网页操作时，与失败走同一回滚路径，不留半成品。
+10. **scope 早失败**：令牌 scope 不足在账号连接步即拦截，避免建仓/启用 Pages 阶段才失败。
+11. **构建等待有界**：首次构建轮询设 10 分钟上限，超时停止轮询但不回滚、不丢站点记录。
+12. **Pages 免费限制可见**：GitHub 免费账号私有仓库不能启用 Pages 的限制在建站前提示、
+    建站后切换可见性时再次提示。
 
 ## Error Handling
 
 | 错误场景 | 检测 | 处理 |
 |---|---|---|
 | Git Token 无效 | `GET /user` 401 | 账号连接步提示重新输入 |
+| Git Token scope 不足 | `verifyScopes` 缺失 `repo`+`workflow`（GitHub）或 `api`（GitLab） | 账号连接步列出缺失项，引导重新生成令牌 |
 | CF Token 无效 | `GET /user/tokens/verify` 非 200 | 提示重新输入；区分「token 无效」与「缺 Pages 权限」 |
 | 仓库名冲突 | 建仓接口 422 | 展示冲突原因，允许改名重试 |
 | 骨架/CI 写入失败 | `writeBatch` 异常 | 触发回滚删除仓库 |
-| Pages 启用失败 | 启用接口非 2xx | 触发回滚删除仓库 |
+| Pages 启用失败（私有仓库） | 启用接口非 2xx，且仓库为 private | 归因到可见性，提示免费账号需改公开后重试 |
+| 用户主动取消 | 取消对话框确认 | 未投入网页操作 → 触发回滚；模式二已投入 → 保留仓库提示手动继续 |
 | 模式二网页操作超时 | 轮询超时（60s） | 提示"未检测到项目，检查 GitHub 账号/仓库名"，继续等待或放弃 |
 | 首次构建失败 | 轮询状态 = failure | 展示构建日志摘要，不删除站点（允许用户修复后重试发布） |
+| 首次构建超时 | 轮询达 10 分钟上限 | 停止轮询，站点仍入库（`siteUrl` 待回填），不触发回滚 |
+| 域名绑定失败 | 设置 cname / 添加自定义域接口非 2xx | 提示检查 DNS 记录是否已生效并允许重试 |
 | 回滚删除失败 | DELETE 异常 | 收集失败项，完成页提供手动删除入口 |
 
 ## Test Strategy
@@ -282,10 +330,13 @@ class RollbackManager {
 1. **单元测试**：
    - `SiteScaffoldBuilder`：对 9 个框架生成骨架文件清单快照测试（关键文件存在性 + front matter 对齐）
    - CI 流水线模板快照测试（`.github/workflows/deploy.yml` / `.gitlab-ci.yml` 关键字段校验）
-   - `RollbackManager`：注入失败 provider，验证逆序执行与失败项收集
+   - `RollbackManager`：注入失败 provider，验证逆序执行、失败项收集、取消复用同一路径
    - 框架构建命令/输出目录映射表完整性测试
+   - `verifyScopes`：注入不同 `X-OAuth-Scopes` 响应头，验证缺失 scope 判定
+   - 构建轮询超时：注入固定 pending 状态，验证 10 分钟上限后停止并保留站点记录
 2. **集成测试（可选，需真实凭据）**：
    - 模式一 GitHub：测试账号跑通建仓 → 骨架+CI → 启用 Pages → 首文 → 验证 `https://{user}.github.io/{repo}/`
+   - 模式一 GitHub 可见性限制：私有仓库启用 Pages 失败 → 归因到可见性 → 改公开后成功
    - 模式二 CF：验证建仓 → 骨架 → 检测衔接 → Deploy Hook 自动写入
 3. **回归测试**：确保既有 `publishArticleWithMirrors` 发布链路不受 `RepoConfig` 新增字段影响
 

@@ -54,9 +54,11 @@ Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 �
 #### Acceptance Criteria
 
 1. WHEN 用户输入 Git 令牌，System SHALL 通过 GitHub `/user` 接口校验令牌有效性并展示令牌属主账号。
-2. WHEN 用户输入 Cloudflare API 令牌，System SHALL 通过 Cloudflare `GET /user/tokens/verify` 接口校验令牌有效性。
-3. IF 任一令牌校验失败，System SHALL 展示失败原因并允许用户重新输入。
-4. WHILE 向导进行中，System SHALL 仅将令牌保存在本机安全存储中，并禁止将令牌明文回显到任何日志或网络请求体以外。
+2. WHEN 用户输入 GitHub 令牌，System SHALL 同时校验其 scope 是否包含建站所需权限（`repo` + `workflow`）；IF 缺失任一 scope，System SHALL 明确列出缺失项并引导用户重新生成令牌。
+3. WHEN 用户输入 GitLab 令牌，System SHALL 同时校验其 scope 是否包含建站所需权限（`api`）；IF 缺失，System SHALL 提示用户补充。
+4. WHEN 用户输入 Cloudflare API 令牌，System SHALL 通过 Cloudflare `GET /user/tokens/verify` 接口校验令牌有效性。
+5. IF 任一令牌校验失败，System SHALL 展示失败原因并允许用户重新输入。
+6. WHILE 向导进行中，System SHALL 仅将令牌保存在本机安全存储中，并禁止将令牌明文回显到任何日志或网络请求体以外。
 
 ### Requirement 3：创建 Git 仓库
 
@@ -68,8 +70,9 @@ Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 �
 2. WHEN 用户选择模式一且平台为 GitLab，System SHALL 调用 GitLab `POST /api/v4/projects` 创建项目。
 3. WHEN 用户选择模式二，System SHALL 调用 GitHub `POST /user/repos` 创建仓库。
 4. WHEN 用户未修改可见性，System SHALL 将仓库创建为 `private`；WHEN 用户选择公开，System SHALL 将仓库创建为 `public`。
-5. IF 仓库名称已存在或名称非法，System SHALL 展示冲突原因并允许用户改名重试。
-6. WHEN 仓库创建成功，System SHALL 记录仓库 `owner/name` 并进入下一步。
+5. IF 向导为模式一且平台为 GitHub，System SHALL 在站点信息步骤提示「GitHub 免费账号的私有仓库无法启用 Pages，若账号为免费版需选择公开仓库」；IF 用户仍选择私有，System SHALL 允许继续建仓，但在启用 Pages 失败时归因到仓库可见性并引导用户改公开。
+6. IF 仓库名称已存在或名称非法，System SHALL 展示冲突原因并允许用户改名重试。
+7. WHEN 仓库创建成功，System SHALL 记录仓库 `owner/name` 并进入下一步。
 
 ### Requirement 4：写入博客骨架
 
@@ -104,8 +107,9 @@ Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 �
 
 1. WHEN 站点项目创建成功，System SHALL 生成一篇「欢迎使用」示例文章写入 `source/_posts`。
 2. WHEN 示例文章提交成功，System SHALL 等待所选平台首次构建完成并轮询获取最新构建状态（GitHub Actions run / GitLab Pipeline / Cloudflare deployment）。
-3. IF 首次构建失败，System SHALL 展示构建日志摘要并提示用户修复。
-4. WHEN 首次构建成功，System SHALL 在完成页展示可访问的站点 URL 并允许用户复制或打开。
+3. IF 首次构建轮询时长超过上限（默认 10 分钟），System SHALL 停止轮询并提示用户「构建仍在进行，可稍后在站点管理查看状态」，同时保留后续自动回填 `siteUrl` 的机制。
+4. IF 首次构建失败，System SHALL 展示构建日志摘要并提示用户修复。
+5. WHEN 首次构建成功，System SHALL 在完成页展示可访问的站点 URL 并允许用户复制或打开。
 
 ### Requirement 7：建站结果自动接入（令牌 + 多仓库 + 一键发布）
 
@@ -119,6 +123,7 @@ Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 �
 4. WHEN 后续文章发布到该站点，System SHALL 复用既有发布链路（`publishArticleWithMirrors`）并应用发布模板解析结果。
 5. WHEN 用户写文章时选择「一键发布到所有静态博客站点」，System SHALL 将新站纳入批量发布候选集。
 6. WHEN 发布完成后，System SHALL 触发所选平台重新构建（模式一由 CI 推送自动触发，模式二触发 Deploy Hook）。
+7. WHEN 用户在站点管理中切换新站仓库可见性，System SHALL 调用 GitHub `PATCH /repos/{owner}/{repo}` 同步；IF 为免费账号且从公开切到私有，System SHALL 提示「该变更可能导致 GitHub Pages 停用」。
 
 ### Requirement 8：错误处理与幂等
 
@@ -132,6 +137,8 @@ Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 �
 4. WHEN 用户重试建站，System SHALL 以新的唯一仓库名执行，避免与已存在资源冲突。
 5. IF 网络超时或令牌失效，System SHALL 明确区分「令牌问题」「网络问题」「资源冲突」三类错误并分别提示。
 6. WHEN 向导为模式二且用户已投入网页操作后失败，System SHALL 保留已创建的仓库并在完成页提供「手动继续」入口，不执行仓库回滚。
+7. IF 用户在建站完成前主动取消或关闭向导，且本次已创建资源但未投入网页操作（模式一任意阶段 / 模式二建仓后尚未连接 Git 源），System SHALL 执行与失败相同的自动回滚清理。
+8. IF 用户主动取消时模式二已投入网页操作，System SHALL 保留已创建的仓库并在结果页提示「可稍后从站点管理手动继续」，不执行仓库回滚。
 
 ### Requirement 9：AI 工具联动
 
@@ -144,10 +151,27 @@ Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 �
 3. WHEN 用户在 AI 会话中请求建站，IF 当前未配置可用 AI 模型（`effectiveAiApiKey` 为空或无有效 `activeAiProfile`），System SHALL 暂停执行并明确提示"请先在 AI 设置中配置模型"，提供跳转 AI 设置入口；用户完成配置后重试。
 4. WHEN 建站工具完成，System SHALL 将结果（仓库地址、站点 URL、下一步建议）回传为 AI 可读报告。
 5. IF 建站涉及建仓或删除回滚等高风险操作，System SHALL 默认请求用户确认，对齐 `aiConfirmHighRiskTools` 策略。
-6. WHEN 建站成功，System SHALL 允许 AI 后续直接触发文章发布到新站。
+6. IF AI 建站中途失败或用户取消，System SHALL 复用同一 `RollbackManager` 执行回滚，并将回滚结果（成功/残留资源）作为工具结果回传给 AI。
+7. WHEN 建站成功，System SHALL 允许 AI 后续直接触发文章发布到新站。
+
+### Requirement 10：自定义域名绑定引导
+
+**User Story:** AS 用户，I want 建站后获得绑定自定义域名的分步引导，so that 可以替换默认二级域名。
+
+#### Acceptance Criteria
+
+1. WHEN 建站成功，System SHALL 在完成页提供「绑定自定义域名」入口，展示绑定流程概览（域名购买/解析配置/平台绑定三步）。
+2. WHEN 用户选择绑定域名，System SHALL 按平台提供分步引导：
+   - 模式一 GitHub：引导用户在域名 DNS 服务商添加 CNAME 记录指向 `<user>.github.io`，随后 System 调用 `PUT /repos/{owner}/{repo}/pages` 设置 `cname` 字段并提示等待 HTTPS 生效。
+   - 模式一 GitLab：引导用户在 DNS 服务商添加记录，随后在 GitLab Pages 设置中填写域名，System 提示验证 DNS 生效。
+   - 模式二 Cloudflare：引导用户在 Cloudflare 控制台 Pages 项目「自定义域」中添加域名并走其自有 DNS 绑定流程。
+3. WHEN 引导执行中，System SHALL 对每一步展示「现在你应该看到什么 / 下一步做什么」的对照文案，并标注该步骤需要用户前往哪个控制台。
+4. IF 用户尚未购买域名或 DNS 记录指向错误，System SHALL 提示先完成域名解析配置，并给出 CNAME 记录的具体值与目标值。
+5. WHEN 域名绑定完成，System SHALL 更新该站点的 `siteUrl` 为自定义域名。
 
 ## Out of Scope
 
-- 自定义域名绑定与 DNS 配置（用户可在 Cloudflare 控制台完成）。
+- 域名注册购买与付费流程（用户自行完成）。
+- 除平台内置绑定之外的自动 DNS 配置（DNS 记录由用户在其域名服务商处配置）。
 - 除 Cloudflare Pages 之外的平台（Vercel / Netlify）的托管项目自动创建。
 - 主题选择器在线预览。
