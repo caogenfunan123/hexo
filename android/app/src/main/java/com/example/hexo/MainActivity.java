@@ -40,6 +40,16 @@ public class MainActivity extends FlutterActivity {
         super.onCreate(savedInstanceState);
         // 冷启动：缓存 Intent 中的速记参数，供 Flutter 引擎就绪后拉取
         captureQuickNote(getIntent());
+        // 强制重建全部桌面小部件：
+        // APK 升级后系统不会自动刷新已放置的 widget，旧实例仍绑定旧版 PendingIntent（可能指向打开主软件）。
+        // 每次打开主应用重建一次，保证点击行为始终与最新代码一致。
+        try {
+            QuickNoteWidgetProvider.refreshAll(this);
+            TaskWidgetProvider.refreshAll(this);
+            ReadWidgetProvider.refreshAll(this);
+        } catch (Exception e) {
+            android.util.Log.w("MainActivity", "refresh widgets failed", e);
+        }
     }
 
     @Override
