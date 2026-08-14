@@ -127,7 +127,6 @@ class AppLocalizations {
 
       // ── 导航抽屉 ──
       'drawer_recent_articles': '最近文章',
-      'drawer_section_functions': '功能区',
       'drawer_section_create': '创作',
       'drawer_section_manage': '管理',
       'drawer_section_tools': '工具',
@@ -437,7 +436,6 @@ class AppLocalizations {
 
       // ── Navigation drawer ──
       'drawer_recent_articles': 'Recent Articles',
-      'drawer_section_functions': 'Functions',
       'drawer_section_create': 'Create',
       'drawer_section_manage': 'Manage',
       'drawer_section_tools': 'Tools',
@@ -747,7 +745,6 @@ class AppLocalizations {
 
       // ── ナビゲーションドロワー ──
       'drawer_recent_articles': '最近文章',
-      'drawer_section_functions': '功能區',
       'drawer_section_create': '創作',
       'drawer_section_manage': '管理',
       'drawer_section_tools': 'ツール',
@@ -1057,7 +1054,6 @@ class AppLocalizations {
 
       // ── 내비게이션 드로어 ──
       'drawer_recent_articles': '최근 글',
-      'drawer_section_functions': '기능',
       'drawer_section_create': '작성',
       'drawer_section_manage': '관리',
       'drawer_section_tools': '도구',

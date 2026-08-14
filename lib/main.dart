@@ -89,6 +89,7 @@ import 'theme/app_theme.dart';
 import 'widgets/typewriter_scroll.dart';
 import 'widgets/unified_markdown_styles.dart';
 import 'widgets/orientation_guard.dart';
+import 'widgets/quick_note_floater.dart';
 import 'widgets/ai_selection_edit_mobile.dart';
 import 'services/site_isolation_service.dart';
 import 'services/p2p_sync_service.dart';
@@ -282,9 +283,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   String? error;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  // ── 抽屉分区折叠状态（最近文章 / 功能区） ──
-  bool _drawerArticlesExpanded = false;
-  bool _drawerFunctionsExpanded = true;
+  // ── 抽屉分区折叠状态（按分区 key 独立折叠） ──
+  final Set<String> _drawerCollapsed = {};
 
   bool _sessionRestored = false;
 
@@ -759,35 +759,56 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     }
   }
 
-  /// 处理速记请求：直达新建草稿，预填文本，聚焦输入框弹出键盘
+  /// 处理速记请求：弹出悬浮速记窗，独立记录，保存后自动关闭
   void _handleQuickNote(QuickNoteRequest req) {
     if (req.mode != 'new') return;
-    // 当前有内容时先保存到草稿箱，避免丢失
-    final hasContent =
-        _doc.titleCtrl.text.isNotEmpty || _doc.contentCtrl.text.isNotEmpty;
-    if (hasContent) {
-      _saveLocal();
-    }
-    _stopAutoSave();
-    _clearSession();
-    _resetEditor();
     final ui = settings.ui;
-    _doc.contentCtrl.text = QuickNoteTemplate.compose(
+    final initialText = QuickNoteTemplate.compose(
       anchor: ui.quickNoteAnchor,
       timestampFormatKey: ui.timestampFormat,
       insertTimestamp: ui.quickNoteTimestamp,
       userText: req.text,
     );
-    _startAutoSave();
-    setState(() => _currentPage = 0);
-    _updateSystemBarStyle();
-    // 聚焦输入框，立即弹出键盘开始记录
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _doc.contentFocus.requestFocus();
-      FocusScope.of(context).requestFocus(_doc.contentFocus);
-    });
-    if (mounted) _showToast('速记草稿已创建');
+    if (!mounted) return;
+    QuickNoteFloater.show(
+      context,
+      initialText: initialText,
+      anchor: ui.quickNoteAnchor,
+      insertTimestamp: ui.quickNoteTimestamp,
+      timestampFormatKey: ui.timestampFormat,
+      onSave: (text) async {
+        final now = DateTime.now();
+        final title = _titleFromQuickNote(text);
+        final article = Article(
+          id: now.millisecondsSinceEpoch.toString(),
+          title: title,
+          content: text,
+          createdAt: now,
+          updatedAt: now,
+          isDraft: true,
+          repoId: activeRepo?.id,
+          articleType: ArticleType.post,
+        );
+        await _saveDraft(article);
+        if (mounted) _showToast('速记已保存到草稿箱');
+        return true;
+      },
+    );
+  }
+
+  /// 从速记文本提取标题（首行去 markdown 前缀，截断 40 字）
+  String _titleFromQuickNote(String text) {
+    var first = text
+        .split('\n')
+        .map((l) => l.trim())
+        .firstWhere((l) => l.isNotEmpty, orElse: () => '');
+    first = first
+        .replaceAll(RegExp(r'^#+\s*'), '')
+        .replaceAll(RegExp(r'^[-*]\s*'), '')
+        .replaceAll(RegExp(r'^>\s*'), '')
+        .trim();
+    if (first.isEmpty) first = '速记';
+    return first.length <= 40 ? first : '${first.substring(0, 40)}…';
   }
 
 

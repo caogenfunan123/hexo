@@ -2,57 +2,80 @@
 part of '../main.dart';
 
 extension EditorDrawerExt on _RootShellState {
-  Widget _drawerSection(String label) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 6, 20, 4),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: AppTheme.muted,
-          letterSpacing: 0.8,
-        ),
-      ),
-    );
-  }
-
-  /// 可折叠分区头（标题行 + 展开/收起箭头）
-  Widget _drawerCollapsibleHeader(
-    String label, {
-    required bool expanded,
-    required VoidCallback onToggle,
+  /// 可折叠功能分区（仿桌面左栏 _buildSection：箭头 + 图标 + 标题 + 内容）
+  Widget _drawerSectionGroup(
+    String key,
+    String title,
+    IconData icon, {
+    required List<Widget> children,
   }) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 2, 12, 0),
-      child: InkWell(
-        onTap: onToggle,
-        borderRadius: BorderRadius.circular(6),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  label,
-                  style: const TextStyle(
+    if (children.isEmpty) return const SizedBox.shrink();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final muted = isDark ? Colors.white.withOpacity(0.35) : const Color(0xFF9CA3AF);
+    final collapsed = _drawerCollapsed.contains(key);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: () => _applyState(() {
+            if (collapsed) {
+              _drawerCollapsed.remove(key);
+            } else {
+              _drawerCollapsed.add(key);
+            }
+          }),
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            child: Row(
+              children: [
+                Icon(
+                  collapsed ? Icons.chevron_right : Icons.expand_more,
+                  size: 16,
+                  color: muted,
+                ),
+                const SizedBox(width: 4),
+                Icon(icon, size: 14, color: muted),
+                const SizedBox(width: 6),
+                Text(
+                  title,
+                  style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: AppTheme.muted,
+                    color: muted,
                     letterSpacing: 0.8,
                   ),
                 ),
-              ),
-              Icon(
-                expanded ? Icons.expand_less : Icons.expand_more,
-                size: 18,
-                color: AppTheme.muted,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
+        if (!collapsed) ...children,
+      ],
     );
+  }
+
+  /// 抽屉文章分区内容（平铺全部文章，仿桌面左栏 _buildArticleItems）
+  List<Widget> _buildDrawerArticleItems() {
+    final articles = drafts
+        .where((d) =>
+            !SystemLogFiles.isSystemLogFileName(d.title) &&
+            !SystemLogFiles.isSystemLogFileName(d.fileName()))
+        .toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    if (articles.isEmpty) {
+      return const [
+        Padding(
+          padding: EdgeInsets.fromLTRB(24, 2, 20, 8),
+          child: Text(
+            '暂无文章',
+            style: TextStyle(fontSize: 12, color: AppTheme.muted),
+          ),
+        ),
+      ];
+    }
+    return articles.map(_drawerArticleItem).toList();
   }
 
   /// 最近文章列表项（抽屉平铺）
