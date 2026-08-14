@@ -206,6 +206,11 @@ class RollbackManager {
 - **AI 建站工具**：新增内置工具 `create_site`（注册到 `builtin_tools.dart`），
   AI 会话中用户说出"帮我建一个博客站"时，工具携带建站参数调用 `SiteWizardService.run`，
   结果回传为 AI 可读的建站报告（仓库地址 / 站点 URL / 后续操作建议）。
+- **AI 模型前置校验**：执行 `create_site` 前 SHALL 校验 AI 模型是否已配置
+  （`effectiveAiApiKey` 非空且存在有效 `activeAiProfile`）。未配置时工具不执行，
+  返回"请先在 AI 设置中配置模型"并引导跳转 `AiSettingsScreen`；用户完成配置后重试。
+  - 校验落点：`AiSettings.effectiveAiApiKey`（models/ai_settings.dart:53）为空
+    或 `activeAiProfile == null`（models/ai_settings.dart:40）即判定未配置。
 - **AI 发布工具**：复用既有发布工具链路，建站成功后文章发布对话框可直接由 AI 触发，
   参数含目标站点（新站）与发布模板。
 - **权限确认**：对齐 `aiConfirmHighRiskTools` 策略——建仓 / 删除回滚为高风险操作，

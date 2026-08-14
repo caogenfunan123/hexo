@@ -141,9 +141,10 @@ Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 �
 
 1. WHEN 用户在 AI 会话中请求建站，System SHALL 通过内置工具 `create_site` 调用 `SiteWizardService` 执行建站。
 2. WHEN 建站工具执行中，System SHALL 复用用户已配置的 AI 令牌（`activeAiProfile`）与既有工具调用机制（`AiToolManager` / `ToolExecutor`）。
-3. WHEN 建站工具完成，System SHALL 将结果（仓库地址、站点 URL、下一步建议）回传为 AI 可读报告。
-4. IF 建站涉及建仓或删除回滚等高风险操作，System SHALL 默认请求用户确认，对齐 `aiConfirmHighRiskTools` 策略。
-5. WHEN 建站成功，System SHALL 允许 AI 后续直接触发文章发布到新站。
+3. WHEN 用户在 AI 会话中请求建站，IF 当前未配置可用 AI 模型（`effectiveAiApiKey` 为空或无有效 `activeAiProfile`），System SHALL 暂停执行并明确提示"请先在 AI 设置中配置模型"，提供跳转 AI 设置入口；用户完成配置后重试。
+4. WHEN 建站工具完成，System SHALL 将结果（仓库地址、站点 URL、下一步建议）回传为 AI 可读报告。
+5. IF 建站涉及建仓或删除回滚等高风险操作，System SHALL 默认请求用户确认，对齐 `aiConfirmHighRiskTools` 策略。
+6. WHEN 建站成功，System SHALL 允许 AI 后续直接触发文章发布到新站。
 
 ## Out of Scope
 
