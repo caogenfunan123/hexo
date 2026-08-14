@@ -41,7 +41,7 @@ public class ReadWidgetViewsService extends RemoteViewsService {
         public void onDataSetChanged() {
             mTaskMode = mContext.getSharedPreferences(ReadWidgetProvider.PREFS, Context.MODE_PRIVATE)
                     .getBoolean(ReadWidgetProvider.KEY_TASK_MODE, false);
-            mLatestPath = NativeQuickNoteStore.latestDraftPath(mContext);
+            mLatestPath = NativeQuickNoteStore.getSelectedArticlePath(mContext, "read");
             String content = "";
             if (!mLatestPath.isEmpty()) {
                 content = TaskWidgetTaskParser.readFile(new File(mLatestPath));

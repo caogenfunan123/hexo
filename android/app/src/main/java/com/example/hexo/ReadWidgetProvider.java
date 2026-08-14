@@ -83,15 +83,27 @@ public class ReadWidgetProvider extends AppWidgetProvider {
                         modeIntent,
                         PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
 
-        // 主页：打开主应用
-        Intent homeIntent = new Intent(context, MainActivity.class);
-        homeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        // 编辑：打开当前文章（携带路径，Flutter 打开编辑器）
+        String articlePath = NativeQuickNoteStore.getSelectedArticlePath(context, "read");
+        Intent editIntent = QuickNoteIntent.build(context,
+                QuickNoteIntent.MODE_OPEN_ARTICLE, null, articlePath);
         views.setOnClickPendingIntent(
                 R.id.btn_home,
                 PendingIntent.getActivity(
                         context,
                         appWidgetId + 100,
-                        homeIntent,
+                        editIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+
+        // 选文：打开文章选择器（Flutter 弹出选择页，选中后回写路径并刷新）
+        Intent pickIntent = QuickNoteIntent.build(context,
+                QuickNoteIntent.MODE_PICK_ARTICLE, null, null);
+        views.setOnClickPendingIntent(
+                R.id.btn_pick,
+                PendingIntent.getActivity(
+                        context,
+                        appWidgetId + 200,
+                        pickIntent,
                         PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
 
         appWidgetManager.updateAppWidget(appWidgetId, views);

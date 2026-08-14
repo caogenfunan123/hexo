@@ -25,15 +25,30 @@
             android:textSize="13sp"
             android:textStyle="bold" />
 
-        <ImageButton
-            android:id="@+id/btn_refresh"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_gravity="end|center_vertical"
-            android:background="@null"
-            android:contentDescription="刷新任务"
-            android:scaleType="centerInside"
-            android:src="@android:drawable/stat_notify_sync" />
+            android:orientation="horizontal">
+
+            <ImageButton
+                android:id="@+id/btn_pick"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:background="@null"
+                android:contentDescription="选择文章"
+                android:scaleType="centerInside"
+                android:src="@android:drawable/ic_menu_manage" />
+
+            <ImageButton
+                android:id="@+id/btn_refresh"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:background="@null"
+                android:contentDescription="刷新任务"
+                android:scaleType="centerInside"
+                android:src="@android:drawable/stat_notify_sync" />
+        </LinearLayout>
     </FrameLayout>
 
     <ListView

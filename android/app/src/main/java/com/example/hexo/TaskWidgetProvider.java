@@ -100,6 +100,17 @@ public class TaskWidgetProvider extends AppWidgetProvider {
                         refreshIntent,
                         PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
 
+        // 选文按钮：打开文章选择器（选中后回写路径并刷新）
+        Intent pickIntent = QuickNoteIntent.build(context,
+                QuickNoteIntent.MODE_PICK_ARTICLE, null, null);
+        views.setOnClickPendingIntent(
+                R.id.btn_pick,
+                PendingIntent.getActivity(
+                        context,
+                        appWidgetId + 300,
+                        pickIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+
         // 列表项点击模板 → 勾选切换
         Intent toggleIntent = new Intent(context, TaskWidgetProvider.class).setAction(ACTION_TOGGLE_TASK);
         views.setPendingIntentTemplate(

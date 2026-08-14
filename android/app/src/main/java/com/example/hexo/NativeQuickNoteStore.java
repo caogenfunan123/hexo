@@ -238,4 +238,57 @@ public final class NativeQuickNoteStore {
         if (files.isEmpty()) return "";
         return files.get(0).getAbsolutePath();
     }
+
+    // ── 小部件文章选择（阅读/任务小部件显示指定文章） ──
+
+    private static final String KEY_READ_ARTICLE = "read_widget_article_path";
+    private static final String KEY_TASK_ARTICLE = "task_widget_article_path";
+
+    /** 保存小部件显示的文章路径；widget 为 read/task */
+    public static boolean setSelectedArticlePath(Context context, String widget, String path) {
+        try {
+            prefs(context).edit()
+                    .putString("read".equals(widget) ? KEY_READ_ARTICLE : KEY_TASK_ARTICLE,
+                            path == null ? "" : path)
+                    .apply();
+            return true;
+        } catch (Exception e) {
+            android.util.Log.e("NativeQuickNote", "setSelectedArticlePath failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /** 读取小部件显示的文章路径，未选择时回落到最新速记 */
+    public static String getSelectedArticlePath(Context context, String widget) {
+        String p = prefs(context).getString(
+                "read".equals(widget) ? KEY_READ_ARTICLE : KEY_TASK_ARTICLE, "");
+        if (p == null || p.isEmpty()) {
+            return latestDraftPath(context);
+        }
+        File f = new File(p);
+        if (!f.exists()) {
+            return latestDraftPath(context);
+        }
+        return p;
+    }
+
+    /** 列出 MD文章 目录下全部 md 文件绝对路径（按名称倒序，供文章选择器） */
+    public static List<String> listAllMdPaths(Context context) {
+        List<String> result = new ArrayList<>();
+        File dir = mdDir(context);
+        File[] files = dir.listFiles();
+        if (files == null) return result;
+        Arrays.sort(files, new Comparator<File>() {
+            @Override
+            public int compare(File a, File b) {
+                return b.getName().compareTo(a.getName());
+            }
+        });
+        for (File f : files) {
+            if (f.isFile() && f.getName().endsWith(".md")) {
+                result.add(f.getAbsolutePath());
+            }
+        }
+        return result;
+    }
 }

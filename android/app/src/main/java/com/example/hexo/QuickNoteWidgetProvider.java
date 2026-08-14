@@ -5,6 +5,7 @@ import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
 import android.widget.RemoteViews;
 
 /**
@@ -26,13 +27,24 @@ public class QuickNoteWidgetProvider extends AppWidgetProvider {
     private void updateWidget(Context context, AppWidgetManager appWidgetManager, int appWidgetId) {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_quick_note);
 
-        // 整块点击 → 启动悬浮速记窗
+        // 整块点击 → 启动悬浮速记窗。
+        // FloatingNoteService 为前台服务（specialUse），Android 8+ 从后台启动
+        // 必须使用 getForegroundService，否则抛 IllegalStateException 导致点击无反应。
         Intent serviceIntent = FloatingNoteService.showIntent(context, "widget", null);
-        PendingIntent pi = PendingIntent.getService(
-                context,
-                appWidgetId,
-                serviceIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent pi;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            pi = PendingIntent.getForegroundService(
+                    context,
+                    appWidgetId,
+                    serviceIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        } else {
+            pi = PendingIntent.getService(
+                    context,
+                    appWidgetId,
+                    serviceIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        }
         views.setOnClickPendingIntent(R.id.widget_root, pi);
 
         appWidgetManager.updateAppWidget(appWidgetId, views);

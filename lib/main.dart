@@ -771,6 +771,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   /// 处理速记请求：弹出悬浮速记窗，独立记录，保存后自动关闭
   void _handleQuickNote(QuickNoteRequest req) {
+    if (!mounted) return;
+    if (req.isOpenArticle) {
+      _openArticleFromNative(req.path);
+      return;
+    }
+    if (req.isPickArticle) {
+      _pickArticleForWidget();
+      return;
+    }
     if (req.mode != 'new') return;
     final ui = settings.ui;
     final initialText = QuickNoteTemplate.compose(
@@ -779,7 +788,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       insertTimestamp: ui.quickNoteTimestamp,
       userText: req.text,
     );
-    if (!mounted) return;
     QuickNoteFloater.show(
       context,
       initialText: initialText,
@@ -804,6 +812,83 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         return true;
       },
     );
+  }
+
+  /// 从阅读/任务小部件「编辑」打开指定 md 文章到编辑器
+  Future<void> _openArticleFromNative(String path) async {
+    if (path.isEmpty) {
+      _showToast('文章不存在');
+      return;
+    }
+    try {
+      final file = File(path);
+      if (!await file.exists()) {
+        _showToast('文章文件不存在');
+        return;
+      }
+      final content = await file.readAsString();
+      final title = _titleFromQuickNote(content);
+      final now = DateTime.now();
+      final article = Article(
+        id: now.millisecondsSinceEpoch.toString(),
+        title: title,
+        content: content.trim(),
+        createdAt: now,
+        updatedAt: now,
+        isDraft: true,
+        repoId: activeRepo?.id,
+        articleType: ArticleType.post,
+      );
+      _doc.setCurrentArticle(article);
+      _doc.setArticleType(ArticleType.post);
+      _doc.setEditorRepoId(activeRepo?.id);
+      setState(() => _currentPage = 0);
+      _updateSystemBarStyle();
+      if (mounted) _showToast('已打开文章编辑');
+    } catch (e) {
+      debugPrint('Open article from native failed: $e');
+      _showToast('打开文章失败');
+    }
+  }
+
+  /// 从小部件「选文」弹出文章选择器，选中后回写路径并刷新小部件
+  Future<void> _pickArticleForWidget() async {
+    final paths = await _quickNoteService?.listNativeMds() ?? const <String>[];
+    if (!mounted) return;
+    if (paths.isEmpty) {
+      _showToast('暂无文章，请先在速记窗或编辑器中创建');
+      return;
+    }
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final items = <String, String>{};
+        for (final p in paths) {
+          final name = p.split(Platform.pathSeparator).last.replaceAll('.md', '');
+          items[p] = name;
+        }
+        return SimpleDialog(
+          title: const Text('选择要显示的文章'),
+          children: [
+            for (final e in items.entries)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, e.key),
+                child: Text(
+                  e.value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+        );
+      },
+    );
+    if (chosen == null || !mounted) return;
+    await _quickNoteService?.setWidgetArticlePath(chosen, widget: 'read');
+    await _quickNoteService?.setWidgetArticlePath(chosen, widget: 'task');
+    await _quickNoteService?.refreshWidget(widget: 'read');
+    await _quickNoteService?.refreshWidget(widget: 'task');
+    if (mounted) _showToast('已选择文章，小部件已刷新');
   }
 
   /// 从速记文本提取标题（首行去 markdown 前缀，截断 40 字）

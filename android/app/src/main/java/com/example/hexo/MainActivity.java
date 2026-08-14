@@ -69,6 +69,10 @@ public class MainActivity extends FlutterActivity {
         if (text != null && !text.isEmpty()) {
             data.put("text", text);
         }
+        String path = intent.getStringExtra(QuickNoteIntent.EXTRA_PATH);
+        if (path != null && !path.isEmpty()) {
+            data.put("path", path);
+        }
         pendingQuickNote = data;
         return true;
     }
@@ -153,6 +157,33 @@ public class MainActivity extends FlutterActivity {
                         case "openFolder":
                             openFolder(call, result);
                             break;
+                        case "setWidgetArticlePath": {
+                            String p = call.argument("path");
+                            String w = call.argument("widget");
+                            result.success(NativeQuickNoteStore.setSelectedArticlePath(this,
+                                    w == null ? "read" : w, p));
+                            break;
+                        }
+                        case "listNativeMds":
+                            result.success(NativeQuickNoteStore.listAllMdPaths(this));
+                            break;
+                        case "refreshWidget": {
+                            String w = call.argument("widget");
+                            if (w == null) w = "read";
+                            boolean ok = false;
+                            try {
+                                if ("task".equals(w)) {
+                                    TaskWidgetProvider.refreshAll(this);
+                                } else {
+                                    ReadWidgetProvider.refreshAll(this);
+                                }
+                                ok = true;
+                            } catch (Exception e) {
+                                android.util.Log.e("Main", "refresh widget failed", e);
+                            }
+                            result.success(ok);
+                            break;
+                        }
                         default:
                             result.notImplemented();
                     }

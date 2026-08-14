@@ -38,9 +38,9 @@ public class QuickNoteTileService extends TileService {
         updateTileState();
         try {
             Intent serviceIntent = FloatingNoteService.showIntent(this, "tile", null);
-            // Android 14+：必须使用 PendingIntent 且带 FLAG_IMMUTABLE
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                PendingIntent pi = PendingIntent.getService(
+            // 前台服务必须用 getForegroundService，避免 Android 8+ 后台启动被拦截
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                PendingIntent pi = PendingIntent.getForegroundService(
                         this,
                         0,
                         serviceIntent,
@@ -52,7 +52,7 @@ public class QuickNoteTileService extends TileService {
         } catch (Exception e) {
             android.util.Log.e("QuickNoteTile", "launch failed", e);
             try {
-                startService(FloatingNoteService.showIntent(this, "tile", null));
+                startForegroundService(FloatingNoteService.showIntent(this, "tile", null));
             } catch (Exception ignored) {
             }
         }

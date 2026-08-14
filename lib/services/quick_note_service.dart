@@ -13,14 +13,22 @@ import 'package:flutter/services.dart';
 class QuickNoteRequest {
   final String mode;
   final String text;
+  final String path;
 
-  const QuickNoteRequest({required this.mode, this.text = ''});
+  const QuickNoteRequest({
+    required this.mode,
+    this.text = '',
+    this.path = '',
+  });
 
   bool get isNew => mode == 'new';
+  bool get isOpenArticle => mode == 'open_article';
+  bool get isPickArticle => mode == 'pick_article';
 
   Map<String, dynamic> toMap() => {
         'mode': mode,
         if (text.isNotEmpty) 'text': text,
+        if (path.isNotEmpty) 'path': path,
       };
 }
 
@@ -67,7 +75,48 @@ class QuickNoteService {
     return QuickNoteRequest(
       mode: mode,
       text: data['text']?.toString() ?? '',
+      path: data['path']?.toString() ?? '',
     );
+  }
+
+  /// 将所选文章路径写入原生 SharedPreferences（供阅读/任务小部件读取显示）
+  Future<bool> setWidgetArticlePath(String path, {String widget = 'read'}) async {
+    try {
+      final ok = await _channel.invokeMethod<bool>(
+        'setWidgetArticlePath',
+        {'path': path, 'widget': widget},
+      );
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 列出 MD文章 目录下全部 md 文件（供文章选择器使用）
+  Future<List<String>> listNativeMds() async {
+    try {
+      final list = await _channel
+          .invokeMethod<List<dynamic>>('listNativeMds');
+      return (list ?? const [])
+          .map((e) => e.toString())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// 通知原生侧刷新指定小部件（数据源变更后）
+  Future<bool> refreshWidget({String widget = 'read'}) async {
+    try {
+      final ok = await _channel.invokeMethod<bool>(
+        'refreshWidget',
+        {'widget': widget},
+      );
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
   void dispose() {

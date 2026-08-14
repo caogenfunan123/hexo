@@ -32,6 +32,15 @@
             android:orientation="horizontal">
 
             <ImageButton
+                android:id="@+id/btn_pick"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:background="@null"
+                android:contentDescription="选择文章"
+                android:scaleType="centerInside"
+                android:src="@android:drawable/ic_menu_manage" />
+
+            <ImageButton
                 android:id="@+id/btn_eye"
                 android:layout_width="28dp"
                 android:layout_height="28dp"
@@ -45,7 +54,7 @@
                 android:layout_width="28dp"
                 android:layout_height="28dp"
                 android:background="@null"
-                android:contentDescription="打开编辑"
+                android:contentDescription="编辑当前文章"
                 android:scaleType="centerInside"
                 android:src="@drawable/ic_edit" />
         </LinearLayout>

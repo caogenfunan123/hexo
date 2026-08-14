@@ -37,7 +37,7 @@ public class TaskWidgetViewsService extends RemoteViewsService {
 
         @Override
         public void onDataSetChanged() {
-            String path = NativeQuickNoteStore.latestDraftPath(mContext);
+            String path = NativeQuickNoteStore.getSelectedArticlePath(mContext, "task");
             String content = "";
             if (path != null && !path.isEmpty()) {
                 content = TaskWidgetTaskParser.readFile(new File(path));
@@ -70,7 +70,7 @@ public class TaskWidgetViewsService extends RemoteViewsService {
             // 点击勾选：携带路径与行号
             Intent fillIntent = new Intent();
             fillIntent.putExtra(TaskWidgetProvider.EXTRA_TASK_PATH,
-                    NativeQuickNoteStore.latestDraftPath(mContext));
+                    NativeQuickNoteStore.getSelectedArticlePath(mContext, "task"));
             fillIntent.putExtra(TaskWidgetProvider.EXTRA_TASK_LINE, item.lineIndex);
             views.setOnClickFillInIntent(R.id.task_checkbox, fillIntent);
             views.setOnClickFillInIntent(R.id.task_row, fillIntent);
