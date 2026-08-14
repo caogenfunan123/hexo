@@ -11,12 +11,18 @@
 Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 → 首篇文章发布，
 最终返回可访问的站点 URL。
 
+建站成功的产物自动接入现有发布链路：Git 令牌自动注册到登录令牌管理，
+新站点自动注册到静态站点管理，写文章界面无需额外配置即可一键发布。
+
 向导提供两种建站模式：
 
 - **模式一（零人工，纯令牌）**：Git 平台内置静态托管引擎。GitHub Pages（GitHub Actions 构建）
   或 GitLab Pages（GitLab CI 构建），仅凭对应平台的令牌即可全程自动化，无需任何网页操作。
 - **模式二（半自动，Cloudflare Pages）**：GitHub 建仓推骨架后，需用户在其 Cloudflare 控制台
   网页完成一次「连接 Git 源」操作，App 自动检测项目并衔接后续发布。
+
+建站能力同时作为 AI 工具（`create_site`）提供给 AI 会话，依托已配置的 AI 令牌与工具库调用，
+用户可直接对 AI 说"帮我建一个博客站"完成建站。
 
 ## Glossary
 
@@ -101,14 +107,18 @@ Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 �
 3. IF 首次构建失败，System SHALL 展示构建日志摘要并提示用户修复。
 4. WHEN 首次构建成功，System SHALL 在完成页展示可访问的站点 URL 并允许用户复制或打开。
 
-### Requirement 7：建站结果持久化
+### Requirement 7：建站结果自动接入（令牌 + 多仓库 + 一键发布）
 
-**User Story:** AS 用户，I want 建站完成后站点自动出现在站点列表中，so that 后续可直接写文章发布。
+**User Story:** AS 用户，I want 建站完成后站点与令牌自动接入现有管理，so that 写文章界面无需额外配置即可一键发布。
 
 #### Acceptance Criteria
 
-1. WHEN 建站流程成功完成，System SHALL 创建对应 `RepoConfig`（含框架、`postsPath`、token、站点项目信息）并加入站点管理。
-2. WHEN 后续文章发布到该站点，System SHALL 复用既有发布链路并触发所选平台重新构建（模式一触发 CI 推送，模式二触发 Deploy Hook）。
+1. WHEN 建站流程成功完成，System SHALL 创建对应 `RepoConfig`（含框架、`postsPath`、token、`siteProjectName`、`siteUrl`）并加入静态站点管理。
+2. WHEN 建站流程成功完成，System SHALL 将建站使用的 Git 令牌自动注册到登录令牌管理（已存在则跳过），模式二同时保存 Cloudflare API 令牌与账号 ID。
+3. WHEN 建站流程成功完成，System SHALL 为新站 `RepoConfig` 绑定框架内置文章模板（`defaultPostTemplateId`），使其进入发布模板解析链。
+4. WHEN 后续文章发布到该站点，System SHALL 复用既有发布链路（`publishArticleWithMirrors`）并应用发布模板解析结果。
+5. WHEN 用户写文章时选择「一键发布到所有静态博客站点」，System SHALL 将新站纳入批量发布候选集。
+6. WHEN 发布完成后，System SHALL 触发所选平台重新构建（模式一由 CI 推送自动触发，模式二触发 Deploy Hook）。
 
 ### Requirement 8：错误处理与幂等
 
@@ -122,6 +132,18 @@ Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 �
 4. WHEN 用户重试建站，System SHALL 以新的唯一仓库名执行，避免与已存在资源冲突。
 5. IF 网络超时或令牌失效，System SHALL 明确区分「令牌问题」「网络问题」「资源冲突」三类错误并分别提示。
 6. WHEN 向导为模式二且用户已投入网页操作后失败，System SHALL 保留已创建的仓库并在完成页提供「手动继续」入口，不执行仓库回滚。
+
+### Requirement 9：AI 工具联动
+
+**User Story:** AS 用户，I want 通过 AI 对话直接建站与发布，so that 依托已配置的 AI 令牌与工具库即可完成全流程。
+
+#### Acceptance Criteria
+
+1. WHEN 用户在 AI 会话中请求建站，System SHALL 通过内置工具 `create_site` 调用 `SiteWizardService` 执行建站。
+2. WHEN 建站工具执行中，System SHALL 复用用户已配置的 AI 令牌（`activeAiProfile`）与既有工具调用机制（`AiToolManager` / `ToolExecutor`）。
+3. WHEN 建站工具完成，System SHALL 将结果（仓库地址、站点 URL、下一步建议）回传为 AI 可读报告。
+4. IF 建站涉及建仓或删除回滚等高风险操作，System SHALL 默认请求用户确认，对齐 `aiConfirmHighRiskTools` 策略。
+5. WHEN 建站成功，System SHALL 允许 AI 后续直接触发文章发布到新站。
 
 ## Out of Scope
 

@@ -160,6 +160,59 @@ class RollbackManager {
   （每步描述"你现在应该看到什么"），App 后台轮询检测项目，检测到后自动衔接
 - **模式一进度页**：展示 Actions run / GitLab pipeline 的构建进度轮询
 
+### 7. 建站结果自动接入（登录令牌 + 多仓库 + 一键发布）
+
+建站成功后的最终产物不是"一个 URL"，而是让新站点立即进入现有的完整发布链路。
+`SiteWizardService` 在持久化阶段执行以下三步接入：
+
+#### 7.1 注册登录令牌（复用 `lib/mixins/settings_dialogs_ext.dart` 令牌管理）
+
+- 建站使用的 Git Token（GitHub PAT / GitLab PAT）若未存在于已登录令牌列表
+  （`settings.activeGithubTokenId` / `GitHubTokenProfile` 列表），System SHALL 自动创建对应 `GitHubTokenProfile`
+  并存入令牌管理，供后续复用。
+- 模式二额外将 Cloudflare API Token 保存到 `AppSettings` 新增字段 `cfApiToken` / `cfAccountId`
+  （复用 `flutter_secure_storage`，与既有 token 相同存储策略），供后续页面展示"已连接 Cloudflare"。
+- 完成后令牌管理列表自动出现新条目，无需用户重复输入。
+
+#### 7.2 注册静态站点（复用 `RepoConfig` 站点管理）
+
+- 构造 `RepoConfig`：
+  - `provider`：github / gitlab
+  - `frameworkId`：向导所选框架
+  - `postsPath`：按 `BlogFramework` 预设（默认 `source/_posts`）
+  - `branch`：`main`
+  - `token`：建站令牌
+  - `defaultPostTemplateId`：调用 `RepoConfig.defaultPostTemplateForFramework` 绑定框架内置模板，
+    保证后续发布直接应用发布模板（对齐 `TemplateResolver.resolvePostTemplate` 的优先级链）
+  - 新增 `siteProjectName` / `siteUrl` / `deployHooks`（见 Data Models）
+- 调用既有站点持久化入口（`main.dart`/`desktop_shell.dart` 中加载仓库列表的同一存储），
+  新站点立即出现在「站点管理」列表与 `_publishToAllStaticSites` 的候选集中。
+
+#### 7.3 一键发布（复用 `editor_publish_ext.dart` 既有链路）
+
+- 建站完成后，新站点即被 `publishArticleWithMirrors` / `_publishToAllStaticSites` 识别，
+  在写文章界面的发布对话框（`editor_publish_ext.dart`）中：
+  - 单站点：当前站点为新站时走 `upsertArticle(repo, article, templates: templates)`，
+    模板经 `TemplateResolver.resolvePostTemplate` 解析（仓库绑定 > 框架内置 > 首个可用）
+  - 多站点：勾选「同时发布到所有静态博客站点」即可一键发布到全部已登录站点（含新站）
+- 发布完成后触发部署：
+  - 模式一（GitHub Pages / GitLab Pages）：推送即触发 CI 流水线自动构建，无需额外动作
+  - 模式二（Cloudflare）：走既有 `triggerCloudflareDeploy`（github_service.dart:720）触发 Deploy Hook 重建
+
+### 8. AI 令牌与工具系统联动（`lib/core/tools/` / `lib/core/ai/`）
+
+建站向导遵循「AI 令牌 + 工具系统」的既有交互模式（对齐 `AiToolManager` / `ToolExecutor` 的工具注册与调用机制）：
+
+- **AI 建站工具**：新增内置工具 `create_site`（注册到 `builtin_tools.dart`），
+  AI 会话中用户说出"帮我建一个博客站"时，工具携带建站参数调用 `SiteWizardService.run`，
+  结果回传为 AI 可读的建站报告（仓库地址 / 站点 URL / 后续操作建议）。
+- **AI 发布工具**：复用既有发布工具链路，建站成功后文章发布对话框可直接由 AI 触发，
+  参数含目标站点（新站）与发布模板。
+- **权限确认**：对齐 `aiConfirmHighRiskTools` 策略——建仓 / 删除回滚为高风险操作，
+  默认需用户确认；仅当用户在 AI 设置中开启全权模式才自动执行。
+- **AI 令牌来源**：建站与发布均使用用户已配置的 AI 令牌（`activeAiProfile`），
+  与「我的工具/工具库」中的自定义工具共存，不引入新的令牌体系。
+
 ## Data Models
 
 ### RepoConfig 扩展（`lib/models/repo_config.dart`）
@@ -169,7 +222,20 @@ class RollbackManager {
 - `siteUrl`：站点访问 URL（首次构建成功后回填）
 - `deployHooks`：模式二自动拉取的 Deploy Hook URL（模式一为空）
 
-复用既有 `frameworkId`、`postsPath`、`token`、`provider`、`branch`（建站固定 `main`）。
+复用既有 `frameworkId`、`postsPath`、`token`、`provider`、`branch`（建站固定 `main`）、
+`defaultPostTemplateId`（建站时绑定框架内置模板，接入发布模板解析链）。
+
+### AppSettings 扩展（`lib/models/app_settings.dart`）
+
+新增字段：
+- `cfApiToken`：Cloudflare API Token（模式二建站后保存，模式一为空）
+- `cfAccountId`：Cloudflare 账号 ID（模式二建站后保存）
+- `deployHooks`：既有字段，模式二建站时自动追加 Deploy Hook URL
+
+### GitHubTokenProfile 自动注册（`lib/models/github_token_profile.dart`）
+
+建站令牌自动生成 `GitHubTokenProfile`（provider、displayLabel、token），
+存入令牌管理列表；若 provider+token 已存在则跳过，避免重复。
 
 ### WizardRequest / WizardResult（`lib/models/wizard_models.dart` 新增）
 
@@ -180,6 +246,13 @@ class RollbackManager {
 1. **原子性**：建站各步骤任一失败即触发回滚，最终状态为「仓库与站点项目均不存在」或「全部成功」
    （模式二用户已投入网页操作后除外）。
 2. **幂等重试**：重试使用新唯一仓库名（`repoName` 加时间戳后缀或让用户改名），不与残留资源冲突。
+3. **Token 不出端**：Token 仅保存在本机安全存储，不上传第三方，不入日志。
+4. **分支一致性**：建仓后先建 `main` 分支再 `writeBatch`，保证 Git API 写文件不依赖本地 git。
+5. **可见性默认**：新建仓库默认 `private`，用户显式选择才改为 `public`。
+6. **CI 自部署**：模式一的 Pages 部署由仓库内 CI 流水线完成（Actions/GitLab CI），App 只推送源码，
+   不依赖 App 端执行任何构建。
+7. **接入幂等**：令牌注册 / 站点注册 / Deploy Hook 追加均为"存在则跳过"，重复建站不会产生重复条目。
+8. **发布零配置**：新站建立后无需任何额外配置即可被既有发布链路识别并一键发布。
 3. **Token 不出端**：Token 仅保存在本机安全存储，不上传第三方，不入日志。
 4. **分支一致性**：建仓后先建 `main` 分支再 `writeBatch`，保证 Git API 写文件不依赖本地 git。
 5. **可见性默认**：新建仓库默认 `private`，用户显式选择才改为 `public`。
