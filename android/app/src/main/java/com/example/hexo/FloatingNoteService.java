@@ -99,7 +99,12 @@ public class FloatingNoteService extends Service {
     public void onCreate() {
         super.onCreate();
         mWindowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-        startForegroundCompat();
+        try {
+            startForegroundCompat();
+        } catch (Exception e) {
+            // FGS 启动失败不能阻断悬浮窗显示（部分 ROM 对特殊类型 FGS 有限制）
+            android.util.Log.e("FloatingNote", "startForeground failed", e);
+        }
     }
 
     @Override
@@ -138,76 +143,77 @@ public class FloatingNoteService extends Service {
             return;
         }
 
-        LayoutInflater inflater = (LayoutInflater) getSystemService(LAYOUT_INFLATER_SERVICE);
-        mOverlayView = inflater.inflate(R.layout.floating_note_view, null);
-        mRoot = mOverlayView.findViewById(R.id.floating_note_root);
-        mInput = mOverlayView.findViewById(R.id.floating_input);
-        mTitle = mOverlayView.findViewById(R.id.floating_title);
-        View titleBar = mOverlayView.findViewById(R.id.floating_title_bar);
-        ImageButton saveBtn = mOverlayView.findViewById(R.id.floating_save_btn);
-        ImageButton closeBtn = mOverlayView.findViewById(R.id.floating_close_btn);
-        ImageButton toolTimestamp = mOverlayView.findViewById(R.id.floating_tool_timestamp);
-        ImageButton toolBold = mOverlayView.findViewById(R.id.floating_tool_bold);
-        ImageButton toolList = mOverlayView.findViewById(R.id.floating_tool_list);
-        View saveTextBtn = mOverlayView.findViewById(R.id.floating_save_text_btn);
-
-        if (!mPendingPrefill.isEmpty()) {
-            mInput.setText(mPendingPrefill);
-        } else {
-            String draft = NativeQuickNoteStore.loadDraftText(this);
-            mInput.setText(draft);
-            int sel = NativeQuickNoteStore.loadDraftSelection(this);
-            if (sel > draft.length()) sel = draft.length();
-            mInput.setSelection(sel);
-        }
-
-        // 尺寸：88% 屏宽，35% 屏高
-        Point size = new Point();
-        mWindowManager.getDefaultDisplay().getSize(size);
-        int width = (int) (size.x * 0.88f);
-        int height = (int) (size.y * 0.35f);
-        int minHeight = dp(280);
-        int minWidth = dp(260);
-        if (height < minHeight) height = minHeight;
-        if (width < minWidth) width = minWidth;
-
-        // 位置：记忆或居中偏上
-        int savedX = getSharedPreferences("floating_note_pos", MODE_PRIVATE).getInt("x", -1);
-        int savedY = getSharedPreferences("floating_note_pos", MODE_PRIVATE).getInt("y", -1);
-        int x = savedX >= 0 ? savedX : (size.x - width) / 2;
-        int y = savedY >= 0 ? savedY : (int) (size.y * 0.2f);
-
-        mParams = new WindowManager.LayoutParams(
-                width,
-                height,
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                        ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                        : WindowManager.LayoutParams.TYPE_PHONE,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                        | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
-                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                PixelFormat.TRANSLUCENT);
-        mParams.gravity = Gravity.TOP | Gravity.START;
-        mParams.x = x;
-        mParams.y = y;
-        mParams.windowAnimations = android.R.style.Animation_InputMethod;
-
-        setupInputFocus(mInput);
-        setupTitleDrag(titleBar);
-        setupButtons(saveBtn, closeBtn, toolTimestamp, toolBold, toolList, saveTextBtn);
-        mOverlayView.setOnTouchListener(new View.OnTouchListener() {
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                return false;
-            }
-        });
-
         try {
+            LayoutInflater inflater = (LayoutInflater) getSystemService(LAYOUT_INFLATER_SERVICE);
+            mOverlayView = inflater.inflate(R.layout.floating_note_view, null);
+            mRoot = mOverlayView.findViewById(R.id.floating_note_root);
+            mInput = mOverlayView.findViewById(R.id.floating_input);
+            mTitle = mOverlayView.findViewById(R.id.floating_title);
+            View titleBar = mOverlayView.findViewById(R.id.floating_title_bar);
+            ImageButton saveBtn = mOverlayView.findViewById(R.id.floating_save_btn);
+            ImageButton closeBtn = mOverlayView.findViewById(R.id.floating_close_btn);
+            ImageButton toolTimestamp = mOverlayView.findViewById(R.id.floating_tool_timestamp);
+            ImageButton toolBold = mOverlayView.findViewById(R.id.floating_tool_bold);
+            ImageButton toolList = mOverlayView.findViewById(R.id.floating_tool_list);
+            View saveTextBtn = mOverlayView.findViewById(R.id.floating_save_text_btn);
+
+            if (!mPendingPrefill.isEmpty()) {
+                mInput.setText(mPendingPrefill);
+            } else {
+                String draft = NativeQuickNoteStore.loadDraftText(this);
+                mInput.setText(draft);
+                int sel = NativeQuickNoteStore.loadDraftSelection(this);
+                if (sel > draft.length()) sel = draft.length();
+                mInput.setSelection(sel);
+            }
+
+            // 尺寸：88% 屏宽，35% 屏高
+            Point size = new Point();
+            mWindowManager.getDefaultDisplay().getSize(size);
+            int width = (int) (size.x * 0.88f);
+            int height = (int) (size.y * 0.35f);
+            int minHeight = dp(280);
+            int minWidth = dp(260);
+            if (height < minHeight) height = minHeight;
+            if (width < minWidth) width = minWidth;
+
+            // 位置：记忆或居中偏上
+            int savedX = getSharedPreferences("floating_note_pos", MODE_PRIVATE).getInt("x", -1);
+            int savedY = getSharedPreferences("floating_note_pos", MODE_PRIVATE).getInt("y", -1);
+            int x = savedX >= 0 ? savedX : (size.x - width) / 2;
+            int y = savedY >= 0 ? savedY : (int) (size.y * 0.2f);
+
+            mParams = new WindowManager.LayoutParams(
+                    width,
+                    height,
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                            ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                            : WindowManager.LayoutParams.TYPE_PHONE,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                            | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                    PixelFormat.TRANSLUCENT);
+            mParams.gravity = Gravity.TOP | Gravity.START;
+            mParams.x = x;
+            mParams.y = y;
+            mParams.windowAnimations = android.R.style.Animation_InputMethod;
+
+            setupInputFocus(mInput);
+            setupTitleDrag(titleBar);
+            setupButtons(saveBtn, closeBtn, toolTimestamp, toolBold, toolList, saveTextBtn);
+            mOverlayView.setOnTouchListener(new View.OnTouchListener() {
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    return false;
+                }
+            });
+
             mWindowManager.addView(mOverlayView, mParams);
         } catch (Exception e) {
-            android.util.Log.e("FloatingNote", "addView failed", e);
-            Toast.makeText(this, "无法显示悬浮窗", Toast.LENGTH_SHORT).show();
+            android.util.Log.e("FloatingNote", "showOverlay failed", e);
             mOverlayView = null;
+            mInput = null;
+            Toast.makeText(this, "无法显示悬浮窗", Toast.LENGTH_SHORT).show();
             return;
         }
 
@@ -215,12 +221,16 @@ public class FloatingNoteService extends Service {
         mMainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                if (mOverlayView != null) {
-                    mParams.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
-                    mWindowManager.updateViewLayout(mOverlayView, mParams);
-                    mInput.requestFocus();
-                    InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-                    imm.showSoftInput(mInput, InputMethodManager.SHOW_IMPLICIT);
+                try {
+                    if (mOverlayView != null) {
+                        mParams.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
+                        mWindowManager.updateViewLayout(mOverlayView, mParams);
+                        mInput.requestFocus();
+                        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                        imm.showSoftInput(mInput, InputMethodManager.SHOW_IMPLICIT);
+                    }
+                } catch (Exception e) {
+                    android.util.Log.e("FloatingNote", "focus overlay failed", e);
                 }
             }
         }, 150);

@@ -1,7 +1,6 @@
 package com.example.hexo;
 
 import android.content.Intent;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -86,12 +85,13 @@ public class QuickNoteLauncherActivity extends android.app.Activity {
     private void launchFloating(String source) {
         Intent serviceIntent = FloatingNoteService.showIntent(this, source, null);
         try {
-            // Activity 在前台，此时启动前台服务属于允许的前台启动路径
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent);
-            } else {
-                startService(serviceIntent);
-            }
+            // 直接 startService 而非 startForegroundService：
+            // 服务在 onCreate 内自行调用 startForeground 转前台（成功则 FGS 保活，
+            // 失败则普通服务继续运行、悬浮窗照常显示），
+            // 规避 startForegroundService 被部分 ROM 拦截、以及 5 秒内未
+            // startForeground 即被系统强杀的硬限制。此处 Activity 在前台，
+            // startService 属于允许的前台启动路径。
+            startService(serviceIntent);
         } catch (Exception e) {
             Log.e(TAG, "launch floating failed", e);
             Toast.makeText(this, "启动速记窗失败，请检查悬浮窗与后台弹出权限", Toast.LENGTH_LONG).show();
