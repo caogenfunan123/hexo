@@ -40,7 +40,7 @@ graph TD
     S --> ST
     GH -->|"POST /user/repos / pages"| GHAPI["GitHub REST API"]
     GL -->|"POST /api/v4/projects / pages"| GLAPI["GitLab REST API"]
-    CF -->|"POST /accounts/{id}/pages/projects"| CFAPI["Cloudflare REST API"]
+    CF -->|"GET /accounts/{id}/pages/projects(轮询)"| CFAPI["Cloudflare REST API"]
 ```
 
 流程：向导 UI 仅负责收集输入与展示步骤；`SiteWizardService` 为唯一编排者。
@@ -119,15 +119,20 @@ themes/            # 默认主题配置占位
 .gitignore
 ```
 
-模式一额外生成 CI 流水线文件（与平台对应）：
+模式一额外生成 CI 流水线文件（与平台对应）。CI 步骤按框架类型生成，上传产物目录对齐映射表 `buildOutputDirectory`，不写死：
 
 **GitHub Pages（`.github/workflows/deploy.yml`）**：
 - trigger: `push` to `main`
-- jobs: checkout → setup-node → `npm ci` → `npx hexo generate` → `actions/upload-pages-artifact`（path `public/`）→ `actions/deploy-pages`
+- jobs: checkout → [按框架类型的构建步骤] → `actions/upload-pages-artifact`（path 为 `buildOutputDirectory`）→ `actions/deploy-pages`
 - permissions: `contents: read`、`pages: write`、`id-token: write`
+- 按框架类型选择构建步骤：
+  - Node 系（hexo / vuepress / gatsby / nextjs / astro / 11ty）：`setup-node` → `npm ci` → `npm run build`
+  - jekyll：`setup-ruby` → `bundle install` → `jekyll build`
+  - hugo：`setup-hugo` → `hugo --minify`
+  - pelican：`setup-python` → `pip install -r requirements.txt` → `pelican content -o output -s publishconf.py`
 
 **GitLab Pages（`.gitlab-ci.yml`）**：
-- `pages` job: image `node:18` → `npm ci` → `npx hexo generate` → artifacts path `public/`（expire 保留）→ 自动触发 Pages 部署
+- `pages` job: 按框架类型选择镜像（Node 系 `node:18` / jekyll `ruby:3` / hugo `hugo:latest` / pelican `python:3`），执行对应构建命令，artifacts path 为 `buildOutputDirectory`（expire 保留）→ 自动触发 Pages 部署
 - 首页地址 `https://{user}.gitlab.io/{project}/`
 
 各框架输出目录/构建命令映射表（对齐 Cloudflare Pages / 各平台 CI 文档）：
@@ -311,6 +316,9 @@ class RollbackManager {
 11. **构建等待有界**：首次构建轮询设 10 分钟上限，超时停止轮询但不回滚、不丢站点记录。
 12. **Pages 免费限制可见**：GitHub 免费账号私有仓库不能启用 Pages 的限制在建站前提示、
     建站后切换可见性时再次提示。
+13. **CI 产物对齐**：CI 流水线的构建步骤按框架类型生成，上传产物目录严格对齐映射表
+    `buildOutputDirectory`，保证任意框架首篇发布即可构建成功。
+14. **账号计划判定**：免费账号判定基于 `GET /user` 的 `plan` 字段，建站前即可给出准确的可见性提示。
 
 ## Error Handling
 
@@ -324,6 +332,7 @@ class RollbackManager {
 | Pages 启用失败（私有仓库） | 启用接口非 2xx，且仓库为 private | 归因到可见性，提示免费账号需改公开后重试 |
 | 用户主动取消 | 取消对话框确认 | 未投入网页操作 → 触发回滚；模式二已投入 → 保留仓库提示手动继续 |
 | 模式二网页操作超时 | 轮询超时（60s） | 提示"未检测到项目，检查 GitHub 账号/仓库名"，继续等待或放弃 |
+| 模式二 Deploy Hook 拉取失败 | 检测到项目但 `deploy_hooks` 为空/异常 | 提示在 CF 控制台添加 Hook 或稍后从站点设置补充，允许跳过继续建站 |
 | 首次构建失败 | 轮询状态 = failure | 展示构建日志摘要，不删除站点（允许用户修复后重试发布） |
 | 首次构建超时 | 轮询达 10 分钟上限 | 停止轮询，站点仍入库（`siteUrl` 待回填），不触发回滚 |
 | 域名绑定失败 | 设置 cname / 添加自定义域接口非 2xx | 提示检查 DNS 记录是否已生效并允许重试 |
@@ -334,6 +343,8 @@ class RollbackManager {
 1. **单元测试**：
    - `SiteScaffoldBuilder`：对 9 个框架生成骨架文件清单快照测试（关键文件存在性 + front matter 对齐）
    - CI 流水线模板快照测试（`.github/workflows/deploy.yml` / `.gitlab-ci.yml` 关键字段校验）
+   - CI 按框架类型生成测试：Node / jekyll / hugo / pelican 四类生成不同的构建步骤，上传目录对齐 `buildOutputDirectory`
+   - 仓库名规范化校验测试：非法字符 / 连字符首尾 / 超长名称均被拒绝
    - `RollbackManager`：注入失败 provider，验证逆序执行、失败项收集、取消复用同一路径
    - 框架构建命令/输出目录映射表完整性测试
    - `verifyScopes`：注入不同 `X-OAuth-Scopes` 响应头，验证缺失 scope 判定

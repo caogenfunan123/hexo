@@ -70,9 +70,10 @@ Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 �
 2. WHEN 用户选择模式一且平台为 GitLab，System SHALL 调用 GitLab `POST /api/v4/projects` 创建项目。
 3. WHEN 用户选择模式二，System SHALL 调用 GitHub `POST /user/repos` 创建仓库。
 4. WHEN 用户未修改可见性，System SHALL 将仓库创建为 `private`；WHEN 用户选择公开，System SHALL 将仓库创建为 `public`。
-5. IF 向导为模式一且平台为 GitHub，System SHALL 在站点信息步骤提示「GitHub 免费账号的私有仓库无法启用 Pages，若账号为免费版需选择公开仓库」；IF 用户仍选择私有，System SHALL 允许继续建仓，但在启用 Pages 失败时归因到仓库可见性并引导用户改公开。
+5. IF 向导为模式一且平台为 GitHub，System SHALL 通过 `GET /user` 响应的 `plan` 字段判定账号是否为免费版，并在站点信息步骤提示「GitHub 免费账号的私有仓库无法启用 Pages，若账号为免费版需选择公开仓库」；IF 用户仍选择私有，System SHALL 允许继续建仓，但在启用 Pages 失败时归因到仓库可见性并引导用户改公开。
 6. IF 仓库名称已存在或名称非法，System SHALL 展示冲突原因并允许用户改名重试。
-7. WHEN 仓库创建成功，System SHALL 记录仓库 `owner/name` 并进入下一步。
+7. WHEN 用户输入仓库名，System SHALL 实时校验并提示 GitHub 仓库名规范（仅小写字母、数字、连字符与下划线，不以连字符开头/结尾，1-100 字符）；IF 非法，System SHALL 阻止进入下一步。
+8. WHEN 仓库创建成功，System SHALL 记录仓库 `owner/name` 并进入下一步。
 
 ### Requirement 4：写入博客骨架
 
@@ -83,8 +84,10 @@ Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 �
 1. WHEN 新仓库创建成功，System SHALL 通过 Git API 批量写入所选框架的博客骨架文件（`writeBatch`）。
 2. WHEN 用户选择 Hexo，System SHALL 至少写入 `_config.yml`、`package.json`（含 `hexo` 与 `hexo-cli` 依赖与 `hexo generate` 构建脚本）、`scaffolds/`、`.gitignore` 与默认主题配置。
 3. WHEN 用户选择其他预设框架，System SHALL 写入该框架对应的最小可构建骨架（对应 `BlogFramework.presets`）。
-4. WHEN 向导为模式一，System SHALL 额外写入对应平台的 CI 流水线文件（GitHub：`.github/workflows/deploy.yml`；GitLab：`.gitlab-ci.yml`），流水线执行框架构建并部署到平台静态托管。
-5. IF 骨架写入过程中任一文件写入失败，System SHALL 回滚本次写入的已提交文件并提示用户重试。
+4. WHEN 向导为模式一，System SHALL 额外写入对应平台的 CI 流水线文件（GitHub：`.github/workflows/deploy.yml`；GitLab：`.gitlab-ci.yml`），流水线按所选框架类型生成构建步骤并部署到平台静态托管。
+5. IF 所选框架为 Node 系（hexo / vuepress / gatsby / nextjs / astro / 11ty），System SHALL 生成 `setup-node` + 依赖安装 + 框架构建命令的 CI 步骤。
+6. IF 所选框架为非 Node 系（jekyll / hugo / pelican），System SHALL 按框架生成对应的运行时（Ruby / Go 二进制 / Python）构建步骤，且 CI 上传产物目录对齐映射表中的 `buildOutputDirectory`，不写死 `public`。
+7. IF 骨架写入过程中任一文件写入失败，System SHALL 回滚本次写入的已提交文件并提示用户重试。
 
 ### Requirement 5：创建站点项目（平台分发）
 
@@ -97,7 +100,8 @@ Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 �
 3. WHEN 向导为模式二，System SHALL 引导用户在其 Cloudflare 控制台网页完成「连接 Git 源 → 创建 Pages 项目」，随后 System 通过 API 检测项目存在并自动拉取 Deploy Hook。
 4. WHEN 创建项目，System SHALL 传递 Git 源仓库连接、目标分支与所选框架的构建命令和输出目录。
 5. IF Cloudflare API 令牌缺少 Pages 权限，System SHALL 展示缺失的权限名并引导用户补权。
-6. WHEN 站点项目创建成功，System SHALL 记录项目名与默认访问域名。
+6. WHEN 模式二检测到目标项目，IF 从项目详情拉取 `deploy_hooks` 失败或列表为空，System SHALL 提示用户「请在 Cloudflare 控制台为该 Pages 项目添加 Deploy Hook，或稍后从站点设置补充」，并允许用户跳过继续建站（发布时将提示缺少 Hook）。
+7. WHEN 站点项目创建成功，System SHALL 记录项目名与默认访问域名。
 
 ### Requirement 6：首篇文章发布与站点验证
 
