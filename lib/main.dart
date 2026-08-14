@@ -10,6 +10,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'controllers/controllers.dart';
 
@@ -61,6 +63,7 @@ import 'screens/template_manager_screen.dart';
 import 'screens/theme_migration_screen.dart';
 import 'screens/tool_library_screen.dart';
 import 'screens/log_screen.dart';
+import 'screens/mobile_recycle_bin_screen.dart';
 import 'core/tools/skill_manager.dart';
 import 'core/tools/remote_cms_tools.dart';
 import 'core/cancel_token.dart';
@@ -93,6 +96,11 @@ import 'screens/p2p_sync_screen.dart';
 import 'services/template_sync_service.dart';
 import 'services/full_text_search_isolate.dart';
 import 'services/recycle_bin_service.dart';
+import 'services/quick_note_service.dart';
+import 'services/timestamp_util.dart';
+import 'services/writing_stats_service.dart';
+import 'services/update_checker_service.dart';
+import 'services/draft_encryption_service.dart';
 import 'services/version_snapshot_service.dart';
 import 'widgets/word_count_badge.dart';
 import 'screens/home_screen.dart';
@@ -312,6 +320,12 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   FullTextSearchIsolate? _searchIsolate;
   RecycleBinService? _recycleBin;
   VersionSnapshotService? _snapshotService;
+  QuickNoteService? _quickNoteService; // ignore: unused_field 保持监听器生命周期
+  WritingStatsService? _statsService;
+  /// 每个草稿上次统计的字数（用于记录增量，避免重复累计）
+  final Map<String, int> _lastWordCounts = {};
+  UpdateCheckerService? _updateChecker;
+  String _appVersion = '1.0.4';
 
   RepoConfig? get activeRepo {
     if (repos.isEmpty) return null;
@@ -625,6 +639,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   /// 初始化新功能服务（站点隔离、P2P、模板同步、全文检索）
   Future<void> _initNewServices() async {
     try {
+      // 异步获取真实应用版本号
+      try {
+        final info = await PackageInfo.fromPlatform();
+        if (info.version.isNotEmpty) _appVersion = info.version;
+      } catch (_) {}
+      // 草稿加密：加载元数据并注册加解密钩子
+      await DraftEncryptionService.load(storage);
+      StorageService.draftsEncryptor = DraftEncryptionService.encryptJson;
+      StorageService.draftsDecryptor = DraftEncryptionService.decryptJson;
       final root = await storage.root;
       _siteIsolation = SiteIsolationService(root);
       await _siteIsolation!.init();
@@ -639,9 +662,122 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       await _recycleBin!.init(root);
       _snapshotService = VersionSnapshotService(logService);
       await _snapshotService!.init(root);
+      // 写作统计
+      _statsService = WritingStatsService(root);
+      await _statsService!.load();
     } catch (e) {
       debugPrint('Init new services error: $e');
     }
+    // 速记入口通道（桌面小部件 / 通知栏磁贴）
+    _initQuickNote();
+    // 自动检测更新（静默）
+    _initUpdateCheck();
+  }
+
+  /// 启动时静默检查更新，有新版本时提示
+  void _initUpdateCheck() {
+    try {
+      _updateChecker = UpdateCheckerService(
+        currentVersion: _appVersion,
+      );
+      // 延迟 3 秒，避免与启动流程竞争
+      Future.delayed(const Duration(seconds: 3), () async {
+        final result = await _updateChecker!.check();
+        if (!mounted || !result.hasUpdate) return;
+        final r = result.release!;
+        showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('发现新版本'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '当前 ${result.currentVersion} → 最新 ${r.versionString}',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  if (r.body.trim().isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      r.body.trim(),
+                      style: const TextStyle(fontSize: 12, height: 1.4),
+                      maxLines: 8,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('稍后'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _openUpdateUrl(r.htmlUrl);
+                },
+                child: const Text('去更新'),
+              ),
+            ],
+          ),
+        );
+      });
+    } catch (e) {
+      debugPrint('Init update check error: $e');
+    }
+  }
+
+  /// 打开更新页面
+  void _openUpdateUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  /// 初始化速记入口：拉取冷启动参数 + 监听热启动推送
+  void _initQuickNote() {
+    try {
+      final service = QuickNoteService();
+      _quickNoteService = service;
+      // 热启动推送（应用已在运行）
+      service.requests.listen(_handleQuickNote);
+      // 冷启动参数（引擎刚就绪时拉取）
+      service.fetchLaunchRequest().then((req) {
+        if (req != null && mounted) _handleQuickNote(req);
+      });
+      service.startListening();
+    } catch (e) {
+      debugPrint('Init quick note error: $e');
+    }
+  }
+
+  /// 处理速记请求：直达新建草稿，预填文本
+  void _handleQuickNote(QuickNoteRequest req) {
+    if (req.mode != 'new') return;
+    // 当前有内容时先保存到草稿箱，避免丢失
+    final hasContent =
+        _doc.titleCtrl.text.isNotEmpty || _doc.contentCtrl.text.isNotEmpty;
+    if (hasContent) {
+      _saveLocal();
+    }
+    _stopAutoSave();
+    _clearSession();
+    _resetEditor();
+    final ui = settings.ui;
+    _doc.contentCtrl.text = QuickNoteTemplate.compose(
+      anchor: ui.quickNoteAnchor,
+      timestampFormatKey: ui.timestampFormat,
+      insertTimestamp: ui.quickNoteTimestamp,
+      userText: req.text,
+    );
+    _startAutoSave();
+    setState(() => _currentPage = 0);
+    _updateSystemBarStyle();
+    if (mounted) _showToast('速记草稿已创建');
   }
 
 

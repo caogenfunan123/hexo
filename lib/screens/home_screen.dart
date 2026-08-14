@@ -2,13 +2,16 @@
 ///
 /// 简易普通用户模式的默认首页：按卷宗（Article.volume）分组展示文章，
 /// 自动过滤系统诊断日志文件（如 llama_diag_log 前缀），空值文章归「未分类」。
+/// 长按文章卡片弹出管理菜单（重命名/移动卷宗/导出/删除），移动端支持滑动删除。
 library;
 
 import 'package:flutter/material.dart';
 import '../models/article.dart';
 import '../desktop/feature_entries.dart';
+import '../services/writing_stats_service.dart';
+import '../widgets/article_action_menu.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   final List<Article> articles;
   final ValueChanged<Article> onOpenArticle;
   final VoidCallback onNewArticle;
@@ -16,17 +19,53 @@ class HomeScreen extends StatelessWidget {
   /// 卷宗内新建：传入卷宗名，空字符串表示「未分类」
   final ValueChanged<String>? onNewArticleInVolume;
 
+  // ── 文章管理操作（长按菜单） ──
+  final ValueChanged<Article>? onRenameArticle;
+  final ValueChanged<Article>? onMoveArticleVolume;
+  final ValueChanged<Article>? onExportArticle;
+  final ValueChanged<Article>? onDeleteArticle;
+
+  /// 写作统计（可空，传入时展示统计横幅）
+  final WritingStats? stats;
+
   const HomeScreen({
     super.key,
     this.articles = const [],
     required this.onOpenArticle,
     required this.onNewArticle,
     this.onNewArticleInVolume,
+    this.onRenameArticle,
+    this.onMoveArticleVolume,
+    this.onExportArticle,
+    this.onDeleteArticle,
+    this.stats,
   });
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  // 本地维护文章列表：滑动删除后先本地移除再通知父级，避免 Dismissible 断言
+  late List<Article> _articles;
+
+  @override
+  void initState() {
+    super.initState();
+    _articles = widget.articles;
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.articles, widget.articles)) {
+      _articles = widget.articles;
+    }
+  }
 
   /// 过滤系统诊断日志后的文章
   List<Article> get _userArticles {
-    return articles
+    return _articles
         .where((a) {
           final name = a.title.trim();
           if (SystemLogFiles.isSystemLogFileName(name)) return false;
@@ -87,7 +126,7 @@ class HomeScreen extends StatelessWidget {
               ),
               const Spacer(),
               FilledButton.tonalIcon(
-                onPressed: onNewArticle,
+                onPressed: widget.onNewArticle,
                 icon: const Icon(Icons.add, size: 16),
                 label: const Text('新建文稿'),
               ),
@@ -95,6 +134,8 @@ class HomeScreen extends StatelessWidget {
           ),
         ),
         const Divider(height: 1),
+        // 写作统计横幅
+        if (widget.stats != null) _statsBanner(cs, isDark, widget.stats!),
         // 卷宗分组列表
         Expanded(
           child: grouped.isEmpty
@@ -109,6 +150,51 @@ class HomeScreen extends StatelessWidget {
                 ),
         ),
       ],
+    );
+  }
+
+  Widget _statsBanner(ColorScheme cs, bool isDark, WritingStats s) {
+    final bg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
+    Widget cell(String value, String label) {
+      return Expanded(
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: cs.primary,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10.5,
+                color: isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF64748B),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          cell('${s.todayWords}', '今日字数'),
+          cell('${s.todayDrafts}', '今日更新'),
+          cell('${s.streakDays}', '连续天数'),
+          cell('${s.totalWords}', '累计字数'),
+        ],
+      ),
     );
   }
 
@@ -173,12 +259,12 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                if (onNewArticleInVolume != null)
+                if (widget.onNewArticleInVolume != null)
                   Material(
                     color: Colors.transparent,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(6),
-                      onTap: () => onNewArticleInVolume!(volKey),
+                      onTap: () => widget.onNewArticleInVolume!(volKey),
                       child: Padding(
                         padding: const EdgeInsets.all(4),
                         child: Icon(
@@ -192,22 +278,42 @@ class HomeScreen extends StatelessWidget {
               ],
             ),
           ),
-          ...items.map((a) => _articleCard(cs, isDark, a)),
+          ...items.map((a) => _articleCard(context, cs, isDark, a)),
         ],
       ),
     );
   }
 
-  Widget _articleCard(ColorScheme cs, bool isDark, Article a) {
+  Widget _articleCard(BuildContext context, ColorScheme cs, bool isDark, Article a) {
     final preview = a.content.replaceAll(RegExp(r'[#*>`\-\n]'), ' ').trim();
-    return Padding(
+    final hasManage = widget.onRenameArticle != null ||
+        widget.onMoveArticleVolume != null ||
+        widget.onExportArticle != null ||
+        widget.onDeleteArticle != null;
+
+    final card = Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
-          onTap: () => onOpenArticle(a),
+          onTap: () => widget.onOpenArticle(a),
+          onLongPress: hasManage
+              ? () async {
+                  final box = context.findRenderObject() as RenderBox?;
+                  final anchor = box?.localToGlobal(Offset.zero) ?? Offset.zero;
+                  await showArticleActionMenu(
+                    context: context,
+                    anchor: anchor,
+                    article: a,
+                    onRename: widget.onRenameArticle,
+                    onMoveVolume: widget.onMoveArticleVolume,
+                    onExport: widget.onExportArticle,
+                    onDelete: widget.onDeleteArticle,
+                  );
+                }
+              : null,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
@@ -260,6 +366,50 @@ class HomeScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+
+    // 移动端支持滑动删除
+    final isDesktop = MediaQuery.of(context).size.width >= 600;
+    if (isDesktop || widget.onDeleteArticle == null) return card;
+
+    return Dismissible(
+      key: ValueKey('home_dismiss_${a.id}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        margin: const EdgeInsets.symmetric(vertical: 1),
+        decoration: BoxDecoration(
+          color: Colors.redAccent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Icon(Icons.delete_outline, color: Colors.white),
+      ),
+      confirmDismiss: (_) async {
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('删除文章'),
+            content: Text('确定要删除「${a.title.isEmpty ? '(无标题)' : a.title}」吗？'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('删除'),
+              ),
+            ],
+          ),
+        );
+        return ok ?? false;
+      },
+      onDismissed: (_) {
+        setState(() {
+          _articles = _articles.where((e) => e.id != a.id).toList();
+        });
+        widget.onDeleteArticle?.call(a);
+      },
+      child: card,
     );
   }
 

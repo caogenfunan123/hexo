@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">拓墨</string>
+    <string name="widget_description">一键快速记录灵感草稿</string>
+    <string name="widget_title">拓墨速记</string>
+    <string name="widget_hint">点击快速记录灵感</string>
+    <string name="widget_stats">今日已写 0 字 · 共 0 篇草稿</string>
+    <string name="quick_note_tile_label">速记</string>
 </resources>

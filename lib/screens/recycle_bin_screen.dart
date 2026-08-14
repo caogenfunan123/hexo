@@ -3,7 +3,7 @@ import '../services/recycle_bin_service.dart';
 
 class RecycleBinScreen extends StatefulWidget {
   final RecycleBinService recycleBinService;
-  final Function(String restoredPath)? onRestored;
+  final Function(RecycleBinEntry? entry, String restoredPath)? onRestored;
 
   const RecycleBinScreen({
     super.key,
@@ -77,8 +77,15 @@ class _RecycleBinScreenState extends State<RecycleBinScreen> {
     setState(() => _loading = true);
     try {
       for (final id in idsToRestore) {
+        RecycleBinEntry? entry;
+        for (final e in _entries) {
+          if (e.id == id) {
+            entry = e;
+            break;
+          }
+        }
         final restoredPath = await widget.recycleBinService.restore(id);
-        widget.onRestored?.call(restoredPath);
+        widget.onRestored?.call(entry, restoredPath);
       }
       if (!mounted) return;
       setState(() {

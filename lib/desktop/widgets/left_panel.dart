@@ -7,6 +7,7 @@ import '../../models/repo_config.dart';
 import '../../models/article.dart';
 import '../../models/ui_settings.dart';
 import '../../core/site_manager.dart';
+import '../../widgets/article_action_menu.dart';
 import '../shell_action_bus.dart';
 import '../feature_entries.dart';
 
@@ -24,6 +25,10 @@ class DesktopLeftPanel extends StatefulWidget {
   final AppMode mode;
   final List<String> simpleModeExtras;
 
+  // 折叠状态持久化（保持上次状态）
+  final List<String> collapsedSections;
+  final ValueChanged<List<String>>? onCollapsedSectionsChanged;
+
   // 统一回调总线
   final ShellActionBus bus;
 
@@ -38,6 +43,8 @@ class DesktopLeftPanel extends StatefulWidget {
     required this.bus,
     this.mode = AppMode.simple,
     this.simpleModeExtras = const [],
+    this.collapsedSections = const [],
+    this.onCollapsedSectionsChanged,
   });
 
   @override
@@ -45,11 +52,31 @@ class DesktopLeftPanel extends StatefulWidget {
 }
 
 class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
-  // 折叠的分组
-  final Set<String> _collapsedSections = {};
+  // 折叠的分组（默认全折叠，保持上次状态）
+  late final Set<String> _collapsedSections;
 
   // 拖拽调整宽度
   bool _resizing = false;
+
+  /// 所有可折叠分组的 key（含内嵌文章列表分组）
+  static const List<String> _sectionKeys = [
+    'create',
+    'articles',
+    'sites',
+    'manage',
+    'tools',
+    'ai',
+    'system',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _collapsedSections = (widget.collapsedSections.isNotEmpty
+            ? widget.collapsedSections
+            : _sectionKeys)
+        .toSet();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -114,6 +141,17 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                           badge: widget.drafts.where((d) => !d.published).length,
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 2),
+
+                    // 文章（平铺标题列表，仿 Notion 内嵌，可折叠）
+                    _buildSection(
+                      key: 'articles',
+                      title: '文章',
+                      icon: Icons.article_outlined,
+                      collapsed: _collapsedSections.contains('articles'),
+                      onToggle: () => _toggleSection('articles'),
+                      children: _buildArticleItems(),
                     ),
                     const SizedBox(height: 2),
 
@@ -448,6 +486,103 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
   }
 
   // ============================================================
+  // 文章列表（平铺标题，点击打开，长按管理）
+  // ============================================================
+  List<Widget> _buildArticleItems() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final articles = widget.drafts
+        .where((a) {
+          final name = a.title.trim();
+          if (SystemLogFiles.isSystemLogFileName(name)) return false;
+          final fn = a.fileName();
+          if (SystemLogFiles.isSystemLogFileName(fn)) return false;
+          return true;
+        })
+        .toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+    if (articles.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Text(
+            '暂无文章',
+            style: TextStyle(
+              fontSize: 11,
+              color: isDark
+                  ? Colors.white.withOpacity(0.3)
+                  : const Color(0xFF9CA3AF),
+            ),
+          ),
+        ),
+      ];
+    }
+
+    return articles.map((a) => _articleItem(a)).toList();
+  }
+
+  Widget _articleItem(Article a) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(6),
+          onTap: () => widget.bus.onOpenArticle?.call(a),
+          onLongPress: (a.volume == null || a.volume!.trim().isEmpty)
+              ? null
+              : () => _showArticleMenu(a),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.description_outlined,
+                  size: 13,
+                  color: isDark
+                      ? Colors.white.withOpacity(0.35)
+                      : const Color(0xFF9CA3AF),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    a.title.isEmpty ? '(无标题)' : a.title,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark
+                          ? Colors.white.withOpacity(0.75)
+                          : const Color(0xFF374151),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showArticleMenu(Article a) async {
+    final box = context.findRenderObject() as RenderBox?;
+    final anchor = box?.localToGlobal(Offset.zero) ?? Offset.zero;
+    final bus = widget.bus;
+    await showArticleActionMenu(
+      context: context,
+      anchor: anchor,
+      article: a,
+      onRename: bus.onRenameArticle,
+      onMoveVolume: bus.onMoveArticleVolume,
+      onExport: bus.onExportArticle,
+      onDelete: bus.onDeleteArticle,
+    );
+  }
+
+  // ============================================================
   // 站点项
   // ============================================================
   Widget _siteItem({
@@ -595,5 +730,8 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
         _collapsedSections.add(key);
       }
     });
+    // 持久化折叠状态（保持上次状态）
+    widget.onCollapsedSectionsChanged
+        ?.call(_collapsedSections.toList()..sort());
   }
 }

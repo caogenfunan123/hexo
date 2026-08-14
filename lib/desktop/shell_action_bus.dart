@@ -7,6 +7,7 @@ library;
 
 import 'package:flutter/material.dart';
 import '../models/repo_config.dart';
+import '../models/article.dart';
 
 /// 桌面 Shell 统一操作总线
 ///
@@ -75,6 +76,13 @@ class ShellActionBus {
   // ── 文件操作 ──
   final VoidCallback? onOpenFile;
 
+  // ── 文章管理（侧边栏 / 首页长按操作） ──
+  final ValueChanged<Article>? onOpenArticle;
+  final ValueChanged<Article>? onRenameArticle;
+  final ValueChanged<Article>? onMoveArticleVolume;
+  final ValueChanged<Article>? onExportArticle;
+  final ValueChanged<Article>? onDeleteArticle;
+
   const ShellActionBus({
     // 导航
     required this.onNewArticle,
@@ -123,5 +131,11 @@ class ShellActionBus {
     required this.onPublish,
     // 文件操作
     this.onOpenFile,
+    // 文章管理
+    this.onOpenArticle,
+    this.onRenameArticle,
+    this.onMoveArticleVolume,
+    this.onExportArticle,
+    this.onDeleteArticle,
   });
 }

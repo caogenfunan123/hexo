@@ -3,6 +3,11 @@
 .flutter-plugins-dependencies
 .packages
 build/
+# IDE 文件
+.idea/
+*.iml
+*.iws
+*.ipr
 android/.gradle/
 android/local.properties
 # Android 签名文件（从私有仓库获取，禁止提交）
@@ -10,3 +15,16 @@ android/key.properties
 android/app/hexo-release.keystore
 android/app/*.keystore
 android/*.keystore
+
+# 宣传物料（本地保留，不推送到仓库）
+docs/
+
+# iOS 构建产物
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/ephemeral/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/*.xcconfig
+ios/ServiceDefinitions.json
+ios/Runner/GeneratedPluginRegistrant.*

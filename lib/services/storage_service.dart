@@ -23,6 +23,8 @@ class StorageService {
   static const _settingsFile = 'settings.json';
   static const _reposFile = 'repos.json';
   static const _draftsFile = 'drafts.json';
+  static const draftsFile = 'drafts.json';
+  static const encDraftsFile = 'drafts.json.enc';
   static const _templatesFile = 'templates.json';
   static const _snippetsFile = 'snippets.json';
   static const _deviceKeyFile = '.device_key';
@@ -36,6 +38,11 @@ class StorageService {
 
   Directory? _root;
   String _customRoot = '';
+
+  /// 草稿加密钩子（由 DraftEncryptionService 注册）
+  /// 保存时对明文 JSON 加密；加载时对加密 JSON 解密
+  static String? Function(String plainJson)? draftsEncryptor;
+  static String? Function(String encJson)? draftsDecryptor;
 
   /// 配置自定义全局存储根目录（空串表示重置为默认目录）
   void setCustomRoot(String path) {
@@ -279,6 +286,26 @@ class StorageService {
       _write(_reposFile, repos.map((e) => e.toJson()).toList());
 
   Future<List<Article>> loadDrafts() async {
+    // 加密开启时优先读取加密文件
+    if (draftsDecryptor != null) {
+      final encText = await _readRaw(encDraftsFile);
+      if (encText != null && encText.trim().isNotEmpty) {
+        try {
+          final plain = draftsDecryptor!(encText.trim());
+          if (plain != null) {
+            final list = jsonDecode(plain);
+            if (list is List) {
+              return list
+                  .whereType<Map>()
+                  .map((e) => Article.fromJson(Map<String, dynamic>.from(e)))
+                  .toList();
+            }
+          }
+        } catch (e) {
+          debugPrint('Storage: 草稿解密失败，回退明文: $e');
+        }
+      }
+    }
     final list = await _readList(_draftsFile);
     return list
         .whereType<Map>()
@@ -286,8 +313,40 @@ class StorageService {
         .toList();
   }
 
-  Future<void> saveDrafts(List<Article> drafts) =>
-      _write(_draftsFile, drafts.map((e) => e.toJson()).toList());
+  Future<void> saveDrafts(List<Article> drafts) async {
+    final plain = const JsonEncoder.withIndent('  ')
+        .convert(drafts.map((e) => e.toJson()).toList());
+    // 加密开启时写入加密文件
+    if (draftsEncryptor != null) {
+      final enc = draftsEncryptor!(plain);
+      if (enc != null) {
+        await _writeRaw(encDraftsFile, enc);
+        return;
+      }
+    }
+    await _writeRaw(_draftsFile, plain);
+  }
+
+  /// 读取原始文件内容（不存在返回 null）
+  Future<String?> _readRaw(String name) async {
+    try {
+      final f = await _file(name);
+      if (!await f.exists()) return null;
+      final text = await f.readAsString();
+      return text;
+    } catch (e) {
+      debugPrint('Storage: 读取 $name 失败: $e');
+      return null;
+    }
+  }
+
+  /// 写入原始文本（原子写入）
+  Future<void> _writeRaw(String name, String content) async {
+    final f = await _file(name);
+    final tmp = File('${f.path}.tmp');
+    await tmp.writeAsString(content, flush: true);
+    await tmp.rename(f.path);
+  }
 
   Future<Directory> draftsDir() async {
     return mdArticlesDir();

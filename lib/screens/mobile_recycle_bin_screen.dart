@@ -13,7 +13,7 @@ import '../services/recycle_bin_service.dart';
 /// 移动端回收站屏幕
 class MobileRecycleBinScreen extends StatefulWidget {
   final RecycleBinService recycleBinService;
-  final void Function(String entryId)? onRestore;
+  final void Function(RecycleBinEntry? entry, String restoredPath)? onRestore;
 
   const MobileRecycleBinScreen({
     super.key,
@@ -69,8 +69,15 @@ class _MobileRecycleBinScreenState extends State<MobileRecycleBinScreen> {
     if (confirmed != true) return;
 
     try {
-      await widget.recycleBinService.restore(entryId);
-      widget.onRestore?.call(entryId);
+      final restoredPath = await widget.recycleBinService.restore(entryId);
+      RecycleBinEntry? entry;
+      for (final e in _entries) {
+        if (e.id == entryId) {
+          entry = e;
+          break;
+        }
+      }
+      widget.onRestore?.call(entry, restoredPath);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('文章已恢复')),

@@ -9,6 +9,7 @@ import '../models/git_provider.dart';
 import '../models/repo_config.dart';
 import '../services/github_service.dart';
 import '../services/storage_service.dart';
+import '../services/draft_encryption_service.dart';
 import '../services/webdav_service.dart';
 import '../l10n/app_localizations.dart';
 import '../models/ui_settings.dart';
@@ -67,11 +68,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _siteNameCtrl;
   late TextEditingController _siteBioCtrl;
 
+  /// 设置页折叠的分区 key 集合（默认全部折叠，保持上次状态）
+  late final Set<String> _collapsedSettingsSections;
+
   @override
   void initState() {
     super.initState();
     _siteNameCtrl = TextEditingController(text: widget.settings.siteName);
     _siteBioCtrl = TextEditingController(text: widget.settings.siteBio);
+    _collapsedSettingsSections =
+        (widget.settings.ui.collapsedSettingsSections.isNotEmpty
+                ? widget.settings.ui.collapsedSettingsSections
+                : _settingsSectionKeys)
+            .toSet();
     _loadVersion();
   }
 
@@ -296,9 +305,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.all(16),
       children: [
         // ── 基本信息 ──
-        _sectionTitle(l10n.translate('settings_basic_info')),
-        const SizedBox(height: 8),
-        _settingsCard([
+        _section('basic_info', l10n.translate('settings_basic_info'), [
           _field(
             label: l10n.translate('website_name'),
             value: s.siteName,
@@ -339,9 +346,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 20),
         // ── 简易普通用户模式 ──
         if (sectionVisible('app_mode')) ...[
-          _sectionTitle('简易普通用户模式'),
-          const SizedBox(height: 8),
-          _settingsCard([
+          _section('app_mode', '简易普通用户模式', [
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: mode == AppMode.simple,
@@ -366,9 +371,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
           const SizedBox(height: 20),
           if (mode == AppMode.simple) ...[
-            _sectionTitle('简易模式显示功能'),
-            const SizedBox(height: 8),
-            _settingsCard([
+            _section('simple_extras', '简易模式显示功能', [
               const Padding(
                 padding: EdgeInsets.only(bottom: 4),
                 child: Text(
@@ -383,9 +386,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
 
         // ── GitHub 登录令牌 ──
-        _sectionTitle(l10n.translate('settings_github_token')),
-        const SizedBox(height: 8),
-        _settingsCard([
+        _section('github_token', l10n.translate('settings_github_token'), [
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.key_outlined),
@@ -507,9 +508,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── WebDAV 云端备份 ──
-        _sectionTitle(l10n.translate('settings_webdav')),
-        const SizedBox(height: 8),
-        _settingsCard([
+        _section('webdav', l10n.translate('settings_webdav'), [
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.cloud_outlined),
@@ -552,9 +551,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── 草稿自动保存 ──
-        _sectionTitle(l10n.translate('settings_draft_backup')),
-        const SizedBox(height: 8),
-        _settingsCard([
+        _section('draft_backup', l10n.translate('settings_draft_backup'), [
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: Text(l10n.translate('local_auto_save')),
@@ -681,9 +678,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── 全局文件存储目录 ──
-        _sectionTitle(l10n.translate('settings_global_storage')),
-        const SizedBox(height: 8),
-        _settingsCard([
+        _section('global_storage', l10n.translate('settings_global_storage'), [
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(
@@ -745,9 +740,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── 发布状态预设 ──
-        _sectionTitle(l10n.translate('settings_publish_status')),
-        const SizedBox(height: 8),
-        _settingsCard([
+        _section('publish_status', l10n.translate('settings_publish_status'), [
           _statusPresetManager(s),
           const Divider(height: 24),
           Text(
@@ -758,9 +751,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── 网络超时设置 ──
-        _sectionTitle(l10n.translate('settings_network')),
-        const SizedBox(height: 8),
-        _settingsCard([
+        _section('network', l10n.translate('settings_network'), [
           DropdownButtonFormField<int>(
             value: s.httpTimeoutSeconds,
             decoration: InputDecoration(
@@ -801,9 +792,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── 写作界面主题与背景 ──
-        _sectionTitle('写作界面主题'),
-        const SizedBox(height: 8),
-        _settingsCard([
+        _section('editor_theme', '写作界面主题', [
           Text(
             '全屏背景铺满整机，消除分层边框；标题与正文透明无底色。',
             style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
@@ -903,9 +892,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── 图床（GitHub + CDN）──
-        _sectionTitle(l10n.translate('settings_image_host')),
-        const SizedBox(height: 8),
-        _settingsCard([
+        _section('image_host', l10n.translate('settings_image_host'), [
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.sync_alt),
@@ -1022,9 +1009,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── AI 中转站 ──
-        _sectionTitle(l10n.translate('settings_ai_relay')),
-        const SizedBox(height: 8),
-        _settingsCard([
+        _section('ai_relay', l10n.translate('settings_ai_relay'), [
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.smart_toy_outlined),
@@ -1088,9 +1073,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── AI 调度器 ──
-        _sectionTitle(l10n.translate('settings_ai_scheduler')),
-        const SizedBox(height: 8),
-        _settingsCard([
+        _section('ai_scheduler', l10n.translate('settings_ai_scheduler'), [
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: Text(l10n.translate('auto_best_mode')),
@@ -1149,11 +1132,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ]),
 
         const SizedBox(height: 20),
+        // ── 隐私与加密 ──
+        _section('privacy_encryption', '隐私与加密', [
+          _buildDraftEncryptionTile(),
+        ]),
+
+        const SizedBox(height: 20),
         // ── 站点与 PWA ──
         if (sectionVisible('site_pwa')) ...[
-        _sectionTitle(l10n.translate('settings_site_pwa')),
-        const SizedBox(height: 8),
-        _settingsCard([
+        _section('site_pwa', l10n.translate('settings_site_pwa'), [
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.language),
@@ -1275,9 +1262,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── 关于 ──
-        _sectionTitle(l10n.translate('settings_about')),
-        const SizedBox(height: 8),
-        _settingsCard([
+        _section('about', l10n.translate('settings_about'), [
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: Text(
@@ -1402,17 +1387,358 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _sectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, left: 4),
-      child: Text(
-        title,
-        style: const TextStyle(
-          fontWeight: FontWeight.w700,
-          fontSize: 15,
-          color: Color(0xFF0F172A),
+  /// 设置页所有可折叠分区的 key（默认全折叠）
+  static const List<String> _settingsSectionKeys = [
+    'basic_info',
+    'app_mode',
+    'github_token',
+    'webdav',
+    'draft_backup',
+    'global_storage',
+    'publish_status',
+    'network',
+    'editor_theme',
+    'image_host',
+    'ai_relay',
+    'ai_scheduler',
+    'privacy_encryption',
+    'site_pwa',
+    'about',
+  ];
+
+  /// 草稿加密设置项
+  Widget _buildDraftEncryptionTile() {
+    return StatefulBuilder(
+      builder: (context, setState) {
+        final encEnabled = DraftEncryptionService.enabled;
+        final unlocked = DraftEncryptionService.unlocked;
+        return Column(
+          children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.lock_outline),
+              title: const Text('草稿内容加密'),
+              subtitle: Text(
+                encEnabled
+                    ? (unlocked
+                          ? '草稿已加密保存，解锁密码在本机'
+                          : '加密已开启，需输入密码解锁')
+                    : '对本地草稿内容 AES-256 加密',
+              ),
+              trailing: Switch(
+                value: encEnabled,
+                onChanged: (v) => _toggleDraftEncryption(v),
+              ),
+            ),
+            if (encEnabled && unlocked) ...[
+              Padding(
+                padding: const EdgeInsets.only(left: 40),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.password, size: 18),
+                    label: const Text('修改密码'),
+                    onPressed: _showChangePasswordDialog,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  /// 切换草稿加密开关
+  Future<void> _toggleDraftEncryption(bool enable) async {
+    if (enable) {
+      // 开启：首次需设置密码
+      await _showSetPasswordDialog();
+    } else {
+      // 关闭：需验证当前密码
+      await _showDisableEncryptionDialog();
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// 设置加密密码对话框
+  Future<void> _showSetPasswordDialog() async {
+    final pwdCtrl = TextEditingController();
+    final confCtrl = TextEditingController();
+    final errCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('开启草稿加密'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('开启后草稿内容将加密保存。请设置至少 4 位密码。'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: pwdCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: '密码'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: confCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: '确认密码'),
+            ),
+            const SizedBox(height: 8),
+            ListenableBuilder(
+              listenable: errCtrl,
+              builder: (context, _) => Text(
+                errCtrl.text,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ),
+          ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final storage = widget.storage;
+              final err = DraftEncryptionService.setPassword(
+                pwdCtrl.text,
+                confCtrl.text,
+                storage,
+              );
+              if (err != null) {
+                errCtrl.text = err;
+                if (ctx.mounted) setState(() {});
+                return;
+              }
+              // 加密现有草稿
+              await DraftEncryptionService.encryptExistingDrafts(storage);
+              if (ctx.mounted) Navigator.pop(ctx, true);
+            },
+            child: const Text('开启'),
+          ),
+        ],
       ),
+    );
+    if (ok == true && mounted) {
+      widget.onShowToast('草稿加密已开启');
+      setState(() {});
+    }
+  }
+
+  /// 解锁 / 输入密码对话框
+  Future<bool> _showUnlockDialog() async {
+    final pwdCtrl = TextEditingController();
+    final errCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('输入密码'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: pwdCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: '密码'),
+            ),
+            ListenableBuilder(
+              listenable: errCtrl,
+              builder: (context, _) => Text(
+                errCtrl.text,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final storage = widget.storage;
+              final err = DraftEncryptionService.verifyPassword(
+                pwdCtrl.text,
+                storage,
+              );
+              if (err != null) {
+                errCtrl.text = err;
+                setState(() {});
+                return;
+              }
+              Navigator.pop(ctx, true);
+            },
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  /// 关闭加密对话框
+  Future<void> _showDisableEncryptionDialog() async {
+    final unlockedBefore = DraftEncryptionService.unlocked;
+    // 未解锁先解锁
+    if (!unlockedBefore) {
+      final ok = await _showUnlockDialog();
+      if (!ok) return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('关闭草稿加密'),
+        content: const Text('关闭后草稿将保存为明文。确定继续吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      final err = await DraftEncryptionService.disable(widget.storage);
+      if (err != null) {
+        widget.onShowToast(err);
+      } else {
+        widget.onShowToast('草稿加密已关闭');
+      }
+      setState(() {});
+    }
+  }
+
+  /// 修改密码对话框
+  Future<void> _showChangePasswordDialog() async {
+    final oldCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+    final confCtrl = TextEditingController();
+    final errCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('修改密码'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: oldCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: '当前密码'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: newCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: '新密码'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: confCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: '确认新密码'),
+            ),
+            ListenableBuilder(
+              listenable: errCtrl,
+              builder: (context, _) => Text(
+                errCtrl.text,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final storage = widget.storage;
+              final err = DraftEncryptionService.changePassword(
+                oldCtrl.text,
+                newCtrl.text,
+                confCtrl.text,
+                storage,
+              );
+              if (err != null) {
+                errCtrl.text = err;
+                setState(() {});
+                return;
+              }
+              Navigator.pop(ctx, true);
+            },
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      widget.onShowToast('密码已修改');
+    }
+  }
+
+  /// 切换设置分区折叠状态并持久化
+  void _toggleSettingsSection(String key) {
+    setState(() {
+      if (_collapsedSettingsSections.contains(key)) {
+        _collapsedSettingsSections.remove(key);
+      } else {
+        _collapsedSettingsSections.add(key);
+      }
+    });
+    final ns = widget.settings.copyWith(
+      ui: widget.settings.ui.copyWith(
+        collapsedSettingsSections: _collapsedSettingsSections.toList()..sort(),
+      ),
+    );
+    widget.onSettingsChanged(ns);
+  }
+  /// 可折叠分区：标题行（点击展开/折叠）+ 内容卡片
+  Widget _section(String key, String title, List<Widget> children) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final collapsed = _collapsedSettingsSections.contains(key);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: () => _toggleSettingsSection(key),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            child: Row(
+              children: [
+                Icon(
+                  collapsed ? Icons.chevron_right : Icons.expand_more,
+                  size: 18,
+                  color: isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF64748B),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: isDark ? Colors.white.withOpacity(0.9) : const Color(0xFF0F172A),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (!collapsed) _settingsCard(children),
+      ],
     );
   }
 

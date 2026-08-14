@@ -23,12 +23,55 @@ import io.flutter.plugin.common.MethodChannel;
 
 public class MainActivity extends FlutterActivity {
     private static final String CHANNEL = "hexo/native";
+    private static final String QN_CHANNEL = "hexo/quick_note";
     private static final int REQ_PICK_IMAGE = 0x4858;
     private static final int REQ_PICK_FILE = 0x4859;
     private static final int REQ_PICK_DIR = 0x4860;
     private MethodChannel.Result pendingPickResult;
     private MethodChannel.Result pendingPickFileResult;
     private MethodChannel.Result pendingPickDirResult;
+    /** 待投递的速记参数缓存（Flutter 拉取后清空） */
+    private java.util.Map<String, String> pendingQuickNote;
+    /** Flutter 侧监听回调（用于热启动主动推送） */
+    private MethodChannel quickNoteChannel;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        // 冷启动：缓存 Intent 中的速记参数，供 Flutter 引擎就绪后拉取
+        captureQuickNote(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        // 热启动：缓存 + 主动推送
+        boolean captured = captureQuickNote(intent);
+        if (captured && quickNoteChannel != null) {
+            try {
+                quickNoteChannel.invokeMethod("onQuickNote", pendingQuickNote);
+                pendingQuickNote = null;
+            } catch (Exception e) {
+                android.util.Log.d("QuickNote", "push failed, keep cached", e);
+            }
+        }
+    }
+
+    /** 从 Intent 提取速记参数存入缓存，返回是否携带 */
+    private boolean captureQuickNote(Intent intent) {
+        if (intent == null) return false;
+        String mode = intent.getStringExtra(QuickNoteIntent.EXTRA_MODE);
+        if (mode == null) return false;
+        java.util.Map<String, String> data = new java.util.HashMap<>();
+        data.put("mode", mode);
+        String text = intent.getStringExtra(QuickNoteIntent.EXTRA_TEXT);
+        if (text != null && !text.isEmpty()) {
+            data.put("text", text);
+        }
+        pendingQuickNote = data;
+        return true;
+    }
 
     @Override
     public void configureFlutterEngine(@NonNull FlutterEngine flutterEngine) {
@@ -43,6 +86,12 @@ public class MainActivity extends FlutterActivity {
                             result.success(getExternalFilesDir(null) != null
                                     ? getExternalFilesDir(null).getAbsolutePath()
                                     : getFilesDir().getAbsolutePath());
+                            break;
+                        case "getLaunchQuickNote":
+                            // 拉取并清空缓存的速记参数
+                            java.util.Map<String, String> cached = pendingQuickNote;
+                            pendingQuickNote = null;
+                            result.success(cached);
                             break;
                         case "pickImage":
                             if (pendingPickResult != null) {
@@ -101,6 +150,19 @@ public class MainActivity extends FlutterActivity {
                             result.notImplemented();
                     }
                 });
+
+        // 原生 → Flutter 反向通道：热启动时主动推送速记参数
+        quickNoteChannel = new MethodChannel(
+                flutterEngine.getDartExecutor().getBinaryMessenger(), QN_CHANNEL);
+        quickNoteChannel.setMethodCallHandler((call, result) -> {
+            if ("getLaunchQuickNote".equals(call.method)) {
+                java.util.Map<String, String> cached = pendingQuickNote;
+                pendingQuickNote = null;
+                result.success(cached);
+            } else {
+                result.notImplemented();
+            }
+        });
     }
 
     private void openFolder(MethodCall call, MethodChannel.Result result) {

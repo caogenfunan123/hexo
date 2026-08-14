@@ -15,6 +15,8 @@ extension EditorPublishExt on _RootShellState {
       _editorStatus = '本地已保存';
     });
     await _saveDraft(a);
+    // 记录今日写作字数增量
+    _recordWritingStats(a);
     // 动态 CMS 站点：同时保存到 SQLite 草稿表
     if (siteManager.isDynamicSite) {
       final adapter = siteManager.currentAdapter;
@@ -36,6 +38,19 @@ extension EditorPublishExt on _RootShellState {
     logService.add('保存草稿', '标题: ${a.title.isNotEmpty ? a.title : "(无标题)"}');
     if (mounted) _showToast('草稿已保存到本地');
 
+  }
+
+  /// 记录写作字数增量（按草稿 id 差分，避免重复累计）
+  void _recordWritingStats(Article a) {
+    final stats = _statsService;
+    if (stats == null) return;
+    final words = WritingStatsService.countWords(a.content);
+    final last = _lastWordCounts[a.id] ?? 0;
+    final added = words - last;
+    _lastWordCounts[a.id] = words;
+    if (added > 0) {
+      stats.recordTodayWords(added);
+    }
   }
 
   Future<void> _publish() async {
@@ -874,6 +889,15 @@ extension EditorPublishExt on _RootShellState {
   }
 
   Future<void> _deleteDraft(Article a) async {
+    // 先移入回收站，防止误删除
+    final rb = _recycleBin;
+    if (rb != null) {
+      try {
+        final dir = await storage.mdArticlesDir();
+        final filePath = '${dir.path}/${a.id}_${a.fileName()}';
+        await rb.moveToTrash(filePath, a);
+      } catch (e) { debugPrint('RecycleBin: moveToTrash failed: $e'); }
+    }
     drafts.removeWhere((e) => e.id == a.id);
     await storage.saveDrafts(drafts);
     logService.add('删除草稿', '标题: ${a.title.isNotEmpty ? a.title : "(无标题)"}');

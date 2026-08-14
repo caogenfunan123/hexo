@@ -152,7 +152,7 @@ class _EditorScreenState extends State<EditorScreen> {
     await widget.onSaveLocal(a);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('草稿已保存到本地')),
+        const SnackBar(content: Text('已保存到首页')),
       );
     }
 
@@ -769,7 +769,7 @@ class _EditorScreenState extends State<EditorScreen> {
             icon: const Icon(Icons.visibility_outlined),
           ),
           IconButton(
-            tooltip: '保存草稿',
+            tooltip: '保存到首页',
             onPressed: _busy ? null : _saveLocal,
             icon: const Icon(Icons.save_outlined),
           ),
@@ -1162,7 +1162,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 child: OutlinedButton.icon(
                   onPressed: _busy ? null : _saveLocal,
                   icon: const Icon(Icons.drafts_outlined),
-                  label: const Text('存草稿'),
+                  label: const Text('保存到首页'),
                 ),
               ),
               const SizedBox(width: 12),

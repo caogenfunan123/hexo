@@ -22,6 +22,31 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 桌面小部件：一键速记 -->
+        <receiver
+            android:name=".QuickNoteWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_note_widget_info" />
+        </receiver>
+
+        <!-- 通知栏快捷磁贴：下拉一键速记 -->
+        <service
+            android:name=".QuickNoteTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_foreground"
+            android:label="@string/quick_note_tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

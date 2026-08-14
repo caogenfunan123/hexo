@@ -94,6 +94,7 @@ import 'widgets/ai_selection_edit_dialog.dart';
 import '../widgets/typewriter_scroll.dart';
 import '../widgets/orientation_guard.dart';
 import '../services/site_isolation_service.dart';
+import '../services/draft_encryption_service.dart';
 import '../services/template_sync_service.dart';
 import '../services/full_text_search_isolate.dart';
 
@@ -520,6 +521,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   Future<void> _initNewServices() async {
     try {
       final root = await storage.root;
+      // 草稿加密：加载元数据并注册加解密钩子
+      await DraftEncryptionService.load(storage);
+      StorageService.draftsEncryptor = DraftEncryptionService.encryptJson;
+      StorageService.draftsDecryptor = DraftEncryptionService.decryptJson;
       siteIsolation = SiteIsolationService(root);
       await siteIsolation.init();
       // 日志持久化
@@ -1399,13 +1404,166 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   Future<void> _deleteDraft(Article a) async {
     // 先移入回收站
     try {
-      final filePath = '${(await storage.root).path}/drafts/${a.fileName()}';
+      final dir = await storage.mdArticlesDir();
+      final filePath = '${dir.path}/${a.id}_${a.fileName()}';
       await recycleBinService.moveToTrash(filePath, a);
-    } catch (e) { debugPrint('Shell: export failed: $e'); }
+    } catch (e) { debugPrint('Shell: moveToTrash failed: $e'); }
     drafts.removeWhere((e) => e.id == a.id);
     await storage.saveDrafts(drafts);
     logService.add('删除草稿', '标题: ${a.title.isNotEmpty ? a.title : "(无标题)"}');
     if (mounted) setState(() {});
+  }
+
+  // ============================================================
+  // 文章管理（首页 / 侧边栏长按操作）
+  // ============================================================
+
+  /// 重命名文章：更新标题并保存
+  Future<void> _renameArticle(Article a) async {
+    final ctrl = TextEditingController(text: a.title);
+    final newTitle = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('重命名文章'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: '新标题',
+            hintText: '输入新的文章标题',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+    if (newTitle == null || newTitle.isEmpty || newTitle == a.title) return;
+    final idx = drafts.indexWhere((e) => e.id == a.id);
+    if (idx < 0) return;
+    final updated = drafts[idx].copyWith(
+      title: newTitle,
+      updatedAt: DateTime.now(),
+    );
+    setState(() => drafts[idx] = updated);
+    await storage.saveDrafts(drafts);
+    await storage.exportDraftMarkdown(updated);
+    logService.add('重命名文章', '「${a.title}」→「$newTitle」');
+    if (mounted) _showToast('已重命名为「$newTitle」');
+  }
+
+  /// 移动文章到卷宗：弹出卷宗选择器（含「未分类」与新建卷宗）
+  Future<void> _moveArticleVolume(Article a) async {
+    final volumes = <String>{};
+    for (final d in drafts) {
+      final v = d.volume?.trim();
+      if (v != null && v.isNotEmpty) volumes.add(v);
+    }
+    final volList = volumes.toList()..sort();
+
+    String? current = a.volume?.trim();
+    String? selected = current;
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) {
+          final isNew = selected != null && !volList.contains(selected);
+          final ctrl = TextEditingController(
+            text: isNew ? selected! : '',
+          );
+          return AlertDialog(
+            title: const Text('移动到卷宗'),
+            content: SizedBox(
+              width: 320,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('选择目标卷宗：', style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('未分类'),
+                        selected: selected == null || selected!.isEmpty,
+                        onSelected: (_) => setDlgState(() => selected = null),
+                      ),
+                      ...volList.map((v) => ChoiceChip(
+                        label: Text(v),
+                        selected: selected == v,
+                        onSelected: (_) => setDlgState(() => selected = v),
+                      )),
+                      ChoiceChip(
+                        avatar: const Icon(Icons.add, size: 16),
+                        label: const Text('新建卷宗'),
+                        selected: isNew,
+                        onSelected: (_) => setDlgState(() => selected = ''),
+                      ),
+                    ],
+                  ),
+                  if (isNew) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: ctrl,
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        labelText: '卷宗名称',
+                        hintText: '输入新卷宗名称',
+                      ),
+                      onChanged: (v) => setDlgState(() => selected = v.trim()),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              FilledButton(
+                onPressed: () {
+                  final v = (selected == null || selected!.isEmpty)
+                      ? null
+                      : selected;
+                  Navigator.pop(ctx, v);
+                },
+                child: const Text('确定'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (result == null) return;
+    final idx = drafts.indexWhere((e) => e.id == a.id);
+    if (idx < 0) return;
+    final updated = drafts[idx].copyWith(
+      volume: result.isEmpty ? null : result,
+      updatedAt: DateTime.now(),
+    );
+    setState(() => drafts[idx] = updated);
+    await storage.saveDrafts(drafts);
+    await storage.exportDraftMarkdown(updated);
+    logService.add('移动卷宗', '「${a.title}」→ ${result.isEmpty ? '未分类' : result}');
+    if (mounted) _showToast('已移动到 ${result.isEmpty ? '未分类' : result}');
+  }
+
+  /// 导出文章为 Markdown 文件
+  Future<void> _exportArticle(Article a) async {
+    try {
+      await storage.exportDraftMarkdown(a);
+      final dir = await storage.draftsDir();
+      logService.add('导出文章', '标题: ${a.title.isNotEmpty ? a.title : "(无标题)"}');
+      if (mounted) _showToast('已导出到 ${dir.path}');
+    } catch (e) {
+      if (mounted) _showToast('导出失败: $e');
+    }
   }
 
   Future<void> _refreshDraftsFromStorage() async {
@@ -3009,6 +3167,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       onOpenArticle: (a) => _openExistingArticle(a),
       onNewArticle: _newArticle,
       onNewArticleInVolume: _newArticle,
+      onRenameArticle: _renameArticle,
+      onMoveArticleVolume: _moveArticleVolume,
+      onExportArticle: _exportArticle,
+      onDeleteArticle: _deleteDraft,
     ));
   }
 
@@ -3244,8 +3406,20 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   void _openRecycleBin() {
     _openTab('recycle_bin', '回收站', Icons.delete_outline, RecycleBinScreen(
       recycleBinService: recycleBinService,
-      onRestored: (path) {
+      onRestored: (entry, path) {
         _showToast('已恢复: $path');
+        // 把恢复的文章重新加入草稿列表并持久化
+        final article = entry?.article;
+        if (article != null) {
+          final i = drafts.indexWhere((d) => d.id == article.id);
+          if (i >= 0) {
+            drafts[i] = article;
+          } else {
+            drafts.insert(0, article);
+          }
+          drafts.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+          storage.saveDrafts(drafts);
+        }
         // 恢复后刷新草稿列表
         _refreshDraftsFromStorage();
       },
@@ -7305,6 +7479,12 @@ $htmlContent
     onPublish: _handlePublish,
     // 文件操作
     onOpenFile: _openFileDialog,
+    // 文章管理
+    onOpenArticle: (a) => _openExistingArticle(a),
+    onRenameArticle: _renameArticle,
+    onMoveArticleVolume: _moveArticleVolume,
+    onExportArticle: _exportArticle,
+    onDeleteArticle: _deleteDraft,
   );
 
   @override
@@ -7393,6 +7573,12 @@ $htmlContent
           siteManager: siteManager,
           mode: settings.ui.appMode,
           simpleModeExtras: settings.ui.simpleModeExtras,
+          collapsedSections: settings.ui.collapsedLeftSections,
+          onCollapsedSectionsChanged: (keys) {
+            _updateSettings(settings.copyWith(
+              ui: settings.ui.copyWith(collapsedLeftSections: keys),
+            ));
+          },
         ),
 
       if (!layout.leftPanelExpanded) _collapseToggle(),

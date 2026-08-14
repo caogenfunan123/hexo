@@ -58,6 +58,21 @@ class UiSettings {
   // 简易模式下手动加回显示的入口 id 集合（见 FeatureEntry）
   final List<String> simpleModeExtras;
 
+  // 桌面侧边栏折叠的分组 key 集合（保持上次折叠状态）
+  final List<String> collapsedLeftSections;
+
+  // 设置页折叠的分区 key 集合（保持上次折叠状态）
+  final List<String> collapsedSettingsSections;
+
+  // 速记锚点：新建速记草稿时自动插入的文本位置（如 "## 灵感\n"）
+  final String quickNoteAnchor;
+
+  // 时间戳插入格式：date / datetime / time / yyyy-mm-dd 等
+  final String timestampFormat;
+
+  // 是否在速记草稿自动插入时间戳（配合锚点）
+  final bool quickNoteTimestamp;
+
   const UiSettings({
     this.siteAvatar = '',
     this.siteName = '',
@@ -79,6 +94,11 @@ class UiSettings {
     this.editorTheme = const EditorTheme(),
     this.appMode = AppMode.simple,
     this.simpleModeExtras = const [],
+    this.collapsedLeftSections = const [],
+    this.collapsedSettingsSections = const [],
+    this.quickNoteAnchor = '',
+    this.timestampFormat = 'date',
+    this.quickNoteTimestamp = false,
   });
 
   /// 向后兼容：首个部署钩子
@@ -105,6 +125,11 @@ class UiSettings {
     EditorTheme? editorTheme,
     AppMode? appMode,
     List<String>? simpleModeExtras,
+    List<String>? collapsedLeftSections,
+    List<String>? collapsedSettingsSections,
+    String? quickNoteAnchor,
+    String? timestampFormat,
+    bool? quickNoteTimestamp,
   }) {
     return UiSettings(
       siteAvatar: siteAvatar ?? this.siteAvatar,
@@ -127,6 +152,11 @@ class UiSettings {
       editorTheme: editorTheme ?? this.editorTheme,
       appMode: appMode ?? this.appMode,
       simpleModeExtras: simpleModeExtras ?? this.simpleModeExtras,
+      collapsedLeftSections: collapsedLeftSections ?? this.collapsedLeftSections,
+      collapsedSettingsSections: collapsedSettingsSections ?? this.collapsedSettingsSections,
+      quickNoteAnchor: quickNoteAnchor ?? this.quickNoteAnchor,
+      timestampFormat: timestampFormat ?? this.timestampFormat,
+      quickNoteTimestamp: quickNoteTimestamp ?? this.quickNoteTimestamp,
     );
   }
 
@@ -151,6 +181,11 @@ class UiSettings {
     'editorTheme': editorTheme.toJson(),
     'appMode': appMode.name,
     'simpleModeExtras': simpleModeExtras,
+    'collapsedLeftSections': collapsedLeftSections,
+    'collapsedSettingsSections': collapsedSettingsSections,
+    'quickNoteAnchor': quickNoteAnchor,
+    'timestampFormat': timestampFormat,
+    'quickNoteTimestamp': quickNoteTimestamp,
   };
 
   factory UiSettings.fromJson(Map<String, dynamic> j) => UiSettings(
@@ -187,6 +222,11 @@ class UiSettings {
         : const EditorTheme(),
     appMode: AppMode.fromKey(j['appMode']),
     simpleModeExtras: _parseList(j['simpleModeExtras'], const []),
+    collapsedLeftSections: _parseList(j['collapsedLeftSections'], const []),
+    collapsedSettingsSections: _parseList(j['collapsedSettingsSections'], const []),
+    quickNoteAnchor: j['quickNoteAnchor']?.toString() ?? '',
+    timestampFormat: j['timestampFormat']?.toString() ?? 'date',
+    quickNoteTimestamp: j['quickNoteTimestamp'] == true,
   );
 
   static List<String> _parseList(dynamic raw, List<String> fallback) {
