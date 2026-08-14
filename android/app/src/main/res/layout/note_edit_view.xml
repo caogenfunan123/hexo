@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 悬浮速记窗（透明 Activity 形式，复刻 QuickDaily NoteEditActivity）：
+     全屏半透明遮罩 + 居中偏上悬浮卡片，点击遮罩关闭。
+     无需 SYSTEM_ALERT_WINDOW 悬浮窗权限，兼容所有 ROM。 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/note_edit_backdrop"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#80000000"
+    android:clickable="true"
+    android:focusable="true">
+
+    <!-- 悬浮输入卡片 -->
+    <LinearLayout
+        android:id="@+id/note_edit_card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:orientation="vertical"
+        android:background="@drawable/floating_note_bg">
+
+        <!-- 标题栏 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="12dp"
+            android:paddingEnd="4dp"
+            android:background="#0D000000">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="速记"
+                android:textColor="#212121"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:singleLine="true" />
+
+            <ImageButton
+                android:id="@+id/note_save_btn"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_check"
+                android:contentDescription="保存" />
+
+            <ImageButton
+                android:id="@+id/note_close_btn"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_close"
+                android:contentDescription="关闭" />
+        </LinearLayout>
+
+        <!-- 输入区 -->
+        <EditText
+            android:id="@+id/note_input"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="@android:color/transparent"
+            android:gravity="top|start"
+            android:hint="写点什么..."
+            android:inputType="textMultiLine|textCapSentences"
+            android:imeOptions="actionDone"
+            android:maxLines="50"
+            android:paddingStart="14dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="14dp"
+            android:paddingBottom="4dp"
+            android:textColor="#212121"
+            android:textColorHint="#9E9E9E"
+            android:textSize="15sp"
+            android:importantForAutofill="no" />
+
+        <!-- 底部工具栏 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="4dp"
+            android:paddingEnd="8dp">
+
+            <ImageButton
+                android:id="@+id/note_tool_ts"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_schedule"
+                android:contentDescription="插入时间戳" />
+
+            <ImageButton
+                android:id="@+id/note_tool_bold"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_format_bold"
+                android:contentDescription="加粗" />
+
+            <ImageButton
+                android:id="@+id/note_tool_list"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_list"
+                android:contentDescription="列表" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <Button
+                android:id="@+id/note_save_text_btn"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:layout_gravity="center_vertical"
+                android:backgroundTint="#4C8DFF"
+                android:text="保存"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:minWidth="72dp" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

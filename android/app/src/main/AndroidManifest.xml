@@ -39,14 +39,15 @@
                 android:resource="@xml/quick_note_widget_info" />
         </receiver>
 
-        <!-- 速记中转 Activity：小部件/磁贴点击后瞬启，检查权限并启动悬浮速记窗 -->
+        <!-- 速记悬浮窗（透明 Activity 形式，无需悬浮窗权限）：小部件/磁贴点击后直接弹出 -->
         <activity
             android:name=".QuickNoteLauncherActivity"
             android:exported="false"
             android:excludeFromRecents="true"
             android:launchMode="standard"
             android:noHistory="true"
-            android:theme="@style/Theme.Hexo.Launcher" />
+            android:theme="@style/Theme.Hexo.Launcher"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- 悬浮速记窗服务 -->
         <service

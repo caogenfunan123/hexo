@@ -158,11 +158,26 @@ Future<List<Article>> importNativeQuickNotes() async {
 
 ## 五、权限
 
+### 5.1 现行方案（第三轮迭代后）：透明 Activity 悬浮窗
+
+| 权限 | 用途 | 申请时机 |
+|---|---|---|
+| （无需悬浮窗权限） | 悬浮速记窗改为透明 Activity（`QuickNoteLauncherActivity` + `note_edit_view.xml`）直接弹出编辑卡片，不经过 WindowManager，不依赖前台服务 | 点击小部件时系统直接拉起 Activity |
+| FOREGROUND_SERVICE(+SPECIAL_USE) | 仅作兜底保留（FloatingNoteService），当前入口不再启动 | 无 |
+
+> 变更原因：用户实测 `Settings.canDrawOverlays()` 返回 true 但 `addView(TYPE_APPLICATION_OVERLAY)` 被国产 ROM（MIUI/HyperOS/ColorOS/EMUI）拒绝，出现"无法显示悬浮窗"。改用 QuickDaily `NoteEditActivity` 同款透明 Activity 方案绕开 SYSTEM_ALERT_WINDOW 权限，兼容所有 ROM。
+>
+> 变更实现：`QuickNoteLauncherActivity` 由"权限检查中转"升级为"悬浮编辑窗本体"——加载 `note_edit_view` 布局（全屏半透明遮罩 + 居中偏上 88%×35% 输入卡片），点击遮罩/关闭键关闭，恢复/持久化草稿，插入时间戳/加粗/列表工具，保存写入 `<filesDir>/MD文章/` 并刷新三个小部件。`windowSoftInputMode="adjustResize"` 保证键盘弹出不遮挡输入区。
+
+### 5.2 历史方案（已废弃）：Overlay 悬浮窗 + 前台服务
+
 | 权限 | 用途 | 申请时机 |
 |---|---|---|
 | SYSTEM_ALERT_WINDOW | 系统悬浮窗 | 首次点小部件/磁贴未授权时引导去设置页 |
 | FOREGROUND_SERVICE(+SPECIAL_USE) | 悬浮窗前台服务保活 | 启动服务时自动 |
 | POST_NOTIFICATIONS | 前台服务通知 | Android 13+ 运行时 |
+
+> 该方案在第一、二轮迭代中实现，第三轮起被透明 Activity 方案取代。FloatingNoteService 代码与清单声明保留作兜底，但小部件/磁贴入口不再启动它。
 
 ## 六、风险与权衡
 

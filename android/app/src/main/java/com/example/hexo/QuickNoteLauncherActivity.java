@@ -1,106 +1,149 @@
 package com.example.hexo;
 
-import android.content.Intent;
+import android.app.Activity;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.util.Log;
+import android.view.Gravity;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageButton;
 import android.widget.Toast;
 
+import java.io.File;
+
 /**
- * 速记中转 Activity（透明，瞬时）：
+ * 悬浮速记窗（透明 Activity 形式，复刻 QuickDaily NoteEditActivity）。
  *
- * 点击桌面小部件 / 通知栏磁贴时先拉起本 Activity，由它统一做三件事：
- * 1. 检查悬浮窗权限，未授权时跳转系统授权页（授权返回后自动重试启动悬浮窗）；
- * 2. 通过 startForegroundService 启动 FloatingNoteService 弹出悬浮速记窗；
- * 3. 延迟 finish()，屏幕只短暂闪现透明页，不会打开应用主界面。
+ * 点击桌面小部件 / 磁贴时直接以透明 Activity 弹出悬浮速记卡片：
+ * 全屏半透明遮罩 + 居中偏上输入卡片，点击遮罩关闭。
  *
- * 为什么需要中转 Activity：Android 12+ 对「后台启动前台服务」有严格限制，
- * 部分厂商 ROM（MIUI / HarmonyOS / ColorOS 等）从 AppWidget 直接启动 FGS
- * 会被静默拦截导致点击无反应。经过一次 Activity 中转后属于前台启动，兼容性最好。
+ * 不需要 SYSTEM_ALERT_WINDOW 悬浮窗权限，也不依赖前台服务，
+ * 彻底绕开国产 ROM（MIUI / HyperOS / ColorOS / EMUI）对
+ * 系统悬浮窗和后台启动前台服务的拦截，兼容性最好。
  */
-public class QuickNoteLauncherActivity extends android.app.Activity {
+public class QuickNoteLauncherActivity extends Activity {
 
     private static final String TAG = "QuickNoteLauncher";
-    private static final int REQ_OVERLAY_PERMISSION = 0x0001;
 
-    private boolean mHandled = false;
+    private EditText mInput;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        overridePendingTransition(0, 0);
 
-        Log.d(TAG, "onCreate canDrawOverlays=" + FloatingNoteService.canDrawOverlays(this));
+        Log.d(TAG, "onCreate show floating note edit window");
 
-        if (savedInstanceState == null) {
-            handleLaunch();
-        }
+        setContentView(R.layout.note_edit_view);
+
+        mInput = findViewById(R.id.note_input);
+        View backdrop = findViewById(R.id.note_edit_backdrop);
+        View card = findViewById(R.id.note_edit_card);
+
+        // 悬浮卡片尺寸与位置：宽 88% 屏宽、高 35% 屏高，居中偏上
+        int screenW = getResources().getDisplayMetrics().widthPixels;
+        int screenH = getResources().getDisplayMetrics().heightPixels;
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) card.getLayoutParams();
+        lp.width = (int) (screenW * 0.88f);
+        lp.height = (int) (screenH * 0.35f);
+        lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        lp.topMargin = (int) (screenH * 0.2f);
+        card.setLayoutParams(lp);
+
+        // 点击遮罩关闭（关闭时自动保存草稿）
+        backdrop.setOnClickListener(v -> finish());
+
+        ImageButton saveBtn = findViewById(R.id.note_save_btn);
+        ImageButton closeBtn = findViewById(R.id.note_close_btn);
+        Button saveTextBtn = findViewById(R.id.note_save_text_btn);
+        ImageButton toolTs = findViewById(R.id.note_tool_ts);
+        ImageButton toolBold = findViewById(R.id.note_tool_bold);
+        ImageButton toolList = findViewById(R.id.note_tool_list);
+
+        saveBtn.setOnClickListener(v -> saveAndFinish());
+        saveTextBtn.setOnClickListener(v -> saveAndFinish());
+        closeBtn.setOnClickListener(v -> finish());
+
+        toolTs.setOnClickListener(v -> insertTimestamp());
+        toolBold.setOnClickListener(v -> wrapSelection("**"));
+        toolList.setOnClickListener(v -> toggleListPrefix());
+
+        // 恢复草稿
+        String draft = NativeQuickNoteStore.loadDraftText(this);
+        mInput.setText(draft);
+        int sel = NativeQuickNoteStore.loadDraftSelection(this);
+        if (sel > draft.length()) sel = draft.length();
+        mInput.setSelection(sel);
+
+        // 自动聚焦弹出键盘
+        mInput.requestFocus();
     }
 
-    private void handleLaunch() {
-        if (mHandled) return;
+    private void insertTimestamp() {
+        String ts = NativeQuickNoteStore.formatTimestamp("datetime");
+        int start = mInput.getSelectionStart();
+        int end = mInput.getSelectionEnd();
+        if (start < 0) start = mInput.length();
+        mInput.getText().replace(start, Math.max(end, start), ts);
+        mInput.setSelection(start + ts.length());
+    }
 
-        String source = getIntent().getStringExtra(FloatingNoteService.EXTRA_SOURCE);
-        if (source == null || source.isEmpty()) source = "widget";
+    private void wrapSelection(String wrap) {
+        int start = mInput.getSelectionStart();
+        int end = mInput.getSelectionEnd();
+        if (start < 0 || end < 0) return;
+        String sel = mInput.getText().subSequence(Math.min(start, end), Math.max(start, end)).toString();
+        mInput.getText().replace(start, end, wrap + sel + wrap);
+    }
 
-        if (!FloatingNoteService.canDrawOverlays(this)) {
-            // 未授权：跳转系统授权页，返回后由 onActivityResult 统一处理
-            // 此处不置 mHandled，授权成功返回后会自动重试启动悬浮窗
-            Intent permIntent = new Intent(
-                    android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    android.net.Uri.parse("package:" + getPackageName()));
-            permIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try {
-                startActivityForResult(permIntent, REQ_OVERLAY_PERMISSION);
-            } catch (Exception e) {
-                Log.e(TAG, "open overlay permission page failed", e);
-                Toast.makeText(this, "请在系统设置中开启悬浮窗权限", Toast.LENGTH_LONG).show();
-                finish();
-            }
+    private void toggleListPrefix() {
+        int start = mInput.getSelectionStart();
+        int end = mInput.getSelectionEnd();
+        String text = mInput.getText().toString();
+        if (start < 0) start = text.length();
+        int pos = Math.min(start, Math.max(end, 0));
+        String prefix = isTaskListLine(text, pos) ? "" : "- ";
+        mInput.getText().replace(pos, Math.max(end, pos), prefix);
+        mInput.setSelection(pos + prefix.length());
+    }
+
+    private boolean isTaskListLine(String text, int index) {
+        int lineStart = text.lastIndexOf('\n', index - 1) + 1;
+        return text.regionMatches(lineStart, "- ", 0, 2);
+    }
+
+    private void saveAndFinish() {
+        String text = mInput == null ? "" : mInput.getText().toString();
+        if (text.trim().isEmpty()) {
+            Toast.makeText(this, "内容为空", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        mHandled = true;
-        launchFloating(source);
-        // 延迟 finish：让前台服务完成前台启动，规避部分 ROM 滞后校验「后台启动 FGS」限制
-        new Handler(Looper.getMainLooper()).postDelayed(this::finish, 400);
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQ_OVERLAY_PERMISSION) {
-            Log.d(TAG, "returned from permission page canDrawOverlays="
-                    + FloatingNoteService.canDrawOverlays(this));
-            if (FloatingNoteService.canDrawOverlays(this)) {
-                handleLaunch();
-            } else {
-                // 用户未授权直接返回：结束透明页，下次点击再引导
-                finish();
-            }
+        File saved = NativeQuickNoteStore.saveToMd(this, null, "datetime", true, text);
+        if (saved != null) {
+            Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show();
+            // 同步刷新所有桌面小部件
+            QuickNoteWidgetProvider.refreshAll(this);
+            TaskWidgetProvider.refreshAll(this);
+            ReadWidgetProvider.refreshAll(this);
+        } else {
+            Toast.makeText(this, "保存失败", Toast.LENGTH_SHORT).show();
+            return;
         }
-    }
-
-    private void launchFloating(String source) {
-        Intent serviceIntent = FloatingNoteService.showIntent(this, source, null);
-        try {
-            // 直接 startService 而非 startForegroundService：
-            // 服务在 onCreate 内自行调用 startForeground 转前台（成功则 FGS 保活，
-            // 失败则普通服务继续运行、悬浮窗照常显示），
-            // 规避 startForegroundService 被部分 ROM 拦截、以及 5 秒内未
-            // startForeground 即被系统强杀的硬限制。此处 Activity 在前台，
-            // startService 属于允许的前台启动路径。
-            startService(serviceIntent);
-        } catch (Exception e) {
-            Log.e(TAG, "launch floating failed", e);
-            Toast.makeText(this, "启动速记窗失败，请检查悬浮窗与后台弹出权限", Toast.LENGTH_LONG).show();
-            finish();
-        }
+        finish();
     }
 
     @Override
     public void finish() {
+        // 关闭时保存草稿到 SharedPreferences，防止内容丢失
+        if (mInput != null) {
+            String text = mInput.getText().toString();
+            if (!text.trim().isEmpty()) {
+                NativeQuickNoteStore.persistDraft(this, text, mInput.getSelectionStart());
+            } else {
+                NativeQuickNoteStore.clearDraft(this);
+            }
+        }
         super.finish();
         overridePendingTransition(0, 0);
     }
