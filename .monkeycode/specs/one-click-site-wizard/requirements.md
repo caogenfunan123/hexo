@@ -21,8 +21,10 @@ Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 �
 - **模式二（半自动，Cloudflare Pages）**：GitHub 建仓推骨架后，需用户在其 Cloudflare 控制台
   网页完成一次「连接 Git 源」操作，App 自动检测项目并衔接后续发布。
 
-建站能力同时作为 AI 工具（`create_site`）提供给 AI 会话，依托已配置的 AI 令牌与工具库调用，
-用户可直接对 AI 说"帮我建一个博客站"完成建站。
+建站能力同时作为 AI 工具（`create_site`）提供给 AI 会话，**AI 对话为建站主模式**：
+用户从侧边汉堡栏「一键建站」入口或设置页进入，System 打开 AI 对话并预置建站意图，
+用户用自然语言描述站点需求（名称/框架/平台/可见性等），AI 通过 `create_site` 工具调用 `SiteWizardService`
+完成建站；向导式表单流程作为降级兜底保留。
 
 ## Glossary
 
@@ -175,6 +177,20 @@ Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 �
 3. WHEN 引导执行中，System SHALL 对每一步展示「现在你应该看到什么 / 下一步做什么」的对照文案，并标注该步骤需要用户前往哪个控制台。
 4. IF 用户尚未购买域名或 DNS 记录指向错误，System SHALL 提示先完成域名解析配置，并给出 CNAME 记录的具体值与目标值。
 5. WHEN 域名绑定完成，System SHALL 更新该站点的 `siteUrl` 为自定义域名。
+
+### Requirement 11：入口（侧边汉堡栏 + 设置页）与 AI 对话主模式
+
+**User Story:** AS 用户，I want 从侧边汉堡栏或设置页进入建站，以 AI 对话方式完成建站，so that 无需填写复杂表单。
+
+#### Acceptance Criteria
+
+1. WHEN 用户在侧边汉堡栏点击「一键建站」，System SHALL 打开 AI 对话并预置建站意图提示（如"帮我建一个博客站，名称 / 框架 / 平台可以告诉我"）。
+2. WHEN 用户在设置页点击「一键建站」入口，System SHALL 执行与侧边栏入口相同的 AI 对话建站流程。
+3. WHEN 打开 AI 对话时未配置可用 AI 模型（`effectiveAiApiKey` 为空或无有效 `activeAiProfile`），System SHALL 提示「请先在 AI 设置中配置模型」并提供跳转入口，建站对话暂停。
+4. WHEN 用户以自然语言描述站点需求，System SHALL 让 AI 通过 `create_site` 工具执行建站，并在信息不足时向用户追问（仓库名 / 框架 / 平台 / 可见性等）。
+5. WHEN 建站完成，System SHALL 在 AI 对话中回传建站报告（仓库地址 / 站点 URL / 后续发布入口），并自动接入登录令牌与多仓库管理（同 Requirement 7）。
+6. IF 用户不愿使用 AI 对话建站，System SHALL 在 AI 对话页提供「使用表单向导」降级入口，进入多步表单流程（Requirement 1-6）。
+7. WHEN 在侧边汉堡栏或设置页触发建站，System SHALL 将入口 id 注册到 `NavEntries.registry`（如 `create_site`）与 `SettingsEntries.registry`，简易模式下默认可见（`FeatureVisibility.shown`）。
 
 ## Out of Scope
 

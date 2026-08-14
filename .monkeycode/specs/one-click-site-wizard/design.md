@@ -22,7 +22,9 @@ Updated: 2026-08-14
 
 ```mermaid
 graph TD
-    W["建站向导 UI(移动/桌面)"]
+    E["侧边汉堡栏/设置页入口(create_site)"]
+    A["AI 对话(主模式)"]
+    W["建站向导表单 UI(降级)"]
     S["SiteWizardService(核心编排)"]
     GH["GitHubProvider + 建站扩展"]
     GL["GitLabProvider + 建站扩展"]
@@ -31,6 +33,9 @@ graph TD
     RB["RollbackManager(自动回滚)"]
     ST["RepoConfig 持久化"]
 
+    E --> A
+    E --> W
+    A -->|"create_site 工具"| S
     W --> S
     S --> GH
     S --> GL
@@ -163,8 +168,11 @@ class RollbackManager {
 
 ### 6. 向导 UI（移动端 `lib/screens/`，桌面端 `lib/desktop/`）
 
-- 移动端：`site_wizard_screen.dart`，Stepper 实现分步（模式选择 → 账号连接 → 站点信息 → 选择模板 → 确认/执行 → 完成）
-- 桌面端：复用同一 `SiteWizardService`，以对话框或独立 Tab 承载
+- **AI 对话为主模式（默认）**：侧边汉堡栏「一键建站」与设置页「一键建站」入口
+  均打开 AI 对话并预置建站意图提示；用户用自然语言描述需求，AI 通过 `create_site` 工具建站。
+  AI 对话页提供「使用表单向导」降级按钮，点击后进入下方多步表单流程。
+- 移动端表单：`site_wizard_screen.dart`，Stepper 实现分步（模式选择 → 账号连接 → 站点信息 → 选择模板 → 确认/执行 → 完成）
+- 桌面端表单：复用同一 `SiteWizardService`，以对话框或独立 Tab 承载
 - Token 输入用 `TextField(obscureText: true)`，仅存安全存储（`flutter_secure_storage` 或现有 token 存储机制）
 - **模式二引导页**：逐步展示「在 Cloudflare 控制台连接 Git → 创建 Pages 项目」的对照文案
   （每步描述"你现在应该看到什么"），App 后台轮询检测项目，检测到后自动衔接
@@ -197,6 +205,25 @@ class RollbackManager {
   模式一直接推送骨架后即完成，模式二检测衔接后直接触发 Hook 验证站点
 - **Actions 免费额度提示**：模式一 GitHub 场景完成页展示文案
   「首次构建消耗 GitHub Actions 分钟数（免费账号 2000 分钟/月）」
+
+### 6.6 入口注册与 AI 对话主模式
+
+- **入口注册**（`lib/desktop/feature_entries.dart`）：
+  - `NavEntries.registry` 新增 `'create_site': FeatureVisibility.shown`（侧边汉堡栏）
+  - `SettingsEntries.registry` 新增 `'create_site': FeatureVisibility.shown`（设置页）
+  - 简易模式下默认可见，无需手动加回
+- **侧边汉堡栏**（`lib/mixins/editor_ui_ext.dart` 的 `_buildDrawer`）：
+  「创作」分区或独立「一键建站」条目，点击调用 `_startAiSiteWizard()`：
+  - 校验 AI 模型已配置（`effectiveAiApiKey` 非空），未配置则提示跳转 AI 设置
+  - 已配置则打开 AI 对话页并预置系统提示「用户要建一个博客站，请询问并确认站点信息后调用 create_site 工具」
+- **设置页**（`lib/screens/settings_screen.dart`）：
+  「AI」或「站点」分区新增「一键建站」`ListTile`，点击执行与侧边栏相同的 `_startAiSiteWizard()`
+- **AI 对话预置**：打开对话时注入建站意图 + 必要的建站参数说明（模式一/模式二、平台、
+  仓库名、框架、可见性、是否生成欢迎文章），AI 信息不足时向用户追问
+- **降级入口**：AI 对话页底部提供「使用表单向导」按钮，切换到 `site_wizard_screen.dart` 表单流程
+- **AI 建站参数→工具**：对话中用户确认的信息组装成 `WizardRequest`，
+  由 `create_site` 工具调用 `SiteWizardService.run`，结果回传为 AI 可读报告
+- 对应需求：Requirement 11（入口与 AI 对话主模式）
 
 ### 6.3 站点管理可见性切换（建站后）
 
@@ -260,7 +287,8 @@ class RollbackManager {
 
 ### 8. AI 令牌与工具系统联动（`lib/core/tools/` / `lib/core/ai/`）
 
-建站向导遵循「AI 令牌 + 工具系统」的既有交互模式（对齐 `AiToolManager` / `ToolExecutor` 的工具注册与调用机制）：
+建站向导遵循「AI 令牌 + 工具系统」的既有交互模式（对齐 `AiToolManager` / `ToolExecutor` 的工具注册与调用机制）。
+**AI 对话是建站主模式**：侧边栏/设置页入口直接进入 AI 对话，而非表单；表单仅作为显式降级路径。
 
 - **AI 建站工具**：新增内置工具 `create_site`（注册到 `builtin_tools.dart`），
   AI 会话中用户说出"帮我建一个博客站"时，工具携带建站参数调用 `SiteWizardService.run`，
@@ -331,6 +359,8 @@ class RollbackManager {
 14. **账号计划判定**：免费账号判定基于 `GET /user` 的 `plan` 字段，建站前即可给出准确的可见性提示。
 15. **siteUrl 可回填**：首文构建超时置空 `siteUrl` 后，站点管理页打开或下次发布成功时重新查询并回填，不丢失站点访问信息。
 16. **首文可跳过**：用户取消「生成欢迎文章」时全流程不写入示例文章，其余流程不受影响。
+17. **AI 对话为主**：侧边栏与设置页入口统一走 AI 对话建站（`create_site` 工具），
+    未配置 AI 模型时先引导配置；表单向导为显式降级路径，两路径共享同一 `SiteWizardService`。
 
 ## Error Handling
 
@@ -359,6 +389,8 @@ class RollbackManager {
    - 仓库名规范化校验测试：非法字符 / 连字符首尾 / 超长名称均被拒绝
    - 跳过欢迎文章：`skipWelcomePost=true` 时骨架不含示例文章，且不触发首文轮询
    - `siteUrl` 回填：超时置空后，注入构建成功状态验证回填触发
+   - 入口可见性：`NavEntries` / `SettingsEntries` 注册 `create_site` 后，简易模式下 `visibleEntry` 返回 true
+   - AI 对话预置：未配置 AI 模型时入口触发配置引导，配置后预置建站意图提示
    - `RollbackManager`：注入失败 provider，验证逆序执行、失败项收集、取消复用同一路径
    - 框架构建命令/输出目录映射表完整性测试
    - `verifyScopes`：注入不同 `X-OAuth-Scopes` 响应头，验证缺失 scope 判定
