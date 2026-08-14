@@ -39,6 +39,16 @@
                 android:resource="@xml/quick_note_widget_info" />
         </receiver>
 
+        <!-- 速记中转 Activity：小部件/磁贴点击后瞬启，检查权限并启动悬浮速记窗 -->
+        <activity
+            android:name=".QuickNoteLauncherActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Hexo.Transparent" />
+
         <!-- 悬浮速记窗服务 -->
         <service
             android:name=".FloatingNoteService"

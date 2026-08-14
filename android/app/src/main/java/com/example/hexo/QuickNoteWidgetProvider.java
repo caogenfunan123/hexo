@@ -5,7 +5,6 @@ import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
 import android.content.Context;
 import android.content.Intent;
-import android.os.Build;
 import android.widget.RemoteViews;
 
 /**
@@ -27,24 +26,19 @@ public class QuickNoteWidgetProvider extends AppWidgetProvider {
     private void updateWidget(Context context, AppWidgetManager appWidgetManager, int appWidgetId) {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_quick_note);
 
-        // 整块点击 → 启动悬浮速记窗。
-        // FloatingNoteService 为前台服务（specialUse），Android 8+ 从后台启动
-        // 必须使用 getForegroundService，否则抛 IllegalStateException 导致点击无反应。
-        Intent serviceIntent = FloatingNoteService.showIntent(context, "widget", null);
-        PendingIntent pi;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            pi = PendingIntent.getForegroundService(
-                    context,
-                    appWidgetId,
-                    serviceIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        } else {
-            pi = PendingIntent.getService(
-                    context,
-                    appWidgetId,
-                    serviceIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        }
+        // 整块点击 → 透明中转 Activity（QuickNoteLauncherActivity）：
+        // 由它统一处理悬浮窗权限检查 + startForegroundService 启动悬浮速记窗，
+        // 然后立即 finish，屏幕只闪现透明页、不会打开主界面。
+        // 相比直接 getForegroundService，中转 Activity 属于前台启动，
+        // 规避 Android 12+ 及部分厂商 ROM 从 AppWidget 后台启动 FGS 被拦截的问题。
+        Intent launcherIntent = new Intent(context, QuickNoteLauncherActivity.class)
+                .putExtra(FloatingNoteService.EXTRA_SOURCE, "widget")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        PendingIntent pi = PendingIntent.getActivity(
+                context,
+                appWidgetId,
+                launcherIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         views.setOnClickPendingIntent(R.id.widget_root, pi);
 
         appWidgetManager.updateAppWidget(appWidgetId, views);

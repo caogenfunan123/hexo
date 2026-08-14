@@ -18,9 +18,13 @@ import android.widget.RemoteViews;
 public class ReadWidgetProvider extends AppWidgetProvider {
 
     public static final String ACTION_TOGGLE_MODE = "com.example.hexo.action.READ_TOGGLE_MODE";
+    public static final String ACTION_TOGGLE_TASK = "com.example.hexo.action.READ_TOGGLE_TASK";
 
     public static final String PREFS = "read_widget";
     public static final String KEY_TASK_MODE = "task_mode";
+
+    public static final String EXTRA_TASK_PATH = "task_path";
+    public static final String EXTRA_TASK_LINE = "task_line";
 
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
@@ -37,6 +41,28 @@ public class ReadWidgetProvider extends AppWidgetProvider {
             boolean current = prefs.getBoolean(KEY_TASK_MODE, false);
             prefs.edit().putBoolean(KEY_TASK_MODE, !current).apply();
             refreshAll(context);
+        } else if (ACTION_TOGGLE_TASK.equals(intent.getAction())) {
+            String path = intent.getStringExtra(EXTRA_TASK_PATH);
+            int line = intent.getIntExtra(EXTRA_TASK_LINE, -1);
+            if (path != null && !path.isEmpty() && line >= 0) {
+                final PendingResult pendingResult = goAsync();
+                new Thread(() -> {
+                    try {
+                        java.io.File f = new java.io.File(path);
+                        String content = TaskWidgetTaskParser.readFile(f);
+                        if (content != null) {
+                            String toggled = TaskWidgetTaskParser.toggleLine(content, line);
+                            if (toggled != null) {
+                                TaskWidgetTaskParser.writeFile(f, toggled);
+                            }
+                        }
+                    } catch (Exception ignored) {
+                    } finally {
+                        refreshAll(context);
+                        pendingResult.finish();
+                    }
+                }).start();
+            }
         }
     }
 
@@ -62,9 +88,9 @@ public class ReadWidgetProvider extends AppWidgetProvider {
         views.setRemoteAdapter(R.id.content_list, serviceIntent);
         views.setEmptyView(R.id.content_list, R.id.empty_view);
 
-        // 任务视图下点击行 → 勾选切换
-        Intent toggleIntent = new Intent(context, TaskWidgetProvider.class)
-                .setAction(TaskWidgetProvider.ACTION_TOGGLE_TASK);
+        // 任务视图下点击行 → 勾选切换（由本 Provider 处理并刷新自身，保证界面即时更新）
+        Intent toggleIntent = new Intent(context, ReadWidgetProvider.class)
+                .setAction(ACTION_TOGGLE_TASK);
         views.setPendingIntentTemplate(
                 R.id.content_list,
                 PendingIntent.getBroadcast(

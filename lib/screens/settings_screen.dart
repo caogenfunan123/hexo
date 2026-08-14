@@ -1411,7 +1411,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('QQ 技术交流群'),
             subtitle: const Text('97126959 · 点击加入'),
             trailing: const Icon(Icons.forum_outlined),
-            onTap: () => _openUrl('https://qm.qq.com/q/97126959'),
+            onTap: () => _openUrl('https://qm.qq.com/q/D8qN5eUDh6'),
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -1524,7 +1524,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// 鸣谢弹窗：列出本项目深度参考的开源项目
+  /// 鸣谢弹窗：列出本项目深度参考的开源项目（含仓库地址，点击可跳转）
   void _showCreditsDialog() {
     showDialog<void>(
       context: context,
@@ -1543,26 +1543,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 12),
                 _creditGroup('直接复刻 / 深度参考', [
-                  ('QuickDaily', '悬浮速记窗、任务小部件、阅读小部件'),
-                  ('MonkeyCode', 'AI 工具/模型编排、MCP 服务器管理'),
-                  ('MarkText', '沉浸式写作布局、专注模式、打字机滚动'),
-                  ('VS Code', 'MVVM 架构、命令面板、Markdown 语法着色'),
-                  ('super_editor', 'Document / Composer 编辑器架构'),
-                  ('Zettlr', 'FrontMatter 解析、FSAL 全文搜索架构'),
+                  ('QuickDaily', '悬浮速记窗、任务小部件、阅读小部件',
+                      'https://github.com/okaryo/QuickDaily'),
+                  ('MonkeyCode', 'AI 工具/模型编排、MCP 服务器管理',
+                      'https://github.com/chaitin/MonkeyCode'),
+                  ('MarkText', '沉浸式写作布局、专注模式、打字机滚动',
+                      'https://github.com/marktext/marktext'),
+                  ('VS Code', 'MVVM 架构、命令面板、Markdown 语法着色',
+                      'https://github.com/microsoft/vscode'),
+                  ('super_editor', 'Document / Composer 编辑器架构',
+                      'https://github.com/superlistapp/super_editor'),
+                  ('Zettlr', 'FrontMatter 解析、FSAL 全文搜索架构',
+                      'https://github.com/Zettlr/Zettlr'),
                 ]),
                 const SizedBox(height: 12),
                 _creditGroup('布局与交互参考', [
-                  ('PureWriter', '左栏源码 + 右栏实时预览'),
-                  ('Notion', '左栏文章平铺内嵌、可折叠列表'),
-                  ('Obsidian', 'Vault 工作区隔离思想'),
-                  ('Cursor', 'AI inline edit + 编辑器 diff 交互'),
+                  ('PureWriter', '左栏源码 + 右栏实时预览',
+                      'https://github.com/PureWriter/PureWriter'),
+                  ('Notion', '左栏文章平铺内嵌、可折叠列表',
+                      'https://www.notion.so'),
+                  ('Obsidian', 'Vault 工作区隔离思想',
+                      'https://github.com/obsidianmd/obsidian-releases'),
+                  ('Cursor', 'AI inline edit + 编辑器 diff 交互',
+                      'https://github.com/getcursor/cursor'),
                 ]),
                 const SizedBox(height: 12),
                 _creditGroup('能力依赖参考', [
-                  ('hexo-mobile', 'FrontMatter 处理思路'),
-                  ('flutter_udp_broadcast', 'P2P 局域网同步广播'),
-                  ('ripgrep', '全文检索二进制预编译方案'),
-                  ('GitHub REST API', 'Contents API / Git Data API 批量上传'),
+                  ('hexo-mobile', 'FrontMatter 处理思路（源自 Hexo 生态，仓库已归档）',
+                      'https://github.com/hexojs/hexo'),
+                  ('flutter_udp_broadcast', 'P2P 局域网同步广播（UDP 广播思路参考）',
+                      'https://pub.dev/packages?q=udp+broadcast'),
+                  ('ripgrep', '全文检索二进制预编译方案',
+                      'https://github.com/BurntSushi/ripgrep'),
+                  ('GitHub REST API', 'Contents API / Git Data API 批量上传',
+                      'https://docs.github.com/rest'),
                 ]),
               ],
             ),
@@ -1578,7 +1592,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _creditGroup(String title, List<(String, String)> items) {
+  Widget _creditGroup(String title, List<(String, String, String)> items) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1587,21 +1601,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
         ),
         const SizedBox(height: 6),
-        for (final (name, desc) in items)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('• ',
-                    style: TextStyle(fontSize: 13, color: Color(0xFF475569))),
-                Expanded(
-                  child: Text(
-                    '$name — $desc',
-                    style: const TextStyle(fontSize: 13, height: 1.4, color: Color(0xFF475569)),
+        for (final (name, desc, url) in items)
+          InkWell(
+            onTap: () => _openUrl(url),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('• ',
+                      style: TextStyle(fontSize: 13, color: Color(0xFF475569))),
+                  Expanded(
+                    child: Text(
+                      '$name — $desc\n$url',
+                      style: const TextStyle(
+                          fontSize: 13, height: 1.4, color: Color(0xFF475569)),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
       ],

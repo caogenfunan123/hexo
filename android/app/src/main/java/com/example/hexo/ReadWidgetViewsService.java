@@ -82,8 +82,8 @@ public class ReadWidgetViewsService extends RemoteViewsService {
             // 任务视图：点击整行切换勾选状态
             if (mTaskMode) {
                 Intent fillIntent = new Intent();
-                fillIntent.putExtra(TaskWidgetProvider.EXTRA_TASK_PATH, mLatestPath);
-                fillIntent.putExtra(TaskWidgetProvider.EXTRA_TASK_LINE, position);
+                fillIntent.putExtra(ReadWidgetProvider.EXTRA_TASK_PATH, mLatestPath);
+                fillIntent.putExtra(ReadWidgetProvider.EXTRA_TASK_LINE, position);
                 views.setOnClickFillInIntent(R.id.read_line_text, fillIntent);
             }
             return views;

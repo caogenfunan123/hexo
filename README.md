@@ -77,11 +77,11 @@ APK 输出在 `build/app/outputs/flutter-apk/app-debug.apk`。
 
 | 项目 | 说明 | 地址 |
 |------|------|------|
-| hexo-mobile | FrontMatter 处理思路 | [github.com/NoahDragon/hexo-mobile](https://github.com/NoahDragon/hexo-mobile) |
-| flutter_udp_broadcast | P2P 局域网同步广播 | [github.com/crazecoder/flutter_udp_broadcast](https://github.com/crazecoder/flutter_udp_broadcast) |
+| hexo-mobile | FrontMatter 处理思路（源自 Hexo 生态移动编辑器，仓库已归档，约定见 Hexo） | [github.com/hexojs/hexo](https://github.com/hexojs/hexo) |
+| flutter_udp_broadcast | P2P 局域网同步广播（UDP 广播思路参考） | [pub.dev](https://pub.dev/packages?q=udp+broadcast) |
 | ripgrep | 全文检索二进制预编译方案 | [github.com/BurntSushi/ripgrep](https://github.com/BurntSushi/ripgrep) |
 | GitHub REST API | 批量上传支持 Contents API 与 Git Data API（blobs/trees/commits/refs 一次提交），失败自动回退 git CLI | [docs.github.com](https://docs.github.com/en/rest/repos/contents) |
 
 QuickDaily 作者：小子，感谢原作者的开源分享，欢迎前往支持：[作者主页](https://www.coolapk.com/u/400522)
 
-技术交流群：97126959 —— [点击加入群聊](https://qm.qq.com/q/97126959)
+技术交流群：97126959 —— [点击加入群聊](https://qm.qq.com/q/D8qN5eUDh6)

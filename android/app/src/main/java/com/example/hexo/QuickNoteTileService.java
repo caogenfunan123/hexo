@@ -1,6 +1,5 @@
 package com.example.hexo;
 
-import android.app.PendingIntent;
 import android.content.Intent;
 import android.service.quicksettings.Tile;
 import android.service.quicksettings.TileService;
@@ -37,22 +36,16 @@ public class QuickNoteTileService extends TileService {
         super.onClick();
         updateTileState();
         try {
-            Intent serviceIntent = FloatingNoteService.showIntent(this, "tile", null);
-            // 前台服务必须用 getForegroundService，避免 Android 8+ 后台启动被拦截
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                PendingIntent pi = PendingIntent.getForegroundService(
-                        this,
-                        0,
-                        serviceIntent,
-                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-                startActivityAndCollapse(pi);
-            } else {
-                startActivityAndCollapse(serviceIntent);
-            }
+            // 磁贴点击 → 透明中转 Activity（权限检查 + startForegroundService 弹出悬浮速记窗）。
+            // 中转 Activity 属于前台启动，规避 Android 12+ 从磁贴直接启动 FGS 被拦截的问题。
+            Intent launcherIntent = new Intent(this, QuickNoteLauncherActivity.class)
+                    .putExtra(FloatingNoteService.EXTRA_SOURCE, "tile")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivityAndCollapse(launcherIntent);
         } catch (Exception e) {
             android.util.Log.e("QuickNoteTile", "launch failed", e);
             try {
-                startForegroundService(FloatingNoteService.showIntent(this, "tile", null));
+                startActivityAndCollapse(FloatingNoteService.showIntent(this, "tile", null));
             } catch (Exception ignored) {
             }
         }
