@@ -1,24 +1,32 @@
-# 一键建站向导（GitHub 建仓 + 博客骨架 + Cloudflare Pages 发布）
+# 一键建站向导（Git 建仓 + 博客骨架 + 平台发布）
 
 ## Introduction
 
-用户在拓墨 App 中仅凭 Git 令牌与 Cloudflare Pages API 令牌，从零搭建一个可访问的静态博客站点。
+用户在拓墨 App 中仅凭 Git 令牌（可选 Cloudflare API 令牌），从零搭建一个可访问的静态博客站点。
 当前软件已具备「向已存在仓库发布文章 + 触发 Deploy Hook」能力（`GitHubProvider.writeBatch`、`triggerCloudflareDeploy`），
-但缺少「创建仓库」「初始化博客骨架」「创建 Cloudflare Pages 项目」三个前置环节，
+但缺少「创建仓库」「初始化博客骨架」「创建站点项目」三个前置环节，
 导致用户必须离开 App 手动完成建站。
 
 本功能补齐建站全流程：一个多步向导，在 App 内完成
-GitHub 仓库创建 → 博客骨架文件写入 → Cloudflare Pages 项目创建与关联 → 首篇文章发布，
+Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 → 首篇文章发布，
 最终返回可访问的站点 URL。
+
+向导提供两种建站模式：
+
+- **模式一（零人工，纯令牌）**：Git 平台内置静态托管引擎。GitHub Pages（GitHub Actions 构建）
+  或 GitLab Pages（GitLab CI 构建），仅凭对应平台的令牌即可全程自动化，无需任何网页操作。
+- **模式二（半自动，Cloudflare Pages）**：GitHub 建仓推骨架后，需用户在其 Cloudflare 控制台
+  网页完成一次「连接 Git 源」操作，App 自动检测项目并衔接后续发布。
 
 ## Glossary
 
 - **System**：拓墨 App 的一键建站向导子系统。
-- **Git 令牌**：GitHub Personal Access Token（`repo` 或 `repo+workflow` scope），用于创建仓库与推送文件。
+- **Git 令牌**：Git 平台个人访问令牌。GitHub PAT（`repo` + `workflow` scope）、GitLab PAT（`api` scope）。
 - **Cloudflare API 令牌**：Cloudflare API Token（`Account:Pages:Edit` + `Account:Pages:Read` 权限），用于创建 Pages 项目。
-- **博客骨架**：静态博客框架运行所需的工程文件（`_config.yml`、`package.json`、`scaffolds/`、主题目录、`.gitignore` 等）。
-- **构建机**：Cloudflare Pages 提供的远端构建环境，执行 `npm run build` 或框架原生构建命令。
-- **Pages 项目**：Cloudflare Pages 中的一个站点项目，绑定 Git 源仓库与构建命令。
+- **博客骨架**：静态博客框架运行所需的工程文件（`_config.yml`、`package.json`、`scaffolds/`、主题目录、`.gitignore` 等），
+  模式一额外包含 CI 流水线文件（`.github/workflows/deploy.yml` 或 `.gitlab-ci.yml`）。
+- **构建机**：各平台提供的远端构建环境（GitHub Actions / GitLab CI / Cloudflare Pages），执行 `npm run build` 或框架原生构建命令。
+- **站点项目**：托管平台上的一个站点实体（GitHub Pages 站点、GitLab Pages 站点或 Cloudflare Pages 项目），绑定 Git 源仓库与构建命令。
 
 ## Requirements
 
@@ -44,16 +52,18 @@ GitHub 仓库创建 → 博客骨架文件写入 → Cloudflare Pages 项目创�
 3. IF 任一令牌校验失败，System SHALL 展示失败原因并允许用户重新输入。
 4. WHILE 向导进行中，System SHALL 仅将令牌保存在本机安全存储中，并禁止将令牌明文回显到任何日志或网络请求体以外。
 
-### Requirement 3：创建 GitHub 仓库
+### Requirement 3：创建 Git 仓库
 
-**User Story:** AS 用户，I want 向导以指定名称创建私有（默认）或公开仓库，so that 博客文件拥有独立托管空间。
+**User Story:** AS 用户，I want 向导以指定名称在所选 Git 平台创建公开或私有仓库，so that 博客文件拥有独立托管空间。
 
 #### Acceptance Criteria
 
-1. WHEN 用户确认建站，System SHALL 调用 GitHub `POST /user/repos` 创建仓库。
-2. WHEN 用户未修改可见性，System SHALL 将仓库创建为 `private`；WHEN 用户选择公开，System SHALL 将仓库创建为 `public`。
-3. IF 仓库名称已存在或名称非法，System SHALL 展示冲突原因并允许用户改名重试。
-4. WHEN 仓库创建成功，System SHALL 记录仓库 `owner/name` 并进入下一步。
+1. WHEN 用户选择模式一且平台为 GitHub，System SHALL 调用 GitHub `POST /user/repos` 创建仓库。
+2. WHEN 用户选择模式一且平台为 GitLab，System SHALL 调用 GitLab `POST /api/v4/projects` 创建项目。
+3. WHEN 用户选择模式二，System SHALL 调用 GitHub `POST /user/repos` 创建仓库。
+4. WHEN 用户未修改可见性，System SHALL 将仓库创建为 `private`；WHEN 用户选择公开，System SHALL 将仓库创建为 `public`。
+5. IF 仓库名称已存在或名称非法，System SHALL 展示冲突原因并允许用户改名重试。
+6. WHEN 仓库创建成功，System SHALL 记录仓库 `owner/name` 并进入下一步。
 
 ### Requirement 4：写入博客骨架
 
@@ -64,18 +74,21 @@ GitHub 仓库创建 → 博客骨架文件写入 → Cloudflare Pages 项目创�
 1. WHEN 新仓库创建成功，System SHALL 通过 Git API 批量写入所选框架的博客骨架文件（`writeBatch`）。
 2. WHEN 用户选择 Hexo，System SHALL 至少写入 `_config.yml`、`package.json`（含 `hexo` 与 `hexo-cli` 依赖与 `hexo generate` 构建脚本）、`scaffolds/`、`.gitignore` 与默认主题配置。
 3. WHEN 用户选择其他预设框架，System SHALL 写入该框架对应的最小可构建骨架（对应 `BlogFramework.presets`）。
-4. IF 骨架写入过程中任一文件写入失败，System SHALL 回滚本次写入的已提交文件并提示用户重试。
+4. WHEN 向导为模式一，System SHALL 额外写入对应平台的 CI 流水线文件（GitHub：`.github/workflows/deploy.yml`；GitLab：`.gitlab-ci.yml`），流水线执行框架构建并部署到平台静态托管。
+5. IF 骨架写入过程中任一文件写入失败，System SHALL 回滚本次写入的已提交文件并提示用户重试。
 
-### Requirement 5：创建 Cloudflare Pages 项目
+### Requirement 5：创建站点项目（平台分发）
 
-**User Story:** AS 用户，I want 向导自动创建 Pages 项目并绑定新仓库，so that 每次发布自动构建上线。
+**User Story:** AS 用户，I want 向导自动创建所选托管平台的站点项目并绑定新仓库，so that 每次发布自动构建上线。
 
 #### Acceptance Criteria
 
-1. WHEN 骨架写入成功，System SHALL 调用 Cloudflare `POST /accounts/{accountId}/pages/projects` 创建 Pages 项目。
-2. WHEN 创建项目，System SHALL 传递 Git 源仓库连接、目标分支与所选框架的构建命令和输出目录。
-3. IF Cloudflare API 令牌缺少 Pages 权限，System SHALL 展示缺失的权限名并引导用户补权。
-4. WHEN Pages 项目创建成功，System SHALL 记录项目名与默认访问域名。
+1. WHEN 向导为模式一且平台为 GitHub，System SHALL 调用 GitHub `POST /repos/{owner}/{repo}/pages` 启用 GitHub Pages，并配置构建来源为 GitHub Actions。
+2. WHEN 向导为模式一且平台为 GitLab，System SHALL 调用 GitLab `PUT /api/v4/projects/{id}/pages` 启用 GitLab Pages，并确认 CI 流水线已声明 `pages` 任务。
+3. WHEN 向导为模式二，System SHALL 引导用户在其 Cloudflare 控制台网页完成「连接 Git 源 → 创建 Pages 项目」，随后 System 通过 API 检测项目存在并自动拉取 Deploy Hook。
+4. WHEN 创建项目，System SHALL 传递 Git 源仓库连接、目标分支与所选框架的构建命令和输出目录。
+5. IF Cloudflare API 令牌缺少 Pages 权限，System SHALL 展示缺失的权限名并引导用户补权。
+6. WHEN 站点项目创建成功，System SHALL 记录项目名与默认访问域名。
 
 ### Requirement 6：首篇文章发布与站点验证
 
@@ -83,8 +96,8 @@ GitHub 仓库创建 → 博客骨架文件写入 → Cloudflare Pages 项目创�
 
 #### Acceptance Criteria
 
-1. WHEN Pages 项目创建成功，System SHALL 生成一篇「欢迎使用」示例文章写入 `source/_posts`。
-2. WHEN 示例文章提交成功，System SHALL 等待 Cloudflare Pages 首次部署完成并轮询获取最新构建状态。
+1. WHEN 站点项目创建成功，System SHALL 生成一篇「欢迎使用」示例文章写入 `source/_posts`。
+2. WHEN 示例文章提交成功，System SHALL 等待所选平台首次构建完成并轮询获取最新构建状态（GitHub Actions run / GitLab Pipeline / Cloudflare deployment）。
 3. IF 首次构建失败，System SHALL 展示构建日志摘要并提示用户修复。
 4. WHEN 首次构建成功，System SHALL 在完成页展示可访问的站点 URL 并允许用户复制或打开。
 
@@ -94,8 +107,8 @@ GitHub 仓库创建 → 博客骨架文件写入 → Cloudflare Pages 项目创�
 
 #### Acceptance Criteria
 
-1. WHEN 建站流程成功完成，System SHALL 创建对应 `RepoConfig`（含框架、`postsPath`、token、Pages 项目信息）并加入站点管理。
-2. WHEN 后续文章发布到该站点，System SHALL 复用既有发布链路并触发 Pages 重新构建。
+1. WHEN 建站流程成功完成，System SHALL 创建对应 `RepoConfig`（含框架、`postsPath`、token、站点项目信息）并加入站点管理。
+2. WHEN 后续文章发布到该站点，System SHALL 复用既有发布链路并触发所选平台重新构建（模式一触发 CI 推送，模式二触发 Deploy Hook）。
 
 ### Requirement 8：错误处理与幂等
 
@@ -103,11 +116,12 @@ GitHub 仓库创建 → 博客骨架文件写入 → Cloudflare Pages 项目创�
 
 #### Acceptance Criteria
 
-1. IF 建站任一步骤失败，System SHALL 自动回滚清理本次流程已创建的 GitHub 仓库与 Cloudflare Pages 项目，不留半成品资源。
-2. WHEN 自动回滚执行中，System SHALL 按「Pages 项目 → GitHub 仓库」的逆序删除资源，并记录每一步结果。
+1. IF 建站任一步骤失败，System SHALL 自动回滚清理本次流程已创建的资源（Git 仓库与站点项目），不留半成品资源。
+2. WHEN 自动回滚执行中，System SHALL 按「站点项目 → Git 仓库」的逆序删除资源，并记录每一步结果。
 3. IF 自动回滚中删除某资源失败，System SHALL 在结果页明确列出未删除成功的资源及对应删除入口，供用户手动处理。
 4. WHEN 用户重试建站，System SHALL 以新的唯一仓库名执行，避免与已存在资源冲突。
 5. IF 网络超时或令牌失效，System SHALL 明确区分「令牌问题」「网络问题」「资源冲突」三类错误并分别提示。
+6. WHEN 向导为模式二且用户已投入网页操作后失败，System SHALL 保留已创建的仓库并在完成页提供「手动继续」入口，不执行仓库回滚。
 
 ## Out of Scope
 
