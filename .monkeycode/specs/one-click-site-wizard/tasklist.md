@@ -79,3 +79,4 @@
   - [ ] 13.1 运行 `flutter analyze` 确认全模块无编译错误
   - [ ] 13.2 运行既有回归测试（test/ 目录）确认 `publishArticleWithMirrors` 链路不受 RepoConfig 新增字段影响（Test Strategy 回归）
   - [ ] 13.3 总结实施结果与待确认项，如有疑问请询问用户
+  - [ ]* 13.4 对照 `global-prompt.md` 核对 `create_site` 工具描述与提示词指引一致，必要时同步更新
