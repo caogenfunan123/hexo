@@ -109,11 +109,14 @@ Git 仓库创建 → 博客骨架文件写入 → 站点项目创建与关联 �
 
 #### Acceptance Criteria
 
-1. WHEN 站点项目创建成功，System SHALL 生成一篇「欢迎使用」示例文章写入 `source/_posts`。
-2. WHEN 示例文章提交成功，System SHALL 等待所选平台首次构建完成并轮询获取最新构建状态（GitHub Actions run / GitLab Pipeline / Cloudflare deployment）。
-3. IF 首次构建轮询时长超过上限（默认 10 分钟），System SHALL 停止轮询并提示用户「构建仍在进行，可稍后在站点管理查看状态」，同时保留后续自动回填 `siteUrl` 的机制。
-4. IF 首次构建失败，System SHALL 展示构建日志摘要并提示用户修复。
-5. WHEN 首次构建成功，System SHALL 在完成页展示可访问的站点 URL 并允许用户复制或打开。
+1. WHEN 站点项目创建成功，System SHALL 默认生成一篇「欢迎使用」示例文章写入 `source/_posts`。
+2. IF 用户在向导中取消勾选「生成欢迎文章」，System SHALL 跳过示例文章生成，直接进入首次构建验证（若为模式二则直接触发 Deploy Hook 验证站点）。
+3. WHEN 示例文章提交成功，System SHALL 等待所选平台首次构建完成并轮询获取最新构建状态（GitHub Actions run / GitLab Pipeline / Cloudflare deployment）。
+4. IF 首次构建轮询时长超过上限（默认 10 分钟），System SHALL 停止轮询并提示用户「构建仍在进行，可稍后在站点管理查看状态」，同时保留后续自动回填 `siteUrl` 的机制。
+5. IF 模式一且平台为 GitHub，System SHALL 在完成页提示「首次构建消耗 GitHub Actions 分钟数（免费账号 2000 分钟/月）」。
+6. IF 首次构建失败，System SHALL 展示构建日志摘要并提示用户修复。
+7. WHEN 首次构建成功，System SHALL 在完成页展示可访问的站点 URL 并允许用户复制或打开。
+8. IF 首次构建超时导致 `siteUrl` 未回填，System SHALL 在站点管理页打开该站点或下次发布成功时重新查询平台构建状态并回填 `siteUrl`。
 
 ### Requirement 7：建站结果自动接入（令牌 + 多仓库 + 一键发布）
 

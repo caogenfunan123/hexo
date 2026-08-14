@@ -58,7 +58,7 @@ class SiteWizardService {
 }
 ```
 
-`WizardRequest`：`mode`（one/githubPages/gitlabPages 或 two）、`gitProvider`（github/gitlab）、`gitToken`、`cfApiToken`、`cfAccountId`（模式二）、`repoName`、`repoPrivate`（默认 true）、`frameworkId`、`siteTitle`。
+`WizardRequest`：`mode`（one/githubPages/gitlabPages 或 two）、`gitProvider`（github/gitlab）、`gitToken`、`cfApiToken`、`cfAccountId`（模式二）、`repoName`、`repoPrivate`（默认 true）、`frameworkId`、`siteTitle`、`skipWelcomePost`（默认 false）。
 `WizardResult`：`repoConfig`（新站点 RepoConfig）、`siteProjectName`、`siteUrl`、`welcomePostPath`。
 
 执行序列：
@@ -185,8 +185,18 @@ class RollbackManager {
 
 - 首次构建轮询上限默认 **10 分钟**（可配置常量 `wizardBuildPollTimeout`）
 - 超时处理：停止轮询，完成页展示"构建仍在进行"提示，站点仍写入站点管理
-  （`siteUrl` 置空），后续构建完成后通过既有状态轮询/下次访问回填 `siteUrl`
+  （`siteUrl` 置空），后续通过回填机制补全
 - 进度页提供「放弃等待」按钮，点击后回到站点管理，不触发回滚
+- **`siteUrl` 回填触发时机**：站点管理页打开该站点时，或该站点下次发布成功时，
+  重新查询平台构建状态（Actions run / Pipeline / deployment）并在构建成功后回填 `siteUrl`
+
+### 6.5 欢迎文章与免费额度提示
+
+- **欢迎文章可跳过**：向导确认步提供「生成欢迎文章」复选框（默认勾选）；
+  取消勾选时 `WizardRequest` 置 `skipWelcomePost=true`，`SiteWizardService` 跳过首文写入与首文轮询，
+  模式一直接推送骨架后即完成，模式二检测衔接后直接触发 Hook 验证站点
+- **Actions 免费额度提示**：模式一 GitHub 场景完成页展示文案
+  「首次构建消耗 GitHub Actions 分钟数（免费账号 2000 分钟/月）」
 
 ### 6.3 站点管理可见性切换（建站后）
 
@@ -319,6 +329,8 @@ class RollbackManager {
 13. **CI 产物对齐**：CI 流水线的构建步骤按框架类型生成，上传产物目录严格对齐映射表
     `buildOutputDirectory`，保证任意框架首篇发布即可构建成功。
 14. **账号计划判定**：免费账号判定基于 `GET /user` 的 `plan` 字段，建站前即可给出准确的可见性提示。
+15. **siteUrl 可回填**：首文构建超时置空 `siteUrl` 后，站点管理页打开或下次发布成功时重新查询并回填，不丢失站点访问信息。
+16. **首文可跳过**：用户取消「生成欢迎文章」时全流程不写入示例文章，其余流程不受影响。
 
 ## Error Handling
 
@@ -345,6 +357,8 @@ class RollbackManager {
    - CI 流水线模板快照测试（`.github/workflows/deploy.yml` / `.gitlab-ci.yml` 关键字段校验）
    - CI 按框架类型生成测试：Node / jekyll / hugo / pelican 四类生成不同的构建步骤，上传目录对齐 `buildOutputDirectory`
    - 仓库名规范化校验测试：非法字符 / 连字符首尾 / 超长名称均被拒绝
+   - 跳过欢迎文章：`skipWelcomePost=true` 时骨架不含示例文章，且不触发首文轮询
+   - `siteUrl` 回填：超时置空后，注入构建成功状态验证回填触发
    - `RollbackManager`：注入失败 provider，验证逆序执行、失败项收集、取消复用同一路径
    - 框架构建命令/输出目录映射表完整性测试
    - `verifyScopes`：注入不同 `X-OAuth-Scopes` 响应头，验证缺失 scope 判定
