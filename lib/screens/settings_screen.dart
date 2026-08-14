@@ -1543,18 +1543,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 12),
                 _creditGroup('直接复刻 / 深度参考', [
-                  ('QuickDaily', '悬浮速记窗、任务小部件、阅读小部件',
-                      'https://github.com/okaryo/QuickDaily'),
-                  ('MonkeyCode', 'AI 工具/模型编排、MCP 服务器管理',
+                  ('QuickDaily', '悬浮速记窗、任务小部件、阅读小部件', 'MIT',
+                      'https://github.com/agarcabin/QuickDaily'),
+                  ('MonkeyCode', 'AI 工具/模型编排、MCP 服务器管理', 'AGPL-3.0',
                       'https://github.com/chaitin/MonkeyCode'),
-                  ('MarkText', '沉浸式写作布局、专注模式、打字机滚动',
+                  ('MarkText', '沉浸式写作布局、专注模式、打字机滚动', 'MIT',
                       'https://github.com/marktext/marktext'),
-                  ('VS Code', 'MVVM 架构、命令面板、Markdown 语法着色',
+                  ('VS Code', 'MVVM 架构、命令面板、Markdown 语法着色', 'MIT',
                       'https://github.com/microsoft/vscode'),
-                  ('super_editor', 'Document / Composer 编辑器架构',
+                  ('super_editor', 'Document / Composer 编辑器架构', 'MIT',
                       'https://github.com/superlistapp/super_editor'),
-                  ('Zettlr', 'FrontMatter 解析、FSAL 全文搜索架构',
+                  ('Zettlr', 'FrontMatter 解析、FSAL 全文搜索架构', 'GPL-3.0',
                       'https://github.com/Zettlr/Zettlr'),
+                ]),
+                const SizedBox(height: 12),
+                _creditGroup('布局与交互参考', [
+                  ('PureWriter', '左栏源码 + 右栏实时预览', '资源仓库',
+                      'https://github.com/PureWriter/PureWriter'),
+                  ('Notion', '左栏文章平铺内嵌、可折叠列表', '闭源产品',
+                      'https://www.notion.so'),
+                  ('Obsidian', 'Vault 工作区隔离思想', '闭源产品',
+                      'https://github.com/obsidianmd/obsidian-releases'),
+                  ('Cursor', 'AI inline edit + 编辑器 diff 交互', '闭源产品',
+                      'https://github.com/getcursor/cursor'),
+                ]),
+                const SizedBox(height: 12),
+                _creditGroup('能力依赖参考', [
+                  ('hexo-mobile', 'FrontMatter 处理思路（源自 Hexo 生态，仓库已归档）', 'MIT',
+                      'https://github.com/hexojs/hexo'),
+                  ('flutter_udp_broadcast', 'P2P 局域网同步广播（UDP 广播思路参考）', '思路参考',
+                      'https://pub.dev/packages?q=udp+broadcast'),
+                  ('ripgrep', '全文检索二进制预编译方案', 'Unlicense',
+                      'https://github.com/BurntSushi/ripgrep'),
+                  ('GitHub REST API', 'Contents API / Git Data API 批量上传', '服务条款',
+                      'https://docs.github.com/rest'),
                 ]),
                 const SizedBox(height: 12),
                 _creditGroup('布局与交互参考', [
@@ -1592,7 +1614,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _creditGroup(String title, List<(String, String, String)> items) {
+  Widget _creditGroup(String title, List<(String, String, String, String)> items) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1601,7 +1623,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
         ),
         const SizedBox(height: 6),
-        for (final (name, desc, url) in items)
+        for (final (name, desc, license, url) in items)
           InkWell(
             onTap: () => _openUrl(url),
             child: Padding(
@@ -1613,7 +1635,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: TextStyle(fontSize: 13, color: Color(0xFF475569))),
                   Expanded(
                     child: Text(
-                      '$name — $desc\n$url',
+                      '$name — $desc\n$url  [$license]',
                       style: const TextStyle(
                           fontSize: 13, height: 1.4, color: Color(0xFF475569)),
                     ),
