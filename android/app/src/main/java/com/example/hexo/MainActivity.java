@@ -94,10 +94,11 @@ public class MainActivity extends FlutterActivity {
                         case "getPublicDocumentsDir":
                             result.success(getPublicDocumentsDir());
                             break;
-                        case "isAppPrivatePath":
+                        case "isAppPrivatePath": {
                             String p = call.argument("path");
                             result.success(p != null && isAppPrivatePath(p));
                             break;
+                        }
                         case "getLaunchQuickNote":
                             // 拉取并清空缓存的速记参数
                             java.util.Map<String, String> cached = pendingQuickNote;
