@@ -331,6 +331,8 @@ public class FloatingNoteService extends Service {
         File saved = NativeQuickNoteStore.saveToMd(this, null, "datetime", true, text);
         if (saved != null) {
             Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show();
+            // 回显到速记小部件：保存成功后刷新，小部件显示最新速记文字
+            QuickNoteWidgetProvider.refreshAll(this);
         } else {
             Toast.makeText(this, "保存失败", Toast.LENGTH_SHORT).show();
         }

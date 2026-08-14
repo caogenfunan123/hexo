@@ -175,6 +175,8 @@ public class MainActivity extends FlutterActivity {
                             try {
                                 if ("task".equals(w)) {
                                     TaskWidgetProvider.refreshAll(this);
+                                } else if ("quick_note".equals(w)) {
+                                    QuickNoteWidgetProvider.refreshAll(this);
                                 } else {
                                     ReadWidgetProvider.refreshAll(this);
                                 }

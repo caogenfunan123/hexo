@@ -154,6 +154,16 @@ public final class NativeQuickNoteStore {
         }
     }
 
+    private static String readUtf8(File file) {
+        try {
+            byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
+            return new String(bytes, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            android.util.Log.e("NativeQuickNote", "readUtf8 failed: " + e.getMessage());
+            return null;
+        }
+    }
+
     // ── 时间戳（对齐 Flutter TimestampFormat） ──
 
     public static String formatTimestamp(String formatKey) {
@@ -237,6 +247,35 @@ public final class NativeQuickNoteStore {
         List<File> files = listUnimportedMd(context);
         if (files.isEmpty()) return "";
         return files.get(0).getAbsolutePath();
+    }
+
+    /**
+     * 最新一篇速记的正文（首行起最多 200 字符，去除 markdown 前缀），无则返回空串。
+     * 供速记小部件回显最近一次输入的速记文字。
+     */
+    public static String latestDraftText(Context context) {
+        try {
+            List<File> files = listUnimportedMd(context);
+            if (files.isEmpty()) return "";
+            String content = readUtf8(files.get(0));
+            if (content == null) return "";
+            StringBuilder sb = new StringBuilder();
+            for (String line : content.split("\n")) {
+                String t = line.trim();
+                if (t.isEmpty()) continue;
+                t = t.replaceFirst("^#+\\s*", "")
+                        .replaceFirst("^[-*]\\s*", "")
+                        .replaceFirst("^>\\s*", "")
+                        .trim();
+                if (t.isEmpty()) continue;
+                sb.append(t).append(' ');
+                if (sb.length() > 200) break;
+            }
+            return sb.toString().trim();
+        } catch (Exception e) {
+            android.util.Log.e("NativeQuickNote", "latestDraftText failed: " + e.getMessage());
+            return "";
+        }
     }
 
     // ── 小部件文章选择（阅读/任务小部件显示指定文章） ──

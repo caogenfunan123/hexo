@@ -808,6 +808,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           articleType: ArticleType.post,
         );
         await _saveDraft(article);
+        await _quickNoteService?.refreshWidget(widget: 'quick_note');
         if (mounted) _showToast('速记已保存到草稿箱');
         return true;
       },
@@ -888,6 +889,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     await _quickNoteService?.setWidgetArticlePath(chosen, widget: 'task');
     await _quickNoteService?.refreshWidget(widget: 'read');
     await _quickNoteService?.refreshWidget(widget: 'task');
+    await _quickNoteService?.refreshWidget(widget: 'quick_note');
     if (mounted) _showToast('已选择文章，小部件已刷新');
   }
 

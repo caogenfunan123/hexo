@@ -1,17 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 桌面速记小部件（复刻 QuickDaily 极简风格）：
-     白色圆角 + 居中大 + 号 + 「速记」标签，点击直达速记并弹出输入法 -->
+     白色圆角 + 居中大 + 号 + 「速记」标签；有速记时回显最近一次输入的文字。
+     点击任意区域 → 透明中转 Activity 弹出悬浮速记窗，只出速记窗、不打开主界面。 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_background_light">
 
+    <!-- 空态：加号 + 「速记」标签 -->
     <LinearLayout
+        android:id="@+id/widget_empty_state"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:gravity="center"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:visibility="gone">
 
         <ImageView
             android:id="@+id/widget_icon"
@@ -33,5 +37,20 @@
             android:textStyle="bold" />
 
     </LinearLayout>
+
+    <!-- 有速记内容：回显最近一次输入的速记文字 -->
+    <TextView
+        android:id="@+id/widget_text"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="12dp"
+        android:gravity="top|start"
+        android:maxLines="6"
+        android:ellipsize="end"
+        android:text=""
+        android:textColor="#DE202124"
+        android:textSize="13sp"
+        android:lineSpacingExtra="2dp"
+        android:visibility="gone" />
 
 </FrameLayout>
