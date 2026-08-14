@@ -1,7 +1,7 @@
 package com.example.hexo;
 
-import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
+import android.content.Context;
 import android.content.Intent;
 import android.widget.RemoteViews;
 import android.widget.RemoteViewsService;
@@ -16,15 +16,17 @@ public class TaskWidgetViewsService extends RemoteViewsService {
 
     @Override
     public RemoteViewsFactory onGetViewFactory(Intent intent) {
-        return new TaskViewsFactory(intent);
+        return new TaskViewsFactory(intent, this);
     }
 
     private static class TaskViewsFactory implements RemoteViewsFactory {
 
+        private final Context mContext;
         private List<TaskWidgetTaskParser.TaskItem> mTasks;
         private final int mAppWidgetId;
 
-        TaskViewsFactory(Intent intent) {
+        TaskViewsFactory(Intent intent, Context context) {
+            mContext = context;
             mAppWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,
                     AppWidgetManager.INVALID_APPWIDGET_ID);
         }
@@ -35,7 +37,7 @@ public class TaskWidgetViewsService extends RemoteViewsService {
 
         @Override
         public void onDataSetChanged() {
-            String path = NativeQuickNoteStore.latestDraftPath(TaskWidgetViewsService.this);
+            String path = NativeQuickNoteStore.latestDraftPath(mContext);
             String content = "";
             if (path != null && !path.isEmpty()) {
                 content = TaskWidgetTaskParser.readFile(new File(path));
@@ -58,7 +60,7 @@ public class TaskWidgetViewsService extends RemoteViewsService {
         public RemoteViews getViewAt(int position) {
             if (mTasks == null || position >= mTasks.size()) return null;
             TaskWidgetTaskParser.TaskItem item = mTasks.get(position);
-            RemoteViews views = new RemoteViews(getPackageName(), R.layout.widget_task_item);
+            RemoteViews views = new RemoteViews(mContext.getPackageName(), R.layout.widget_task_item);
             views.setTextViewText(R.id.task_text, item.text);
             views.setImageViewResource(R.id.task_checkbox,
                     item.checked
@@ -68,7 +70,7 @@ public class TaskWidgetViewsService extends RemoteViewsService {
             // 点击勾选：携带路径与行号
             Intent fillIntent = new Intent();
             fillIntent.putExtra(TaskWidgetProvider.EXTRA_TASK_PATH,
-                    NativeQuickNoteStore.latestDraftPath(TaskWidgetViewsService.this));
+                    NativeQuickNoteStore.latestDraftPath(mContext));
             fillIntent.putExtra(TaskWidgetProvider.EXTRA_TASK_LINE, item.lineIndex);
             views.setOnClickFillInIntent(R.id.task_checkbox, fillIntent);
             views.setOnClickFillInIntent(R.id.task_row, fillIntent);
