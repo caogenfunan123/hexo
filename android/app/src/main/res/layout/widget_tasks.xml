@@ -6,6 +6,8 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background_light"
     android:orientation="vertical"
+    android:clickable="true"
+    android:focusable="true"
     android:padding="10dp">
 
     <FrameLayout

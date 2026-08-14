@@ -44,10 +44,9 @@
             android:name=".QuickNoteLauncherActivity"
             android:exported="false"
             android:excludeFromRecents="true"
-            android:launchMode="singleInstance"
+            android:launchMode="standard"
             android:noHistory="true"
-            android:taskAffinity=""
-            android:theme="@style/Theme.Hexo.Transparent" />
+            android:theme="@style/Theme.Hexo.Launcher" />
 
         <!-- 悬浮速记窗服务 -->
         <service

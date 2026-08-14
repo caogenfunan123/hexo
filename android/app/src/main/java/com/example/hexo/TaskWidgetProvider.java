@@ -121,6 +121,19 @@ public class TaskWidgetProvider extends AppWidgetProvider {
                         toggleIntent,
                         PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
 
+        // 整块空白点击 → 弹悬浮速记窗（与速记小部件行为一致）
+        // 列表行 / 按钮各自已有 PendingIntent，空白区域才落到根布局
+        Intent quickNoteIntent = new Intent(context, QuickNoteLauncherActivity.class)
+                .putExtra(FloatingNoteService.EXTRA_SOURCE, "widget")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        views.setOnClickPendingIntent(
+                R.id.widget_root,
+                PendingIntent.getActivity(
+                        context,
+                        appWidgetId + 500,
+                        quickNoteIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+
         appWidgetManager.updateAppWidget(appWidgetId, views);
     }
 }

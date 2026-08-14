@@ -48,35 +48,40 @@ public class QuickNoteWidgetProvider extends AppWidgetProvider {
     }
 
     private static void updateWidget(Context context, AppWidgetManager appWidgetManager, int appWidgetId) {
-        RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_quick_note);
+        try {
+            RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_quick_note);
 
-        // 整块点击 → 透明中转 Activity（QuickNoteLauncherActivity）：
-        // 由它统一处理悬浮窗权限检查 + startForegroundService 启动悬浮速记窗，
-        // 然后立即 finish，屏幕只闪现透明页、不会打开主界面。
-        // 相比直接 getForegroundService，中转 Activity 属于前台启动，
-        // 规避 Android 12+ 及部分厂商 ROM 从 AppWidget 后台启动 FGS 被拦截的问题。
-        Intent launcherIntent = new Intent(context, QuickNoteLauncherActivity.class)
-                .putExtra(FloatingNoteService.EXTRA_SOURCE, "widget")
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        PendingIntent pi = PendingIntent.getActivity(
-                context,
-                appWidgetId,
-                launcherIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        views.setOnClickPendingIntent(R.id.widget_root, pi);
+            // 整块点击 → 透明中转 Activity（QuickNoteLauncherActivity）：
+            // 由它统一处理悬浮窗权限检查 + startForegroundService 启动悬浮速记窗，
+            // 然后立即 finish，屏幕只闪现透明页、不会打开主界面。
+            // 相比直接 getForegroundService，中转 Activity 属于前台启动，
+            // 规避 Android 12+ 及部分厂商 ROM 从 AppWidget 后台启动 FGS 被拦截的问题。
+            Intent launcherIntent = new Intent(context, QuickNoteLauncherActivity.class)
+                    .putExtra(FloatingNoteService.EXTRA_SOURCE, "widget")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            PendingIntent pi = PendingIntent.getActivity(
+                    context,
+                    appWidgetId,
+                    launcherIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            views.setOnClickPendingIntent(R.id.widget_root, pi);
 
-        // 回显最近一次速记文字；无则显示加号空态
-        String text = NativeQuickNoteStore.latestDraftText(context);
-        if (text != null && !text.trim().isEmpty()) {
-            views.setTextViewText(R.id.widget_text, text);
-            views.setViewVisibility(R.id.widget_text, android.view.View.VISIBLE);
-            views.setViewVisibility(R.id.widget_empty_state, android.view.View.GONE);
-        } else {
-            views.setTextViewText(R.id.widget_text, "");
-            views.setViewVisibility(R.id.widget_text, android.view.View.GONE);
-            views.setViewVisibility(R.id.widget_empty_state, android.view.View.VISIBLE);
+            // 回显最近一次速记文字；无则显示加号空态
+            String text = NativeQuickNoteStore.latestDraftText(context);
+            if (text != null && !text.trim().isEmpty()) {
+                views.setTextViewText(R.id.widget_text, text);
+                views.setViewVisibility(R.id.widget_text, android.view.View.VISIBLE);
+                views.setViewVisibility(R.id.widget_empty_state, android.view.View.GONE);
+            } else {
+                views.setTextViewText(R.id.widget_text, "");
+                views.setViewVisibility(R.id.widget_text, android.view.View.GONE);
+                views.setViewVisibility(R.id.widget_empty_state, android.view.View.VISIBLE);
+            }
+
+            appWidgetManager.updateAppWidget(appWidgetId, views);
+        } catch (Exception e) {
+            // 任一环节异常都不能静默：否则 RemoteViews 未应用，点击小部件会完全无反应
+            android.util.Log.e("QuickNoteWidget", "updateWidget failed", e);
         }
-
-        appWidgetManager.updateAppWidget(appWidgetId, views);
     }
 }

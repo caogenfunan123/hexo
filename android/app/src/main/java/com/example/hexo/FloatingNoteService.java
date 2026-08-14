@@ -205,6 +205,7 @@ public class FloatingNoteService extends Service {
         try {
             mWindowManager.addView(mOverlayView, mParams);
         } catch (Exception e) {
+            android.util.Log.e("FloatingNote", "addView failed", e);
             Toast.makeText(this, "无法显示悬浮窗", Toast.LENGTH_SHORT).show();
             mOverlayView = null;
             return;
@@ -387,7 +388,13 @@ public class FloatingNoteService extends Service {
                 .setSmallIcon(R.drawable.ic_add_dark)
                 .setOngoing(true);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            startForeground(NOTIF_ID, b.build());
+            if (Build.VERSION.SDK_INT >= 34) {
+                // Android 14+：FGS 类型需与 manifest 声明的 specialUse 对齐
+                startForeground(NOTIF_ID, b.build(),
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            } else {
+                startForeground(NOTIF_ID, b.build());
+            }
         }
     }
 
