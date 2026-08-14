@@ -519,7 +519,17 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       var r = await storage.loadRepos();
       // 同步全局统一存储目录配置
       storage.setCustomRoot(s.storageRootDir);
-      final d = await storage.loadDrafts();
+      var d = await storage.loadDrafts();
+      // 导入原生悬浮速记窗写入的 md（若有），并入草稿并持久化防丢
+      try {
+        final nativeNotes = await storage.importNativeQuickNotes();
+        if (nativeNotes.isNotEmpty) {
+          d = [...nativeNotes, ...d];
+          await storage.saveDrafts(d);
+        }
+      } catch (e) {
+        debugPrint('Bootstrap native note import error: $e');
+      }
       final t = await storage.loadAllTemplates();
       final sn = await storage.loadSnippets();
       s = _ensureGithubTokensFromLegacy(s, r);

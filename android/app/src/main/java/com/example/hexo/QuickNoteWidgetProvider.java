@@ -11,8 +11,8 @@ import android.widget.RemoteViews;
  * 桌面小部件：一键速记。
  *
  * 复刻 QuickDaily 极简设计：白色圆角卡片 + 居中加号。
- * 点击任意区域 → 拉起 MainActivity 并直达速记（带 QuickNoteIntent.EXTRA_MODE），
- * Flutter 侧自动聚焦输入框弹出键盘，输入后自动保存。
+ * 点击任意区域 → 启动 FloatingNoteService 弹出原生悬浮速记窗，
+ * 只出速记窗、不打开主界面（除非缺少悬浮窗权限）。
  */
 public class QuickNoteWidgetProvider extends AppWidgetProvider {
 
@@ -26,12 +26,12 @@ public class QuickNoteWidgetProvider extends AppWidgetProvider {
     private void updateWidget(Context context, AppWidgetManager appWidgetManager, int appWidgetId) {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_quick_note);
 
-        // 整块点击 → 直达速记
-        Intent intent = QuickNoteIntent.build(context, QuickNoteIntent.MODE_NEW, null);
-        PendingIntent pi = PendingIntent.getActivity(
+        // 整块点击 → 启动悬浮速记窗
+        Intent serviceIntent = FloatingNoteService.showIntent(context, "widget", null);
+        PendingIntent pi = PendingIntent.getService(
                 context,
                 appWidgetId,
-                intent,
+                serviceIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         views.setOnClickPendingIntent(R.id.widget_root, pi);
 

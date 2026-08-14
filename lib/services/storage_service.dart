@@ -358,6 +358,72 @@ class StorageService {
     await f.writeAsString(a.toMarkdownWithFrontMatter());
   }
 
+  // ── 原生悬浮速记窗 md 导入 ──
+
+  /// 导入原生悬浮速记窗写入的 md 文件到草稿箱。
+  ///
+  /// 规则（与原生 NativeQuickNoteStore 约定一致）：
+  /// - 只导入 {@code MD文章/} 根下以「毫秒时间戳_标题」命名、无 frontmatter、
+  ///   且尚未被导入（无 {@code .md.imported} 标记）的 md 文件
+  /// - 导入成功后写入 {@code .md.imported} 标记，避免重复导入
+  /// - 跳过带 frontmatter（以 {@code ---} 开头）的导出/发布文件
+  ///
+  /// 返回新导入的草稿列表（调用方负责并入并持久化 drafts）。
+  Future<List<Article>> importNativeQuickNotes() async {
+    final dir = await mdArticlesDir();
+    final imported = <Article>[];
+    try {
+      await for (final e in dir.list()) {
+        if (e is! File) continue;
+        final name = e.uri.pathSegments.last;
+        if (!name.endsWith('.md') || name.endsWith('.imported')) continue;
+        final marker = File('${e.path}.imported');
+        if (await marker.exists()) continue;
+        String content;
+        try {
+          content = await e.readAsString();
+        } catch (_) {
+          continue;
+        }
+        // 带 frontmatter 的是导出/发布文件，跳过
+        if (content.trimLeft().startsWith('---')) continue;
+        final createdAt = _nativeMdTimestamp(name) ?? (await e.stat()).modified;
+        imported.add(Article(
+          id: 'native_${createdAt.millisecondsSinceEpoch}',
+          title: _nativeMdTitle(name, content),
+          content: content.trim(),
+          createdAt: createdAt,
+          updatedAt: createdAt,
+          isDraft: true,
+        ));
+        try {
+          await marker.writeAsString('imported');
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('Storage: 导入原生速记失败: $e');
+    }
+    return imported;
+  }
+
+  /// 从文件名 {@code <epochMillis>_<title>.md} 解析毫秒时间戳
+  DateTime? _nativeMdTimestamp(String name) {
+    final idx = name.indexOf('_');
+    if (idx <= 0) return null;
+    final ts = int.tryParse(name.substring(0, idx));
+    if (ts == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(ts);
+  }
+
+  /// 从文件名取标题（去时间戳前缀与 .md 后缀），空则回落「速记」
+  String _nativeMdTitle(String name, String content) {
+    final idx = name.indexOf('_');
+    var t = idx > 0 ? name.substring(idx + 1) : name;
+    t = t.replaceAll(RegExp(r'\.md$'), '').trim();
+    if (t.isEmpty) t = '速记';
+    return t;
+  }
+
   // ── 模板管理 ──
   Future<List<TemplateItem>> loadTemplates() async {
     final list = await _readList(_templatesFile);

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 阅读小部件：展示最新速记草稿内容（md 原文/任务行），眼睛开关切换渲染 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background_light"
+    android:orientation="vertical"
+    android:padding="10dp">
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start|center_vertical"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="最新速记"
+            android:textColor="#212121"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end|center_vertical"
+            android:orientation="horizontal">
+
+            <ImageButton
+                android:id="@+id/btn_eye"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:background="@null"
+                android:contentDescription="切换渲染模式"
+                android:scaleType="centerInside"
+                android:src="@android:drawable/ic_menu_view" />
+
+            <ImageButton
+                android:id="@+id/btn_home"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:background="@null"
+                android:contentDescription="打开编辑"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_edit" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <ListView
+        android:id="@+id/content_list"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="4dp"
+        android:divider="@null"
+        android:dividerHeight="0dp" />
+
+    <TextView
+        android:id="@+id/empty_view"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="4dp"
+        android:gravity="center"
+        android:text="暂无速记内容"
+        android:textColor="#8A202124"
+        android:textSize="12sp" />
+</LinearLayout>

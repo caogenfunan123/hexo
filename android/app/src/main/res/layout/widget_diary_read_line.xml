@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 阅读小部件行：单行文本 -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/read_line_text"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingTop="1dp"
+    android:paddingBottom="1dp"
+    android:textColor="#212121"
+    android:textSize="12sp"
+    android:lineSpacingExtra="2dp"
+    android:maxLines="3"
+    android:ellipsize="end" />

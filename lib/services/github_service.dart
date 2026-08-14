@@ -455,6 +455,159 @@ class GitHubService {
     return adapter.rawUrl(tmp, path);
   }
 
+  /// Git Data API 批量提交（方法B）：一次 commit 上传多个文件。
+  ///
+  /// 适用于 GitHub。相比逐文件 Contents API，提交更快、原子、减少并发冲突。
+  /// [files] 的元素为 (path, bytes)，path 为仓库内相对路径。
+  Future<void> uploadBatchViaGitData({
+    required String token,
+    required String owner,
+    required String repo,
+    required String branch,
+    required List<({String path, List<int> bytes})> files,
+    String message = 'chore: batch upload',
+    String? authorName,
+    String? authorEmail,
+  }) async {
+    if (files.isEmpty) return;
+    final tmp = RepoConfig(
+      id: '',
+      name: '',
+      owner: owner,
+      repo: repo,
+      branch: branch,
+      token: token,
+      provider: GitProviderType.github,
+    );
+    final provider = adapterFor(GitProviderType.github);
+    if (provider is! GitHubProvider) {
+      throw Exception('Git Data API 仅支持 GitHub');
+    }
+    await provider.writeBatch(
+      tmp,
+      files,
+      message: message,
+      authorName: authorName,
+      authorEmail: authorEmail,
+    );
+  }
+
+  /// git CLI 提交推送（方法C）：本地 clone 后批量写文件，再 commit + push。
+  ///
+  /// 仅桌面平台且系统存在 git 命令时可用。上传前需确保本地仓库完整，
+  /// 因此先 clone（分支存在则检出）到临时目录，写文件后提交推送。
+  Future<void> uploadViaGitCli({
+    required String token,
+    required String owner,
+    required String repo,
+    required String branch,
+    required List<({String path, List<int> bytes})> files,
+    String message = 'chore: batch upload',
+    String? authorName,
+    String? authorEmail,
+    String? baseUrl,
+  }) async {
+    if (files.isEmpty) return;
+    if (!Platform.isWindows &&
+        !Platform.isLinux &&
+        !Platform.isMacOS) {
+      throw Exception('git CLI 方式仅支持桌面端');
+    }
+    final git = await Process.run('which', ['git']);
+    if (git.exitCode != 0 ||
+        (git.stdout?.toString() ?? '').trim().isEmpty) {
+      throw Exception('未检测到 git 命令，无法使用 CLI 方式');
+    }
+    final root = await Directory.systemTemp.createTemp('hexo_batch_');
+    try {
+      final originUrl = Uri.parse(
+              baseUrl?.isNotEmpty == true
+                  ? baseUrl!
+                  : 'https://github.com/$owner/$repo.git')
+          .replace(
+        queryParameters: null,
+        fragment: null,
+      );
+      // 带 token 的 clone URL，避免后续 push 需要交互式凭据
+      final authUrl = originUrl.replace(
+        userInfo: Uri.encodeComponent('oauth2') +
+            ':' +
+            Uri.encodeComponent(token),
+      ).toString();
+      final cloneArgs = <String>['clone', '--depth', '1'];
+      cloneArgs.addAll(['-b', branch, authUrl, root.path]);
+      final clone = await _runCli(
+          'git', cloneArgs, workingDirectory: null, noAuthUrl: originUrl.toString());
+      if (!clone.ok) {
+        // 分支可能不存在：全量 clone 后本地建分支
+        final bare = root.path;
+        final cloneAll = await _runCli(
+            'git', ['clone', '--depth', '1', originUrl.toString(), bare],
+            workingDirectory: null, noAuthUrl: originUrl.toString());
+        if (!cloneAll.ok) {
+          throw Exception('git clone 失败');
+        }
+      }
+      // 写入文件
+      for (final f in files) {
+        final target = File('${root.path}/${f.path}');
+        await target.parent.create(recursive: true);
+        await target.writeAsBytes(f.bytes, flush: true);
+      }
+      final add = await _runCli('git', ['add', '-A'],
+          workingDirectory: root.path);
+      if (!add.ok) throw Exception('git add 失败');
+      if (authorName?.isNotEmpty == true || authorEmail?.isNotEmpty == true) {
+        final nm = authorName ?? 'Hexo Blog Manager';
+        final em = authorEmail ?? 'noreply@hexo.blog';
+        await _runCli('git', ['config', 'user.name', nm],
+            workingDirectory: root.path);
+        await _runCli('git', ['config', 'user.email', em],
+            workingDirectory: root.path);
+      }
+      final commit = await _runCli('git', ['commit', '-m', message],
+          workingDirectory: root.path);
+      if (!commit.ok) {
+        // 无改动时视为成功（全部文件已存在且内容相同）
+        if (commit.stderr.contains('nothing to commit')) return;
+        throw Exception('git commit 失败');
+      }
+      final push = await _runCli(
+        'git',
+        ['push', 'origin', 'HEAD:$branch'],
+        workingDirectory: root.path,
+      );
+      if (!push.ok) throw Exception('git push 失败');
+    } finally {
+      if (root.existsSync()) {
+        try {
+          await root.delete(recursive: true);
+        } catch (_) {}
+      }
+    }
+  }
+
+  /// 执行 CLI 命令，返回 ok/输出。调用 git 时隐藏 URL 中的凭据。
+  Future<({bool ok, String stdout, String stderr})> _runCli(
+    String cmd,
+    List<String> args, {
+    required String? workingDirectory,
+    String? noAuthUrl,
+  }) async {
+    final result = await Process.run(cmd, args,
+        workingDirectory: workingDirectory ?? Directory.current.path);
+    final out = (result.stdout?.toString() ?? '').trim();
+    final err = (result.stderr?.toString() ?? '').trim();
+    var shownErr = err;
+    if (noAuthUrl != null && shownErr.isNotEmpty) {
+      // 隐藏 URL 中的 token 凭据
+      shownErr = shownErr
+          .replaceAll(RegExp('//[^/@\\s]+@'), '//***@');
+    }
+    debugPrint('CLI: $cmd $args\n  out: $out\n  err: $shownErr');
+    return (ok: result.exitCode == 0, stdout: out, stderr: shownErr);
+  }
+
   /// 仓库内全文搜索。GitHub Code Search 为 GitHub 独有能力，
   /// 其他平台不提供搜索返回空列表。
   Future<List<GitHubSearchHit>> searchCode(

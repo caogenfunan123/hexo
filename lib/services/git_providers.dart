@@ -175,6 +175,99 @@ class GitHubProvider implements GitProviderAdapter {
   @override
   String rawUrl(RepoConfig repo, String path) =>
       'https://raw.githubusercontent.com/${repo.owner}/${repo.repo}/${repo.branch}/${encPathSegments(path)}';
+
+  /// Git Data API 批量提交：一次 commit 上传多个文件。
+  ///
+  /// 流程：POST /git/blobs 创建每个文件的 blob → POST /git/trees
+  /// 组装 tree（基于当前分支 tip）→ POST /git/commits 创建 commit →
+  /// PATCH /git/refs/heads/{branch} 更新分支引用。
+  /// 相比 Contents API 逐文件 PUT，此方式只需一次 commit，速度更快、
+  /// 减少 422 并发冲突，且支持同一 commit 原子提交全部文件。
+  Future<void> writeBatch(
+    RepoConfig repo,
+    List<({String path, List<int> bytes})> files, {
+    required String message,
+    String? authorName,
+    String? authorEmail,
+  }) async {
+    if (files.isEmpty) return;
+    final base = apiBase(repo);
+    final branchRef = 'heads/${repo.branch}';
+
+    // 1. 取当前分支 tip commit sha
+    final refData = await request(
+        'GET', '$base/git/ref/$branchRef', repo.token);
+    if (refData is! Map) throw Exception('获取分支引用失败');
+    final tipCommit = refData['object']?['sha']?.toString();
+    if (tipCommit == null || tipCommit.isEmpty) {
+      throw Exception('分支 ${repo.branch} 不存在');
+    }
+
+    // 2. 逐文件创建 blob
+    final blobs = <String, String>{};
+    for (final f in files) {
+      final body = <String, dynamic>{
+        'content': base64Encode(f.bytes),
+        'encoding': 'base64',
+      };
+      final data =
+          await request('POST', '$base/git/blobs', repo.token, body: body);
+      if (data is! Map) throw Exception('创建 blob 失败: ${f.path}');
+      blobs[f.path] = data['sha']?.toString() ?? '';
+    }
+
+    // 3. 组装 tree（含子目录路径拆解）
+    final treeEntries = <Map<String, dynamic>>[];
+    for (final f in files) {
+      treeEntries.add({
+        'path': f.path,
+        'mode': '100644',
+        'type': 'blob',
+        'sha': blobs[f.path],
+      });
+    }
+    final treeBody = <String, dynamic>{
+      'base_tree': tipCommit,
+      'tree': treeEntries,
+    };
+    final treeData =
+        await request('POST', '$base/git/trees', repo.token, body: treeBody);
+    if (treeData is! Map) throw Exception('创建 tree 失败');
+    final treeSha = treeData['sha']?.toString() ?? '';
+    if (treeSha.isEmpty) throw Exception('创建 tree 失败');
+
+    // 4. 创建 commit
+    final commitBody = <String, dynamic>{
+      'message': message,
+      'tree': treeSha,
+      'parents': [tipCommit],
+    };
+    if ((authorName?.isNotEmpty ?? false) ||
+        (authorEmail?.isNotEmpty ?? false)) {
+      commitBody['author'] = {
+        'name': authorName ?? 'Hexo Blog Manager',
+        'email': authorEmail ?? 'noreply@hexo.blog',
+      };
+      commitBody['committer'] = {
+        'name': authorName ?? 'Hexo Blog Manager',
+        'email': authorEmail ?? 'noreply@hexo.blog',
+      };
+    }
+    final commitData =
+        await request('POST', '$base/git/commits', repo.token,
+            body: commitBody);
+    if (commitData is! Map) throw Exception('创建 commit 失败');
+    final commitSha = commitData['sha']?.toString() ?? '';
+    if (commitSha.isEmpty) throw Exception('创建 commit 失败');
+
+    // 5. 更新分支引用（fast-forward）
+    await request(
+      'PATCH',
+      '$base/git/refs/$branchRef',
+      repo.token,
+      body: {'sha': commitSha, 'force': false},
+    );
+  }
 }
 
 /// GitLab 适配器（gitlab.com）

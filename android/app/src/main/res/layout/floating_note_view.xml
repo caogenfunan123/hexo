@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 悬浮速记窗布局（复刻 QuickDaily NoteEditDialog）：
+     圆角卡片 + 标题栏(可拖拽) + 多行输入框 + 底部工具栏(时间戳/加粗/列表/保存) -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/floating_note_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/floating_note_bg">
+
+    <!-- 标题栏（长按可拖拽窗口） -->
+    <LinearLayout
+        android:id="@+id/floating_title_bar"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="8dp"
+        android:paddingEnd="4dp"
+        android:background="#0D000000">
+
+        <TextView
+            android:id="@+id/floating_title"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="速记"
+            android:textColor="#212121"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:singleLine="true"
+            android:ellipsize="end" />
+
+        <ImageButton
+            android:id="@+id/floating_save_btn"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_check"
+            android:contentDescription="保存"
+            android:scaleType="centerInside" />
+
+        <ImageButton
+            android:id="@+id/floating_close_btn"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_close"
+            android:contentDescription="关闭"
+            android:scaleType="centerInside" />
+    </LinearLayout>
+
+    <!-- 输入区 -->
+    <EditText
+        android:id="@+id/floating_input"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@android:color/transparent"
+        android:gravity="top|start"
+        android:hint="写点什么..."
+        android:inputType="textMultiLine|textCapSentences"
+        android:imeOptions="actionDone"
+        android:maxLines="50"
+        android:paddingStart="14dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="4dp"
+        android:textColor="#212121"
+        android:textColorHint="#9E9E9E"
+        android:textSize="15sp"
+        android:importantForAutofill="no" />
+
+    <!-- 底部工具栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="4dp"
+        android:paddingEnd="8dp">
+
+        <ImageButton
+            android:id="@+id/floating_tool_timestamp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_schedule"
+            android:contentDescription="插入时间戳"
+            android:scaleType="centerInside" />
+
+        <ImageButton
+            android:id="@+id/floating_tool_bold"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_format_bold"
+            android:contentDescription="加粗"
+            android:scaleType="centerInside" />
+
+        <ImageButton
+            android:id="@+id/floating_tool_list"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_list"
+            android:contentDescription="列表"
+            android:scaleType="centerInside" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <Button
+            android:id="@+id/floating_save_text_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_gravity="center_vertical"
+            android:backgroundTint="#4C8DFF"
+            android:text="保存"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:minWidth="72dp" />
+    </LinearLayout>
+</LinearLayout>

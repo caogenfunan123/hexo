@@ -48,3 +48,40 @@ flutter build apk --debug
 ```
 
 APK 输出在 `build/app/outputs/flutter-apk/app-debug.apk`。
+
+## 鸣谢
+
+本项目的架构设计与功能实现深度参考了以下开源项目，在此向各位原作者致敬：
+
+### 本项目直接复刻/深度参考
+
+| 项目 | 说明 | 地址 |
+|------|------|------|
+| QuickDaily | 悬浮速记窗、任务小部件、阅读小部件、时间戳能力 | [github.com/agarcabin/QuickDaily](https://github.com/agarcabin/QuickDaily) |
+| MonkeyCode | AI 工具/模型编排、MCP 服务器管理、健康检查 | [github.com/chaitin/MonkeyCode](https://github.com/chaitin/MonkeyCode) |
+| MarkText | 沉浸式写作布局、专注模式、33 主题体系、打字机滚动 | [github.com/marktext/marktext](https://github.com/marktext/marktext) |
+| VS Code | MVVM 架构分层、命令面板（Ctrl+Shift+P）、Markdown 语法着色、diff view | [github.com/microsoft/vscode](https://github.com/microsoft/vscode) |
+| super_editor | Document / Composer 编辑器架构（数据与交互状态分离） | [github.com/superlistapp/super_editor](https://github.com/superlistapp/super_editor) |
+| Zettlr | FrontMatter 解析、FSAL 全文搜索架构 | [github.com/Zettlr/Zettlr](https://github.com/Zettlr/Zettlr) |
+
+### 布局与交互参考
+
+| 项目 | 说明 | 地址 |
+|------|------|------|
+| PureWriter | 左栏源码编辑 + 右栏实时预览 | [github.com/PureWriter/PureWriter](https://github.com/PureWriter/PureWriter) |
+| Notion | 左栏文章平铺内嵌、可折叠列表 | [notion.so](https://www.notion.so/) |
+| Obsidian | Vault 工作区隔离思想 | [github.com/obsidianmd/obsidian-releases](https://github.com/obsidianmd/obsidian-releases) |
+| Cursor | AI inline edit + 编辑器 diff 交互 | [github.com/getcursor/cursor](https://github.com/getcursor/cursor) |
+
+### 能力依赖参考
+
+| 项目 | 说明 | 地址 |
+|------|------|------|
+| hexo-mobile | FrontMatter 处理思路 | [github.com/NoahDragon/hexo-mobile](https://github.com/NoahDragon/hexo-mobile) |
+| flutter_udp_broadcast | P2P 局域网同步广播 | [github.com/crazecoder/flutter_udp_broadcast](https://github.com/crazecoder/flutter_udp_broadcast) |
+| ripgrep | 全文检索二进制预编译方案 | [github.com/BurntSushi/ripgrep](https://github.com/BurntSushi/ripgrep) |
+| GitHub REST API | 批量上传支持 Contents API 与 Git Data API（blobs/trees/commits/refs 一次提交），失败自动回退 git CLI | [docs.github.com](https://docs.github.com/en/rest/repos/contents) |
+
+QuickDaily 作者：小子，感谢原作者的开源分享，欢迎前往支持：[作者主页](https://www.coolapk.com/u/400522)
+
+技术交流群：97126959 —— [点击加入群聊](https://qm.qq.com/q/97126959)
