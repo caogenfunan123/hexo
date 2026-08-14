@@ -144,6 +144,7 @@ class AiChatPanelState extends State<AiChatPanel> {
   /// 流式相关
   StreamSubscription<void>? _streamSub;
   StringBuffer _streamBuffer = StringBuffer();
+  StringBuffer _reasoningBuffer = StringBuffer();
   int? _streamingMsgIndex;
 
   /// 工具调用卡片展开状态（按 callId）
@@ -340,6 +341,7 @@ class AiChatPanelState extends State<AiChatPanel> {
     setState(() {
       _messages.clear();
       _streamBuffer = StringBuffer();
+      _reasoningBuffer = StringBuffer();
       _streamingMsgIndex = null;
     });
     _initSession();
@@ -586,6 +588,7 @@ class AiChatPanelState extends State<AiChatPanel> {
 
     // 先添加一个空 assistant 消息，后续流式填充
     _streamBuffer = StringBuffer();
+    _reasoningBuffer = StringBuffer();
     setState(() {
       _messages.add(ChatMessage(role: 'assistant', content: ''));
       _streamingMsgIndex = _messages.length - 1;
@@ -636,6 +639,7 @@ class AiChatPanelState extends State<AiChatPanel> {
             if (idx != null && idx < _messages.length) {
               setState(() {
                 _streamBuffer.clear();
+                _reasoningBuffer.clear();
                 _status = '连接中断，正在重连...';
                 _messages[idx] = ChatMessage(
                   role: 'assistant',
@@ -649,6 +653,13 @@ class AiChatPanelState extends State<AiChatPanel> {
           }
           final reasoning = chunk.reasoningContent;
           if (reasoning != null && reasoning.isNotEmpty) {
+            // 兼容两种流：增量（追加）或全量（以已累积内容为前缀则替换）
+            final existing = _reasoningBuffer.toString();
+            if (existing.isNotEmpty && reasoning.startsWith(existing)) {
+              _reasoningBuffer = StringBuffer(reasoning);
+            } else {
+              _reasoningBuffer.write(reasoning);
+            }
             final idx = _streamingMsgIndex;
             if (idx != null && idx < _messages.length) {
               setState(() {
@@ -656,7 +667,7 @@ class AiChatPanelState extends State<AiChatPanel> {
                   role: 'assistant',
                   content: _messages[idx].content,
                   time: _messages[idx].time,
-                  reasoningContent: reasoning,
+                  reasoningContent: _reasoningBuffer.toString(),
                 );
               });
               _scrollToBottom();
@@ -802,6 +813,7 @@ class AiChatPanelState extends State<AiChatPanel> {
       _streamingMsgIndex = null;
     });
     _streamBuffer = StringBuffer();
+    _reasoningBuffer = StringBuffer();
     // 工具卡片状态只保留到本轮流结束，避免跨轮残留"运行中"
     for (final entry in _toolCallStates.entries) {
       if (entry.value == _ToolCallUiState.running) {
