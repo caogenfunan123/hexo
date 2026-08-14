@@ -1402,7 +1402,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: Text(l10n.translate('about_author')),
-            subtitle: Text(l10n.translate('about_developer')),
+            subtitle: const Text('小子'),
+            trailing: const Icon(Icons.person_outline),
+            onTap: () => _openUrl('https://www.coolapk.com/u/400522'),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('QQ 技术交流群'),
+            subtitle: const Text('97126959 · 点击加入'),
+            trailing: const Icon(Icons.forum_outlined),
+            onTap: () => _openUrl('https://qm.qq.com/q/97126959'),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.favorite_outline),
+            title: const Text('鸣谢'),
+            subtitle: const Text('QuickDaily · MonkeyCode · MarkText 等开源项目'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _showCreditsDialog,
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -1503,6 +1520,90 @@ class _SettingsScreenState extends State<SettingsScreen> {
           l10n.translate(bodyKey),
           style: const TextStyle(fontSize: 13, height: 1.5, color: Color(0xFF475569)),
         ),
+      ],
+    );
+  }
+
+  /// 鸣谢弹窗：列出本项目深度参考的开源项目
+  void _showCreditsDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('鸣谢'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '本项目的架构设计与功能实现深度参考了以下开源项目，在此向各位原作者致敬：',
+                  style: TextStyle(fontSize: 13, height: 1.5, color: Color(0xFF475569)),
+                ),
+                const SizedBox(height: 12),
+                _creditGroup('直接复刻 / 深度参考', [
+                  ('QuickDaily', '悬浮速记窗、任务小部件、阅读小部件'),
+                  ('MonkeyCode', 'AI 工具/模型编排、MCP 服务器管理'),
+                  ('MarkText', '沉浸式写作布局、专注模式、打字机滚动'),
+                  ('VS Code', 'MVVM 架构、命令面板、Markdown 语法着色'),
+                  ('super_editor', 'Document / Composer 编辑器架构'),
+                  ('Zettlr', 'FrontMatter 解析、FSAL 全文搜索架构'),
+                ]),
+                const SizedBox(height: 12),
+                _creditGroup('布局与交互参考', [
+                  ('PureWriter', '左栏源码 + 右栏实时预览'),
+                  ('Notion', '左栏文章平铺内嵌、可折叠列表'),
+                  ('Obsidian', 'Vault 工作区隔离思想'),
+                  ('Cursor', 'AI inline edit + 编辑器 diff 交互'),
+                ]),
+                const SizedBox(height: 12),
+                _creditGroup('能力依赖参考', [
+                  ('hexo-mobile', 'FrontMatter 处理思路'),
+                  ('flutter_udp_broadcast', 'P2P 局域网同步广播'),
+                  ('ripgrep', '全文检索二进制预编译方案'),
+                  ('GitHub REST API', 'Contents API / Git Data API 批量上传'),
+                ]),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _creditGroup(String title, List<(String, String)> items) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+        ),
+        const SizedBox(height: 6),
+        for (final (name, desc) in items)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('• ',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF475569))),
+                Expanded(
+                  child: Text(
+                    '$name — $desc',
+                    style: const TextStyle(fontSize: 13, height: 1.4, color: Color(0xFF475569)),
+                  ),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }
