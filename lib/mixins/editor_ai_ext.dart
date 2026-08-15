@@ -510,4 +510,16 @@ extension EditorAiExt on _RootShellState {
       _applyState(() => templates = t);
     }
   }
+
+  /// 主题商店：浏览内置精选主题并一键安装到站点仓库
+  void _showThemeStore() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ThemeStoreScreen(
+          repos: repos,
+          onToast: _showToast,
+        ),
+      ),
+    );
+  }
 }

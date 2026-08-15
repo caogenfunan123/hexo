@@ -85,6 +85,7 @@ abstract final class NavEntries {
     'dashboard': FeatureVisibility.hidden,
     // AI 工作台与模型配置（唯一 AI 对话入口）
     'agent_workbench': FeatureVisibility.shown,
+    'theme_store': FeatureVisibility.shown,
     'ai_model_manager': FeatureVisibility.shown,
     'ai_prompt_templates': FeatureVisibility.optIn,
     'theme_migration': FeatureVisibility.hidden,

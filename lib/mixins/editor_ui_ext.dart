@@ -1139,6 +1139,12 @@ extension EditorUiExt on _RootShellState {
                           l10n.translate('agent_workbench'),
                           _showAgentWorkbench,
                         ),
+                      if (navVisible('theme_store'))
+                        _drawerAction(
+                          Icons.store_outlined,
+                          l10n.translate('theme_store'),
+                          _showThemeStore,
+                        ),
                       if (navVisible('theme_migration'))
                         _drawerItem(
                           10,
