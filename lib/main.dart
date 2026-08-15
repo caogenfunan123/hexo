@@ -40,7 +40,6 @@ import 'core/task/agent_task_type.dart';
 import 'screens/ai_article_chat_screen.dart';
 import 'screens/agent_workbench_screen.dart';
 import 'screens/ai_model_manager_screen.dart';
-import 'screens/ai_settings_screen.dart';
 import 'screens/article_reader_screen.dart';
 import 'screens/blog_site_editor_screen.dart';
 import 'screens/drafts_screen.dart';
