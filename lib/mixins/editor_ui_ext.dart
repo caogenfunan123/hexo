@@ -863,7 +863,7 @@ extension EditorUiExt on _RootShellState {
                   }),
                   _aiMenuChip('对话', Icons.chat, () {
                     Navigator.pop(ctx);
-                    _showAiArticleChat();
+                    _showAgentWorkbench();
                   }),
                   _aiMenuChip('选区', Icons.touch_app, () {
                     Navigator.pop(ctx);
@@ -1139,35 +1139,11 @@ extension EditorUiExt on _RootShellState {
                           l10n.translate('agent_workbench'),
                           _showAgentWorkbench,
                         ),
-                      if (navVisible('ai_article'))
-                        _drawerAction(
-                          Icons.article_outlined,
-                          l10n.translate('ai_post_create'),
-                          _showAiArticleChat,
-                        ),
-                      if (navVisible('ai_page'))
-                        _drawerAction(
-                          Icons.web_outlined,
-                          l10n.translate('ai_page_create'),
-                          _showAiPageChat,
-                        ),
-                      if (navVisible('ai_theme'))
-                        _drawerAction(
-                          Icons.palette_outlined,
-                          l10n.translate('ai_theme_dev'),
-                          _showAiThemeChat,
-                        ),
                       if (navVisible('theme_migration'))
                         _drawerItem(
                           10,
                           Icons.auto_fix_high,
                           l10n.translate('nav_ai_theme_migrate'),
-                        ),
-                      if (navVisible('ai_audit'))
-                        _drawerAction(
-                          Icons.fact_check_outlined,
-                          l10n.translate('ai_site_audit'),
-                          _showAiAudit,
                         ),
                       if (navVisible('ai_template_chat'))
                         _drawerAction(
@@ -1813,7 +1789,7 @@ extension EditorUiExt on _RootShellState {
           _toolChip(
             Icons.chat,
             'AI对话',
-            () => _showAiArticleChat(),
+            () => _showAgentWorkbench(),
             color: Colors.deepPurple,
           ),
           _toolChip(

@@ -427,6 +427,7 @@ extension EditorAiExt on _RootShellState {
         builder: (_) => AgentWorkbenchScreen(
           settings: settings,
           activeRepo: effectiveRepo,
+          repos: repos,
           aiService: aiService,
           modelManager: aiModelManager,
           dispatcher: aiDispatcher,
@@ -434,44 +435,6 @@ extension EditorAiExt on _RootShellState {
           onSettingsChanged: _updateSettings,
           gitHubService: github,
           storageService: storage,
-        ),
-      ),
-    );
-  }
-
-  void _showAiArticleChat() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AgentWorkbenchScreen(
-          settings: settings,
-          activeRepo: effectiveRepo,
-          aiService: aiService,
-          modelManager: aiModelManager,
-          dispatcher: aiDispatcher,
-          selfChecker: aiSelfChecker,
-          onSettingsChanged: _updateSettings,
-          gitHubService: github,
-          storageService: storage,
-          initialTaskType: AgentTaskType.article,
-        ),
-      ),
-    );
-  }
-
-  void _showAiPageChat() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AgentWorkbenchScreen(
-          settings: settings,
-          activeRepo: effectiveRepo,
-          aiService: aiService,
-          modelManager: aiModelManager,
-          dispatcher: aiDispatcher,
-          selfChecker: aiSelfChecker,
-          onSettingsChanged: _updateSettings,
-          gitHubService: github,
-          storageService: storage,
-          initialTaskType: AgentTaskType.page,
         ),
       ),
     );
@@ -519,44 +482,6 @@ extension EditorAiExt on _RootShellState {
               '全部完成后调用 register_site 将站点注册到站点管理。'
               '某一步失败可用 web_search 查平台文档、调整参数后重试该步骤，'
               '残留资源用 rollback_site 清理。',
-        ),
-      ),
-    );
-  }
-
-  void _showAiThemeChat() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AgentWorkbenchScreen(
-          settings: settings,
-          activeRepo: effectiveRepo,
-          aiService: aiService,
-          modelManager: aiModelManager,
-          dispatcher: aiDispatcher,
-          selfChecker: aiSelfChecker,
-          onSettingsChanged: _updateSettings,
-          gitHubService: github,
-          storageService: storage,
-          initialTaskType: AgentTaskType.theme,
-        ),
-      ),
-    );
-  }
-
-  void _showAiAudit() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AgentWorkbenchScreen(
-          settings: settings,
-          activeRepo: effectiveRepo,
-          aiService: aiService,
-          modelManager: aiModelManager,
-          dispatcher: aiDispatcher,
-          selfChecker: aiSelfChecker,
-          onSettingsChanged: _updateSettings,
-          gitHubService: github,
-          storageService: storage,
-          initialTaskType: AgentTaskType.audit,
         ),
       ),
     );

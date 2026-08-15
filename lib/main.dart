@@ -37,7 +37,6 @@ import 'core/ai/ai_session_manager.dart';
 import 'core/ai/theme_migration_service.dart';
 import 'core/template_engine/template_resolver.dart';
 import 'core/task/agent_task_type.dart';
-import 'screens/ai_article_chat_screen.dart';
 import 'screens/agent_workbench_screen.dart';
 import 'screens/ai_model_manager_screen.dart';
 import 'screens/article_reader_screen.dart';
@@ -326,6 +325,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   QuickNoteService? _quickNoteService; // ignore: unused_field 保持监听器生命周期
   StreamSubscription<QuickNoteRequest>? _quickNoteSub;
   WritingStatsService? _statsService;
+
   /// 每个草稿上次统计的字数（用于记录增量，避免重复累计）
   final Map<String, int> _lastWordCounts = {};
   UpdateCheckerService? _updateChecker;
@@ -625,7 +625,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       _updateSiteManager();
       // 存量用户首次升级进入：弹出界面模式选择引导
       if (s.needsModeGuide) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => _showModeGuideDialog(s));
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _showModeGuideDialog(s),
+        );
       }
       // 会话恢复
       if (s.restoreSession) {
@@ -693,9 +695,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   /// 启动时静默检查更新，有新版本时提示
   void _initUpdateCheck() {
     try {
-      _updateChecker = UpdateCheckerService(
-        currentVersion: _appVersion,
-      );
+      _updateChecker = UpdateCheckerService(currentVersion: _appVersion);
       // 延迟 3 秒，避免与启动流程竞争
       Future.delayed(const Duration(seconds: 3), () async {
         final result = await _updateChecker!.check();
@@ -867,7 +867,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       builder: (ctx) {
         final items = <String, String>{};
         for (final p in paths) {
-          final name = p.split(Platform.pathSeparator).last.replaceAll('.md', '');
+          final name = p
+              .split(Platform.pathSeparator)
+              .last
+              .replaceAll('.md', '');
           items[p] = name;
         }
         return SimpleDialog(
@@ -910,9 +913,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     return first.length <= 40 ? first : '${first.substring(0, 40)}…';
   }
 
-
-
-
   // ── 生命周期感知同步 ──
 
   @override
@@ -930,9 +930,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     }
   }
 
-
-
-
   AppSettings _ensureGithubTokensFromLegacy(
     AppSettings s,
     List<RepoConfig> repos,
@@ -945,7 +942,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     if (settings.ui.appMode == AppMode.simple) {
       final targetId = _pageEntryId(page);
       if (targetId != null &&
-          !NavEntries.visibleEntry(targetId, AppMode.simple, settings.ui.simpleModeExtras)) {
+          !NavEntries.visibleEntry(
+            targetId,
+            AppMode.simple,
+            settings.ui.simpleModeExtras,
+          )) {
         page = MobilePage.home.index;
       }
     }
@@ -1058,7 +1059,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   // ============ 退出弹窗 ============
 
-
   /// 点击 × 关闭按钮 → 退出弹窗 → 回到写文章首页
   Future<void> _onCloseEditor() async {
     final ok = await _showExitDialog();
@@ -1100,19 +1100,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     _doc.setEditorRepoId(repo?.id);
   }
 
-
-
   // ============ 自动保存 ============
 
-
-
-
-
-
   // ============ 阅读页 / 编辑器切换 ============
-
-
-
 
   RepoConfig? get _resolvedRepo {
     final r = _editorRepo;
@@ -1122,26 +1112,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     if (t.isEmpty) return r;
     return r.copyWith(token: t);
   }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
   Future<void> _refreshRemote() async {
     final repo = effectiveRepo;
@@ -1179,7 +1149,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       if (mounted) setState(() {});
     }
   }
-
 
   Future<void> _updateRepos(List<RepoConfig> r) async {
     setState(() => repos = r);
@@ -1220,7 +1189,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     }
   }
 
-
   void _showToast(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1260,50 +1228,25 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   // ============ WebDAV ============
 
-
-
-
   // ============ 云同步 ============
-
-
 
   // ============ Theme ============
 
-
   // ============ Site Editor ============
-
-
-
 
   // ============ AI Profile Management ============
 
-
-
   // ============ GitHub Token Management ============
-
-
-
-
 
   // ============ Repo Management ============
 
-
-
   // ============ Commit Rollback ============
-
-
-
 
   // ============ CMS Remote Post Operations ============
 
-
-
   // ============ Remote Delete ============
 
-
-
   // ============ Import & PWA ============
-
 
   // ============ UI BUILD ============
 
@@ -1349,7 +1292,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     }
     return scaffold;
   }
-
 
   PreferredSizeWidget _buildAppBar() {
     final cs = Theme.of(context).colorScheme;
@@ -1425,30 +1367,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     );
   }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   // ============ DRAWER ============
 
-
-
-
-
   // ============ PAGES ============
-
 
   void _openExistingArticle(Article a) {
     // 先关闭抽屉，再切换页面——确保每个页面点击进入时侧边栏完全收回
@@ -1521,13 +1442,18 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
           final bytesData = data.buffer.asUint8List();
           var sum = 0.0;
           final step = bytesData.length ~/ 4;
-          for (var i = 0; i + 2 < bytesData.length; i += 4 * (step > 400 ? step ~/ 400 : 1)) {
+          for (
+            var i = 0;
+            i + 2 < bytesData.length;
+            i += 4 * (step > 400 ? step ~/ 400 : 1)
+          ) {
             final r = bytesData[i] / 255;
             final g = bytesData[i + 1] / 255;
             final b = bytesData[i + 2] / 255;
             sum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
           }
-          final count = (bytesData.length / (4 * (step > 400 ? step ~/ 400 : 1))).ceil();
+          final count =
+              (bytesData.length / (4 * (step > 400 ? step ~/ 400 : 1))).ceil();
           if (count > 0) sum /= count;
           _wallpaperBrightness = sum.clamp(0.0, 1.0);
         }
@@ -1575,9 +1501,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     );
   }
 
-
-
-
   /// 切换站点
   void _onSiteChanged(String? siteId) {
     if (siteId == null || siteId == siteManager.activeSiteId) return;
@@ -1615,15 +1538,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     );
   }
 
-
   // ── 新功能导航 ──
-
-
-
-
-
-
-
 
   /// 将当前选中的模板设为仓库默认模板
   Future<void> _setAsRepoDefault(String templateId) async {
@@ -1650,19 +1565,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       }
     }
   }
-
-
-
-
-
-
-
-
-
-
-
-
-
 }
 
 /// 防抖自动保存条目：捕获定时器触发时应保存的内容，避免串草稿

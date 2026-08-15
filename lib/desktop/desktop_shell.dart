@@ -2289,7 +2289,7 @@ class DesktopShellState extends State<DesktopShell>
                 _toolChip(
                   Icons.chat,
                   'AI对话',
-                  () => _showAiArticleChat(),
+                  () => _showAgentWorkbench(),
                   color: Colors.deepPurple,
                 ),
               ],
@@ -6819,66 +6819,6 @@ class DesktopShellState extends State<DesktopShell>
     );
   }
 
-  void _showAiArticleChat() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AgentWorkbenchScreen(
-          settings: settings,
-          activeRepo: effectiveRepo,
-          repos: repos,
-          aiService: aiService,
-          modelManager: aiModelManager,
-          dispatcher: aiDispatcher,
-          selfChecker: aiSelfChecker,
-          onSettingsChanged: _updateSettings,
-          gitHubService: github,
-          storageService: storage,
-          initialTaskType: AgentTaskType.article,
-        ),
-      ),
-    );
-  }
-
-  void _showAiPageChat() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AgentWorkbenchScreen(
-          settings: settings,
-          activeRepo: effectiveRepo,
-          repos: repos,
-          aiService: aiService,
-          modelManager: aiModelManager,
-          dispatcher: aiDispatcher,
-          selfChecker: aiSelfChecker,
-          onSettingsChanged: _updateSettings,
-          gitHubService: github,
-          storageService: storage,
-          initialTaskType: AgentTaskType.page,
-        ),
-      ),
-    );
-  }
-
-  void _showAiThemeChat() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AgentWorkbenchScreen(
-          settings: settings,
-          activeRepo: effectiveRepo,
-          repos: repos,
-          aiService: aiService,
-          modelManager: aiModelManager,
-          dispatcher: aiDispatcher,
-          selfChecker: aiSelfChecker,
-          onSettingsChanged: _updateSettings,
-          gitHubService: github,
-          storageService: storage,
-          initialTaskType: AgentTaskType.theme,
-        ),
-      ),
-    );
-  }
-
   void _showThemeStore() {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -6962,72 +6902,6 @@ class DesktopShellState extends State<DesktopShell>
         ),
       ),
     );
-  }
-
-  void _showAiAudit() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AgentWorkbenchScreen(
-          settings: settings,
-          activeRepo: effectiveRepo,
-          repos: repos,
-          aiService: aiService,
-          modelManager: aiModelManager,
-          dispatcher: aiDispatcher,
-          selfChecker: aiSelfChecker,
-          onSettingsChanged: _updateSettings,
-          gitHubService: github,
-          storageService: storage,
-          initialTaskType: AgentTaskType.audit,
-        ),
-      ),
-    );
-  }
-
-  void _showAiAppDesign() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AgentWorkbenchScreen(
-          settings: settings,
-          activeRepo: effectiveRepo,
-          repos: repos,
-          aiService: aiService,
-          modelManager: aiModelManager,
-          dispatcher: aiDispatcher,
-          selfChecker: aiSelfChecker,
-          onSettingsChanged: _updateSettings,
-          gitHubService: github,
-          storageService: storage,
-          initialTaskType: AgentTaskType.appDesign,
-        ),
-      ),
-    );
-  }
-
-  void _showAiTemplateChat() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AgentWorkbenchScreen(
-          settings: settings,
-          activeRepo: effectiveRepo,
-          repos: repos,
-          aiService: aiService,
-          modelManager: aiModelManager,
-          dispatcher: aiDispatcher,
-          selfChecker: aiSelfChecker,
-          onSettingsChanged: _updateSettings,
-          gitHubService: github,
-          storageService: storage,
-          initialTaskType: AgentTaskType.template,
-        ),
-      ),
-    );
-    // 工作台可能修改了模板，返回后刷新
-    if (!mounted) return;
-    final t = await storage.loadAllTemplates();
-    if (mounted) {
-      setState(() => templates = t);
-    }
   }
 
   void _showAiModelManager() {
@@ -9157,32 +9031,11 @@ class DesktopShellState extends State<DesktopShell>
         onExecute: () => _showAgentWorkbench(),
       ),
       CommandItem(
-        label: 'AI 博文创作',
-        category: 'AI',
-        shortcut: '',
-        icon: Icons.article_outlined,
-        onExecute: () => _showAiArticleChat(),
-      ),
-      CommandItem(
-        label: 'AI 站点巡检',
-        category: 'AI',
-        shortcut: '',
-        icon: Icons.fact_check_outlined,
-        onExecute: () => _showAiAudit(),
-      ),
-      CommandItem(
         label: 'AI 模板与博客框架',
         category: 'AI',
         shortcut: '',
         icon: Icons.view_quilt_outlined,
         onExecute: () => _showAiTemplateChat(),
-      ),
-      CommandItem(
-        label: 'AI 应用 UI 设计',
-        category: 'AI',
-        shortcut: '',
-        icon: Icons.palette_outlined,
-        onExecute: () => _showAiAppDesign(),
       ),
       CommandItem(
         label: 'AI 选区改写',
@@ -10088,12 +9941,7 @@ $htmlContent
     onShowBackupRestore: _openBackupRestore,
     onOpenAiPromptTemplates: _openAiPromptTemplates,
     onShowAgentWorkbench: _showAgentWorkbench,
-    onShowAiArticleChat: _showAiArticleChat,
-    onShowAiPageChat: _showAiPageChat,
-    onShowAiThemeChat: _showAiThemeChat,
     onShowThemeStore: _showThemeStore,
-    onShowAiAudit: _showAiAudit,
-    onShowAiAppDesign: _showAiAppDesign,
     onShowAiModelManager: _showAiModelManager,
     onShowToolLibrary: _showToolLibrary,
     onShowBlogSiteManager: _showBlogSiteManager,

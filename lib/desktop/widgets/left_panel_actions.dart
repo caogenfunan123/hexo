@@ -23,11 +23,6 @@ enum PanelAction {
   showTemplateManager,
   showSnippetManager,
   showConfigEditor,
-  showAiArticleChat,
-  showAiPageChat,
-  showAiThemeChat,
-  showAiAudit,
-  showAiAppDesign,
   showAiModelManager,
   showToolLibrary,
   showBlogSiteManager,
@@ -94,11 +89,6 @@ class LeftPanelActionNotifier extends ChangeNotifier {
     VoidCallback? onShowTemplateManager,
     VoidCallback? onShowSnippetManager,
     VoidCallback? onShowConfigEditor,
-    VoidCallback? onShowAiArticleChat,
-    VoidCallback? onShowAiPageChat,
-    VoidCallback? onShowAiThemeChat,
-    VoidCallback? onShowAiAudit,
-    VoidCallback? onShowAiAppDesign,
     VoidCallback? onShowAiModelManager,
     VoidCallback? onShowToolLibrary,
     VoidCallback? onShowBlogSiteManager,
@@ -129,11 +119,6 @@ class LeftPanelActionNotifier extends ChangeNotifier {
     _registerIfNotNull(PanelAction.showTemplateManager, onShowTemplateManager);
     _registerIfNotNull(PanelAction.showSnippetManager, onShowSnippetManager);
     _registerIfNotNull(PanelAction.showConfigEditor, onShowConfigEditor);
-    _registerIfNotNull(PanelAction.showAiArticleChat, onShowAiArticleChat);
-    _registerIfNotNull(PanelAction.showAiPageChat, onShowAiPageChat);
-    _registerIfNotNull(PanelAction.showAiThemeChat, onShowAiThemeChat);
-    _registerIfNotNull(PanelAction.showAiAudit, onShowAiAudit);
-    _registerIfNotNull(PanelAction.showAiAppDesign, onShowAiAppDesign);
     _registerIfNotNull(PanelAction.showAiModelManager, onShowAiModelManager);
     _registerIfNotNull(PanelAction.showToolLibrary, onShowToolLibrary);
     _registerIfNotNull(PanelAction.showBlogSiteManager, onShowBlogSiteManager);
@@ -146,7 +131,10 @@ class LeftPanelActionNotifier extends ChangeNotifier {
     _registerIfNotNull(PanelAction.exportLogs, onExportLogs);
     _registerIfNotNull(PanelAction.openLinkChecker, onOpenLinkChecker);
     _registerIfNotNull(PanelAction.openBatchTools, onOpenBatchTools);
-    _registerIfNotNull(PanelAction.openAiPromptTemplates, onOpenAiPromptTemplates);
+    _registerIfNotNull(
+      PanelAction.openAiPromptTemplates,
+      onOpenAiPromptTemplates,
+    );
   }
 
   void _registerIfNotNull(PanelAction action, VoidCallback? callback) {

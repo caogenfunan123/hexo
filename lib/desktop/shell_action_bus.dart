@@ -54,12 +54,7 @@ class ShellActionBus {
 
   // ── 导航：AI ──
   final VoidCallback onShowAgentWorkbench;
-  final VoidCallback onShowAiArticleChat;
-  final VoidCallback onShowAiPageChat;
-  final VoidCallback onShowAiThemeChat;
   final VoidCallback onShowThemeStore;
-  final VoidCallback onShowAiAudit;
-  final VoidCallback onShowAiAppDesign;
   final VoidCallback onShowAiModelManager;
   final VoidCallback onShowToolLibrary;
 
@@ -120,12 +115,7 @@ class ShellActionBus {
     required this.onShowContentStats,
     required this.onShowBackupRestore,
     required this.onShowAgentWorkbench,
-    required this.onShowAiArticleChat,
-    required this.onShowAiPageChat,
-    required this.onShowAiThemeChat,
     required this.onShowThemeStore,
-    required this.onShowAiAudit,
-    required this.onShowAiAppDesign,
     required this.onShowAiModelManager,
     required this.onShowToolLibrary,
     required this.onShowBlogSiteManager,

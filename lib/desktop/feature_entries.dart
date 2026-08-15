@@ -83,17 +83,11 @@ abstract final class NavEntries {
     'create_site': FeatureVisibility.shown, // 一键建站（AI 对话主模式）
     // 仪表盘由首页替代
     'dashboard': FeatureVisibility.hidden,
-    // AI 写作与模型配置（完整保留）
-    'ai_article': FeatureVisibility.shown,
+    // AI 工作台与模型配置（唯一 AI 对话入口）
+    'agent_workbench': FeatureVisibility.shown,
     'ai_model_manager': FeatureVisibility.shown,
     'ai_prompt_templates': FeatureVisibility.optIn,
-    'ai_page': FeatureVisibility.optIn,
-    // AI 专业会话（隐藏）
-    'ai_theme': FeatureVisibility.hidden,
-    'ai_audit': FeatureVisibility.hidden,
-    'ai_app_design': FeatureVisibility.hidden,
     'theme_migration': FeatureVisibility.hidden,
-    'agent_workbench': FeatureVisibility.hidden,
     'ai_template_chat': FeatureVisibility.optIn,
     'tool_library': FeatureVisibility.hidden,
     // 图床（基础保留，高级批量隐藏）

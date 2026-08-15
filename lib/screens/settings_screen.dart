@@ -2094,7 +2094,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 简易模式可加回入口清单（optIn 条目 → 中文名称）
   static const Map<String, String> _optInLabels = {
     'ai_prompt_templates': 'AI 提示词模板',
-    'ai_page': 'AI 页面创作',
     'ai_template_chat': 'AI 模板创作',
     'preview': '网站预览',
     'rss': 'RSS 订阅',
