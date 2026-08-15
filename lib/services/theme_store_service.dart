@@ -104,7 +104,7 @@ class ThemeStoreService {
   Future<ThemeInstallResult> installTheme(
     RepoConfig repo,
     ThemeStoreItem item, {
-    String Function(int downloaded, int total)? onProgress,
+    void Function(int downloaded, int total)? onProgress,
   }) async {
     if (repo.provider != GitProviderType.github) {
       throw Exception('主题安装仅支持 GitHub 仓库，当前为 ${repo.provider.name}');
