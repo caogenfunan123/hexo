@@ -54,6 +54,12 @@ class RepoConfig {
   final String token;
   final bool isDefault;
 
+  // 站点项目名（GitHub Pages 仓库名 / GitLab Pages 项目名 / CF Pages 项目名）
+  final String siteProjectName;
+
+  // 部署钩子（模式二自动拉取的 Deploy Hook URL，模式一为空）
+  final List<String> deployHooks;
+
   // ── 仓库 ↔ 模板联动核心字段 ──
   final String? defaultPostTemplateId; // 仓库默认文章模板ID
   final String? defaultPageTemplateId; // 仓库默认页面模板ID
@@ -83,6 +89,8 @@ class RepoConfig {
     this.siteUrl = '',
     required this.token,
     this.isDefault = false,
+    this.siteProjectName = '',
+    this.deployHooks = const [],
     this.defaultPostTemplateId,
     this.defaultPageTemplateId,
     this.syncType = SyncType.gitRemote,
@@ -106,6 +114,8 @@ class RepoConfig {
     String? siteUrl,
     String? token,
     bool? isDefault,
+    String? siteProjectName,
+    List<String>? deployHooks,
     Object? defaultPostTemplateId = _sentinel,
     Object? defaultPageTemplateId = _sentinel,
     SyncType? syncType,
@@ -133,6 +143,8 @@ class RepoConfig {
       siteUrl: siteUrl ?? this.siteUrl,
       token: token ?? this.token,
       isDefault: isDefault ?? this.isDefault,
+      siteProjectName: siteProjectName ?? this.siteProjectName,
+      deployHooks: deployHooks ?? this.deployHooks,
       defaultPostTemplateId: identical(defaultPostTemplateId, _sentinel)
           ? this.defaultPostTemplateId
           : defaultPostTemplateId as String?,
@@ -163,6 +175,8 @@ class RepoConfig {
         'siteUrl': siteUrl,
         'token': token,
         'isDefault': isDefault,
+        'siteProjectName': siteProjectName,
+        'deployHooks': deployHooks,
         'defaultPostTemplateId': defaultPostTemplateId,
         'defaultPageTemplateId': defaultPageTemplateId,
         'syncType': syncType.name,
@@ -233,6 +247,13 @@ class RepoConfig {
       siteUrl: j['siteUrl']?.toString() ?? '',
       token: j['token']?.toString() ?? '',
       isDefault: j['isDefault'] == true,
+      siteProjectName: j['siteProjectName']?.toString() ?? '',
+      deployHooks: j['deployHooks'] is List
+          ? (j['deployHooks'] as List)
+              .map((e) => e.toString())
+              .where((e) => e.isNotEmpty)
+              .toList()
+          : const [],
       defaultPostTemplateId: postTplId,
       defaultPageTemplateId: pageTplId,
       syncType: st,

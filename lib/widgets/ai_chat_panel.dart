@@ -23,8 +23,10 @@ import '../core/tools/builtin_tools.dart';
 import '../models/app_settings.dart';
 import '../models/repo_config.dart';
 import '../models/template_item.dart';
+import '../models/wizard_models.dart';
 import '../services/ai_service.dart';
 import '../services/github_service.dart';
+import '../services/site_wizard_service.dart';
 import '../services/storage_service.dart';
 import 'ai_model_picker.dart';
 import '../screens/ai_model_manager_screen.dart';
@@ -66,6 +68,9 @@ class AiChatPanel extends StatefulWidget {
   /// 模板被 update_template 工具修改后的回调（宿主应用刷新模板列表）
   final Future<void> Function(List<TemplateItem> templates)? onTemplatesChanged;
 
+  /// 一键建站成功后的站点持久化回调（宿主注册令牌 + 站点入站点管理）
+  final Future<void> Function(WizardResult)? onSiteCreated;
+
   const AiChatPanel({
     super.key,
     required this.settings,
@@ -95,6 +100,7 @@ class AiChatPanel extends StatefulWidget {
     this.storageService,
     this.historyKey,
     this.onTemplatesChanged,
+    this.onSiteCreated,
   });
 
   @override
@@ -616,6 +622,9 @@ class AiChatPanelState extends State<AiChatPanel> {
     // 注入本地存储与模板变更回调（供模板/框架会话读写本地模板）
     BuiltinTools.storageService = widget.storageService;
     BuiltinTools.onTemplatesChanged = widget.onTemplatesChanged;
+    // 注入一键建站服务与站点持久化回调（供 create_site 工具使用）
+    BuiltinTools.siteWizardService = SiteWizardService();
+    BuiltinTools.onSiteCreated = widget.onSiteCreated;
 
     try {
       final stream = widget.dispatcher.dispatchStream(

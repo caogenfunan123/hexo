@@ -5,10 +5,14 @@ import 'package:archive/archive.dart';
 
 import '../../models/app_settings.dart';
 import '../../models/design_config.dart';
+import '../../models/git_provider.dart';
+import '../../models/github_token_profile.dart';
 import '../../models/template_item.dart';
 import '../../services/github_service.dart';
 import '../../services/storage_service.dart';
 import '../../models/repo_config.dart';
+import '../../models/wizard_models.dart';
+import '../../services/site_wizard_service.dart';
 import '../ai/token_vault.dart';
 import 'remote_cms_tools.dart';
 import 'skill_manager.dart';
@@ -42,6 +46,12 @@ class BuiltinTools {
   /// 当前站点 ID（供站点私有工具作用域判断）
   static String? siteId;
 
+  /// 一键建站服务（由 AiChatPanel 设置，供 create_site 工具调用）
+  static SiteWizardService? siteWizardService;
+
+  /// 建站成功后的站点持久化回调（由入口设置：令牌注册 + 站点入站点管理 + 设置持久化）
+  static Future<void> Function(WizardResult)? onSiteCreated;
+
   /// 所有内置工具定义
   static List<ToolEntity> get all => [
         webSearch,
@@ -64,6 +74,7 @@ class BuiltinTools {
         listPosts,
         gitClone,
         createDir,
+        createSite,
       ];
 
   // ── ① Web 搜索工具 ──
@@ -651,6 +662,94 @@ class BuiltinTools {
     updatedAt: DateTime(2026, 1, 1),
   );
 
+  // ── ㉑ 一键建站工具 ──
+  static final ToolEntity createSite = ToolEntity(
+    id: 'create_site',
+    name: '一键建站',
+    description:
+        '创建全新的静态博客站点：自动在 GitHub/GitLab 建仓库、生成所选框架的完整可构建骨架、'
+        '启用平台 Pages（GitHub Pages / GitLab Pages / Cloudflare Pages）、写入欢迎文章并等待首次构建。'
+        '模式一（GitHub/GitLab Pages）由仓库内 CI 自部署；模式二（Cloudflare Pages）需要用户先在'
+        ' Cloudflare 控制台创建同名 Pages 项目（App 会自动衔接并触发部署）。建站成功后自动注册'
+        '登录令牌与站点到站点管理，无需额外配置即可一键发布。',
+    type: ToolType.builtin,
+    builtinHandler: 'create_site',
+    riskLevel: 'high',
+    parameters: const [
+      ToolParam(
+        name: 'mode',
+        type: 'string',
+        description: '建站模式：one（GitHub/GitLab Pages，CI 自部署）或 two（Cloudflare Pages）',
+        required: true,
+        defaultValue: 'one',
+      ),
+      ToolParam(
+        name: 'git_provider',
+        type: 'string',
+        description: 'Git 托管平台：github 或 gitlab',
+        required: true,
+        defaultValue: 'github',
+      ),
+      ToolParam(
+        name: 'git_token',
+        type: 'string',
+        description: 'Git 平台访问令牌（GitHub PAT 需含 repo+workflow scope；GitLab PAT 需含 api scope）',
+        required: true,
+      ),
+      ToolParam(
+        name: 'cf_api_token',
+        type: 'string',
+        description: 'Cloudflare API Token（模式二必填，需含 Pages 权限）',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'cf_account_id',
+        type: 'string',
+        description: 'Cloudflare 账号 ID（模式二必填）',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'repo_name',
+        type: 'string',
+        description: '仓库名（同时作为站点项目名），如 my-blog',
+        required: true,
+      ),
+      ToolParam(
+        name: 'repo_private',
+        type: 'boolean',
+        description: '仓库是否私有，默认 true。注意 GitHub 免费账号私有仓库无法启用 Pages',
+        required: false,
+        defaultValue: true,
+      ),
+      ToolParam(
+        name: 'framework_id',
+        type: 'string',
+        description:
+            '博客框架：hexo / hugo / jekyll / vuepress / gatsby / nextjs / astro / pelican / 11ty',
+        required: true,
+        defaultValue: 'hexo',
+      ),
+      ToolParam(
+        name: 'site_title',
+        type: 'string',
+        description: '站点标题',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'skip_welcome_post',
+        type: 'boolean',
+        description: '是否跳过欢迎文章，默认 false（生成欢迎文章）',
+        required: false,
+        defaultValue: false,
+      ),
+    ],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
+
   /// 远程 CMS 工具 ID 集合（用于路由判断）
   static const _remoteCmsToolIds = {
     // WordPress
@@ -714,6 +813,8 @@ class BuiltinTools {
         return _executeGitClone(request);
       case 'create_dir':
         return _executeCreateDir(request);
+      case 'create_site':
+        return _executeCreateSite(request);
       default:
         return ToolCallResult(
           toolId: request.toolId,
@@ -2360,6 +2461,191 @@ class BuiltinTools {
           content: '',
           success: false,
           error: '创建文件夹失败: $e');
+    }
+  }
+
+  // ────────────────────────────────────────────────
+  // 一键建站工具（AI 对话主模式）
+  // ────────────────────────────────────────────────
+
+  /// 执行一键建站。AI 模型未配置时返回引导提示；建站成功触发站点持久化回调。
+  static Future<ToolCallResult> _executeCreateSite(ToolCallRequest req) async {
+    // AI 模型前置校验：未配置模型则拒绝执行并引导配置
+    if (appSettings == null) {
+      return ToolCallResult(
+        toolId: 'create_site',
+        content: '',
+        success: false,
+        error: '应用设置未初始化',
+      );
+    }
+    if (appSettings!.effectiveAiApiKey.isEmpty || appSettings!.activeAiProfile == null) {
+      return ToolCallResult(
+        toolId: 'create_site',
+        content: '',
+        success: false,
+        error: '请先在 AI 设置中配置模型，再重试建站',
+      );
+    }
+    if (siteWizardService == null) {
+      return ToolCallResult(
+        toolId: 'create_site',
+        content: '',
+        success: false,
+        error: '建站服务未初始化',
+      );
+    }
+
+    final mode = req.arguments['mode']?.toString() == 'two'
+        ? WizardMode.two
+        : WizardMode.one;
+    final gitProvider = req.arguments['git_provider']?.toString() == 'gitlab'
+        ? GitProviderType.gitlab
+        : GitProviderType.github;
+    final repoName = req.arguments['repo_name']?.toString().trim() ?? '';
+    final gitToken = req.arguments['git_token']?.toString().trim() ?? '';
+    final frameworkId = req.arguments['framework_id']?.toString().trim() ?? 'hexo';
+    final repoPrivate = req.arguments['repo_private'] != 'false';
+
+    if (repoName.isEmpty || gitToken.isEmpty) {
+      return ToolCallResult(
+        toolId: 'create_site',
+        content: '',
+        success: false,
+        error: '仓库名与 Git 令牌不能为空',
+      );
+    }
+
+    final request = WizardRequest(
+      mode: mode,
+      gitProvider: gitProvider,
+      gitToken: gitToken,
+      cfApiToken: req.arguments['cf_api_token']?.toString().trim() ?? '',
+      cfAccountId: req.arguments['cf_account_id']?.toString().trim() ?? '',
+      repoName: repoName,
+      repoPrivate: repoPrivate,
+      frameworkId: frameworkId,
+      siteTitle: req.arguments['site_title']?.toString().trim() ?? '',
+      skipWelcomePost: req.arguments['skip_welcome_post'] == 'true',
+    );
+
+    // 模式二校验 CF 凭据
+    if (mode == WizardMode.two &&
+        (request.cfApiToken.isEmpty || request.cfAccountId.isEmpty)) {
+      return ToolCallResult(
+        toolId: 'create_site',
+        content: '',
+        success: false,
+        error: '模式二需要提供 Cloudflare API Token 与账号 ID',
+      );
+    }
+
+    try {
+      // scope 预校验（早失败）
+      final missing = await siteWizardService!.verifyScopes(request);
+      if (missing.isNotEmpty) {
+        return ToolCallResult(
+          toolId: 'create_site',
+          content: '',
+          success: false,
+          error: 'Git 令牌权限不足，缺少: ${missing.join("、")}。请重新生成令牌后再试。',
+        );
+      }
+
+      final result = await siteWizardService!.run(request);
+
+      // 持久化接入：令牌注册 + 站点入站点管理 + 设置保存
+      if (onSiteCreated != null) {
+        await onSiteCreated!(result);
+      } else {
+        await _persistSiteResult(request, result);
+      }
+
+      final report = StringBuffer()
+        ..writeln('一键建站完成！')
+        ..writeln('站点名称: ${request.siteTitle.isEmpty ? request.repoName : request.siteTitle}')
+        ..writeln('仓库地址: ${result.repoConfig.fullName}')
+        ..writeln('平台: ${request.gitProvider.name}'
+            '${mode == WizardMode.two ? ' + Cloudflare Pages' : ' + Pages'}')
+        ..writeln('框架: $frameworkId');
+      if (result.siteUrl.isNotEmpty) {
+        report.writeln('站点访问地址: ${result.siteUrl}');
+      } else {
+        report.writeln('站点访问地址: 构建仍在进行，稍后自动回填');
+      }
+      if (result.welcomePostPath.isNotEmpty) {
+        report.writeln('欢迎文章: ${result.welcomePostPath}');
+      }
+      report.writeln('该站点已自动注册到站点管理，可直接通过发布功能发布文章。');
+      return ToolCallResult(
+        toolId: 'create_site',
+        content: report.toString(),
+        success: true,
+      );
+    } catch (e) {
+      return ToolCallResult(
+        toolId: 'create_site',
+        content: '',
+        success: false,
+        error: '建站失败: $e',
+      );
+    }
+  }
+
+  /// 建站结果持久化接入（宿主未提供 onSiteCreated 时的默认实现）：
+  /// 1. 注册 Git 令牌到令牌管理（存在则跳过，Correctness 7）
+  /// 2. 追加新站点到站点管理并保存（存在则跳过）
+  /// 3. 模式二保存 Cloudflare 凭据到应用设置
+  static Future<void> _persistSiteResult(
+      WizardRequest request, WizardResult result) async {
+    final settings = appSettings;
+    if (settings == null) return;
+
+    // 1. 令牌注册
+    var updated = settings;
+    if (request.gitToken.isNotEmpty) {
+      final profile = GithubTokenProfile(
+        id: 'wizard_${DateTime.now().millisecondsSinceEpoch}',
+        name: '一键建站',
+        token: request.gitToken,
+        login: result.repoConfig.owner,
+        provider: request.gitProvider,
+      );
+      final hasToken = settings.githubTokens.any(
+          (t) => t.token == request.gitToken && t.provider == request.gitProvider);
+      if (!hasToken) {
+        final list = List<GithubTokenProfile>.from(settings.githubTokens)
+          ..add(profile);
+        updated = updated.copyWith(
+          githubTokens: list,
+          activeGithubTokenId:
+              settings.activeGithubTokenId.isEmpty ? profile.id : settings.activeGithubTokenId,
+          defaultToken: settings.defaultToken.isEmpty
+              ? request.gitToken
+              : settings.defaultToken,
+        );
+      }
+    }
+
+    // 3. 模式二保存 CF 凭据
+    if (request.mode == WizardMode.two && request.cfApiToken.isNotEmpty) {
+      updated = updated.copyWith(
+        cfApiToken: request.cfApiToken,
+        cfAccountId: request.cfAccountId,
+      );
+    }
+    if (onSettingsChanged != null) {
+      await onSettingsChanged!(updated);
+    }
+    appSettings = updated;
+
+    // 2. 站点注册（追加到 repos 并保存）
+    if (storageService == null) return;
+    final repos = await storageService!.loadRepos();
+    final exists = repos.any((r) => r.fullName == result.repoConfig.fullName);
+    if (!exists) {
+      repos.add(result.repoConfig);
+      await storageService!.saveRepos(repos);
     }
   }
 }

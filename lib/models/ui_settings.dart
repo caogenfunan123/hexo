@@ -46,6 +46,10 @@ class UiSettings {
   // 部署钩子（多平台可并存，如 Cloudflare/Vercel/Netlify Deploy Hook）
   final List<String> deployHooks;
 
+  // Cloudflare 凭据（模式二建站后保存，模式一为空）
+  final String cfApiToken;
+  final String cfAccountId;
+
   // 应用 UI 设计配置
   final DesignConfig designConfig;
 
@@ -90,6 +94,8 @@ class UiSettings {
     this.statusPresets = const ['publish', 'draft', 'pending', 'private'],
     this.sitePreviewUrl = '',
     this.deployHooks = const [],
+    this.cfApiToken = '',
+    this.cfAccountId = '',
     this.designConfig = const DesignConfig(),
     this.editorTheme = const EditorTheme(),
     this.appMode = AppMode.simple,
@@ -121,6 +127,8 @@ class UiSettings {
     List<String>? statusPresets,
     String? sitePreviewUrl,
     List<String>? deployHooks,
+    String? cfApiToken,
+    String? cfAccountId,
     DesignConfig? designConfig,
     EditorTheme? editorTheme,
     AppMode? appMode,
@@ -148,6 +156,8 @@ class UiSettings {
       statusPresets: statusPresets ?? this.statusPresets,
       sitePreviewUrl: sitePreviewUrl ?? this.sitePreviewUrl,
       deployHooks: deployHooks ?? this.deployHooks,
+      cfApiToken: cfApiToken ?? this.cfApiToken,
+      cfAccountId: cfAccountId ?? this.cfAccountId,
       designConfig: designConfig ?? this.designConfig,
       editorTheme: editorTheme ?? this.editorTheme,
       appMode: appMode ?? this.appMode,
@@ -177,6 +187,8 @@ class UiSettings {
     'statusPresets': statusPresets,
     'sitePreviewUrl': sitePreviewUrl,
     'deployHooks': deployHooks,
+    'cfApiToken': cfApiToken,
+    'cfAccountId': cfAccountId,
     'designConfig': designConfig.toJson(),
     'editorTheme': editorTheme.toJson(),
     'appMode': appMode.name,
@@ -210,6 +222,8 @@ class UiSettings {
     ]),
     sitePreviewUrl: j['sitePreviewUrl']?.toString() ?? '',
     deployHooks: _parseDeployHooks(j),
+    cfApiToken: j['cfApiToken']?.toString() ?? '',
+    cfAccountId: j['cfAccountId']?.toString() ?? '',
     designConfig: j['designConfig'] is Map
         ? DesignConfig.fromJson(
             Map<String, dynamic>.from(j['designConfig'] as Map),

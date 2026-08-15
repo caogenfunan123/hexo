@@ -10,6 +10,7 @@ import '../services/ai_service.dart';
 import '../services/github_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/ai_chat_panel.dart';
+import 'site_wizard_screen.dart';
 
 /// AI 博文/页面创作对话页面
 class AiArticleChatScreen extends StatefulWidget {
@@ -20,6 +21,8 @@ class AiArticleChatScreen extends StatefulWidget {
   final AiRequestDispatcher dispatcher;
   final AiSelfChecker selfChecker;
   final bool isPage; // true=页面, false=博文
+  final String? initialMessage; // 自定义初始消息（null 时用默认文案）
+  final bool showWizardFallback; // 是否显示「使用表单向导」降级按钮（建站场景）
   final Future<void> Function(AppSettings) onSettingsChanged;
   final GitHubService? gitHubService;
   final StorageService? storageService;
@@ -33,6 +36,8 @@ class AiArticleChatScreen extends StatefulWidget {
     required this.dispatcher,
     required this.selfChecker,
     this.isPage = false,
+    this.initialMessage,
+    this.showWizardFallback = false,
     required this.onSettingsChanged,
     this.gitHubService,
     this.storageService,
@@ -57,6 +62,23 @@ class _AiArticleChatScreenState extends State<AiArticleChatScreen> {
         appBar: AppBar(
           title: Text(widget.isPage ? 'AI 页面创作' : 'AI 博文创作'),
           actions: [
+            if (widget.showWizardFallback)
+              TextButton.icon(
+                icon: const Icon(Icons.view_week_outlined),
+                label: const Text('使用表单向导'),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => SiteWizardScreen(
+                        settings: widget.settings,
+                        repos: const [],
+                        onSettingsChanged: widget.onSettingsChanged,
+                        onReposChanged: (_) async {},
+                      ),
+                    ),
+                  );
+                },
+              ),
             IconButton(
               icon: const Icon(Icons.delete_outline),
               tooltip: '清空对话',
@@ -100,22 +122,23 @@ class _AiArticleChatScreenState extends State<AiArticleChatScreen> {
           gitHubService: widget.gitHubService,
           activeRepo: repo,
           storageService: widget.storageService,
-          initialMessage: widget.isPage
-              ? '欢迎使用 AI 页面创作助手！\n\n我可以直接读取您的 GitHub 仓库，分析现有页面格式和主题布局，生成精准匹配的页面内容。\n\n你可以直接告诉我：\n'
-                  '• 创建关于我页面 / 友链页面 / 归档页面\n'
-                  '• 分析我的页面模板（自动读取仓库）\n'
-                  '• 读取页面 [文件名] 查看现有内容\n'
-                  '• 根据现有页面风格创建新页面\n'
-                  '• 修改页面文案、调整排版布局\n\n'
-                  '当前框架：${fw ?? "未指定"} | 页面目录：${repo?.pagesPath ?? "未指定"}'
-              : '欢迎使用 AI 博文创作助手！\n\n我可以直接读取您的 GitHub 仓库，分析现有文章的 FrontMatter 格式和写作风格，生成精准匹配的博文内容。\n\n你可以直接告诉我：\n'
-                  '• 新建文章：标题xxx，内容方向xxx\n'
-                  '• 分析我的文章模板（自动读取仓库）\n'
-                  '• 读取文章 [文件名] 查看现有内容\n'
-                  '• 根据现有文章风格创作\n'
-                  '• 优化全文、精简文字、补充标签\n'
-                  '• SEO优化标题与描述\n\n'
-                  '当前框架：${fw ?? "未指定"} | 博文目录：${repo?.postsPath ?? "未指定"}',
+          initialMessage: widget.initialMessage ??
+              (widget.isPage
+                  ? '欢迎使用 AI 页面创作助手！\n\n我可以直接读取您的 GitHub 仓库，分析现有页面格式和主题布局，生成精准匹配的页面内容。\n\n你可以直接告诉我：\n'
+                      '• 创建关于我页面 / 友链页面 / 归档页面\n'
+                      '• 分析我的页面模板（自动读取仓库）\n'
+                      '• 读取页面 [文件名] 查看现有内容\n'
+                      '• 根据现有页面风格创建新页面\n'
+                      '• 修改页面文案、调整排版布局\n\n'
+                      '当前框架：${fw ?? "未指定"} | 页面目录：${repo?.pagesPath ?? "未指定"}'
+                  : '欢迎使用 AI 博文创作助手！\n\n我可以直接读取您的 GitHub 仓库，分析现有文章的 FrontMatter 格式和写作风格，生成精准匹配的博文内容。\n\n你可以直接告诉我：\n'
+                      '• 新建文章：标题xxx，内容方向xxx\n'
+                      '• 分析我的文章模板（自动读取仓库）\n'
+                      '• 读取文章 [文件名] 查看现有内容\n'
+                      '• 根据现有文章风格创作\n'
+                      '• 优化全文、精简文字、补充标签\n'
+                      '• SEO优化标题与描述\n\n'
+                      '当前框架：${fw ?? "未指定"} | 博文目录：${repo?.postsPath ?? "未指定"}'),
           onSettingsChanged: widget.onSettingsChanged,
         ),
       ),

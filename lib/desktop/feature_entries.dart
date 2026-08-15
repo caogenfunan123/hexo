@@ -80,6 +80,7 @@ abstract final class NavEntries {
     'p2p_sync': FeatureVisibility.shown,
     'add_site': FeatureVisibility.shown,
     'site_manager': FeatureVisibility.shown,
+    'create_site': FeatureVisibility.shown, // 一键建站（AI 对话主模式）
     // 仪表盘由首页替代
     'dashboard': FeatureVisibility.hidden,
     // AI 写作与模型配置（完整保留）
@@ -143,6 +144,7 @@ abstract final class SettingsEntries {
     'ai_scheduler': FeatureVisibility.shown,
     'simple_extras': FeatureVisibility.shown, // 简易模式额外入口管理
     'about': FeatureVisibility.shown,
+    'create_site': FeatureVisibility.shown, // 一键建站（设置页入口）
     // 开发配置（隐藏）
     'site_pwa': FeatureVisibility.hidden, // 含 Cloudflare/部署钩子
   };

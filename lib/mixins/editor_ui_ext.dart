@@ -1002,6 +1002,12 @@ extension EditorUiExt on _RootShellState {
                             l10n.translate('nav_write'),
                             isPrimary: true,
                           ),
+                        if (navVisible('create_site'))
+                          _drawerAction(
+                            Icons.add_business_outlined,
+                            '一键建站',
+                            _startAiSiteWizard,
+                          ),
                         if (navVisible('drafts'))
                           _drawerItem(
                             1,
@@ -1392,6 +1398,7 @@ extension EditorUiExt on _RootShellState {
           onPersistSettings: _persistSettings,
           onShowToast: _showToast,
           onShowBlogSiteManager: _showBlogSiteManager,
+          onShowCreateSite: _startAiSiteWizard,
         );
       case 9:
         return ArticleReaderScreen(

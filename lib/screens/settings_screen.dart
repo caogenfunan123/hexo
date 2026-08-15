@@ -35,6 +35,7 @@ class SettingsScreen extends StatefulWidget {
   final VoidCallback onPersistSettings;
   final void Function(String) onShowToast;
   final VoidCallback? onShowBlogSiteManager;
+  final VoidCallback? onShowCreateSite;
 
   const SettingsScreen({
     super.key,
@@ -57,6 +58,7 @@ class SettingsScreen extends StatefulWidget {
     required this.onPersistSettings,
     required this.onShowToast,
     this.onShowBlogSiteManager,
+    this.onShowCreateSite,
   });
 
   @override
@@ -527,6 +529,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: widget.onShowBlogSiteManager,
+            ),
+          ],
+          if (widget.onShowCreateSite != null) ...[
+            const Divider(height: 24),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.add_business_outlined),
+              title: const Text('一键建站'),
+              subtitle: const Text(
+                'AI 对话自动建站：GitHub Pages / GitLab Pages / Cloudflare Pages',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: widget.onShowCreateSite,
             ),
           ],
           ListTile(

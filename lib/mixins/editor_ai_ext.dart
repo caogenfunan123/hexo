@@ -469,6 +469,43 @@ extension EditorAiExt on _RootShellState {
     );
   }
 
+  /// 一键建站入口（AI 对话主模式）。
+  /// 校验 AI 模型已配置；未配置提示跳转 AI 设置，已配置打开 AI 对话并预置建站意图。
+  void _startAiSiteWizard() {
+    if (settings.effectiveAiApiKey.isEmpty || settings.activeAiProfile == null) {
+      _showToast('请先在 AI 设置中配置模型，再使用一键建站');
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AiArticleChatScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          aiService: aiService,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          selfChecker: aiSelfChecker,
+          isPage: false,
+          onSettingsChanged: _updateSettings,
+          gitHubService: github,
+          storageService: storage,
+          showWizardFallback: true,
+          initialMessage: '你是一键建站助手。用户想要创建一个新的静态博客站点。\n\n'
+              '请先向用户确认以下信息（信息不足时逐项追问，一次最多问 3 项）：\n'
+              '1. 建站模式：模式一（GitHub Pages / GitLab Pages，仓库内 CI 自动构建）还是模式二（Cloudflare Pages）\n'
+              '2. Git 托管平台：GitHub 或 GitLab\n'
+              '3. Git 访问令牌（GitHub PAT 需含 repo+workflow scope；GitLab PAT 需含 api scope）\n'
+              '4. 仓库名（同时作为站点项目名）\n'
+              '5. 博客框架（hexo / hugo / jekyll / vuepress / gatsby / nextjs / astro / pelican / 11ty）\n'
+              '6. 站点标题\n'
+              '7. 仓库是否私有（默认私有；注意 GitHub 免费账号私有仓库无法启用 Pages）\n'
+              '8. 是否生成欢迎文章（默认生成）\n\n'
+              '用户确认全部信息后，调用 create_site 工具完成建站。若用户选择模式二，还需提供 Cloudflare API Token 与账号 ID。',
+        ),
+      ),
+    );
+  }
+
   void _showAiThemeChat() {
     Navigator.of(context).push(
       MaterialPageRoute(

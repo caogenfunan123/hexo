@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 
 import '../core/site_manager.dart';
 import '../models/blog_site_config.dart';
+import '../models/git_provider.dart';
 import '../models/repo_config.dart';
 import '../services/github_service.dart';
+import '../services/git_providers.dart';
 import 'blog_site_editor_screen.dart';
 import 'site_editor_screen.dart';
 
@@ -33,6 +35,54 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
   bool _testing = false;
   final Map<String, bool?> _testResults = {};
   final GitHubService _githubService = GitHubService();
+
+  @override
+  void initState() {
+    super.initState();
+    // siteUrl 回填：siteUrl 为空但已建站的站点，重新查询平台构建状态
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final repo in widget.repos) {
+        if (repo.siteUrl.isEmpty && repo.siteProjectName.isNotEmpty) {
+          _backfillSiteUrl(repo);
+        }
+      }
+    });
+  }
+
+  /// siteUrl 回填（Requirement 6 AC 8 / Correctness 15）
+  Future<void> _backfillSiteUrl(RepoConfig repo) async {
+    if (repo.token.isEmpty) return;
+    String? backfilled;
+    try {
+      if (repo.provider == GitProviderType.github) {
+        final run = await GitHubProvider()
+            .getActionsRun(repo.token, repo.owner, repo.name);
+        final status = run?['status']?.toString();
+        final conclusion = run?['conclusion']?.toString();
+        if (status == 'completed' && conclusion == 'success') {
+          backfilled = 'https://${repo.owner}.github.io/${repo.name}/';
+        }
+      } else if (repo.provider == GitProviderType.gitlab) {
+        final pipeline = await GitLabProvider().getPipeline(
+          repo.token,
+          Uri.encodeComponent('${repo.owner}/${repo.name}'),
+        );
+        final status = pipeline?['status']?.toString();
+        if (status == 'success') {
+          backfilled = 'https://${repo.owner}.gitlab.io/${repo.name}/';
+        }
+      }
+    } catch (e) {
+      debugPrint('SiteMgmt: backfill siteUrl failed: $e');
+      return;
+    }
+    if (backfilled == null || !mounted) return;
+    final index = widget.repos.indexWhere((r) => r.id == repo.id);
+    if (index < 0) return;
+    widget.repos[index] = repo.copyWith(siteUrl: backfilled);
+    widget.onChanged();
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -126,12 +176,21 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
         leading: _testIcon(testResult, cs),
         title: Text(repo.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
         subtitle: Text(
-          '${repo.fullName}  ·  ${repo.frameworkId}',
+          [
+            repo.fullName,
+            if (repo.siteProjectName.isNotEmpty) '站点项目：${repo.siteProjectName}',
+            if (repo.siteUrl.isNotEmpty) repo.siteUrl else if (repo.deployHooks.isNotEmpty) '站点构建中，地址待回填',
+          ].join('  ·  '),
           style: TextStyle(fontSize: 12, color: Colors.grey[600]),
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (repo.provider == GitProviderType.github)
+              _actionButton(Icons.public, '切换可见性', () => _toggleVisibility(repo)),
+            if (repo.siteProjectName.isNotEmpty || repo.deployHooks.isNotEmpty)
+              _actionButton(Icons.language, '绑定自定义域名', () => _bindCustomDomain(repo)),
+            const SizedBox(width: 4),
             _actionButton(Icons.edit_outlined, '编辑', () => _editStaticSite(repo)),
             const SizedBox(width: 4),
             _actionButton(Icons.delete_outline, '删除', () => _deleteStaticSite(repo),
@@ -217,6 +276,114 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
       size: 18,
       color: result ? Colors.green : Colors.red,
     );
+  }
+
+  // ── 切换可见性（GitHub 模式一） ──
+  Future<void> _toggleVisibility(RepoConfig repo) async {
+    if (repo.token.isEmpty) {
+      _showToast('该站点未配置令牌，无法切换可见性');
+      return;
+    }
+    // 查询当前可见性
+    bool? current;
+    try {
+      final data = await GitHubProvider().request(
+        'GET', 'https://api.github.com/repos/${repo.owner}/${repo.name}', repo.token);
+      current = data is Map ? data['private'] == true : null;
+    } catch (e) {
+      _showToast('查询可见性失败：$e');
+      return;
+    }
+    final target = current == true ? false : true;
+    final freeNotice = target == true
+        ? '\n\n注意：GitHub 免费账号私有仓库无法启用 Pages，该操作可能导致站点停用。'
+        : '';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(target ? '切换为私有' : '切换为公开'),
+        content: Text('确认将仓库「${repo.name}」切换为${target ? '私有' : '公开'}？$freeNotice'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认切换'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await GitHubProvider()
+          .updateVisibility(repo.token, repo.owner, repo.name, target);
+      _showToast('已切换为${target ? '私有' : '公开'}');
+    } catch (e) {
+      _showToast('切换失败：$e');
+    }
+  }
+
+  // ── 绑定自定义域名 ──
+  Future<void> _bindCustomDomain(RepoConfig repo) async {
+    final ctrl = TextEditingController(text: repo.siteUrl.isNotEmpty && !repo.siteUrl.startsWith('https://')
+        ? repo.siteUrl
+        : '');
+    final cname = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('绑定自定义域名'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'GitHub：先在 DNS 服务商添加 CNAME 记录指向 ${repo.name}.${repo.owner}.github.io，再填写下方域名。\n'
+              'GitLab：在 GitLab Pages 设置中添加自定义域名。\n'
+              'Cloudflare：在 Cloudflare 控制台的 Pages 项目自定义域中配置。\n',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            TextField(
+              controller: ctrl,
+              decoration: const InputDecoration(
+                labelText: '自定义域名',
+                hintText: 'blog.example.com',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (cname == null || cname.isEmpty || !mounted) return;
+    try {
+      if (repo.provider == GitProviderType.github) {
+        if (repo.token.isEmpty) {
+          _showToast('该站点未配置令牌，无法绑定域名');
+          return;
+        }
+        await GitHubProvider()
+            .setCustomDomain(repo.token, repo.owner, repo.name, cname);
+      }
+      // GitLab / Cloudflare：DNS 引导已在对话框展示，由用户在平台侧配置
+      final updated = repo.copyWith(siteUrl: cname);
+      final index = widget.repos.indexWhere((r) => r.id == repo.id);
+      if (index >= 0) widget.repos[index] = updated;
+      widget.onChanged();
+      setState(() {});
+      _showToast('已保存自定义域名，等待 DNS 生效后访问');
+    } catch (e) {
+      _showToast('绑定失败：$e');
+    }
   }
 
   // ── 编辑静态站点 ──

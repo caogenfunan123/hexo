@@ -138,6 +138,8 @@ class AppSettings {
   String get sitePreviewUrl => ui.sitePreviewUrl;
   String get cloudflareDeployHook => ui.cloudflareDeployHook;
   List<String> get deployHooks => ui.deployHooks;
+  String get cfApiToken => ui.cfApiToken;
+  String get cfAccountId => ui.cfAccountId;
   AppMode get appMode => ui.appMode;
   List<String> get simpleModeExtras => ui.simpleModeExtras;
 
@@ -244,6 +246,8 @@ class AppSettings {
     String? sitePreviewUrl,
     String? cloudflareDeployHook,
     List<String>? deployHooks,
+    String? cfApiToken,
+    String? cfAccountId,
     bool? needsModeGuide,
   }) {
     // 如果有扁平参数传入，构建对应的子对象
@@ -273,7 +277,8 @@ class AppSettings {
         nightEyeIntensity != null || httpTimeoutSeconds != null ||
         allowInsecureHttps != null || statusPresets != null ||
         sitePreviewUrl != null ||
-        cloudflareDeployHook != null || deployHooks != null;
+        cloudflareDeployHook != null || deployHooks != null ||
+        cfApiToken != null || cfAccountId != null;
 
     final GitHubSettings effectiveGitHub = github ??
         (hasGitHubFlat
@@ -359,6 +364,8 @@ class AppSettings {
                 statusPresets: statusPresets,
                 sitePreviewUrl: sitePreviewUrl,
                 deployHooks: deployHooks ?? (cloudflareDeployHook != null ? [cloudflareDeployHook] : null),
+                cfApiToken: cfApiToken,
+                cfAccountId: cfAccountId,
               )
             : this.ui);
 

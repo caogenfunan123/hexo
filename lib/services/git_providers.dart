@@ -268,6 +268,146 @@ class GitHubProvider implements GitProviderAdapter {
       body: {'sha': commitSha, 'force': false},
     );
   }
+
+  // ────────────────────────────────────────────────
+  // 一键建站扩展（Requirement 3/5/7/10）
+  // ────────────────────────────────────────────────
+
+  /// 创建仓库。返回完整仓库 JSON（含 default_branch / full_name）。
+  /// 默认分支由账号设置决定，可能是 main 或 master，随后用 [initDefaultBranch] 规整。
+  Future<Map<String, dynamic>> createRepository(
+      String token, String name, bool private) async {
+    final data = await request('POST', 'https://api.github.com/user/repos',
+        token,
+        body: {
+          'name': name,
+          'private': private,
+          'auto_init': true, // 带初始 commit，保证有默认分支
+          'description': '一键建站生成的博客仓库',
+        });
+    if (data is! Map) throw Exception('创建 GitHub 仓库失败');
+    return Map<String, dynamic>.from(data);
+  }
+
+  /// 规整默认分支为 main：若默认分支不是 main，从默认分支创建 main 引用。
+  Future<void> initDefaultBranch(
+      String token, String owner, String name) async {
+    final base = 'https://api.github.com/repos/$owner/$name';
+    final repoData =
+        await request('GET', base, token);
+    if (repoData is! Map) throw Exception('读取仓库信息失败');
+    final defaultBranch = repoData['default_branch']?.toString() ?? 'main';
+    if (defaultBranch == 'main') return;
+
+    final refData = await request(
+        'GET', '$base/git/ref/heads/$defaultBranch', token);
+    if (refData is! Map) throw Exception('读取默认分支引用失败');
+    final sha = refData['object']?['sha']?.toString();
+    if (sha == null || sha.isEmpty) {
+      throw Exception('默认分支 $defaultBranch 无提交');
+    }
+    await request('POST', '$base/git/refs', token, body: {
+      'ref': 'refs/heads/main',
+      'sha': sha,
+    });
+  }
+
+  /// 启用 GitHub Pages（source = GitHub Actions，站点由仓库内 CI 构建）。
+  Future<void> enablePages(String token, String owner, String name) async {
+    final data = await request(
+        'POST', 'https://api.github.com/repos/$owner/$name/pages', token,
+        body: {
+          'build_type': 'workflow',
+          'source': {'branch': 'main', 'path': '/'},
+        });
+    // 202 / 201 均视为成功；部分账号首次启用返回 201
+    if (data is! Map && data != null) throw Exception('启用 GitHub Pages 失败');
+  }
+
+  /// 查询最近一次 workflow run。返回 run JSON；无任何 run 返回 null。
+  Future<Map<String, dynamic>?> getActionsRun(
+      String token, String owner, String name) async {
+    final data = await request(
+        'GET',
+        'https://api.github.com/repos/$owner/$name/actions/runs?per_page=1',
+        token);
+    if (data is! Map) return null;
+    final runs = data['workflow_runs'];
+    if (runs is! List || runs.isEmpty) return null;
+    final first = runs.first;
+    if (first is! Map) return null;
+    return Map<String, dynamic>.from(first);
+  }
+
+  /// 删除仓库（回滚用）。
+  Future<void> deleteRepository(
+      String token, String owner, String name) async {
+    await request(
+        'DELETE', 'https://api.github.com/repos/$owner/$name', token);
+  }
+
+  /// 校验 token scope。返回 {scopes, missing, plan}：
+  /// scopes 为完整 scope 列表；missing 为缺少的必要 scope（repo/workflow）；
+  /// plan 为账号计划名（free / pro / team / enterprise）。
+  /// GitHub 免费账号私有仓库不能启用 Pages（Correctness 14）。
+  Future<Map<String, dynamic>> verifyScopes(String token) async {
+    final scopes = await _getGitHubScopes(token);
+    final missing = <String>[];
+    if (!scopes.contains('repo')) missing.add('repo');
+    if (!scopes.contains('workflow')) missing.add('workflow');
+
+    var plan = '';
+    try {
+      final user = await request('GET', 'https://api.github.com/user', token);
+      if (user is Map) {
+        final p = user['plan'];
+        if (p is Map) plan = p['name']?.toString() ?? '';
+      }
+    } catch (_) {}
+
+    return {'scopes': scopes, 'missing': missing, 'plan': plan};
+  }
+
+  /// 读取 GitHub /user 的 X-OAuth-Scopes 响应头（gitHttpRequest 不返回头，单独请求）。
+  Future<List<String>> _getGitHubScopes(String token) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
+    try {
+      final req = await client
+          .getUrl(Uri.parse('https://api.github.com/user'));
+      req.headers.set('Authorization', 'Bearer $token');
+      req.headers.set('Accept', 'application/vnd.github+json');
+      req.headers.set('X-GitHub-Api-Version', '2022-11-28');
+      req.headers.set('User-Agent', 'HexoBlogManager');
+      final res = await req.close().timeout(const Duration(seconds: 30));
+      await res.drain<void>();
+      final raw = res.headers.value('X-OAuth-Scopes') ?? '';
+      return raw
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// 切换仓库可见性（站点管理）。
+  Future<void> updateVisibility(
+      String token, String owner, String name, bool private) async {
+    await request('PATCH', 'https://api.github.com/repos/$owner/$name', token,
+        body: {'private': private});
+  }
+
+  /// 设置自定义域名（PUT /repos/{owner}/{name}/pages 的 cname 字段）。
+  Future<void> setCustomDomain(
+      String token, String owner, String name, String cname) async {
+    final body = <String, dynamic>{'cname': cname};
+    if (cname.isEmpty) body['cname'] = null;
+    await request(
+        'PUT', 'https://api.github.com/repos/$owner/$name/pages', token,
+        body: body);
+  }
 }
 
 /// GitLab 适配器（gitlab.com）
@@ -453,6 +593,102 @@ class GitLabProvider implements GitProviderAdapter {
   @override
   String rawUrl(RepoConfig repo, String path) =>
       'https://gitlab.com/${repo.owner}/${repo.repo}/-/raw/${repo.branch}/${encPathSegments(path)}';
+
+  // ────────────────────────────────────────────────
+  // 一键建站扩展（Requirement 3/5/7/10）
+  // ────────────────────────────────────────────────
+
+  /// 创建 GitLab 项目。返回完整项目 JSON（含 id / default_branch / path_with_namespace）。
+  Future<Map<String, dynamic>> createProject(
+      String token, String name, bool private) async {
+    final data = await request('POST', 'https://gitlab.com/api/v4/projects',
+        token,
+        body: {
+          'name': name,
+          'visibility': private ? 'private' : 'public',
+          'initialize_with_readme': true, // 带初始 README，保证有 main 分支
+          'default_branch': 'main',
+          'description': '一键建站生成的博客项目',
+        });
+    if (data is! Map) throw Exception('创建 GitLab 项目失败');
+    return Map<String, dynamic>.from(data);
+  }
+
+  /// 规整默认分支为 main：若默认分支不是 main，从默认分支创建 main 引用。
+  Future<void> initDefaultBranch(
+      String token, String projectId, String? defaultBranch) async {
+    final branch =
+        (defaultBranch == null || defaultBranch.isEmpty) ? 'main' : defaultBranch;
+    if (branch == 'main') return;
+    // GitLab 需要先读取默认分支 tip 才能创建新分支
+    final tip = await request(
+        'GET',
+        'https://gitlab.com/api/v4/projects/$projectId/repository/branches/$branch',
+        token);
+    if (tip is! Map) throw Exception('读取默认分支 $branch 失败');
+    await request(
+        'POST',
+        'https://gitlab.com/api/v4/projects/$projectId/repository/branches',
+        token,
+        body: {
+          'branch': 'main',
+          'ref': branch,
+        });
+  }
+
+  /// 启用 GitLab Pages（PUT /api/v4/projects/{id}/pages）。
+  Future<void> enablePages(String token, String projectId) async {
+    await request(
+        'PUT',
+        'https://gitlab.com/api/v4/projects/$projectId/pages',
+        token,
+        body: {'force_https': true});
+  }
+
+  /// 查询最近一次 pipeline。返回 pipeline JSON；无任何 pipeline 返回 null。
+  Future<Map<String, dynamic>?> getPipeline(
+      String token, String projectId) async {
+    final data = await request(
+        'GET',
+        'https://gitlab.com/api/v4/projects/$projectId/pipelines?per_page=1',
+        token);
+    if (data is! List || data.isEmpty) return null;
+    final first = data.first;
+    if (first is! Map) return null;
+    return Map<String, dynamic>.from(first);
+  }
+
+  /// 删除项目（回滚用）。
+  Future<void> deleteProject(String token, String projectId) async {
+    await request('DELETE',
+        'https://gitlab.com/api/v4/projects/$projectId', token);
+  }
+
+  /// 校验 token scope。返回 {scopes, missing}：
+  /// scopes 为完整 scope 列表；missing 为缺少的必要 scope（api）。
+  Future<Map<String, dynamic>> verifyScopes(String token) async {
+    final data = await request('GET', 'https://gitlab.com/api/v4/user', token);
+    final scopes = <String>[];
+    if (data is Map) {
+      final raw = data['scopes'];
+      if (raw is List) {
+        scopes.addAll(raw.map((e) => e.toString()));
+      }
+    }
+    final missing = <String>[];
+    if (!scopes.contains('api')) missing.add('api');
+    return {'scopes': scopes, 'missing': missing, 'plan': ''};
+  }
+
+  /// 设置自定义域名（PUT /api/v4/projects/{id}/pages 的 domain 字段）。
+  Future<void> setCustomDomain(
+      String token, String projectId, String cname) async {
+    final body = <String, dynamic>{'domain': cname};
+    if (cname.isEmpty) body['domain'] = null;
+    await request('PUT',
+        'https://gitlab.com/api/v4/projects/$projectId/pages', token,
+        body: body);
+  }
 }
 
 /// Gitee 适配器（gitee.com，API 结构与 GitHub 高度一致）
