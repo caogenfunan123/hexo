@@ -10,6 +10,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:archive/archive.dart';
 
@@ -102,7 +103,8 @@ import '../services/full_text_search_isolate.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/github.dart' as highlight_github;
-import 'package:flutter_highlight/themes/monokai-sublime.dart' as highlight_monokai;
+import 'package:flutter_highlight/themes/monokai-sublime.dart'
+    as highlight_monokai;
 import 'package:flutter_highlight/themes/dracula.dart' as highlight_dracula;
 import 'package:flutter_highlight/themes/nord.dart' as highlight_nord;
 // webview_flutter 在桌面端不可用，Mermaid 预览改为纯文本展示
@@ -150,7 +152,8 @@ class DesktopShell extends StatefulWidget {
   State<DesktopShell> createState() => DesktopShellState();
 }
 
-class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver {
+class DesktopShellState extends State<DesktopShell>
+    with WidgetsBindingObserver {
   // ──────────────────────────────────────────────
   // 服务层
   // ──────────────────────────────────────────────
@@ -159,8 +162,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   late final imageService = ImageService(github);
   final aiService = AiService();
   late final aiModelManager = AiModelManager(storage);
-  late final siteDispatcherManager =
-      SiteDispatcherManager(aiService, aiModelManager);
+  late final siteDispatcherManager = SiteDispatcherManager(
+    aiService,
+    aiModelManager,
+  );
   bool _siteDispatcherManagerUsed = false;
 
   /// 当前站点对应的调度器（站点隔离：每个站点独立上下文）
@@ -168,6 +173,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     _siteDispatcherManagerUsed = true;
     return siteDispatcherManager.forSite(settings.effectiveActiveSiteId);
   }
+
   late final themeMigrationService = ThemeMigrationService(aiService, github);
   late final aiSelfChecker = AiSelfChecker(aiService);
   final skillManager = SkillManager();
@@ -329,7 +335,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     recycleBinService = RecycleBinService();
     versionSnapshotService = VersionSnapshotService(logService);
     frontMatterService = FrontMatterService(logService);
-    p2pSyncService = P2PSyncService(deviceName: 'Desktop-${Platform.localHostname}');
+    p2pSyncService = P2PSyncService(
+      deviceName: 'Desktop-${Platform.localHostname}',
+    );
     spellCheckService = spell_svc.SpellCheckService();
     spellCheckService.init();
     _typewriterCtrl = TypewriterScrollController(
@@ -372,7 +380,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!settings.draftSyncEnabled) return;
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       // 三重落盘：APP 转入后台时强制冲刷所有等待中的保存任务
       _flushAllPendingSaves();
       _autoSyncToCloud();
@@ -409,7 +418,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   /// 加载应用持久化数据
-  Future<(AppSettings, List<RepoConfig>, List<Article>, List<TemplateItem>, List<SnippetItem>)> _loadAppData() async {
+  Future<
+    (
+      AppSettings,
+      List<RepoConfig>,
+      List<Article>,
+      List<TemplateItem>,
+      List<SnippetItem>,
+    )
+  >
+  _loadAppData() async {
     var s = await storage.loadSettings();
     var r = await storage.loadRepos();
     final d = await storage.loadDrafts();
@@ -420,7 +438,11 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   /// 核心引导逻辑（Token 迁移、默认仓库、站点同步）
   Future<void> _bootstrapCore(
-    AppSettings s, List<RepoConfig> r, List<Article> d, List<TemplateItem> t, List<SnippetItem> sn,
+    AppSettings s,
+    List<RepoConfig> r,
+    List<Article> d,
+    List<TemplateItem> t,
+    List<SnippetItem> sn,
   ) async {
     s = _ensureGithubTokensFromLegacy(s, r);
     await storage.saveSettings(s);
@@ -436,12 +458,15 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           siteUrl: '',
           token: s.effectiveGithubToken,
           isDefault: true,
-        )
+        ),
       ];
       await storage.saveRepos(r);
       s = s.copyWith(
         activeRepoId: r.first.id,
-        github: s.github.copyWith(imageBedOwner: 'caogenfunan123', imageBedRepo: 'xiamend'),
+        github: s.github.copyWith(
+          imageBedOwner: 'caogenfunan123',
+          imageBedRepo: 'xiamend',
+        ),
       );
       await storage.saveSettings(s);
     } else {
@@ -458,15 +483,29 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       _doc.setSelectedTemplateId(autoTemplateId);
     }
 
-    final staticSites = r.map((repo) => SiteConfig(
-      id: repo.id, name: repo.name,
-      repoUrl: 'https://github.com/${repo.owner}/${repo.repo}',
-      branch: repo.branch, isDefault: repo.isDefault, isStatic: true,
-      tokenId: repo.token.isNotEmpty ? repo.id : null,
-    )).toList();
-    final dynamicSites = s.blogSiteConfigs.map((cfg) => SiteConfig(
-      id: cfg.id, name: cfg.name, repoUrl: cfg.siteUrl, isStatic: false,
-    )).toList();
+    final staticSites = r
+        .map(
+          (repo) => SiteConfig(
+            id: repo.id,
+            name: repo.name,
+            repoUrl: 'https://github.com/${repo.owner}/${repo.repo}',
+            branch: repo.branch,
+            isDefault: repo.isDefault,
+            isStatic: true,
+            tokenId: repo.token.isNotEmpty ? repo.id : null,
+          ),
+        )
+        .toList();
+    final dynamicSites = s.blogSiteConfigs
+        .map(
+          (cfg) => SiteConfig(
+            id: cfg.id,
+            name: cfg.name,
+            repoUrl: cfg.siteUrl,
+            isStatic: false,
+          ),
+        )
+        .toList();
     _site.setSites(staticSites, dynamicSites);
 
     setState(() {
@@ -481,7 +520,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     _ui.setLoading(false);
     _updateSiteManager();
     if (s.needsModeGuide) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _showModeGuideDialog(s));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _showModeGuideDialog(s),
+      );
     }
     if (s.restoreSession) {
       await _restoreSession();
@@ -583,7 +624,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     }
   }
 
-  AppSettings _ensureGithubTokensFromLegacy(AppSettings s, List<RepoConfig> repos) {
+  AppSettings _ensureGithubTokensFromLegacy(
+    AppSettings s,
+    List<RepoConfig> repos,
+  ) {
     return ensureGithubTokensFromLegacy(s, repos);
   }
 
@@ -657,11 +701,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         );
         return;
       }
-      _autoSaveSnapshot(
-        articleId: articleId,
-        content: current,
-        title: title,
-      );
+      _autoSaveSnapshot(articleId: articleId, content: current, title: title);
     });
   }
 
@@ -766,7 +806,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final backend = cloudSyncService.configuredBackends.firstOrNull;
     if (backend == null) return;
     try {
-      final pulled = await cloudSyncService.pullDrafts(backend, existingDrafts: drafts);
+      final pulled = await cloudSyncService.pullDrafts(
+        backend,
+        existingDrafts: drafts,
+      );
       if (pulled.isNotEmpty) {
         setState(() {
           drafts = pulled..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
@@ -781,26 +824,60 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   Future<void> _pushAllToCloud() async {
     final backend = cloudSyncService.configuredBackends.firstOrNull;
-    if (backend == null) { _showToast('请先配置同步后端'); return; }
+    if (backend == null) {
+      _showToast('请先配置同步后端');
+      return;
+    }
     setState(() => busy = true);
     try {
-      final result = await cloudSyncService.pushAll(backend, drafts: drafts, settings: settings, syncService: syncService, templates: templates, snippets: snippets);
+      final result = await cloudSyncService.pushAll(
+        backend,
+        drafts: drafts,
+        settings: settings,
+        syncService: syncService,
+        templates: templates,
+        snippets: snippets,
+      );
       if (mounted) {
         setState(() => busy = false);
-        if (result.isSuccess) { _showToast('推送完成: ${result.pushed} 项'); } else { _showToast('推送完成: ${result.pushed} 成功, ${result.errors.length} 失败'); }
+        if (result.isSuccess) {
+          _showToast('推送完成: ${result.pushed} 项');
+        } else {
+          _showToast('推送完成: ${result.pushed} 成功, ${result.errors.length} 失败');
+        }
       }
-    } catch (e) { if (mounted) { setState(() => busy = false); _showToast('推送失败: $e'); } }
+    } catch (e) {
+      if (mounted) {
+        setState(() => busy = false);
+        _showToast('推送失败: $e');
+      }
+    }
   }
 
   Future<void> _pullAllFromCloud() async {
     final backend = cloudSyncService.configuredBackends.firstOrNull;
-    if (backend == null) { _showToast('请先配置同步后端'); return; }
+    if (backend == null) {
+      _showToast('请先配置同步后端');
+      return;
+    }
     setState(() => busy = true);
     try {
-      await cloudSyncService.pullAll(backend,
-        existingDrafts: drafts, syncService: syncService,
-        onSettingsLoaded: (s) { setState(() => settings = s); _updateSiteManager(); _startAutoSync(); storage.saveSettings(s); },
-        onDraftsLoaded: (d) { setState(() { drafts = d..sort((a, b) => b.updatedAt.compareTo(a.updatedAt)); }); storage.saveDrafts(drafts); },
+      await cloudSyncService.pullAll(
+        backend,
+        existingDrafts: drafts,
+        syncService: syncService,
+        onSettingsLoaded: (s) {
+          setState(() => settings = s);
+          _updateSiteManager();
+          _startAutoSync();
+          storage.saveSettings(s);
+        },
+        onDraftsLoaded: (d) {
+          setState(() {
+            drafts = d..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+          });
+          storage.saveDrafts(drafts);
+        },
         onTemplatesLoaded: (tList) {
           final merged = <TemplateItem>[];
           final seen = <String>{};
@@ -830,8 +907,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           storage.saveSnippets(merged);
         },
       );
-      if (mounted) { setState(() => busy = false); _showToast('拉取完成'); }
-    } catch (e) { if (mounted) { setState(() => busy = false); _showToast('拉取失败: $e'); } }
+      if (mounted) {
+        setState(() => busy = false);
+        _showToast('拉取完成');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => busy = false);
+        _showToast('拉取失败: $e');
+      }
+    }
   }
 
   // ============================================================
@@ -848,12 +933,23 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         id: session.articleId,
         title: session.articleTitle,
         content: session.articleContent,
-        tags: session.articleTags.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
-        categories: session.articleCategories.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
+        tags: session.articleTags
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList(),
+        categories: session.articleCategories
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList(),
         cover: session.articleCover.isEmpty ? null : session.articleCover,
-        createdAt: DateTime.now(), updatedAt: DateTime.now(),
-        isDraft: true, repoId: session.articleRepoId,
-        remotePath: session.articleRemotePath, remoteSha: session.articleRemoteSha,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        isDraft: true,
+        repoId: session.articleRepoId,
+        remotePath: session.articleRemotePath,
+        remoteSha: session.articleRemoteSha,
       );
       if (session.pageType == SessionPageType.editor) {
         _openExistingArticle(article);
@@ -873,8 +969,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     return _doc.currentArticle.copyWith(
       title: title.isEmpty ? '未命名' : title,
       content: _doc.contentCtrl.text,
-      tags: _doc.tagsCtrl.text.split(RegExp(r'[,，]')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
-      categories: _doc.categoriesCtrl.text.split(RegExp(r'[,，]')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
+      tags: _doc.tagsCtrl.text
+          .split(RegExp(r'[,，]'))
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList(),
+      categories: _doc.categoriesCtrl.text
+          .split(RegExp(r'[,，]'))
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList(),
       cover: cover.isEmpty ? null : cover,
       updatedAt: DateTime.now(),
       isDraft: draft,
@@ -895,7 +999,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   String _generateSlug(String title) {
-    final slug = title.toLowerCase()
+    final slug = title
+        .toLowerCase()
         .replaceAll(RegExp(r'[^\w\s-]'), '')
         .replaceAll(RegExp(r'\s+'), '-')
         .replaceAll(RegExp(r'-+'), '-')
@@ -909,7 +1014,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   Future<void> _saveDraft(Article a) async {
     final i = drafts.indexWhere((e) => e.id == a.id);
-    if (i >= 0) drafts[i] = a; else drafts.insert(0, a);
+    if (i >= 0)
+      drafts[i] = a;
+    else
+      drafts.insert(0, a);
     drafts.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     await storage.saveDrafts(drafts);
     await storage.exportDraftMarkdown(a);
@@ -918,15 +1026,22 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   Future<void> _saveLocal() async {
     final a = _collect(draft: true);
-    _doc.setCurrentArticle(a); _editor.setEditorStatus('本地已保存');
+    _doc.setCurrentArticle(a);
+    _editor.setEditorStatus('本地已保存');
     await _saveDraft(a);
     if (siteManager.isDynamicSite) {
       final adapter = siteManager.currentAdapter;
       if (adapter != null) {
         final post = BlogPost(
-          title: a.title, contentMd: a.content, status: 'draft',
-          slug: _generateSlug(a.title), tags: a.tags, categories: a.categories,
-          date: DateTime.now(), siteId: adapter.config.id, siteType: adapter.config.type,
+          title: a.title,
+          contentMd: a.content,
+          status: 'draft',
+          slug: _generateSlug(a.title),
+          tags: a.tags,
+          categories: a.categories,
+          date: DateTime.now(),
+          siteId: adapter.config.id,
+          siteType: adapter.config.type,
         );
         await cmsDraftService.saveDraft(post);
       }
@@ -945,8 +1060,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final rootDir = await storage.root;
       final dir = Directory('${rootDir.path}/hexo_backups');
       if (!await dir.exists()) await dir.create(recursive: true);
-      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '-');
-      final safeTitle = a.title.isNotEmpty ? a.title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_') : 'untitled';
+      final timestamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .replaceAll('.', '-');
+      final safeTitle = a.title.isNotEmpty
+          ? a.title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+          : 'untitled';
       final fileName = '${timestamp}_$safeTitle.md';
       final file = File('${dir.path}/$fileName');
       await file.writeAsString(a.toMarkdownWithFrontMatter());
@@ -980,24 +1100,46 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: Row(children: [
-            Icon(Icons.cloud_upload_outlined, color: Theme.of(context).colorScheme.primary, size: 22),
-            const SizedBox(width: 8),
-            const Text('确认发布', style: TextStyle(fontSize: 17)),
-          ]),
+          title: Row(
+            children: [
+              Icon(
+                Icons.cloud_upload_outlined,
+                color: Theme.of(context).colorScheme.primary,
+                size: 22,
+              ),
+              const SizedBox(width: 8),
+              const Text('确认发布', style: TextStyle(fontSize: 17)),
+            ],
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('即将发布到: $publishTarget', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+              Text(
+                '即将发布到: $publishTarget',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 8),
-              Text('标题: ${_doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : "(无标题)"}', style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+              Text(
+                '标题: ${_doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : "(无标题)"}',
+                style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+              ),
               const SizedBox(height: 16),
               CheckboxListTile(
                 value: saveMdBackup,
-                onChanged: (v) => setDialogState(() => saveMdBackup = v ?? false),
-                title: const Text('同时保存一份 MD 备份到本地目录', style: TextStyle(fontSize: 13)),
-                subtitle: const Text('备份到文档目录的 hexo_backups/ 文件夹', style: TextStyle(fontSize: 11)),
+                onChanged: (v) =>
+                    setDialogState(() => saveMdBackup = v ?? false),
+                title: const Text(
+                  '同时保存一份 MD 备份到本地目录',
+                  style: TextStyle(fontSize: 13),
+                ),
+                subtitle: const Text(
+                  '备份到文档目录的 hexo_backups/ 文件夹',
+                  style: TextStyle(fontSize: 11),
+                ),
                 controlAffinity: ListTileControlAffinity.leading,
                 contentPadding: EdgeInsets.zero,
                 dense: true,
@@ -1005,14 +1147,21 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, 0), child: const Text('取消')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 0),
+              child: const Text('取消'),
+            ),
             if (siteManager.isDynamicSite && dynamicSiteCount > 1)
               TextButton.icon(
                 icon: const Icon(Icons.cloud_done_outlined, size: 18),
                 label: Text('发布到全部站点 ($dynamicSiteCount)'),
                 onPressed: () => Navigator.pop(ctx, 2),
               ),
-            FilledButton.icon(icon: const Icon(Icons.cloud_upload_outlined, size: 18), label: const Text('确认发布'), onPressed: () => Navigator.pop(ctx, 1)),
+            FilledButton.icon(
+              icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+              label: const Text('确认发布'),
+              onPressed: () => Navigator.pop(ctx, 1),
+            ),
           ],
         ),
       ),
@@ -1036,27 +1185,41 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final continuePublish = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Row(children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 22),
-            SizedBox(width: 8),
-            Text('发布前校验', style: TextStyle(fontSize: 17)),
-          ]),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 22),
+              SizedBox(width: 8),
+              Text('发布前校验', style: TextStyle(fontSize: 17)),
+            ],
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('缺少必填字段: $missing', style: const TextStyle(color: Colors.red, fontSize: 13)),
+              Text(
+                '缺少必填字段: $missing',
+                style: const TextStyle(color: Colors.red, fontSize: 13),
+              ),
               if (warnings.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                Text(warnings, style: TextStyle(fontSize: 12, color: Colors.orange[700])),
+                Text(
+                  warnings,
+                  style: TextStyle(fontSize: 12, color: Colors.orange[700]),
+                ),
               ],
               const SizedBox(height: 12),
               const Text('是否继续发布？', style: TextStyle(fontSize: 13)),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('继续发布')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('继续发布'),
+            ),
           ],
         ),
       );
@@ -1080,7 +1243,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       preCheckWarnings.add('⚠ 文章标题为空或未命名');
     }
     // 内容过短检查
-    if (article.content.trim().length < 20 && article.content.trim().isNotEmpty) {
+    if (article.content.trim().length < 20 &&
+        article.content.trim().isNotEmpty) {
       preCheckWarnings.add('⚠ 文章内容过短（<20字符），建议补充内容');
     }
 
@@ -1088,26 +1252,36 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final continuePublish2 = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Row(children: [
-            Icon(Icons.fact_check_outlined, color: Colors.blue, size: 22),
-            SizedBox(width: 8),
-            Text('发布预检测', style: TextStyle(fontSize: 17)),
-          ]),
+          title: const Row(
+            children: [
+              Icon(Icons.fact_check_outlined, color: Colors.blue, size: 22),
+              SizedBox(width: 8),
+              Text('发布预检测', style: TextStyle(fontSize: 17)),
+            ],
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ...preCheckWarnings.map((w) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text(w, style: const TextStyle(fontSize: 13)),
-              )),
+              ...preCheckWarnings.map(
+                (w) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(w, style: const TextStyle(fontSize: 13)),
+                ),
+              ),
               const SizedBox(height: 12),
               const Text('是否继续发布？', style: TextStyle(fontSize: 13)),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('继续发布')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('继续发布'),
+            ),
           ],
         ),
       );
@@ -1124,11 +1298,17 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       _showToast('请先配置仓库与 Token');
       return;
     }
-    _editor.setEditorBusy(true); _editor.setEditorStatus('正在发布...');
+    _editor.setEditorBusy(true);
+    _editor.setEditorStatus('正在发布...');
     try {
       final a = _collect(draft: false);
-      final pub = await github.publishArticleWithMirrors(repo, a, templates: templates);
-      _doc.setCurrentArticle(pub); _editor.setEditorStatus('已发布');
+      final pub = await github.publishArticleWithMirrors(
+        repo,
+        a,
+        templates: templates,
+      );
+      _doc.setCurrentArticle(pub);
+      _editor.setEditorStatus('已发布');
       _lastSavedContent = pub.content;
       _doc.markSaved();
       await _saveDraft(pub.copyWith(isDraft: false, published: true));
@@ -1136,15 +1316,23 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       // 触发全部部署钩子（Cloudflare / Vercel / Netlify 等）
       if (settings.deployHooks.isNotEmpty) {
         final ok = await GitHubService.triggerDeployHooks(settings.deployHooks);
-        logService.add('部署钩子', ok == settings.deployHooks.length ? '已触发 ${ok} 个重新部署' : '部署钩子部分失败（${ok}/${settings.deployHooks.length}）', success: ok == settings.deployHooks.length);
+        logService.add(
+          '部署钩子',
+          ok == settings.deployHooks.length
+              ? '已触发 ${ok} 个重新部署'
+              : '部署钩子部分失败（${ok}/${settings.deployHooks.length}）',
+          success: ok == settings.deployHooks.length,
+        );
       }
       logService.add('发布成功', '已发布到 ${repo.fullName}: ${pub.title}');
       if (mounted) _showToast('已发布到 ${repo.fullName}');
     } catch (e) {
       _editor.setEditorStatus('发布失败');
       logService.add('发布失败', '$e', success: false);
-      if (mounted) _showToast('发布失败: $e');} finally {
-      if (mounted) _editor.setEditorBusy(false);}
+      if (mounted) _showToast('发布失败: $e');
+    } finally {
+      if (mounted) _editor.setEditorBusy(false);
+    }
   }
 
   Future<void> _publishToCms() async {
@@ -1154,34 +1342,66 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       return;
     }
     final a = _collect(draft: false);
-    _editor.setEditorBusy(true); _editor.setEditorStatus('正在发布到 ${adapter.config.type.displayName}...');
+    _editor.setEditorBusy(true);
+    _editor.setEditorStatus('正在发布到 ${adapter.config.type.displayName}...');
     try {
-      final remoteId = _doc.currentArticle.remoteSha != null ? int.tryParse(_doc.currentArticle.remoteSha!) : null;
+      final remoteId = _doc.currentArticle.remoteSha != null
+          ? int.tryParse(_doc.currentArticle.remoteSha!)
+          : null;
       final post = BlogPost(
-        id: remoteId, title: a.title, contentMd: a.content, status: 'publish',
-        slug: _generateSlug(a.title), tags: a.tags, categories: a.categories,
-        date: DateTime.now(), siteId: adapter.config.id, siteType: adapter.config.type,
+        id: remoteId,
+        title: a.title,
+        contentMd: a.content,
+        status: 'publish',
+        slug: _generateSlug(a.title),
+        tags: a.tags,
+        categories: a.categories,
+        date: DateTime.now(),
+        siteId: adapter.config.id,
+        siteType: adapter.config.type,
       );
-      final result = remoteId != null ? await adapter.updatePost(post) : await adapter.createPost(post);
-      final pub = a.copyWith(isDraft: false, published: true, remotePath: result.link, remoteSha: result.id?.toString());
-      _doc.setCurrentArticle(pub); _editor.setEditorStatus('已发布到 ${adapter.config.type.displayName}');
+      final result = remoteId != null
+          ? await adapter.updatePost(post)
+          : await adapter.createPost(post);
+      final pub = a.copyWith(
+        isDraft: false,
+        published: true,
+        remotePath: result.link,
+        remoteSha: result.id?.toString(),
+      );
+      _doc.setCurrentArticle(pub);
+      _editor.setEditorStatus('已发布到 ${adapter.config.type.displayName}');
       _lastSavedContent = a.content;
       _doc.markSaved();
       await _saveDraft(pub);
       await cmsDraftService.saveDraft(result);
       if (result.id != null) {
-        syncService.setMapping(SyncMapping(
-          localArticleId: pub.id, remotePostId: result.id!, siteId: adapter.config.id,
-          lastSyncAt: DateTime.now(), localModifiedAt: pub.updatedAt, remoteModifiedAt: result.modifiedDate,
-        ));
+        syncService.setMapping(
+          SyncMapping(
+            localArticleId: pub.id,
+            remotePostId: result.id!,
+            siteId: adapter.config.id,
+            lastSyncAt: DateTime.now(),
+            localModifiedAt: pub.updatedAt,
+            remoteModifiedAt: result.modifiedDate,
+          ),
+        );
       }
-      logService.add('CMS发布成功', '已发布到 ${adapter.config.type.displayName}: ${result.title}');
-      if (mounted) _showToast('已发布到 ${adapter.config.type.displayName}: ${result.link ?? result.title}');
+      logService.add(
+        'CMS发布成功',
+        '已发布到 ${adapter.config.type.displayName}: ${result.title}',
+      );
+      if (mounted)
+        _showToast(
+          '已发布到 ${adapter.config.type.displayName}: ${result.link ?? result.title}',
+        );
     } catch (e) {
       _editor.setEditorStatus('发布失败');
       logService.add('CMS发布失败', '$e', success: false);
-      if (mounted) _showToast('发布失败: $e');} finally {
-      if (mounted) _editor.setEditorBusy(false);}
+      if (mounted) _showToast('发布失败: $e');
+    } finally {
+      if (mounted) _editor.setEditorBusy(false);
+    }
   }
 
   /// 一键发布当前文章到所有已保存的动态 CMS 站点
@@ -1230,14 +1450,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           details[siteName] = '成功 (ID: ${result.id})';
           await cmsDraftService.saveDraft(result);
           if (result.id != null) {
-            syncService.setMapping(SyncMapping(
-              localArticleId: a.id,
-              remotePostId: result.id!,
-              siteId: adapter.config.id,
-              lastSyncAt: DateTime.now(),
-              localModifiedAt: a.updatedAt,
-              remoteModifiedAt: result.modifiedDate,
-            ));
+            syncService.setMapping(
+              SyncMapping(
+                localArticleId: a.id,
+                remotePostId: result.id!,
+                siteId: adapter.config.id,
+                lastSyncAt: DateTime.now(),
+                localModifiedAt: a.updatedAt,
+                remoteModifiedAt: result.modifiedDate,
+              ),
+            );
           }
         } catch (e) {
           final msg = e is BlogRepositoryException ? e.message : '$e';
@@ -1255,17 +1477,24 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     logService.add('多站点发布', '《${a.title}》成功 $success/${adapters.length} 个站点');
     if (mounted) {
       _showToast('多站点发布完成: 成功 $success/${adapters.length} 个站点');
-      final lines = details.entries.map((e) => '${e.key}: ${e.value}').join('\n');
+      final lines = details.entries
+          .map((e) => '${e.key}: ${e.value}')
+          .join('\n');
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text('发布结果 ($success/${adapters.length})'),
           content: SizedBox(
             width: double.maxFinite,
-            child: SingleChildScrollView(child: Text(lines, style: const TextStyle(fontSize: 13))),
+            child: SingleChildScrollView(
+              child: Text(lines, style: const TextStyle(fontSize: 13)),
+            ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('确定')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('确定'),
+            ),
           ],
         ),
       );
@@ -1280,7 +1509,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final repo = effectiveRepo;
     if (repo == null || repo.token.isEmpty) return;
     setState(() => busy = true);
-    try { remotePosts = await github.listPosts(repo); } catch (e) {
+    try {
+      remotePosts = await github.listPosts(repo);
+    } catch (e) {
       debugPrint('List remote posts error: $e');
     }
     if (mounted) setState(() => busy = false);
@@ -1290,7 +1521,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final url = settings.sitePreviewUrl.isNotEmpty
         ? settings.sitePreviewUrl
         : (activeRepo?.siteUrl.isNotEmpty == true ? activeRepo!.siteUrl : '');
-    try { rssItems = await rssService.fetch(url); } catch (e) {
+    try {
+      rssItems = await rssService.fetch(url);
+    } catch (e) {
       debugPrint('RSS fetch error: $e');
     }
   }
@@ -1298,7 +1531,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   Future<void> _refreshCommits() async {
     final repo = effectiveRepo;
     if (repo == null || repo.token.isEmpty) return;
-    try { commits = await github.listCommits(repo); } catch (e) {
+    try {
+      commits = await github.listCommits(repo);
+    } catch (e) {
       debugPrint('List commits error: $e');
     }
   }
@@ -1343,16 +1578,27 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final rootDir = await storage.root;
       final file = File('${rootDir.path}/editor_settings.json');
       if (await file.exists()) {
-        final data = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+        final data =
+            jsonDecode(await file.readAsString()) as Map<String, dynamic>;
         if (mounted) {
           setState(() {
-            _editor.setEditorFontSize((data['fontSize'] as num?)?.toDouble() ?? 16.0);
-            _editor.setEditorLineHeight((data['lineHeight'] as num?)?.toDouble() ?? 1.6);
-            _editor.setEditorFontFamily(data['fontFamily'] as String? ?? 'System');
+            _editor.setEditorFontSize(
+              (data['fontSize'] as num?)?.toDouble() ?? 16.0,
+            );
+            _editor.setEditorLineHeight(
+              (data['lineHeight'] as num?)?.toDouble() ?? 1.6,
+            );
+            _editor.setEditorFontFamily(
+              data['fontFamily'] as String? ?? 'System',
+            );
             _editor.setEditorTheme(data['editorTheme'] as String? ?? 'default');
             _editor.setCustomCss(data['customCss'] as String? ?? '');
-            _editor.setCustomShortcuts((data['customShortcuts'] as Map<String, dynamic>?)
-                ?.map((k, v) => MapEntry(k, v.toString())) ?? {});
+            _editor.setCustomShortcuts(
+              (data['customShortcuts'] as Map<String, dynamic>?)?.map(
+                    (k, v) => MapEntry(k, v.toString()),
+                  ) ??
+                  {},
+            );
           });
         }
       }
@@ -1366,14 +1612,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     try {
       final rootDir = await storage.root;
       final file = File('${rootDir.path}/editor_settings.json');
-      await file.writeAsString(jsonEncode({
-        'fontSize': _editor.editorFontSize,
-        'lineHeight': _editor.editorLineHeight,
-        'fontFamily': _editor.editorFontFamily,
-        'editorTheme': _editor.editorTheme,
-        'customCss': _editor.customCss,
-        'customShortcuts': _editor.customShortcuts,
-      }));
+      await file.writeAsString(
+        jsonEncode({
+          'fontSize': _editor.editorFontSize,
+          'lineHeight': _editor.editorLineHeight,
+          'fontFamily': _editor.editorFontFamily,
+          'editorTheme': _editor.editorTheme,
+          'customCss': _editor.customCss,
+          'customShortcuts': _editor.customShortcuts,
+        }),
+      );
     } catch (e) {
       debugPrint('Save editor settings error: $e');
     }
@@ -1390,12 +1638,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     _doc.tagsCtrl.text = a.tags.join(', ');
     _doc.categoriesCtrl.text = a.categories.join(', ');
     _doc.coverCtrl.text = a.cover ?? '';
-    _editorRepo = repos.where((r) => r.id == a.repoId).firstOrNull ?? activeRepo;
+    _editorRepo =
+        repos.where((r) => r.id == a.repoId).firstOrNull ?? activeRepo;
     _lastSavedContent = a.content;
     _doc.markSaved();
     _startAutoSave();
     _addEditorTab(a);
-    
+
     // 自动聚焦到正文编辑区
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _doc.contentFocus.requestFocus();
@@ -1408,7 +1657,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final dir = await storage.mdArticlesDir();
       final filePath = '${dir.path}/${a.id}_${a.fileName()}';
       await recycleBinService.moveToTrash(filePath, a);
-    } catch (e) { debugPrint('Shell: moveToTrash failed: $e'); }
+    } catch (e) {
+      debugPrint('Shell: moveToTrash failed: $e');
+    }
     drafts.removeWhere((e) => e.id == a.id);
     await storage.saveDrafts(drafts);
     logService.add('删除草稿', '标题: ${a.title.isNotEmpty ? a.title : "(无标题)"}');
@@ -1422,39 +1673,46 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   /// 重命名文章：更新标题并保存
   Future<void> _renameArticle(Article a) async {
     final ctrl = TextEditingController(text: a.title);
-    final newTitle = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('重命名文章'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: '新标题',
-            hintText: '输入新的文章标题',
+    try {
+      final newTitle = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('重命名文章'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: '新标题',
+              hintText: '输入新的文章标题',
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('确定'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('确定'),
-          ),
-        ],
-      ),
-    );
-    if (newTitle == null || newTitle.isEmpty || newTitle == a.title) return;
-    final idx = drafts.indexWhere((e) => e.id == a.id);
-    if (idx < 0) return;
-    final updated = drafts[idx].copyWith(
-      title: newTitle,
-      updatedAt: DateTime.now(),
-    );
-    setState(() => drafts[idx] = updated);
-    await storage.saveDrafts(drafts);
-    await storage.exportDraftMarkdown(updated);
-    logService.add('重命名文章', '「${a.title}」→「$newTitle」');
-    if (mounted) _showToast('已重命名为「$newTitle」');
+      );
+      if (newTitle == null || newTitle.isEmpty || newTitle == a.title) return;
+      final idx = drafts.indexWhere((e) => e.id == a.id);
+      if (idx < 0) return;
+      final updated = drafts[idx].copyWith(
+        title: newTitle,
+        updatedAt: DateTime.now(),
+      );
+      setState(() => drafts[idx] = updated);
+      await storage.saveDrafts(drafts);
+      await storage.exportDraftMarkdown(updated);
+      logService.add('重命名文章', '「${a.title}」→「$newTitle」');
+      if (mounted) _showToast('已重命名为「$newTitle」');
+    } finally {
+      ctrl.dispose();
+    }
   }
 
   /// 移动文章到卷宗：弹出卷宗选择器（含「未分类」与新建卷宗）
@@ -1474,9 +1732,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlgState) {
           final isNew = selected != null && !volList.contains(selected);
-          final ctrl = TextEditingController(
-            text: isNew ? selected! : '',
-          );
+          final ctrl = TextEditingController(text: isNew ? selected! : '');
           return AlertDialog(
             title: const Text('移动到卷宗'),
             content: SizedBox(
@@ -1485,7 +1741,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('选择目标卷宗：', style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+                  const Text(
+                    '选择目标卷宗：',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
@@ -1496,11 +1755,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                         selected: selected == null || selected!.isEmpty,
                         onSelected: (_) => setDlgState(() => selected = null),
                       ),
-                      ...volList.map((v) => ChoiceChip(
-                        label: Text(v),
-                        selected: selected == v,
-                        onSelected: (_) => setDlgState(() => selected = v),
-                      )),
+                      ...volList.map(
+                        (v) => ChoiceChip(
+                          label: Text(v),
+                          selected: selected == v,
+                          onSelected: (_) => setDlgState(() => selected = v),
+                        ),
+                      ),
                       ChoiceChip(
                         avatar: const Icon(Icons.add, size: 16),
                         label: const Text('新建卷宗'),
@@ -1525,7 +1786,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
               FilledButton(
                 onPressed: () {
                   final v = (selected == null || selected!.isEmpty)
@@ -1580,13 +1844,22 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     _editorRepo = repo;
     _doc.setArticleType(ArticleType.post);
     String? autoTemplateId;
-    if (repo != null) autoTemplateId = TemplateResolver.resolvePostTemplateId(repo, templates);
-    _doc.setCurrentArticle(Article(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      title: '', content: '', createdAt: DateTime.now(), updatedAt: DateTime.now(),
-      isDraft: true, repoId: repo?.id, articleType: _doc.articleType, templateId: autoTemplateId,
-      volume: (volume == null || volume.isEmpty) ? null : volume,
-    ));
+    if (repo != null)
+      autoTemplateId = TemplateResolver.resolvePostTemplateId(repo, templates);
+    _doc.setCurrentArticle(
+      Article(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: '',
+        content: '',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        isDraft: true,
+        repoId: repo?.id,
+        articleType: _doc.articleType,
+        templateId: autoTemplateId,
+        volume: (volume == null || volume.isEmpty) ? null : volume,
+      ),
+    );
     _doc.titleCtrl.text = '';
     _doc.contentCtrl.text = '';
     _doc.tagsCtrl.text = '';
@@ -1597,7 +1870,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     _doc.setSelectedTemplateId(autoTemplateId);
     _startAutoSave();
     _addEditorTab(_doc.currentArticle);
-    
+
     // 自动聚焦到正文编辑区（光标定位到开头）
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _doc.contentFocus.requestFocus();
@@ -1610,17 +1883,27 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   void _addEditorTab(Article article) {
     final tabId = 'editor_${article.id}';
-    _editor.addTab(EditorTab(
-      id: tabId,
-      title: article.title.isNotEmpty ? article.title : '未命名',
-      icon: Icons.edit_note,
-      contentBuilder: (_) => _buildEmbeddedEditor(),
-      canClose: true,
-    ));
+    _editor.addTab(
+      EditorTab(
+        id: tabId,
+        title: article.title.isNotEmpty ? article.title : '未命名',
+        icon: Icons.edit_note,
+        contentBuilder: (_) => _buildEmbeddedEditor(),
+        canClose: true,
+      ),
+    );
   }
 
   void _openTab(String id, String title, IconData icon, Widget content) {
-    _editor.addTab(EditorTab(id: id, title: title, icon: icon, contentBuilder: (_) => content, canClose: true));
+    _editor.addTab(
+      EditorTab(
+        id: id,
+        title: title,
+        icon: icon,
+        contentBuilder: (_) => content,
+        canClose: true,
+      ),
+    );
   }
 
   void _closeTab(int index) {
@@ -1663,13 +1946,19 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                   isDense: true,
                 ),
                 items: repos
-                    .map((r) => DropdownMenuItem(
+                    .map(
+                      (r) => DropdownMenuItem(
                         value: r.id,
-                        child: Text('${r.name} (${r.fullName})',
-                            style: const TextStyle(fontSize: 13))))
+                        child: Text(
+                          '${r.name} (${r.fullName})',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    )
                     .toList(),
-                onChanged: (v) => setState(() =>
-                    _editorRepo = repos.firstWhere((e) => e.id == v)),
+                onChanged: (v) => setState(
+                  () => _editorRepo = repos.firstWhere((e) => e.id == v),
+                ),
               ),
             ),
           const SizedBox(height: 8),
@@ -1680,7 +1969,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 child: _editorTypeToggle(
                   icon: Icons.article_outlined,
                   label: '博文',
-                  subtitle: _editorRepo != null ? '${_editorRepo!.postsPath}' : '文章目录',
+                  subtitle: _editorRepo != null
+                      ? '${_editorRepo!.postsPath}'
+                      : '文章目录',
                   active: _doc.articleType == ArticleType.post,
                   onTap: () {
                     _doc.setArticleType(ArticleType.post);
@@ -1693,7 +1984,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 child: _editorTypeToggle(
                   icon: Icons.web_outlined,
                   label: '页面',
-                  subtitle: _editorRepo != null ? '${_editorRepo!.pagesPath}' : '页面目录',
+                  subtitle: _editorRepo != null
+                      ? '${_editorRepo!.pagesPath}'
+                      : '页面目录',
                   active: _doc.articleType == ArticleType.page,
                   onTap: () {
                     _doc.setArticleType(ArticleType.page);
@@ -1713,8 +2006,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                     child: DropdownButtonFormField<String>(
                       value: _doc.selectedTemplateId,
                       decoration: InputDecoration(
-                        labelText: '模板 (${_doc.articleType == ArticleType.post ? '博文' : '页面'})',
-                        prefixIcon: const Icon(Icons.view_quilt_outlined, size: 18),
+                        labelText:
+                            '模板 (${_doc.articleType == ArticleType.post ? '博文' : '页面'})',
+                        prefixIcon: const Icon(
+                          Icons.view_quilt_outlined,
+                          size: 18,
+                        ),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         isDense: true,
@@ -1726,22 +2023,29 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                           child: Text('无模板', style: TextStyle(fontSize: 13)),
                         ),
                         ...templates
-                            .where((t) => t.isPost == (_doc.articleType == ArticleType.post))
-                            .map((t) => DropdownMenuItem<String>(
-                                  value: t.id,
-                                  child: Text(
-                                    '${t.isBuiltin ? "[内置] " : ""}${t.name}',
-                                    style: const TextStyle(fontSize: 13),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                )),
+                            .where(
+                              (t) =>
+                                  t.isPost ==
+                                  (_doc.articleType == ArticleType.post),
+                            )
+                            .map(
+                              (t) => DropdownMenuItem<String>(
+                                value: t.id,
+                                child: Text(
+                                  '${t.isBuiltin ? "[内置] " : ""}${t.name}',
+                                  style: const TextStyle(fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
                       ],
                       onChanged: (v) => _doc.setSelectedTemplateId(v),
                     ),
                   ),
                   IconButton(
                     tooltip: '设为本仓库默认模板',
-                    onPressed: _editorRepo != null && _doc.selectedTemplateId != null
+                    onPressed:
+                        _editorRepo != null && _doc.selectedTemplateId != null
                         ? () => _setAsRepoDefault(_doc.selectedTemplateId!)
                         : null,
                     icon: const Icon(Icons.bookmark_add_outlined, size: 18),
@@ -1770,7 +2074,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF0F9FF),
                   borderRadius: BorderRadius.circular(8),
@@ -1778,13 +2085,20 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.info_outline, size: 14, color: Color(0xFF0EA5E9)),
+                    const Icon(
+                      Icons.info_outline,
+                      size: 14,
+                      color: Color(0xFF0EA5E9),
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         '框架: ${BlogFramework.byId(_editorRepo?.frameworkId ?? '')?.name ?? _editorRepo?.frameworkId ?? '未知'} | '
                         '文件名: ${_doc.articleType == ArticleType.page ? '无日期前缀' : ((_editorRepo?.fileNameRule.postDatePrefix ?? false) ? '自动加日期' : '纯标题')}',
-                        style: const TextStyle(fontSize: 11, color: Color(0xFF0369A1)),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF0369A1),
+                        ),
                       ),
                     ),
                   ],
@@ -1804,52 +2118,57 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
               ),
               style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
               onChanged: (_) {
-                                  _onContentChanged();
-                                  // 更新打字机光标位置
-                                  final text = _doc.contentCtrl.text;
-                                  final cursorPos = _doc.contentCtrl.selection.baseOffset;
-                                  final textBefore = text.substring(0, cursorPos.clamp(0, text.length));
-                                  final currentLine = '\n'.allMatches(textBefore).length;
-                                  final totalLines = '\n'.allMatches(text).length + 1;
-                                  _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
-                                },
+                _onContentChanged();
+                // 更新打字机光标位置
+                final text = _doc.contentCtrl.text;
+                final cursorPos = _doc.contentCtrl.selection.baseOffset;
+                final textBefore = text.substring(
+                  0,
+                  cursorPos.clamp(0, text.length),
+                );
+                final currentLine = '\n'.allMatches(textBefore).length;
+                final totalLines = '\n'.allMatches(text).length + 1;
+                _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
+              },
             ),
           ),
           const SizedBox(height: 8),
           // ── 标签 & 分类 ──
-          Row(children: [
-            Expanded(
-              child: _editorCard(
-                child: TextField(
-                  controller: _doc.tagsCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '标签',
-                    prefixIcon: Icon(Icons.tag, size: 18),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    isDense: true,
+          Row(
+            children: [
+              Expanded(
+                child: _editorCard(
+                  child: TextField(
+                    controller: _doc.tagsCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '标签',
+                      prefixIcon: Icon(Icons.tag, size: 18),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      isDense: true,
+                    ),
+                    style: const TextStyle(fontSize: 13),
                   ),
-                  style: const TextStyle(fontSize: 13),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _editorCard(
-                child: TextField(
-                  controller: _doc.categoriesCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '分类',
-                    prefixIcon: Icon(Icons.folder_outlined, size: 18),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    isDense: true,
+              const SizedBox(width: 8),
+              Expanded(
+                child: _editorCard(
+                  child: TextField(
+                    controller: _doc.categoriesCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '分类',
+                      prefixIcon: Icon(Icons.folder_outlined, size: 18),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      isDense: true,
+                    ),
+                    style: const TextStyle(fontSize: 13),
                   ),
-                  style: const TextStyle(fontSize: 13),
                 ),
               ),
-            ),
-          ]),
+            ],
+          ),
           const SizedBox(height: 8),
           // ── 封面图 ──
           _editorCard(
@@ -1873,29 +2192,106 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
               spacing: 2,
               runSpacing: 2,
               children: [
-                _toolChip(Icons.format_bold, '粗体', () => _wrap('**', '**', p: '粗体')),
-                _toolChip(Icons.format_italic, '斜体', () => _wrap('*', '*', p: '斜体')),
+                _toolChip(
+                  Icons.format_bold,
+                  '粗体',
+                  () => _wrap('**', '**', p: '粗体'),
+                ),
+                _toolChip(
+                  Icons.format_italic,
+                  '斜体',
+                  () => _wrap('*', '*', p: '斜体'),
+                ),
                 _toolChip(Icons.code, '行内码', () => _wrap('`', '`', p: 'code')),
                 _toolChip(Icons.code_off, '代码块', _insertCodeBlock),
                 _toolChip(Icons.title, 'H1', () => _insertHeading(1)),
                 _toolChip(Icons.title, 'H2', () => _insertHeading(2)),
-                _toolChip(Icons.format_list_bulleted, '列表', () => _insertList('- ')),
+                _toolChip(
+                  Icons.format_list_bulleted,
+                  '列表',
+                  () => _insertList('- '),
+                ),
                 _toolChip(Icons.format_quote, '引用', () => _insertList('> ')),
-                _toolChip(Icons.link, '链接', () => _wrap('[', '](https://)', p: '链接文字')),
-                _toolChip(Icons.grid_on, '表格', () => _insertText('\n| 列1 | 列2 |\n| --- | --- |\n| 值1 | 值2 |\n')),
-                _toolChip(Icons.horizontal_rule, '分割线', () => _insertText('\n---\n')),
-                _toolChip(Icons.format_strikethrough, '删除线', () => _wrap('~~', '~~', p: '删除文字')),
+                _toolChip(
+                  Icons.link,
+                  '链接',
+                  () => _wrap('[', '](https://)', p: '链接文字'),
+                ),
+                _toolChip(
+                  Icons.grid_on,
+                  '表格',
+                  () => _insertText(
+                    '\n| 列1 | 列2 |\n| --- | --- |\n| 值1 | 值2 |\n',
+                  ),
+                ),
+                _toolChip(
+                  Icons.horizontal_rule,
+                  '分割线',
+                  () => _insertText('\n---\n'),
+                ),
+                _toolChip(
+                  Icons.format_strikethrough,
+                  '删除线',
+                  () => _wrap('~~', '~~', p: '删除文字'),
+                ),
                 _toolChip(Icons.checklist, '任务', () => _insertList('- [ ] ')),
-                _toolChip(Icons.more_horiz, 'more', () => _insertText('\n<!--more-->\n')),
-                _toolChip(Icons.image_outlined, '图床', _editor.editorBusy ? null : _insertImage),
-                _toolChip(Icons.collections_outlined, '批量图床', _editor.editorBusy ? null : _batchInsertImages),
-                _toolChip(Icons.auto_awesome, 'AI润色', _editor.editorBusy ? null : () => _aiAction('polish'), color: Colors.purple),
-                _toolChip(Icons.edit_note, 'AI续写', _editor.editorBusy ? null : () => _aiAction('continue'), color: Colors.purple),
-                _toolChip(Icons.summarize_outlined, 'AI摘要', _editor.editorBusy ? null : () => _aiAction('summary'), color: Colors.purple),
-                _toolChip(Icons.developer_mode, 'AI代码', _editor.editorBusy ? null : () => _aiAction('code'), color: Colors.purple),
-                _toolChip(Icons.sync_alt, 'AI改写', _editor.editorBusy ? null : () => _aiAction('rewrite'), color: Colors.purple),
-                _toolChip(Icons.auto_fix_high, 'AI排版', _editor.editorBusy ? null : () => _aiAction('format'), color: Colors.deepPurple),
-                _toolChip(Icons.chat, 'AI对话', () => _showAiArticleChat(), color: Colors.deepPurple),
+                _toolChip(
+                  Icons.more_horiz,
+                  'more',
+                  () => _insertText('\n<!--more-->\n'),
+                ),
+                _toolChip(
+                  Icons.image_outlined,
+                  '图床',
+                  _editor.editorBusy ? null : _insertImage,
+                ),
+                _toolChip(
+                  Icons.collections_outlined,
+                  '批量图床',
+                  _editor.editorBusy ? null : _batchInsertImages,
+                ),
+                _toolChip(
+                  Icons.auto_awesome,
+                  'AI润色',
+                  _editor.editorBusy ? null : () => _aiAction('polish'),
+                  color: Colors.purple,
+                ),
+                _toolChip(
+                  Icons.edit_note,
+                  'AI续写',
+                  _editor.editorBusy ? null : () => _aiAction('continue'),
+                  color: Colors.purple,
+                ),
+                _toolChip(
+                  Icons.summarize_outlined,
+                  'AI摘要',
+                  _editor.editorBusy ? null : () => _aiAction('summary'),
+                  color: Colors.purple,
+                ),
+                _toolChip(
+                  Icons.developer_mode,
+                  'AI代码',
+                  _editor.editorBusy ? null : () => _aiAction('code'),
+                  color: Colors.purple,
+                ),
+                _toolChip(
+                  Icons.sync_alt,
+                  'AI改写',
+                  _editor.editorBusy ? null : () => _aiAction('rewrite'),
+                  color: Colors.purple,
+                ),
+                _toolChip(
+                  Icons.auto_fix_high,
+                  'AI排版',
+                  _editor.editorBusy ? null : () => _aiAction('format'),
+                  color: Colors.deepPurple,
+                ),
+                _toolChip(
+                  Icons.chat,
+                  'AI对话',
+                  () => _showAiArticleChat(),
+                  color: Colors.deepPurple,
+                ),
               ],
             ),
           ),
@@ -1913,7 +2309,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                   // 更新打字机光标位置
                   final text = _doc.contentCtrl.text;
                   final cursorPos = _doc.contentCtrl.selection.baseOffset;
-                  final textBefore = text.substring(0, cursorPos.clamp(0, text.length));
+                  final textBefore = text.substring(
+                    0,
+                    cursorPos.clamp(0, text.length),
+                  );
                   final currentLine = '\n'.allMatches(textBefore).length;
                   final totalLines = '\n'.allMatches(text).length + 1;
                   _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
@@ -1939,84 +2338,138 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                     Padding(
                       padding: const EdgeInsets.only(right: 6),
                       child: SizedBox(
-                        width: 12, height: 12,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: cs.primary),
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: cs.primary,
+                        ),
                       ),
                     ),
-                  Text(_editor.editorStatus!, style: TextStyle(
-                    color: _editor.editorBusy ? cs.primary : cs.outline,
-                    fontSize: 12,
-                  )),
+                  Text(
+                    _editor.editorStatus!,
+                    style: TextStyle(
+                      color: _editor.editorBusy ? cs.primary : cs.outline,
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
               ),
             ),
           const SizedBox(height: 16),
           // ── 底部操作栏 ──
-          Row(children: [
-            // 导出下拉菜单
-            PopupMenuButton<String>(
-              tooltip: '导出',
-              offset: const Offset(0, -200),
-              enabled: !_editor.editorBusy,
-              icon: const Icon(Icons.file_download_outlined, size: 18),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          Row(
+            children: [
+              // 导出下拉菜单
+              PopupMenuButton<String>(
+                tooltip: '导出',
+                offset: const Offset(0, -200),
+                enabled: !_editor.editorBusy,
+                icon: const Icon(Icons.file_download_outlined, size: 18),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 13,
+                    horizontal: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
+                    value: 'html',
+                    child: ListTile(
+                      leading: Icon(Icons.html),
+                      title: Text('导出 HTML'),
+                      dense: true,
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'pdf',
+                    child: ListTile(
+                      leading: Icon(Icons.picture_as_pdf),
+                      title: Text('导出 PDF'),
+                      dense: true,
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'md',
+                    child: ListTile(
+                      leading: Icon(Icons.description),
+                      title: Text('导出 Markdown'),
+                      dense: true,
+                    ),
+                  ),
+                ],
+                onSelected: (v) {
+                  switch (v) {
+                    case 'html':
+                      _exportHtml();
+                      break;
+                    case 'pdf':
+                      _exportPdf();
+                      break;
+                    case 'md':
+                      _saveMdBackup();
+                      break;
+                  }
+                },
               ),
-              itemBuilder: (_) => [
-                const PopupMenuItem(value: 'html', child: ListTile(leading: Icon(Icons.html), title: Text('导出 HTML'), dense: true)),
-                const PopupMenuItem(value: 'pdf', child: ListTile(leading: Icon(Icons.picture_as_pdf), title: Text('导出 PDF'), dense: true)),
-                const PopupMenuItem(value: 'md', child: ListTile(leading: Icon(Icons.description), title: Text('导出 Markdown'), dense: true)),
+              const SizedBox(width: 8),
+              if (_editor.failedImageBytes != null) ...[
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _editor.editorBusy ? null : _retryUploadImage,
+                    icon: const Icon(
+                      Icons.refresh,
+                      size: 18,
+                      color: Colors.orange,
+                    ),
+                    label: const Text(
+                      '重试上传',
+                      style: TextStyle(color: Colors.orange),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      side: const BorderSide(color: Colors.orange),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
               ],
-              onSelected: (v) {
-                switch (v) {
-                  case 'html': _exportHtml(); break;
-                  case 'pdf': _exportPdf(); break;
-                  case 'md': _saveMdBackup(); break;
-                }
-              },
-            ),
-            const SizedBox(width: 8),
-            if (_editor.failedImageBytes != null) ...[
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: _editor.editorBusy ? null : _retryUploadImage,
-                  icon: const Icon(Icons.refresh, size: 18, color: Colors.orange),
-                  label: const Text('重试上传', style: TextStyle(color: Colors.orange)),
+                  onPressed: _editor.editorBusy ? null : _saveLocal,
+                  icon: const Icon(Icons.save_outlined, size: 18),
+                  label: const Text('存草稿'),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    side: const BorderSide(color: Colors.orange),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
               ),
               const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton.icon(
+                  onPressed: _editor.editorBusy ? null : _handlePublish,
+                  icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+                  label: const Text('发布'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
             ],
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _editor.editorBusy ? null : _saveLocal,
-                icon: const Icon(Icons.save_outlined, size: 18),
-                label: const Text('存草稿'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              flex: 2,
-              child: ElevatedButton.icon(
-                onPressed: _editor.editorBusy ? null : _handlePublish,
-                icon: const Icon(Icons.cloud_upload_outlined, size: 18),
-                label: const Text('发布'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
-            ),
-          ]),
+          ),
         ],
       ),
     );
@@ -2032,7 +2485,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(
-          color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.05),
+          color: isDark
+              ? Colors.white.withOpacity(0.06)
+              : Colors.black.withOpacity(0.05),
         ),
       ),
       color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
@@ -2065,26 +2520,50 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           border: Border.all(
             color: active
                 ? cs.primary
-                : (isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E7EB)),
+                : (isDark
+                      ? Colors.white.withOpacity(0.06)
+                      : const Color(0xFFE5E7EB)),
             width: active ? 1.5 : 1,
           ),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: active ? cs.primary : (isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF))),
+            Icon(
+              icon,
+              size: 18,
+              color: active
+                  ? cs.primary
+                  : (isDark
+                        ? Colors.white.withOpacity(0.4)
+                        : const Color(0xFF9CA3AF)),
+            ),
             const SizedBox(width: 8),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: active ? cs.primary : (isDark ? Colors.white.withOpacity(0.8) : const Color(0xFF374151)),
-                )),
-                Text(subtitle, style: TextStyle(
-                  fontSize: 10,
-                  color: active ? cs.primary.withOpacity(0.7) : (isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
-                )),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: active
+                        ? cs.primary
+                        : (isDark
+                              ? Colors.white.withOpacity(0.8)
+                              : const Color(0xFF374151)),
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: active
+                        ? cs.primary.withOpacity(0.7)
+                        : (isDark
+                              ? Colors.white.withOpacity(0.4)
+                              : const Color(0xFF9CA3AF)),
+                  ),
+                ),
               ],
             ),
           ],
@@ -2093,7 +2572,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     );
   }
 
-  Widget _toolChip(IconData icon, String label, VoidCallback? onTap, {Color? color}) {
+  Widget _toolChip(
+    IconData icon,
+    String label,
+    VoidCallback? onTap, {
+    Color? color,
+  }) {
     final cs = Theme.of(context).colorScheme;
     final c = color ?? cs.onSurface;
     return Material(
@@ -2107,14 +2591,21 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 15, color: c.withOpacity(onTap == null ? 0.3 : 0.7)),
+              Icon(
+                icon,
+                size: 15,
+                color: c.withOpacity(onTap == null ? 0.3 : 0.7),
+              ),
               if (label.isNotEmpty) ...[
                 const SizedBox(width: 3),
-                Text(label, style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: c.withOpacity(onTap == null ? 0.3 : 0.7),
-                )),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: c.withOpacity(onTap == null ? 0.3 : 0.7),
+                  ),
+                ),
               ],
             ],
           ),
@@ -2137,7 +2628,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       repos[idx] = updated;
       storage.saveRepos(repos);
       _editorRepo = updated;
-      
+
       _showToast('已设为仓库默认模板');
     }
   }
@@ -2145,15 +2636,19 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   Future<void> _retryUploadImage() async {
     if (_editor.failedImageBytes == null) return;
     final bytes = _editor.failedImageBytes!;
-    _editor.setEditorBusy(true); _editor.setEditorStatus('正在重试上传...');
+    _editor.setEditorBusy(true);
+    _editor.setEditorStatus('正在重试上传...');
     try {
       final url = await imageService.uploadToImageBed(bytes, settings);
       _insertText(imageService.markdownImage(url));
       _editor.setFailedImageBytes(null);
-      _editor.setEditorStatus('图片已插入');} catch (e) {
+      _editor.setEditorStatus('图片已插入');
+    } catch (e) {
       _editor.setEditorStatus('重试上传失败');
-      if (mounted) _showToast('重试上传失败: $e');} finally {
-      if (mounted) _editor.setEditorBusy(false);}
+      if (mounted) _showToast('重试上传失败: $e');
+    } finally {
+      if (mounted) _editor.setEditorBusy(false);
+    }
   }
 
   // ============================================================
@@ -2175,7 +2670,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   void _insertCodeBlock() {
     final sel = _doc.contentCtrl.selection;
     final txt = _doc.contentCtrl.text;
-    final selected = (sel.isValid && sel.start != sel.end) ? txt.substring(sel.start, sel.end) : '';
+    final selected = (sel.isValid && sel.start != sel.end)
+        ? txt.substring(sel.start, sel.end)
+        : '';
     final fence = '```\n$selected\n```\n';
     final s = sel.isValid ? sel.start : txt.length;
     final e = sel.isValid ? sel.end : txt.length;
@@ -2187,21 +2684,28 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   Future<void> _insertImage() async {
-    _editor.setEditorBusy(true); _editor.setEditorStatus('正在选择图片...');
+    _editor.setEditorBusy(true);
+    _editor.setEditorStatus('正在选择图片...');
     try {
       final bytes = await imageService.pickImageBytes();
-      if (bytes == null) { _editor.setEditorStatus('已取消'); return;}
+      if (bytes == null) {
+        _editor.setEditorStatus('已取消');
+        return;
+      }
       _editor.setFailedImageBytes(bytes);
       final sizeKB = (bytes.length / 1024).toStringAsFixed(1);
       _editor.setEditorStatus('正在上传图片 ($sizeKB KB)...');
       final url = await imageService.uploadToImageBed(bytes, settings);
       _insertText(imageService.markdownImage(url));
       _editor.setFailedImageBytes(null);
-      _editor.setEditorStatus('图片已插入');} catch (e) {
+      _editor.setEditorStatus('图片已插入');
+    } catch (e) {
       _insertText('\n> ⚠️ 图片上传失败，[点击重试](#retry-upload)\n');
       _editor.setEditorStatus('上传失败（可点击重试）');
-      if (mounted) _showToast('上传失败，点击文中标记可重试');} finally {
-      if (mounted) _editor.setEditorBusy(false);}
+      if (mounted) _showToast('上传失败，点击文中标记可重试');
+    } finally {
+      if (mounted) _editor.setEditorBusy(false);
+    }
   }
 
   /// 处理拖拽放入的图片文件
@@ -2221,24 +2725,41 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   Future<void> _batchInsertImages() async {
-    _editor.setEditorBusy(true); _editor.setEditorStatus('正在选择图片...');
+    _editor.setEditorBusy(true);
+    _editor.setEditorStatus('正在选择图片...');
     try {
       final bytesList = await imageService.pickMultipleImageBytes();
-      if (bytesList == null || bytesList.isEmpty) { _editor.setEditorStatus('已取消'); return;}
+      if (bytesList == null || bytesList.isEmpty) {
+        _editor.setEditorStatus('已取消');
+        return;
+      }
       final total = bytesList.length;
       _editor.setEditorStatus('正在预处理 $total 张图片...');
-      final preResult = await imageService.preprocessImages(bytesList, settings, onProgress: (current, total, beforeKB, afterKB) {
-        if (mounted) _editor.setEditorStatus('预处理 $current/$total: ${beforeKB}KB → ${afterKB}KB');
-      });
+      final preResult = await imageService.preprocessImages(
+        bytesList,
+        settings,
+        onProgress: (current, total, beforeKB, afterKB) {
+          if (mounted)
+            _editor.setEditorStatus(
+              '预处理 $current/$total: ${beforeKB}KB → ${afterKB}KB',
+            );
+        },
+      );
       int uploaded = 0;
       final buf = StringBuffer();
       for (var i = 0; i < total; i++) {
         _editor.setEditorStatus('正在上传图片 ${i + 1}/$total...');
         try {
-          final url = await imageService.uploadToImageBed(preResult.images[i], settings, skipCompress: true);
+          final url = await imageService.uploadToImageBed(
+            preResult.images[i],
+            settings,
+            skipCompress: true,
+          );
           buf.writeln(imageService.markdownImage(url));
           uploaded++;
-        } catch (e) { debugPrint('Shell: load template failed: $e'); }
+        } catch (e) {
+          debugPrint('Shell: load template failed: $e');
+        }
       }
       _insertText('\n\n${buf.toString()}');
       _editor.setEditorStatus('完成: $uploaded/$total 张上传成功');
@@ -2251,7 +2772,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   Future<void> _aiAction(String action) async {
-    _editor.setEditorBusy(true); _editor.setEditorStatus('AI 处理中...');
+    _editor.setEditorBusy(true);
+    _editor.setEditorStatus('AI 处理中...');
     try {
       final text = _doc.contentCtrl.text;
       switch (action) {
@@ -2272,8 +2794,17 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 title: const Text('AI 摘要'),
                 content: Text(result),
                 actions: [
-                  TextButton(onPressed: () { Clipboard.setData(ClipboardData(text: result)); Navigator.pop(context); }, child: const Text('复制')),
-                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭')),
+                  TextButton(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: result));
+                      Navigator.pop(context);
+                    },
+                    child: const Text('复制'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('关闭'),
+                  ),
                 ],
               ),
             );
@@ -2291,14 +2822,25 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 decoration: const InputDecoration(hintText: '描述需要的代码'),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('生成')),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('生成'),
+                ),
               ],
             ),
           );
-          if (ok != true) { ctrl.dispose(); break; }
+          if (ok != true) {
+            ctrl.dispose();
+            break;
+          }
           final result = await aiService.generateCode(
-            settings, ctrl.text.trim().isEmpty ? '生成一段实用的代码片段' : ctrl.text.trim());
+            settings,
+            ctrl.text.trim().isEmpty ? '生成一段实用的代码片段' : ctrl.text.trim(),
+          );
           ctrl.dispose();
           _insertText('\n\n$result');
           break;
@@ -2316,24 +2858,41 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
               title: const Text('AI 改写'),
               content: TextField(controller: instrCtrl),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('改写')),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('改写'),
+                ),
               ],
             ),
           );
-          if (ok2 != true) { instrCtrl.dispose(); break; }
-          final result2 = await aiService.rewriteSelection(settings, selected, instrCtrl.text.trim());
+          if (ok2 != true) {
+            instrCtrl.dispose();
+            break;
+          }
+          final result2 = await aiService.rewriteSelection(
+            settings,
+            selected,
+            instrCtrl.text.trim(),
+          );
           instrCtrl.dispose();
           final txt = _doc.contentCtrl.text;
           _doc.contentCtrl.value = TextEditingValue(
             text: txt.replaceRange(sel.start, sel.end, result2),
-            selection: TextSelection.collapsed(offset: sel.start + result2.length),
+            selection: TextSelection.collapsed(
+              offset: sel.start + result2.length,
+            ),
           );
           _doc.contentFocus.requestFocus();
           break;
         case 'format':
-          final result3 = await aiService.polish(settings,
-            '请对以下 Markdown 内容进行排版优化：统一标题层级、规范空行、修正列表缩进、对齐表格格式。\n\n$text');
+          final result3 = await aiService.polish(
+            settings,
+            '请对以下 Markdown 内容进行排版优化：统一标题层级、规范空行、修正列表缩进、对齐表格格式。\n\n$text',
+          );
           _doc.contentCtrl.text = result3;
           break;
         case 'outline':
@@ -2364,102 +2923,136 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     bool caseSensitive = false;
     bool useRegex = false;
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          return AlertDialog(
-            title: const Text('查找和替换'),
-            content: SizedBox(
-              width: 460,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: findCtrl,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: '查找',
-                      hintText: '输入要查找的文本...',
-                      isDense: true,
-                      border: OutlineInputBorder(),
+    try {
+      showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              title: const Text('查找和替换'),
+              content: SizedBox(
+                width: 460,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: findCtrl,
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        labelText: '查找',
+                        hintText: '输入要查找的文本...',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: replaceCtrl,
-                    decoration: const InputDecoration(
-                      labelText: '替换',
-                      hintText: '输入替换文本...',
-                      isDense: true,
-                      border: OutlineInputBorder(),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: replaceCtrl,
+                      decoration: const InputDecoration(
+                        labelText: '替换',
+                        hintText: '输入替换文本...',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Checkbox(
-                        value: caseSensitive,
-                        onChanged: (v) => setDialogState(() => caseSensitive = v ?? false),
-                      ),
-                      GestureDetector(
-                        onTap: () => setDialogState(() => caseSensitive = !caseSensitive),
-                        child: const Text('区分大小写', style: TextStyle(fontSize: 13)),
-                      ),
-                      const SizedBox(width: 24),
-                      Checkbox(
-                        value: useRegex,
-                        onChanged: (v) => setDialogState(() => useRegex = v ?? false),
-                      ),
-                      GestureDetector(
-                        onTap: () => setDialogState(() => useRegex = !useRegex),
-                        child: const Text('正则表达式', style: TextStyle(fontSize: 13)),
-                      ),
-                    ],
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: caseSensitive,
+                          onChanged: (v) =>
+                              setDialogState(() => caseSensitive = v ?? false),
+                        ),
+                        GestureDetector(
+                          onTap: () => setDialogState(
+                            () => caseSensitive = !caseSensitive,
+                          ),
+                          child: const Text(
+                            '区分大小写',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        const SizedBox(width: 24),
+                        Checkbox(
+                          value: useRegex,
+                          onChanged: (v) =>
+                              setDialogState(() => useRegex = v ?? false),
+                        ),
+                        GestureDetector(
+                          onTap: () =>
+                              setDialogState(() => useRegex = !useRegex),
+                          child: const Text(
+                            '正则表达式',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  final findText = findCtrl.text;
-                  if (findText.isEmpty) return;
-                  _findNext(findText, caseSensitive: caseSensitive, useRegex: useRegex);
-                },
-                child: const Text('查找下一个'),
-              ),
-              TextButton(
-                onPressed: () {
-                  final findText = findCtrl.text;
-                  final replaceText = replaceCtrl.text;
-                  if (findText.isEmpty) return;
-                  _replaceCurrent(findText, replaceText, caseSensitive: caseSensitive, useRegex: useRegex);
-                },
-                child: const Text('替换'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  final findText = findCtrl.text;
-                  final replaceText = replaceCtrl.text;
-                  if (findText.isEmpty) return;
-                  final count = _replaceAll(findText, replaceText, caseSensitive: caseSensitive, useRegex: useRegex);
-                  if (mounted) _showToast('已替换 $count 处');
-                },
-                child: const Text('全部替换'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('关闭'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    final findText = findCtrl.text;
+                    if (findText.isEmpty) return;
+                    _findNext(
+                      findText,
+                      caseSensitive: caseSensitive,
+                      useRegex: useRegex,
+                    );
+                  },
+                  child: const Text('查找下一个'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final findText = findCtrl.text;
+                    final replaceText = replaceCtrl.text;
+                    if (findText.isEmpty) return;
+                    _replaceCurrent(
+                      findText,
+                      replaceText,
+                      caseSensitive: caseSensitive,
+                      useRegex: useRegex,
+                    );
+                  },
+                  child: const Text('替换'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final findText = findCtrl.text;
+                    final replaceText = replaceCtrl.text;
+                    if (findText.isEmpty) return;
+                    final count = _replaceAll(
+                      findText,
+                      replaceText,
+                      caseSensitive: caseSensitive,
+                      useRegex: useRegex,
+                    );
+                    if (mounted) _showToast('已替换 $count 处');
+                  },
+                  child: const Text('全部替换'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('关闭'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } finally {
+      findCtrl.dispose();
+      replaceCtrl.dispose();
+    }
   }
 
-  int _findNext(String findText, {bool caseSensitive = false, bool useRegex = false}) {
+  int _findNext(
+    String findText, {
+    bool caseSensitive = false,
+    bool useRegex = false,
+  }) {
     final text = _doc.contentCtrl.text;
     final sel = _doc.contentCtrl.selection;
     int startOffset = sel.isValid ? sel.end : 0;
@@ -2467,9 +3060,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     try {
       RegExp pattern;
       if (useRegex) {
-        pattern = RegExp(findText, caseSensitive: caseSensitive ? false : true, multiLine: true);
+        pattern = RegExp(
+          findText,
+          caseSensitive: caseSensitive ? false : true,
+          multiLine: true,
+        );
       } else {
-        pattern = RegExp(RegExp.escape(findText), caseSensitive: caseSensitive ? false : true);
+        pattern = RegExp(
+          RegExp.escape(findText),
+          caseSensitive: caseSensitive ? false : true,
+        );
       }
 
       Match? match;
@@ -2481,11 +3081,17 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         }
       }
       if (match != null) {
-        _doc.contentCtrl.selection = TextSelection(baseOffset: match.start, extentOffset: match.end);
+        _doc.contentCtrl.selection = TextSelection(
+          baseOffset: match.start,
+          extentOffset: match.end,
+        );
         _doc.contentFocus.requestFocus();
         if (mounted) {
           _doc.contentCtrl.value = _doc.contentCtrl.value.copyWith(
-            selection: TextSelection(baseOffset: match.start, extentOffset: match.end),
+            selection: TextSelection(
+              baseOffset: match.start,
+              extentOffset: match.end,
+            ),
           );
         }
         return match.start;
@@ -2493,11 +3099,17 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         // 从头开始搜索
         final match2 = pattern.firstMatch(text);
         if (match2 != null) {
-          _doc.contentCtrl.selection = TextSelection(baseOffset: match2.start, extentOffset: match2.end);
+          _doc.contentCtrl.selection = TextSelection(
+            baseOffset: match2.start,
+            extentOffset: match2.end,
+          );
           _doc.contentFocus.requestFocus();
           if (mounted) {
             _doc.contentCtrl.value = _doc.contentCtrl.value.copyWith(
-              selection: TextSelection(baseOffset: match2.start, extentOffset: match2.end),
+              selection: TextSelection(
+                baseOffset: match2.start,
+                extentOffset: match2.end,
+              ),
             );
           }
           return match2.start;
@@ -2510,7 +3122,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     return -1;
   }
 
-  void _replaceCurrent(String findText, String replaceText, {bool caseSensitive = false, bool useRegex = false}) {
+  void _replaceCurrent(
+    String findText,
+    String replaceText, {
+    bool caseSensitive = false,
+    bool useRegex = false,
+  }) {
     final text = _doc.contentCtrl.text;
     final sel = _doc.contentCtrl.selection;
     if (!sel.isValid || sel.start == sel.end) {
@@ -2524,14 +3141,19 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       if (useRegex) {
         pattern = RegExp(findText, caseSensitive: caseSensitive ? false : true);
       } else {
-        pattern = RegExp(RegExp.escape(findText), caseSensitive: caseSensitive ? false : true);
+        pattern = RegExp(
+          RegExp.escape(findText),
+          caseSensitive: caseSensitive ? false : true,
+        );
       }
 
       if (pattern.hasMatch(selected)) {
         final replaced = selected.replaceAll(pattern, replaceText);
         _doc.contentCtrl.value = TextEditingValue(
           text: text.replaceRange(sel.start, sel.end, replaced),
-          selection: TextSelection.collapsed(offset: sel.start + replaced.length),
+          selection: TextSelection.collapsed(
+            offset: sel.start + replaced.length,
+          ),
         );
         _doc.contentFocus.requestFocus();
         _onContentChanged();
@@ -2543,14 +3165,26 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     }
   }
 
-  int _replaceAll(String findText, String replaceText, {bool caseSensitive = false, bool useRegex = false}) {
+  int _replaceAll(
+    String findText,
+    String replaceText, {
+    bool caseSensitive = false,
+    bool useRegex = false,
+  }) {
     final text = _doc.contentCtrl.text;
     try {
       RegExp pattern;
       if (useRegex) {
-        pattern = RegExp(findText, caseSensitive: caseSensitive ? false : true, multiLine: true);
+        pattern = RegExp(
+          findText,
+          caseSensitive: caseSensitive ? false : true,
+          multiLine: true,
+        );
       } else {
-        pattern = RegExp(RegExp.escape(findText), caseSensitive: caseSensitive ? false : true);
+        pattern = RegExp(
+          RegExp.escape(findText),
+          caseSensitive: caseSensitive ? false : true,
+        );
       }
 
       int count = 0;
@@ -2606,8 +3240,14 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final placeholderMatch = tocPlaceholder.firstMatch(text);
     if (placeholderMatch != null) {
       _doc.contentCtrl.value = TextEditingValue(
-        text: text.replaceRange(placeholderMatch.start, placeholderMatch.end, toc),
-        selection: TextSelection.collapsed(offset: placeholderMatch.start + toc.length),
+        text: text.replaceRange(
+          placeholderMatch.start,
+          placeholderMatch.end,
+          toc,
+        ),
+        selection: TextSelection.collapsed(
+          offset: placeholderMatch.start + toc.length,
+        ),
       );
     } else {
       // 插入到光标位置
@@ -2636,7 +3276,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
     final text = _doc.contentCtrl.text;
     // 规范化 siteUrl（去掉末尾斜杠）
-    final baseUrl = siteUrl.endsWith('/') ? siteUrl.substring(0, siteUrl.length - 1) : siteUrl;
+    final baseUrl = siteUrl.endsWith('/')
+        ? siteUrl.substring(0, siteUrl.length - 1)
+        : siteUrl;
     final imagePattern = RegExp(r'!\[([^\]]*)\]\(([^)]+)\)');
 
     if (!_editor.useRelativeImagePath) {
@@ -2661,7 +3303,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         final alt = m.group(1) ?? '';
         var url = m.group(2) ?? '';
         // 只转换相对路径或本地路径
-        if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('//')) {
+        if (!url.startsWith('http://') &&
+            !url.startsWith('https://') &&
+            !url.startsWith('//')) {
           // 处理 ./ ../ 等相对路径
           url = url.replaceAll(RegExp(r'^\./'), '');
           url = url.replaceAll(RegExp(r'^(\.\./)+'), '');
@@ -2684,7 +3328,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ============================================================
 
   void _insertTable() {
-    const table = '| 列1 | 列2 | 列3 |\n'
+    const table =
+        '| 列1 | 列2 | 列3 |\n'
         '| --- | --- | --- |\n'
         '| 内容 | 内容 | 内容 |\n'
         '| 内容 | 内容 | 内容 |\n'
@@ -2800,7 +3445,11 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final newTable = buf.toString();
     final end = tableEnd < text.length ? tableEnd + 1 : text.length;
     _doc.contentCtrl.value = TextEditingValue(
-      text: text.replaceRange(tableStart, end > text.length ? text.length : end, newTable),
+      text: text.replaceRange(
+        tableStart,
+        end > text.length ? text.length : end,
+        newTable,
+      ),
       selection: TextSelection.collapsed(offset: tableStart + newTable.length),
     );
     _doc.contentFocus.requestFocus();
@@ -2889,7 +3538,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       return;
     }
 
-    final baseUrl = siteUrl.endsWith('/') ? siteUrl.substring(0, siteUrl.length - 1) : siteUrl;
+    final baseUrl = siteUrl.endsWith('/')
+        ? siteUrl.substring(0, siteUrl.length - 1)
+        : siteUrl;
     final text = _doc.contentCtrl.text;
     int fixedCount = 0;
 
@@ -2900,7 +3551,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       var url = m.group(2) ?? '';
 
       // 如果已经是绝对 URL，跳过
-      if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('//')) {
+      if (url.startsWith('http://') ||
+          url.startsWith('https://') ||
+          url.startsWith('//')) {
         return m.group(0)!;
       }
 
@@ -2941,7 +3594,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
-          final selectedIds = selected.entries.where((e) => e.value).map((e) => e.key).toList();
+          final selectedIds = selected.entries
+              .where((e) => e.value)
+              .map((e) => e.key)
+              .toList();
           return AlertDialog(
             title: const Text('批量操作'),
             content: SizedBox(
@@ -2960,10 +3616,15 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                           }
                           setDialogState(() {});
                         },
-                        child: Text(selected.values.every((v) => v) ? '取消全选' : '全选'),
+                        child: Text(
+                          selected.values.every((v) => v) ? '取消全选' : '全选',
+                        ),
                       ),
                       const Spacer(),
-                      Text('已选: ${selectedIds.length} / ${drafts.length}', style: const TextStyle(fontSize: 12)),
+                      Text(
+                        '已选: ${selectedIds.length} / ${drafts.length}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -3041,18 +3702,31 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   Future<void> _batchExportMd(List<String> articleIds) async {
     try {
-      final result = await FilePicker.platform.getDirectoryPath(dialogTitle: '选择导出目录');
+      final result = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: '选择导出目录',
+      );
       if (result == null) return;
 
       int exported = 0;
       for (final id in articleIds) {
-        final article = drafts.firstWhere((a) => a.id == id, orElse: () => Article(
-          id: '', title: '', content: '', createdAt: DateTime.now(), updatedAt: DateTime.now(), isDraft: true,
-        ));
+        final article = drafts.firstWhere(
+          (a) => a.id == id,
+          orElse: () => Article(
+            id: '',
+            title: '',
+            content: '',
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+            isDraft: true,
+          ),
+        );
         if (article.id.isEmpty) continue;
 
-        final safeTitle = (article.title.isNotEmpty ? article.title : 'untitled')
-            .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+        final safeTitle =
+            (article.title.isNotEmpty ? article.title : 'untitled').replaceAll(
+              RegExp(r'[\\/:*?"<>|]'),
+              '_',
+            );
         final fileName = '$safeTitle.md';
         final file = File('$result/$fileName');
         await file.writeAsString(article.toMarkdownWithFrontMatter());
@@ -3068,9 +3742,17 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     try {
       int formatted = 0;
       for (final id in articleIds) {
-        final article = drafts.firstWhere((a) => a.id == id, orElse: () => Article(
-          id: '', title: '', content: '', createdAt: DateTime.now(), updatedAt: DateTime.now(), isDraft: true,
-        ));
+        final article = drafts.firstWhere(
+          (a) => a.id == id,
+          orElse: () => Article(
+            id: '',
+            title: '',
+            content: '',
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+            isDraft: true,
+          ),
+        );
         if (article.id.isEmpty) continue;
 
         // 格式化文章内容
@@ -3088,7 +3770,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
           final headingMatch = RegExp(r'^(#{1,6})\s').firstMatch(trimmed);
           if (headingMatch != null) {
-            if (result.isNotEmpty && result.last.trim().isNotEmpty) result.add('');
+            if (result.isNotEmpty && result.last.trim().isNotEmpty)
+              result.add('');
             result.add(trimmed);
           } else {
             result.add(trimmed);
@@ -3099,14 +3782,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         }
 
         final formattedContent = '${result.join('\n')}\n';
-        final updated = article.copyWith(content: formattedContent, updatedAt: DateTime.now());
+        final updated = article.copyWith(
+          content: formattedContent,
+          updatedAt: DateTime.now(),
+        );
         final idx = drafts.indexWhere((a) => a.id == id);
         if (idx >= 0) drafts[idx] = updated;
         formatted++;
       }
       await storage.saveDrafts(drafts);
       if (mounted) {
-        
         _showToast('已格式化 $formatted 篇草稿');
       }
     } catch (e) {
@@ -3121,38 +3806,62 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       return;
     }
 
-    _editor.setEditorBusy(true); _editor.setEditorStatus('正在批量发布...');
+    _editor.setEditorBusy(true);
+    _editor.setEditorStatus('正在批量发布...');
     int published = 0;
     int failed = 0;
 
     try {
       for (final id in articleIds) {
-        final article = drafts.firstWhere((a) => a.id == id, orElse: () => Article(
-          id: '', title: '', content: '', createdAt: DateTime.now(), updatedAt: DateTime.now(), isDraft: true,
-        ));
+        final article = drafts.firstWhere(
+          (a) => a.id == id,
+          orElse: () => Article(
+            id: '',
+            title: '',
+            content: '',
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+            isDraft: true,
+          ),
+        );
         if (article.id.isEmpty) continue;
 
         final pubArticle = article.copyWith(isDraft: false, published: true);
         try {
-          final pub = await github.publishArticleWithMirrors(repo, pubArticle, templates: templates);
+          final pub = await github.publishArticleWithMirrors(
+            repo,
+            pubArticle,
+            templates: templates,
+          );
           final idx = drafts.indexWhere((a) => a.id == id);
-          if (idx >= 0) drafts[idx] = pub.copyWith(isDraft: false, published: true);
+          if (idx >= 0)
+            drafts[idx] = pub.copyWith(isDraft: false, published: true);
           published++;
-        } catch (e) { debugPrint('Shell: site config load failed: $e'); }
+        } catch (e) {
+          debugPrint('Shell: site config load failed: $e');
+        }
       }
       await storage.saveDrafts(drafts);
       // 批量发布后触发全部部署钩子
       if (published > 0 && settings.deployHooks.isNotEmpty) {
         final ok = await GitHubService.triggerDeployHooks(settings.deployHooks);
-        logService.add('部署钩子', ok == settings.deployHooks.length ? '批量发布后已触发 ${ok} 个重新部署' : '部署钩子部分失败（${ok}/${settings.deployHooks.length}）', success: ok == settings.deployHooks.length);
+        logService.add(
+          '部署钩子',
+          ok == settings.deployHooks.length
+              ? '批量发布后已触发 ${ok} 个重新部署'
+              : '部署钩子部分失败（${ok}/${settings.deployHooks.length}）',
+          success: ok == settings.deployHooks.length,
+        );
       }
       if (mounted) {
-        _editor.setEditorBusy(false); _editor.setEditorStatus(null);
+        _editor.setEditorBusy(false);
+        _editor.setEditorStatus(null);
         _showToast('批量发布完成: $published 成功, $failed 失败');
       }
     } catch (e) {
       if (mounted) {
-        _editor.setEditorBusy(false); _editor.setEditorStatus(null);
+        _editor.setEditorBusy(false);
+        _editor.setEditorStatus(null);
         _showToast('批量发布出错: $e');
       }
     }
@@ -3163,26 +3872,36 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ============================================================
 
   void _openHome() {
-    _openTab('home', '首页', Icons.home_outlined, HomeScreen(
-      articles: drafts,
-      onOpenArticle: (a) => _openExistingArticle(a),
-      onNewArticle: _newArticle,
-      onNewArticleInVolume: _newArticle,
-      onRenameArticle: _renameArticle,
-      onMoveArticleVolume: _moveArticleVolume,
-      onExportArticle: _exportArticle,
-      onDeleteArticle: _deleteDraft,
-    ));
+    _openTab(
+      'home',
+      '首页',
+      Icons.home_outlined,
+      HomeScreen(
+        articles: drafts,
+        onOpenArticle: (a) => _openExistingArticle(a),
+        onNewArticle: _newArticle,
+        onNewArticleInVolume: _newArticle,
+        onRenameArticle: _renameArticle,
+        onMoveArticleVolume: _moveArticleVolume,
+        onExportArticle: _exportArticle,
+        onDeleteArticle: _deleteDraft,
+      ),
+    );
   }
 
   void _openDrafts() {
-    _openTab('drafts', '草稿箱', Icons.drafts_outlined, DraftsScreen(
-      drafts: drafts,
-      repos: repos,
-      blogSiteConfigs: settings.blogSiteConfigs,
-      onOpen: (a) => _openExistingArticle(a),
-      onDelete: _deleteDraft,
-    ));
+    _openTab(
+      'drafts',
+      '草稿箱',
+      Icons.drafts_outlined,
+      DraftsScreen(
+        drafts: drafts,
+        repos: repos,
+        blogSiteConfigs: settings.blogSiteConfigs,
+        onOpen: (a) => _openExistingArticle(a),
+        onDelete: _deleteDraft,
+      ),
+    );
   }
 
   void _openRemote() {
@@ -3192,59 +3911,89 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         _showToast('未配置 CMS 站点');
         return;
       }
-      _openTab('remote_posts', '远程文章', Icons.cloud_outlined, RemotePostsScreen(
-        adapter: adapter,
-        allAdapters: _allCmsAdapters,
-        logService: logService,
-        onOpenInEditor: (post) {
-          // 打开远程文章到编辑器；多站点先切换到文章所属站点
-          if (post.siteId != null && siteManager.activeSiteId != post.siteId) {
-            final identity = siteManager.getSiteIdentity(post.siteId!);
-            if (identity != null && identity.isDynamic) {
-              siteManager.setActiveSite(post.siteId!);
+      _openTab(
+        'remote_posts',
+        '远程文章',
+        Icons.cloud_outlined,
+        RemotePostsScreen(
+          adapter: adapter,
+          allAdapters: _allCmsAdapters,
+          logService: logService,
+          onOpenInEditor: (post) {
+            // 打开远程文章到编辑器；多站点先切换到文章所属站点
+            if (post.siteId != null &&
+                siteManager.activeSiteId != post.siteId) {
+              final identity = siteManager.getSiteIdentity(post.siteId!);
+              if (identity != null && identity.isDynamic) {
+                siteManager.setActiveSite(post.siteId!);
+              }
             }
-          }
-          _openExistingArticle(Article(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            title: post.title, content: post.contentMd,
-            tags: post.tags, categories: post.categories,
-            createdAt: post.date, updatedAt: DateTime.now(),
-            isDraft: true, remoteSha: post.id?.toString(),
-          ));
-        },
-        onDeletePost: (post) async {
-          if (post.id == null) return;
-          BlogRepository? target = post.siteId != null
-              ? siteManager.getAdapter(post.siteId!)
-              : null;
-          target ??= adapter;
-          try { await target.deletePost(post.id!); _showToast('已删除'); } catch (e) { _showToast('删除失败: $e'); }
-        },
-      ));
+            _openExistingArticle(
+              Article(
+                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                title: post.title,
+                content: post.contentMd,
+                tags: post.tags,
+                categories: post.categories,
+                createdAt: post.date,
+                updatedAt: DateTime.now(),
+                isDraft: true,
+                remoteSha: post.id?.toString(),
+              ),
+            );
+          },
+          onDeletePost: (post) async {
+            if (post.id == null) return;
+            BlogRepository? target = post.siteId != null
+                ? siteManager.getAdapter(post.siteId!)
+                : null;
+            target ??= adapter;
+            try {
+              await target.deletePost(post.id!);
+              _showToast('已删除');
+            } catch (e) {
+              _showToast('删除失败: $e');
+            }
+          },
+        ),
+      );
     } else {
-      _openTab('remote', '远程文章', Icons.cloud_outlined, RemoteScreen(
-        posts: remotePosts,
-        activeRepo: activeRepo,
-        effectiveRepo: effectiveRepo,
-        github: github,
-        onRefresh: _refreshRemote,
-        onOpen: (item) async {
-          final repo = effectiveRepo;
-          if (repo == null) return;
-          try {
-            final a = await github.getArticle(repo, item);
-            _openExistingArticle(a);
-          } catch (e) { _showToast('打开失败: $e'); }
-        },
-        onDelete: (item) async {
-          try {
+      _openTab(
+        'remote',
+        '远程文章',
+        Icons.cloud_outlined,
+        RemoteScreen(
+          posts: remotePosts,
+          activeRepo: activeRepo,
+          effectiveRepo: effectiveRepo,
+          github: github,
+          onRefresh: _refreshRemote,
+          onOpen: (item) async {
             final repo = effectiveRepo;
-            if (repo != null && item.sha != null) { await github.deleteRawFile(repo, item.path, item.sha!); _refreshRemote(); _showToast('已删除'); }
-          } catch (e) { _showToast('删除失败: $e'); }
-        },
-        onBatchDelete: (items) async {},
-        onRollback: (item) async {},
-      ));
+            if (repo == null) return;
+            try {
+              final a = await github.getArticle(repo, item);
+              _openExistingArticle(a);
+            } catch (e) {
+              _showToast('打开失败: $e');
+            }
+          },
+          onDelete: (item) async {
+            try {
+              final repo = effectiveRepo;
+              if (repo != null && item.sha != null) {
+                await github.deleteRawFile(repo, item.path, item.sha!);
+                _refreshRemote();
+                _showToast('已删除');
+              }
+            } catch (e) {
+              _showToast('删除失败: $e');
+            }
+          },
+          onBatchDelete: (items) async {},
+          onRollback: (item) async {},
+        ),
+      );
     }
   }
 
@@ -3252,69 +4001,102 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final adapter = siteManager.currentAdapter;
     final config = adapter?.config;
     if (adapter != null && config != null) {
-      _openTab('sync', '同步状态', Icons.sync, SyncScreen(
-        adapter: adapter,
-        siteConfig: config,
-        syncService: syncService,
-        logService: logService,
-        localArticles: drafts,
-        onOpenArticle: _openExistingArticle,
-        onOpenRemotePost: (post) {
-          _openExistingArticle(Article(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            title: post.title, content: post.contentMd,
-            tags: post.tags, categories: post.categories,
-            createdAt: post.date, updatedAt: post.modifiedDate,
-            isDraft: false, published: true, articleType: ArticleType.post,
-            remotePath: post.link, remoteSha: post.id?.toString(),
-          ));
-        },
-      ));
+      _openTab(
+        'sync',
+        '同步状态',
+        Icons.sync,
+        SyncScreen(
+          adapter: adapter,
+          siteConfig: config,
+          syncService: syncService,
+          logService: logService,
+          localArticles: drafts,
+          onOpenArticle: _openExistingArticle,
+          onOpenRemotePost: (post) {
+            _openExistingArticle(
+              Article(
+                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                title: post.title,
+                content: post.contentMd,
+                tags: post.tags,
+                categories: post.categories,
+                createdAt: post.date,
+                updatedAt: post.modifiedDate,
+                isDraft: false,
+                published: true,
+                articleType: ArticleType.post,
+                remotePath: post.link,
+                remoteSha: post.id?.toString(),
+              ),
+            );
+          },
+        ),
+      );
     } else {
       _showToast('请先在"动态博客登录"中配置 CMS 站点');
     }
   }
 
   void _openDashboard() {
-    _openTab('dashboard', '仪表盘', Icons.dashboard_outlined, DashboardScreen(
-      drafts: drafts,
-      remotePosts: remotePosts,
-      commits: commits,
-      settings: settings,
-      activeRepo: activeRepo,
-      onNewPost: _newArticle,
-      onNavigateToRemote: _openRemote,
-      onNavigateToHistory: _openHistory,
-      onNavigateToSettings: _openSettings,
-      onNavigateToPreview: _openPreview,
-      onNavigateToDrafts: _openDrafts,
-    ));
+    _openTab(
+      'dashboard',
+      '仪表盘',
+      Icons.dashboard_outlined,
+      DashboardScreen(
+        drafts: drafts,
+        remotePosts: remotePosts,
+        commits: commits,
+        settings: settings,
+        activeRepo: activeRepo,
+        onNewPost: _newArticle,
+        onNavigateToRemote: _openRemote,
+        onNavigateToHistory: _openHistory,
+        onNavigateToSettings: _openSettings,
+        onNavigateToPreview: _openPreview,
+        onNavigateToDrafts: _openDrafts,
+      ),
+    );
   }
 
   void _openHistory() {
-    _openTab('history', '提交历史', Icons.history_outlined, HistoryScreen(
-      commits: commits,
-      github: github,
-      effectiveRepo: effectiveRepo,
-      onRefresh: _refreshCommits,
-      onCommitTap: (commit) {},
-    ));
+    _openTab(
+      'history',
+      '提交历史',
+      Icons.history_outlined,
+      HistoryScreen(
+        commits: commits,
+        github: github,
+        effectiveRepo: effectiveRepo,
+        onRefresh: _refreshCommits,
+        onCommitTap: (commit) {},
+      ),
+    );
   }
 
   void _openRss() {
-    _openTab('rss', 'RSS 订阅', Icons.rss_feed_outlined, RssScreen(
-      items: rssItems,
-      activeRepo: activeRepo,
-      onRefresh: _refreshRss,
-    ));
+    _openTab(
+      'rss',
+      'RSS 订阅',
+      Icons.rss_feed_outlined,
+      RssScreen(
+        items: rssItems,
+        activeRepo: activeRepo,
+        onRefresh: _refreshRss,
+      ),
+    );
   }
 
   void _openBatchUpload() {
-    _openTab('batch_upload', '批量上传', Icons.drive_folder_upload, FolderUploadScreen(
-      repos: repos,
-      github: github,
-      activeRepo: effectiveRepo,
-    ));
+    _openTab(
+      'batch_upload',
+      '批量上传',
+      Icons.drive_folder_upload,
+      FolderUploadScreen(
+        repos: repos,
+        github: github,
+        activeRepo: effectiveRepo,
+      ),
+    );
   }
 
   void _openPreview() {
@@ -3323,10 +4105,15 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       _openPreviewExternal();
       return;
     }
-    _openTab('preview', '网站预览', Icons.language, PreviewScreen(
-      activeRepo: activeRepo,
-      sitePreviewUrl: settings.sitePreviewUrl,
-    ));
+    _openTab(
+      'preview',
+      '网站预览',
+      Icons.language,
+      PreviewScreen(
+        activeRepo: activeRepo,
+        sitePreviewUrl: settings.sitePreviewUrl,
+      ),
+    );
   }
 
   void _openPreviewExternal() {
@@ -3334,14 +4121,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         ? settings.sitePreviewUrl
         : (activeRepo?.siteUrl.isNotEmpty == true ? activeRepo!.siteUrl : '');
     if (url.isEmpty) return;
+    final uri = Uri.tryParse(url);
+    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      _showToast('无法打开浏览器：无效的网址');
+      return;
+    }
     try {
-      if (Platform.isWindows) {
-        Process.run('cmd', ['/c', 'start', url]);
-      } else if (Platform.isMacOS) {
-        Process.run('open', [url]);
-      } else {
-        Process.run('xdg-open', [url]);
-      }
+      launchUrl(uri, mode: LaunchMode.externalApplication);
       _showToast('已在浏览器中打开: $url');
     } catch (e) {
       _showToast('无法打开浏览器: $e');
@@ -3349,40 +4135,50 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   void _openSettings() {
-    _openTab('settings', '设置', Icons.settings_outlined, SettingsScreen(
-      settings: settings,
-      repos: repos,
-      github: github,
-      storage: storage,
-      webdavService: webdavService,
-      onSettingsChanged: _updateSettings,
-      onReposChanged: _updateRepos,
-      onShowWebDavDialog: _showWebDavDialog,
-      onSyncWebDavToLocal: _syncWebDavToLocal,
-      onSyncDraftsToWebDav: _syncDraftsToWebDav,
-      onShowAiManager: _showAiManager,
-      onShowGithubTokenManager: _showGithubTokenManager,
-      onShowRepoManager: _showRepoManager,
-      onShowSiteEditor: _showSiteEditor,
-      onShowThemeColorPicker: _showThemeColorPicker,
-      onShowPwaGuide: () {},
-      onPersistSettings: _persistSettings,
-      onShowToast: _showToast,
-      onShowBlogSiteManager: _showBlogSiteManager,
-      onShowCreateSite: () => _startAiSiteWizard(),
-    ));
+    _openTab(
+      'settings',
+      '设置',
+      Icons.settings_outlined,
+      SettingsScreen(
+        settings: settings,
+        repos: repos,
+        github: github,
+        storage: storage,
+        webdavService: webdavService,
+        onSettingsChanged: _updateSettings,
+        onReposChanged: _updateRepos,
+        onShowWebDavDialog: _showWebDavDialog,
+        onSyncWebDavToLocal: _syncWebDavToLocal,
+        onSyncDraftsToWebDav: _syncDraftsToWebDav,
+        onShowAiManager: _showAiManager,
+        onShowGithubTokenManager: _showGithubTokenManager,
+        onShowRepoManager: _showRepoManager,
+        onShowSiteEditor: _showSiteEditor,
+        onShowThemeColorPicker: _showThemeColorPicker,
+        onShowPwaGuide: () {},
+        onPersistSettings: _persistSettings,
+        onShowToast: _showToast,
+        onShowBlogSiteManager: _showBlogSiteManager,
+        onShowCreateSite: () => _startAiSiteWizard(),
+      ),
+    );
   }
 
   void _openSyncSettings() {
-    _openTab('sync_settings', '云同步', Icons.cloud_sync, SyncSettingsScreen(
-      cloudSyncService: cloudSyncService,
-      logService: logService,
-      settings: settings,
-      repos: repos,
-      onSettingsChanged: _updateSettings,
-      onPushAll: _pushAllToCloud,
-      onPullAll: _pullAllFromCloud,
-    ));
+    _openTab(
+      'sync_settings',
+      '云同步',
+      Icons.cloud_sync,
+      SyncSettingsScreen(
+        cloudSyncService: cloudSyncService,
+        logService: logService,
+        settings: settings,
+        repos: repos,
+        onSettingsChanged: _updateSettings,
+        onPushAll: _pushAllToCloud,
+        onPullAll: _pullAllFromCloud,
+      ),
+    );
   }
 
   void _openLogs() {
@@ -3390,96 +4186,122 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   void _openThemeMigration() {
-    _openTab('theme_migration', 'AI 主题迁移', Icons.auto_fix_high, ThemeMigrationScreen(
-      settings: settings,
-      activeRepo: effectiveRepo,
-      repos: repos,
-      aiService: aiService,
-      githubService: github,
-      modelManager: aiModelManager,
-      dispatcher: aiDispatcher,
-      migrationService: themeMigrationService,
-      selfChecker: aiSelfChecker,
-      onSettingsChanged: _updateSettings,
-      storageService: storage,
-    ));
+    _openTab(
+      'theme_migration',
+      'AI 主题迁移',
+      Icons.auto_fix_high,
+      ThemeMigrationScreen(
+        settings: settings,
+        activeRepo: effectiveRepo,
+        repos: repos,
+        aiService: aiService,
+        githubService: github,
+        modelManager: aiModelManager,
+        dispatcher: aiDispatcher,
+        migrationService: themeMigrationService,
+        selfChecker: aiSelfChecker,
+        onSettingsChanged: _updateSettings,
+        storageService: storage,
+      ),
+    );
   }
 
   void _openRecycleBin() {
-    _openTab('recycle_bin', '回收站', Icons.delete_outline, RecycleBinScreen(
-      recycleBinService: recycleBinService,
-      onRestored: (entry, path) {
-        _showToast('已恢复: $path');
-        // 把恢复的文章重新加入草稿列表并持久化
-        final article = entry?.article;
-        if (article != null) {
-          final i = drafts.indexWhere((d) => d.id == article.id);
-          if (i >= 0) {
-            drafts[i] = article;
-          } else {
-            drafts.insert(0, article);
+    _openTab(
+      'recycle_bin',
+      '回收站',
+      Icons.delete_outline,
+      RecycleBinScreen(
+        recycleBinService: recycleBinService,
+        onRestored: (entry, path) {
+          _showToast('已恢复: $path');
+          // 把恢复的文章重新加入草稿列表并持久化
+          final article = entry?.article;
+          if (article != null) {
+            final i = drafts.indexWhere((d) => d.id == article.id);
+            if (i >= 0) {
+              drafts[i] = article;
+            } else {
+              drafts.insert(0, article);
+            }
+            drafts.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+            storage.saveDrafts(drafts);
           }
-          drafts.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-          storage.saveDrafts(drafts);
-        }
-        // 恢复后刷新草稿列表
-        _refreshDraftsFromStorage();
-      },
-    ));
+          // 恢复后刷新草稿列表
+          _refreshDraftsFromStorage();
+        },
+      ),
+    );
   }
 
   void _openP2PSync() {
-    _openTab('p2p_sync', 'P2P 同步', Icons.wifi, P2PSyncScreen(
-      p2pService: p2pSyncService,
-      localArticles: drafts,
-      onFilesReceived: (files) {
-        for (final file in files) {
-          // 接收到的文件添加到草稿
-          final existingIndex = drafts.indexWhere((d) => d.fileName() == file.path);
-          final article = Article(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            title: file.path.replaceAll('.md', ''),
-            content: file.content,
-            createdAt: file.modifiedAt,
-            updatedAt: DateTime.now(),
-            isDraft: true,
-          );
-          if (existingIndex >= 0) {
-            drafts[existingIndex] = article;
-          } else {
-            drafts.add(article);
+    _openTab(
+      'p2p_sync',
+      'P2P 同步',
+      Icons.wifi,
+      P2PSyncScreen(
+        p2pService: p2pSyncService,
+        localArticles: drafts,
+        onFilesReceived: (files) {
+          for (final file in files) {
+            // 接收到的文件添加到草稿
+            final existingIndex = drafts.indexWhere(
+              (d) => d.fileName() == file.path,
+            );
+            final article = Article(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              title: file.path.replaceAll('.md', ''),
+              content: file.content,
+              createdAt: file.modifiedAt,
+              updatedAt: DateTime.now(),
+              isDraft: true,
+            );
+            if (existingIndex >= 0) {
+              drafts[existingIndex] = article;
+            } else {
+              drafts.add(article);
+            }
           }
-        }
-        storage.saveDrafts(drafts);
-        if (mounted) setState(() {});
-        _showToast('已接收 ${files.length} 个文件');
-      },
-    ));
+          storage.saveDrafts(drafts);
+          if (mounted) setState(() {});
+          _showToast('已接收 ${files.length} 个文件');
+        },
+      ),
+    );
   }
 
   void _openImageBedManager() {
-    _openTab('image_bed', '图床管理', Icons.photo_library_outlined, ImageBedScreen(
-      settings: settings,
-      githubService: github,
-      imageService: imageService,
-      allArticles: drafts,
-      onUrlReplaced: (oldUrl, newUrl) {
-        // 批量替换所有文章中的图片URL
-        for (int i = 0; i < drafts.length; i++) {
-          final a = drafts[i];
-          if (a.content.contains(oldUrl)) {
-            drafts[i] = a.copyWith(content: a.content.replaceAll(oldUrl, newUrl));
+    _openTab(
+      'image_bed',
+      '图床管理',
+      Icons.photo_library_outlined,
+      ImageBedScreen(
+        settings: settings,
+        githubService: github,
+        imageService: imageService,
+        allArticles: drafts,
+        onUrlReplaced: (oldUrl, newUrl) {
+          // 批量替换所有文章中的图片URL
+          for (int i = 0; i < drafts.length; i++) {
+            final a = drafts[i];
+            if (a.content.contains(oldUrl)) {
+              drafts[i] = a.copyWith(
+                content: a.content.replaceAll(oldUrl, newUrl),
+              );
+            }
           }
-        }
-        storage.saveDrafts(drafts);
-        // 如果当前文章也受影响，更新编辑器
-        if (_doc.currentArticle.content.contains(oldUrl)) {
-          _doc.contentCtrl.text = _doc.currentArticle.content.replaceAll(oldUrl, newUrl);
-          
-        }
-        _showToast('图片URL批量替换完成');
-      },
-    ));
+          storage.saveDrafts(drafts);
+          // 如果当前文章也受影响，更新编辑器
+          if (_doc.currentArticle.content.contains(oldUrl)) {
+            _doc.contentCtrl.text = _doc.currentArticle.content.replaceAll(
+              oldUrl,
+              newUrl,
+            );
+          }
+          _showToast('图片URL批量替换完成');
+        },
+      ),
+    );
   }
 
   void _openVersionHistory() {
@@ -3495,7 +4317,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           _doc.contentCtrl.text = content;
           _doc.markUnsaved();
           _editor.setEditorStatus('已恢复历史版本');
-          _showToast('已恢复历史版本，请保存'); },
+          _showToast('已恢复历史版本，请保存');
+        },
       ),
     );
   }
@@ -3528,7 +4351,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final strategy = entry.value;
       if (strategy == 'local') {
         // 保留本地版本，标记为需要推送
-        _showToast('已保留本地版本: ${drafts.firstWhere((a) => a.id == articleId, orElse: () => _doc.currentArticle).title}');
+        _showToast(
+          '已保留本地版本: ${drafts.firstWhere((a) => a.id == articleId, orElse: () => _doc.currentArticle).title}',
+        );
       } else if (strategy == 'remote') {
         // 使用远程版本覆盖本地
         _showToast('已使用远程版本覆盖本地');
@@ -3547,13 +4372,19 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     try {
       final siteConfig = siteManager.currentAdapter?.config;
       if (siteConfig == null) return true;
-      final entries = await syncService.compareSync(siteConfig, adapter, drafts);
+      final entries = await syncService.compareSync(
+        siteConfig,
+        adapter,
+        drafts,
+      );
       final conflicts = entries.where((e) => e.hasConflict).toList();
       if (conflicts.isNotEmpty) {
         _showConflictResolution(conflicts);
         return false;
       }
-    } catch (e) { debugPrint('Shell: AI diff failed: $e'); }
+    } catch (e) {
+      debugPrint('Shell: AI diff failed: $e');
+    }
     return true;
   }
 
@@ -3570,14 +4401,20 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
     while (i > 0 || j > 0) {
       if (i > 0 && j > 0 && oldLines[i - 1] == newLines[j - 1]) {
-        reversed.add(_DiffLine(type: _DiffType.equal, text: oldLines[i - 1], lineNum: i));
+        reversed.add(
+          _DiffLine(type: _DiffType.equal, text: oldLines[i - 1], lineNum: i),
+        );
         i--;
         j--;
       } else if (j > 0 && (i == 0 || lcs[i][j - 1] >= lcs[i - 1][j])) {
-        reversed.add(_DiffLine(type: _DiffType.added, text: newLines[j - 1], lineNum: j));
+        reversed.add(
+          _DiffLine(type: _DiffType.added, text: newLines[j - 1], lineNum: j),
+        );
         j--;
       } else if (i > 0) {
-        reversed.add(_DiffLine(type: _DiffType.removed, text: oldLines[i - 1], lineNum: i));
+        reversed.add(
+          _DiffLine(type: _DiffType.removed, text: oldLines[i - 1], lineNum: i),
+        );
         i--;
       }
     }
@@ -3608,87 +4445,121 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     bool enabled = settings.proxyEnabled;
     bool applyToAi = settings.proxyApplyToAi;
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Row(children: [
-            Icon(Icons.vpn_lock_outlined, size: 22),
-            SizedBox(width: 8),
-            Text('网络代理设置', style: TextStyle(fontSize: 17)),
-          ]),
-          content: SizedBox(
-            width: 400,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+    try {
+      showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: const Row(
               children: [
-                SwitchListTile(
-                  title: const Text('启用代理', style: TextStyle(fontSize: 14)),
-                  value: enabled,
-                  onChanged: (v) => setDialogState(() => enabled = v),
-                  contentPadding: EdgeInsets.zero,
-                ),
-                TextField(
-                  controller: hostCtrl,
-                  decoration: const InputDecoration(labelText: '代理主机', hintText: '127.0.0.1', isDense: true),
-                  enabled: enabled,
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: portCtrl,
-                  decoration: const InputDecoration(labelText: '端口', hintText: '1080', isDense: true),
-                  keyboardType: TextInputType.number,
-                  enabled: enabled,
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: userCtrl,
-                  decoration: const InputDecoration(labelText: '用户名 (可选)', isDense: true),
-                  enabled: enabled,
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: passCtrl,
-                  decoration: const InputDecoration(labelText: '密码 (可选)', isDense: true),
-                  obscureText: true,
-                  enabled: enabled,
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  title: const Text('对 AI 接口也启用代理', style: TextStyle(fontSize: 13)),
-                  subtitle: const Text('国内网络访问 OpenAI 等 API 需要代理', style: TextStyle(fontSize: 11)),
-                  value: applyToAi,
-                  onChanged: enabled ? (v) => setDialogState(() => applyToAi = v) : null,
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                ),
+                Icon(Icons.vpn_lock_outlined, size: 22),
+                SizedBox(width: 8),
+                Text('网络代理设置', style: TextStyle(fontSize: 17)),
               ],
             ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-            FilledButton(
-              onPressed: () async {
-                final newSettings = settings.copyWith(
-                  proxyEnabled: enabled,
-                  proxyHost: hostCtrl.text.trim(),
-                  proxyPort: int.tryParse(portCtrl.text.trim()) ?? 1080,
-                  proxyUsername: userCtrl.text.trim(),
-                  proxyPassword: passCtrl.text.trim(),
-                  proxyApplyToAi: applyToAi,
-                );
-                await _updateSettings(newSettings);
-                if (mounted) {
-                  Navigator.pop(ctx);
-                  _showToast('代理设置已保存');
-                }
-              },
-              child: const Text('保存'),
+            content: SizedBox(
+              width: 400,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SwitchListTile(
+                    title: const Text('启用代理', style: TextStyle(fontSize: 14)),
+                    value: enabled,
+                    onChanged: (v) => setDialogState(() => enabled = v),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  TextField(
+                    controller: hostCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '代理主机',
+                      hintText: '127.0.0.1',
+                      isDense: true,
+                    ),
+                    enabled: enabled,
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: portCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '端口',
+                      hintText: '1080',
+                      isDense: true,
+                    ),
+                    keyboardType: TextInputType.number,
+                    enabled: enabled,
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: userCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '用户名 (可选)',
+                      isDense: true,
+                    ),
+                    enabled: enabled,
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: passCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '密码 (可选)',
+                      isDense: true,
+                    ),
+                    obscureText: true,
+                    enabled: enabled,
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    title: const Text(
+                      '对 AI 接口也启用代理',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                    subtitle: const Text(
+                      '国内网络访问 OpenAI 等 API 需要代理',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                    value: applyToAi,
+                    onChanged: enabled
+                        ? (v) => setDialogState(() => applyToAi = v)
+                        : null,
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+                ],
+              ),
             ),
-          ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  final newSettings = settings.copyWith(
+                    proxyEnabled: enabled,
+                    proxyHost: hostCtrl.text.trim(),
+                    proxyPort: int.tryParse(portCtrl.text.trim()) ?? 1080,
+                    proxyUsername: userCtrl.text.trim(),
+                    proxyPassword: passCtrl.text.trim(),
+                    proxyApplyToAi: applyToAi,
+                  );
+                  await _updateSettings(newSettings);
+                  if (mounted) {
+                    Navigator.pop(ctx);
+                    _showToast('代理设置已保存');
+                  }
+                },
+                child: const Text('保存'),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      hostCtrl.dispose();
+      portCtrl.dispose();
+      userCtrl.dispose();
+      passCtrl.dispose();
+    }
   }
 
   // ── 版本历史对话框 ──
@@ -3697,39 +4568,52 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Row(children: [
-          Icon(Icons.cleaning_services_outlined, size: 22),
-          SizedBox(width: 8),
-          Text('缓存清理', style: TextStyle(fontSize: 17)),
-        ]),
+        title: const Row(
+          children: [
+            Icon(Icons.cleaning_services_outlined, size: 22),
+            SizedBox(width: 8),
+            Text('缓存清理', style: TextStyle(fontSize: 17)),
+          ],
+        ),
         content: const SizedBox(
           width: 350,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('此操作将清理以下缓存:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              Text(
+                '此操作将清理以下缓存:',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
               SizedBox(height: 8),
               Text('  • 图片缓存 (image_cache)', style: TextStyle(fontSize: 13)),
               Text('  • 预览缓存 (webview_cache)', style: TextStyle(fontSize: 13)),
               Text('  • 临时文件', style: TextStyle(fontSize: 13)),
               SizedBox(height: 12),
-              Text('清理后不会影响草稿和设置。', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              Text(
+                '清理后不会影响草稿和设置。',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
           FilledButton(
             onPressed: () async {
               try {
                 final rootDir = await storage.root;
                 // 清理图片缓存
                 final imgCache = Directory('${rootDir.path}/image_cache');
-                if (await imgCache.exists()) await imgCache.delete(recursive: true);
+                if (await imgCache.exists())
+                  await imgCache.delete(recursive: true);
                 // 清理 WebView 缓存
                 final webCache = Directory('${rootDir.path}/webview_cache');
-                if (await webCache.exists()) await webCache.delete(recursive: true);
+                if (await webCache.exists())
+                  await webCache.delete(recursive: true);
                 // 清理临时文件
                 final tmpDir = Directory('${rootDir.path}/tmp');
                 if (await tmpDir.exists()) await tmpDir.delete(recursive: true);
@@ -3758,9 +4642,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         _showToast('暂无日志');
         return;
       }
-      final logText = logs.map((l) => '[${l.timestamp}] ${l.success ? "✓" : "✗"} ${l.action}: ${l.detail}').join('\n');
+      final logText = logs
+          .map(
+            (l) =>
+                '[${l.timestamp}] ${l.success ? "✓" : "✗"} ${l.action}: ${l.detail}',
+          )
+          .join('\n');
       final rootDir = await storage.root;
-      final logFile = File('${rootDir.path}/export_logs_${DateTime.now().millisecondsSinceEpoch}.txt');
+      final logFile = File(
+        '${rootDir.path}/export_logs_${DateTime.now().millisecondsSinceEpoch}.txt',
+      );
       await logFile.writeAsString(logText);
       _showToast('日志已导出到: ${logFile.path}');
     } catch (e) {
@@ -3785,11 +4676,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       try {
         // 尝试 UTF-8
         decoded = utf8.decode(rawBytes);
-      } catch (e) { debugPrint('Shell: diff preview load failed: $e');
+      } catch (e) {
+        debugPrint('Shell: diff preview load failed: $e');
         try {
           // 尝试 GBK
           decoded = gbk.decode(rawBytes);
-        } catch (e) { debugPrint('Shell: diff preview parse failed: $e');
+        } catch (e) {
+          debugPrint('Shell: diff preview parse failed: $e');
           // 尝试 Latin-1
           decoded = latin1.decode(rawBytes);
         }
@@ -3812,58 +4705,72 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   void _toggleNightEyeProtection() async {
-    final newSettings = settings.copyWith(nightEyeProtection: !settings.nightEyeProtection);
+    final newSettings = settings.copyWith(
+      nightEyeProtection: !settings.nightEyeProtection,
+    );
     await _updateSettings(newSettings);
     _showToast(settings.nightEyeProtection ? '已关闭护眼滤镜' : '已开启护眼滤镜');
   }
 
   void _openLinkChecker() {
-    _openTab('link_checker', '链接检测', Icons.link_off, LinkCheckerScreen(
-      articles: drafts,
-      onOpenArticle: _openExistingArticle,
-    ));
+    _openTab(
+      'link_checker',
+      '链接检测',
+      Icons.link_off,
+      LinkCheckerScreen(articles: drafts, onOpenArticle: _openExistingArticle),
+    );
   }
 
   void _openBatchTools() {
-    _openTab('batch_tools', '批量工具箱', Icons.build_circle, BatchToolsScreen(
-      articles: drafts,
-      github: github,
-      repos: repos,
-      onArticlesUpdated: (updated) {
-        setState(() {
-          drafts = updated;
-          // 更新当前文章如果被修改
-          for (final a in updated) {
-            if (a.id == _doc.currentArticle.id) {
-              _doc.setCurrentArticle(a);
-              _doc.contentCtrl.text = a.content;
-              _doc.titleCtrl.text = a.title;
-              _doc.tagsCtrl.text = a.tags.join(', ');
-              _doc.categoriesCtrl.text = a.categories.join(', ');
-              break;
+    _openTab(
+      'batch_tools',
+      '批量工具箱',
+      Icons.build_circle,
+      BatchToolsScreen(
+        articles: drafts,
+        github: github,
+        repos: repos,
+        onArticlesUpdated: (updated) {
+          setState(() {
+            drafts = updated;
+            // 更新当前文章如果被修改
+            for (final a in updated) {
+              if (a.id == _doc.currentArticle.id) {
+                _doc.setCurrentArticle(a);
+                _doc.contentCtrl.text = a.content;
+                _doc.titleCtrl.text = a.title;
+                _doc.tagsCtrl.text = a.tags.join(', ');
+                _doc.categoriesCtrl.text = a.categories.join(', ');
+                break;
+              }
             }
-          }
-        });
-        storage.saveDrafts(drafts);
-        _showToast('批量操作已完成，草稿已保存');
-      },
-    ));
+          });
+          storage.saveDrafts(drafts);
+          _showToast('批量操作已完成，草稿已保存');
+        },
+      ),
+    );
   }
 
   void _openContentStats() {
-    _openTab('content_stats', '内容统计', Icons.insights_outlined,
-        ContentStatsScreen(drafts: drafts, repos: repos));
+    _openTab(
+      'content_stats',
+      '内容统计',
+      Icons.insights_outlined,
+      ContentStatsScreen(drafts: drafts, repos: repos),
+    );
   }
 
   void _openBackupRestore() {
     _openTab(
-        'backup_restore',
-        '备份与恢复',
-        Icons.settings_backup_restore,
-        BackupRestoreScreen(
-          rootProvider: () => storage.root,
-          onToast: _showToast,
-        ));
+      'backup_restore',
+      '备份与恢复',
+      Icons.settings_backup_restore,
+      BackupRestoreScreen(
+        rootProvider: () => storage.root,
+        onToast: _showToast,
+      ),
+    );
   }
 
   void _openAiPromptTemplates() {
@@ -3916,7 +4823,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           final fullText = _doc.contentCtrl.text;
           final start = selection.start;
           final end = selection.end;
-          final newText = fullText.substring(0, start) + acceptedText + fullText.substring(end);
+          final newText =
+              fullText.substring(0, start) +
+              acceptedText +
+              fullText.substring(end);
           _doc.contentCtrl.text = newText;
           _doc.markUnsaved();
           _editor.setEditorStatus('已接受AI选区编辑');
@@ -3955,12 +4865,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       }
     }
     final lastAiResponse = lastAi?.content ?? '';
-    
+
     if (lastAiResponse.isEmpty) {
       _showToast('暂无 AI 回复内容，请先在 AI 面板中发起对话');
       return;
     }
-    
+
     final modified = lastAiResponse;
     final diffLines = _computeDiff(original, modified);
 
@@ -3968,11 +4878,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Row(children: [
-            Icon(Icons.compare_arrows, size: 22),
-            SizedBox(width: 8),
-            Text('AI 修改对比', style: TextStyle(fontSize: 17)),
-          ]),
+          title: const Row(
+            children: [
+              Icon(Icons.compare_arrows, size: 22),
+              SizedBox(width: 8),
+              Text('AI 修改对比', style: TextStyle(fontSize: 17)),
+            ],
+          ),
           content: SizedBox(
             width: 800,
             height: 500,
@@ -4032,21 +4944,33 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                       }
                       return Container(
                         color: bgColor,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (icon != null) Icon(icon, size: 14, color: textColor),
+                            if (icon != null)
+                              Icon(icon, size: 14, color: textColor),
                             if (icon != null) const SizedBox(width: 4),
                             Text(
                               '${line.lineNum.toString().padLeft(3)}',
-                              style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontFamily: 'monospace',
+                                color: Colors.grey,
+                              ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 line.text.isEmpty ? ' ' : line.text,
-                                style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: textColor),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontFamily: 'monospace',
+                                  color: textColor,
+                                ),
                               ),
                             ),
                           ],
@@ -4092,22 +5016,34 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 12, height: 12,
-          decoration: BoxDecoration(color: Colors.green.withOpacity(0.3), borderRadius: BorderRadius.circular(2)),
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: Colors.green.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(2),
+          ),
         ),
         const SizedBox(width: 4),
         const Text('新增', style: TextStyle(fontSize: 11)),
         const SizedBox(width: 12),
         Container(
-          width: 12, height: 12,
-          decoration: BoxDecoration(color: Colors.red.withOpacity(0.3), borderRadius: BorderRadius.circular(2)),
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: Colors.red.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(2),
+          ),
         ),
         const SizedBox(width: 4),
         const Text('删除', style: TextStyle(fontSize: 11)),
         const SizedBox(width: 12),
         Container(
-          width: 12, height: 12,
-          decoration: BoxDecoration(color: Colors.grey.withOpacity(0.2), borderRadius: BorderRadius.circular(2)),
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: Colors.grey.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(2),
+          ),
         ),
         const SizedBox(width: 4),
         const Text('不变', style: TextStyle(fontSize: 11)),
@@ -4127,7 +5063,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       try {
         final adapter = siteManager.currentAdapter;
         if (adapter != null) {
-          final mapping = syncService.findByLocalId(siteManager.currentAdapter?.config.id ?? '', _doc.currentArticle.id);
+          final mapping = syncService.findByLocalId(
+            siteManager.currentAdapter?.config.id ?? '',
+            _doc.currentArticle.id,
+          );
           if (mapping != null) {
             final remotePost = await adapter.getPostById(mapping.remotePostId);
             if (remotePost != null) {
@@ -4135,7 +5074,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             }
           }
         }
-      } catch (e) { debugPrint('Shell: publish changelog failed: $e'); }
+      } catch (e) {
+        debugPrint('Shell: publish changelog failed: $e');
+      }
     }
 
     if (remoteContent.isEmpty) {
@@ -4152,11 +5093,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Row(children: [
-          Icon(Icons.change_circle_outlined, size: 22),
-          SizedBox(width: 8),
-          Text('发布变更日志', style: TextStyle(fontSize: 17)),
-        ]),
+        title: const Row(
+          children: [
+            Icon(Icons.change_circle_outlined, size: 22),
+            SizedBox(width: 8),
+            Text('发布变更日志', style: TextStyle(fontSize: 17)),
+          ],
+        ),
         content: SizedBox(
           width: 800,
           height: 500,
@@ -4166,20 +5109,31 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
               Row(
                 children: [
                   Container(
-                    width: 12, height: 12,
-                    decoration: BoxDecoration(color: Colors.green.withOpacity(0.3), borderRadius: BorderRadius.circular(2)),
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                   const SizedBox(width: 4),
                   const Text('新增内容', style: TextStyle(fontSize: 11)),
                   const SizedBox(width: 12),
                   Container(
-                    width: 12, height: 12,
-                    decoration: BoxDecoration(color: Colors.red.withOpacity(0.3), borderRadius: BorderRadius.circular(2)),
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                   const SizedBox(width: 4),
                   const Text('删除内容', style: TextStyle(fontSize: 11)),
                   const SizedBox(width: 12),
-                  Text('共 ${diffLines.where((l) => l.type != _DiffType.equal).length} 处变更', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                  Text(
+                    '共 ${diffLines.where((l) => l.type != _DiffType.equal).length} 处变更',
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
                 ],
               ),
               const Divider(height: 1),
@@ -4191,7 +5145,11 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                     final line = diffLines[i];
                     Color bgColor;
                     Color textColor;
-                    final prefix = line.type == _DiffType.added ? '+' : line.type == _DiffType.removed ? '-' : ' ';
+                    final prefix = line.type == _DiffType.added
+                        ? '+'
+                        : line.type == _DiffType.removed
+                        ? '-'
+                        : ' ';
                     switch (line.type) {
                       case _DiffType.added:
                         bgColor = Colors.green.withOpacity(0.08);
@@ -4207,14 +5165,29 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                     }
                     return Container(
                       color: bgColor,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 1,
+                      ),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(prefix, style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: textColor, fontWeight: FontWeight.bold)),
+                          Text(
+                            prefix,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                              color: textColor,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                           Text(
                             line.text.isEmpty ? ' ' : line.text,
-                            style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: textColor),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                              color: textColor,
+                            ),
                           ),
                         ],
                       ),
@@ -4226,7 +5199,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
           FilledButton.icon(
             icon: const Icon(Icons.cloud_upload_outlined, size: 16),
             label: const Text('确认发布'),
@@ -4248,125 +5224,152 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final dateCtrl = TextEditingController();
     final timeCtrl = TextEditingController();
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Row(children: [
-            Icon(Icons.schedule_send, size: 22),
-            SizedBox(width: 8),
-            Text('定时发布', style: TextStyle(fontSize: 17)),
-          ]),
-          content: SizedBox(
-            width: 350,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+    try {
+      showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: const Row(
               children: [
-                const Text('设置发布时间，到时自动发布到当前站点', style: TextStyle(fontSize: 13, color: Colors.grey)),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: dateCtrl,
-                        decoration: const InputDecoration(
-                          labelText: '日期',
-                          hintText: '2026-08-03',
-                          isDense: true,
-                          border: OutlineInputBorder(),
+                Icon(Icons.schedule_send, size: 22),
+                SizedBox(width: 8),
+                Text('定时发布', style: TextStyle(fontSize: 17)),
+              ],
+            ),
+            content: SizedBox(
+              width: 350,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '设置发布时间，到时自动发布到当前站点',
+                    style: TextStyle(fontSize: 13, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: dateCtrl,
+                          decoration: const InputDecoration(
+                            labelText: '日期',
+                            hintText: '2026-08-03',
+                            isDense: true,
+                            border: OutlineInputBorder(),
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: timeCtrl,
-                        decoration: const InputDecoration(
-                          labelText: '时间',
-                          hintText: '20:00',
-                          isDense: true,
-                          border: OutlineInputBorder(),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: timeCtrl,
+                          decoration: const InputDecoration(
+                            labelText: '时间',
+                            hintText: '20:00',
+                            isDense: true,
+                            border: OutlineInputBorder(),
+                          ),
                         ),
+                      ),
+                    ],
+                  ),
+                  if (_scheduledPublishTime != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.info_outline,
+                            size: 16,
+                            color: Colors.blue,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '已有定时发布: ${_scheduledPublishTime!.toString().substring(0, 16)}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              _scheduledPublishTimer?.cancel();
+                              _scheduledPublishTimer = null;
+                              _scheduledPublishTime = null;
+                              setDialogState(() {});
+                              _showToast('已取消定时发布');
+                            },
+                            child: const Text(
+                              '取消',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                ),
-                if (_scheduledPublishTime != null) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.info_outline, size: 16, color: Colors.blue),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '已有定时发布: ${_scheduledPublishTime!.toString().substring(0, 16)}',
-                            style: const TextStyle(fontSize: 12, color: Colors.blue),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            _scheduledPublishTimer?.cancel();
-                            _scheduledPublishTimer = null;
-                            _scheduledPublishTime = null;
-                            setDialogState(() {});
-                            _showToast('已取消定时发布');
-                          },
-                          child: const Text('取消', style: TextStyle(fontSize: 12)),
-                        ),
-                      ],
-                    ),
-                  ),
                 ],
-              ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-            FilledButton.icon(
-              icon: const Icon(Icons.schedule, size: 16),
-              label: const Text('设置定时发布'),
-              onPressed: () {
-                final dateStr = dateCtrl.text.trim();
-                final timeStr = timeCtrl.text.trim();
-                if (dateStr.isEmpty || timeStr.isEmpty) {
-                  _showToast('请填写日期和时间');
-                  return;
-                }
-                final scheduledTime = DateTime.tryParse('${dateStr}T${timeStr}:00');
-                if (scheduledTime == null) {
-                  _showToast('日期时间格式无效');
-                  return;
-                }
-                if (scheduledTime.isBefore(DateTime.now())) {
-                  _showToast('发布时间不能早于当前时间');
-                  return;
-                }
-                final delay = scheduledTime.difference(DateTime.now());
-                _scheduledPublishTimer?.cancel();
-                _scheduledPublishTimer = Timer(delay, () {
-                  _scheduledPublishTime = null;
-                  _scheduledPublishTimer = null;
-                  if (mounted) {
-                    _showToast('定时发布开始执行...');
-                    _executePublish();
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              FilledButton.icon(
+                icon: const Icon(Icons.schedule, size: 16),
+                label: const Text('设置定时发布'),
+                onPressed: () {
+                  final dateStr = dateCtrl.text.trim();
+                  final timeStr = timeCtrl.text.trim();
+                  if (dateStr.isEmpty || timeStr.isEmpty) {
+                    _showToast('请填写日期和时间');
+                    return;
                   }
-                });
-                _scheduledPublishTime = scheduledTime;
-                Navigator.pop(ctx);
-                _showToast('已设置定时发布: ${scheduledTime.toString().substring(0, 16)}');
-              },
-            ),
-          ],
+                  final scheduledTime = DateTime.tryParse(
+                    '${dateStr}T${timeStr}:00',
+                  );
+                  if (scheduledTime == null) {
+                    _showToast('日期时间格式无效');
+                    return;
+                  }
+                  if (scheduledTime.isBefore(DateTime.now())) {
+                    _showToast('发布时间不能早于当前时间');
+                    return;
+                  }
+                  final delay = scheduledTime.difference(DateTime.now());
+                  _scheduledPublishTimer?.cancel();
+                  _scheduledPublishTimer = Timer(delay, () {
+                    _scheduledPublishTime = null;
+                    _scheduledPublishTimer = null;
+                    if (mounted) {
+                      _showToast('定时发布开始执行...');
+                      _executePublish();
+                    }
+                  });
+                  _scheduledPublishTime = scheduledTime;
+                  Navigator.pop(ctx);
+                  _showToast(
+                    '已设置定时发布: ${scheduledTime.toString().substring(0, 16)}',
+                  );
+                },
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      dateCtrl.dispose();
+      timeCtrl.dispose();
+    }
   }
 
   /// 执行发布（不显示确认对话框）
@@ -4379,11 +5382,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         _showToast('请先配置仓库与 Token');
         return;
       }
-      _editor.setEditorBusy(true); _editor.setEditorStatus('正在发布...');
+      _editor.setEditorBusy(true);
+      _editor.setEditorStatus('正在发布...');
       try {
         final a = _collect(draft: false);
         final pub = await github.upsertArticle(repo, a, templates: templates);
-        _doc.setCurrentArticle(pub); _editor.setEditorStatus('已发布');
+        _doc.setCurrentArticle(pub);
+        _editor.setEditorStatus('已发布');
         _lastSavedContent = pub.content;
         _doc.markSaved();
         await _saveDraft(pub.copyWith(isDraft: false, published: true));
@@ -4393,8 +5398,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       } catch (e) {
         _editor.setEditorStatus('发布失败');
         logService.add('发布失败', '$e', success: false);
-        if (mounted) _showToast('发布失败: $e');} finally {
-        if (mounted) _editor.setEditorBusy(false);}
+        if (mounted) _showToast('发布失败: $e');
+      } finally {
+        if (mounted) _editor.setEditorBusy(false);
+      }
     }
   }
 
@@ -4410,7 +5417,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final file = File(filePath);
       final html = await file.readAsString();
       final markdown = HtmlToMarkdown.convert(html);
-      final fileName = result.files.first.name.replaceAll(RegExp(r'\.html?$', caseSensitive: false), '');
+      final fileName = result.files.first.name.replaceAll(
+        RegExp(r'\.html?$', caseSensitive: false),
+        '',
+      );
       final article = Article(
         id: 'import_${DateTime.now().millisecondsSinceEpoch}',
         title: fileName,
@@ -4464,31 +5474,37 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     try {
       // 使用 archive 库正确解压 ZIP/DOCX 文件
       final archive = ZipDecoder().decodeBytes(bytes);
-      
+
       // 查找 document.xml 文件
       final documentFile = archive.findFile('word/document.xml');
       if (documentFile == null) {
         return '*无法在 DOCX 中找到 document.xml*';
       }
-      
+
       final xmlContent = utf8.decode(documentFile.content as List<int>);
-      
+
       // 提取 <w:t> 标签中的文本
       final textRegex = RegExp(r'<w:t[^>]*>([^<]*)</w:t>');
       final matches = textRegex.allMatches(xmlContent);
       final paragraphs = <String>[];
       String currentParagraph = '';
-      
+
       // 同时检测段落边界
       final paraRegex = RegExp(r'<w:p[ >]');
       final paraEndRegex = RegExp(r'</w:p>');
-      final allParaStarts = paraRegex.allMatches(xmlContent).map((m) => m.start).toList();
-      final allParaEnds = paraEndRegex.allMatches(xmlContent).map((m) => m.end).toList();
+      final allParaStarts = paraRegex
+          .allMatches(xmlContent)
+          .map((m) => m.start)
+          .toList();
+      final allParaEnds = paraEndRegex
+          .allMatches(xmlContent)
+          .map((m) => m.end)
+          .toList();
 
       for (final match in matches) {
         final t = match.group(1) ?? '';
         currentParagraph += t;
-        
+
         // 检查当前 match 之后是否有段落结束标记
         final matchEnd = match.end;
         final nextParaEnd = allParaEnds.firstWhere(
@@ -4499,21 +5515,22 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           (s) => s > matchEnd,
           orElse: () => -1,
         );
-        
+
         // 如果在下一个段落开始之前有段落结束，则当前段落结束
-        if (nextParaEnd > 0 && (nextParaStart < 0 || nextParaEnd < nextParaStart)) {
+        if (nextParaEnd > 0 &&
+            (nextParaStart < 0 || nextParaEnd < nextParaStart)) {
           if (currentParagraph.trim().isNotEmpty) {
             paragraphs.add(currentParagraph.trim());
           }
           currentParagraph = '';
         }
       }
-      
+
       // 添加最后一个段落
       if (currentParagraph.trim().isNotEmpty) {
         paragraphs.add(currentParagraph.trim());
       }
-      
+
       return paragraphs.isEmpty ? '*DOCX 文件内容为空*' : paragraphs.join('\n\n');
     } catch (e) {
       return '*无法解析 DOCX 文件内容: $e\n请尝试使用 HTML 格式导入*';
@@ -4524,7 +5541,17 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final searchCtrl = TextEditingController();
     String query = '';
     String filterStatus = 'all'; // all, draft, published
-    List<({String articleId, String title, String snippet, String matchLine, bool isDraft, DateTime createdAt})> results = [];
+    List<
+      ({
+        String articleId,
+        String title,
+        String snippet,
+        String matchLine,
+        bool isDraft,
+        DateTime createdAt,
+      })
+    >
+    results = [];
 
     void doSearch() {
       final q = query.toLowerCase();
@@ -4563,131 +5590,197 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       }
     }
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Row(children: [
-            Icon(Icons.manage_search, size: 22),
-            SizedBox(width: 8),
-            Text('全局搜索', style: TextStyle(fontSize: 17)),
-          ]),
-          content: SizedBox(
-            width: 620,
-            height: 480,
-            child: Column(
+    try {
+      showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: const Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: searchCtrl,
-                        autofocus: true,
-                        decoration: InputDecoration(
-                          hintText: '搜索文章标题或正文...',
-                          prefixIcon: const Icon(Icons.search, size: 18),
-                          suffixIcon: query.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear, size: 16),
-                                  onPressed: () {
-                                    searchCtrl.clear();
-                                    setDialogState(() { query = ''; results = []; });
-                                  },
-                                )
-                              : null,
-                          isDense: true,
-                          border: const OutlineInputBorder(),
+                Icon(Icons.manage_search, size: 22),
+                SizedBox(width: 8),
+                Text('全局搜索', style: TextStyle(fontSize: 17)),
+              ],
+            ),
+            content: SizedBox(
+              width: 620,
+              height: 480,
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: searchCtrl,
+                          autofocus: true,
+                          decoration: InputDecoration(
+                            hintText: '搜索文章标题或正文...',
+                            prefixIcon: const Icon(Icons.search, size: 18),
+                            suffixIcon: query.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 16),
+                                    onPressed: () {
+                                      searchCtrl.clear();
+                                      setDialogState(() {
+                                        query = '';
+                                        results = [];
+                                      });
+                                    },
+                                  )
+                                : null,
+                            isDense: true,
+                            border: const OutlineInputBorder(),
+                          ),
+                          onChanged: (v) {
+                            setDialogState(() {
+                              query = v;
+                              doSearch();
+                            });
+                          },
                         ),
+                      ),
+                      const SizedBox(width: 8),
+                      // 状态筛选器
+                      DropdownButton<String>(
+                        value: filterStatus,
+                        isDense: true,
+                        underline: const SizedBox(),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'all',
+                            child: Text('全部', style: TextStyle(fontSize: 13)),
+                          ),
+                          DropdownMenuItem(
+                            value: 'draft',
+                            child: Text('草稿', style: TextStyle(fontSize: 13)),
+                          ),
+                          DropdownMenuItem(
+                            value: 'published',
+                            child: Text('已发布', style: TextStyle(fontSize: 13)),
+                          ),
+                        ],
                         onChanged: (v) {
-                          setDialogState(() { query = v; doSearch(); });
+                          setDialogState(() {
+                            filterStatus = v ?? 'all';
+                            doSearch();
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  if (results.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        '${results.length} 个结果',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                      ),
+                    ),
+                  const SizedBox(height: 4),
+                  if (query.length < 2 && query.isNotEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text(
+                        '请输入至少2个字符进行搜索',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    )
+                  else if (query.isNotEmpty && results.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text(
+                        '未找到匹配结果',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    )
+                  else
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: results.length,
+                        itemBuilder: (_, i) {
+                          final r = results[i];
+                          return ListTile(
+                            dense: true,
+                            leading: Icon(
+                              r.isDraft
+                                  ? Icons.drafts_outlined
+                                  : Icons.article_outlined,
+                              size: 18,
+                              color: r.isDraft ? Colors.orange : Colors.green,
+                            ),
+                            title: Text(
+                              r.title,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: r.matchLine.isNotEmpty
+                                ? Text(
+                                    r.matchLine,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 11),
+                                  )
+                                : null,
+                            trailing: Text(
+                              r.isDraft ? '草稿' : '已发布',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: r.isDraft ? Colors.orange : Colors.green,
+                              ),
+                            ),
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              final article = drafts.firstWhere(
+                                (a) => a.id == r.articleId,
+                                orElse: () => _doc.currentArticle,
+                              );
+                              _openExistingArticle(article);
+                            },
+                          );
                         },
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    // 状态筛选器
-                    DropdownButton<String>(
-                      value: filterStatus,
-                      isDense: true,
-                      underline: const SizedBox(),
-                      items: const [
-                        DropdownMenuItem(value: 'all', child: Text('全部', style: TextStyle(fontSize: 13))),
-                        DropdownMenuItem(value: 'draft', child: Text('草稿', style: TextStyle(fontSize: 13))),
-                        DropdownMenuItem(value: 'published', child: Text('已发布', style: TextStyle(fontSize: 13))),
-                      ],
-                      onChanged: (v) {
-                        setDialogState(() { filterStatus = v ?? 'all'; doSearch(); });
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                if (results.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text('${results.length} 个结果', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
-                  ),
-                const SizedBox(height: 4),
-                if (query.length < 2 && query.isNotEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text('请输入至少2个字符进行搜索', style: TextStyle(color: Colors.grey)),
-                  )
-                else if (query.isNotEmpty && results.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text('未找到匹配结果', style: TextStyle(color: Colors.grey)),
-                  )
-                else
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: results.length,
-                      itemBuilder: (_, i) {
-                        final r = results[i];
-                        return ListTile(
-                          dense: true,
-                          leading: Icon(
-                            r.isDraft ? Icons.drafts_outlined : Icons.article_outlined,
-                            size: 18,
-                            color: r.isDraft ? Colors.orange : Colors.green,
-                          ),
-                          title: Text(r.title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                          subtitle: r.matchLine.isNotEmpty
-                              ? Text(r.matchLine, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11))
-                              : null,
-                          trailing: Text(
-                            r.isDraft ? '草稿' : '已发布',
-                            style: TextStyle(fontSize: 10, color: r.isDraft ? Colors.orange : Colors.green),
-                          ),
-                          onTap: () {
-                            Navigator.pop(ctx);
-                            final article = drafts.firstWhere((a) => a.id == r.articleId, orElse: () => _doc.currentArticle);
-                            _openExistingArticle(article);
-                          },
-                        );
-                      },
-                    ),
-                  ),
-              ],
+                ],
+              ),
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('关闭'),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
-          ],
         ),
-      ),
-    );
+      );
+    } finally {
+      searchCtrl.dispose();
+    }
   }
 
   void _showTemplateManager() async {
-    await Navigator.of(context).push<void>(MaterialPageRoute(
-      builder: (_) => TemplateManagerScreen(storage: storage, aiService: aiService, settings: settings, repos: repos, githubService: github),
-    ));
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => TemplateManagerScreen(
+          storage: storage,
+          aiService: aiService,
+          settings: settings,
+          repos: repos,
+          githubService: github,
+        ),
+      ),
+    );
     final t = await storage.loadAllTemplates();
     if (mounted) {
       var reposChanged = false;
       for (int i = 0; i < repos.length; i++) {
         final updated = TemplateResolver.ensureTemplateFallback(repos[i], t);
-        if (updated != repos[i]) { repos[i] = updated; reposChanged = true; }
+        if (updated != repos[i]) {
+          repos[i] = updated;
+          reposChanged = true;
+        }
       }
       if (reposChanged) await _persistRepos();
       setState(() => templates = t);
@@ -4714,7 +5807,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                   Navigator.pop(ctx);
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: spellCheckService.enabled
                         ? Colors.green.withOpacity(0.15)
@@ -4725,7 +5821,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                     spellCheckService.enabled ? '已启用' : '已禁用',
                     style: TextStyle(
                       fontSize: 11,
-                      color: spellCheckService.enabled ? Colors.green : Colors.grey,
+                      color: spellCheckService.enabled
+                          ? Colors.green
+                          : Colors.grey,
                     ),
                   ),
                 ),
@@ -4740,14 +5838,17 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
               isDark: isDark,
               onJumpToOffset: (offset) {
                 Navigator.pop(ctx);
-                _doc.contentCtrl.selection = TextSelection.collapsed(offset: offset);
+                _doc.contentCtrl.selection = TextSelection.collapsed(
+                  offset: offset,
+                );
                 _doc.contentFocus.requestFocus();
               },
               onReplace: (result) {
                 // 替换单词
                 if (result.suggestions.isNotEmpty) {
                   final text = _doc.contentCtrl.text;
-                  final newText = text.substring(0, result.offset) +
+                  final newText =
+                      text.substring(0, result.offset) +
                       result.suggestions.first +
                       text.substring(result.offset + result.length);
                   _doc.contentCtrl.text = newText;
@@ -4781,127 +5882,264 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final nameCtrl = TextEditingController();
     final contentCtrl = TextEditingController();
     String category = '自定义';
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('片段素材库'),
-          content: SizedBox(
-            width: 500,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (snippets.isNotEmpty) ...[
-                  SizedBox(
-                    height: 160,
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: snippets.length,
-                      itemBuilder: (_, i) {
-                        final sn = snippets[i];
-                        return ListTile(
-                          dense: true,
-                          title: Text(sn.name, style: const TextStyle(fontSize: 13)),
-                          subtitle: Text(sn.category, style: const TextStyle(fontSize: 11)),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(icon: const Icon(Icons.content_copy, size: 16), onPressed: () { _insertText(sn.content); Navigator.pop(ctx); }, constraints: const BoxConstraints(), padding: EdgeInsets.zero),
-                              IconButton(icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent), onPressed: () async { snippets.removeAt(i); await storage.saveSnippets(snippets); setDialogState(() {}); if (mounted) setState(() => this.snippets = List.from(snippets)); }, constraints: const BoxConstraints(), padding: EdgeInsets.zero),
-                            ],
-                          ),
-                          onTap: () { _insertText(sn.content); Navigator.pop(ctx); },
-                        );
-                      },
+    try {
+      showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: const Text('片段素材库'),
+            content: SizedBox(
+              width: 500,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (snippets.isNotEmpty) ...[
+                    SizedBox(
+                      height: 160,
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: snippets.length,
+                        itemBuilder: (_, i) {
+                          final sn = snippets[i];
+                          return ListTile(
+                            dense: true,
+                            title: Text(
+                              sn.name,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            subtitle: Text(
+                              sn.category,
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.content_copy,
+                                    size: 16,
+                                  ),
+                                  onPressed: () {
+                                    _insertText(sn.content);
+                                    Navigator.pop(ctx);
+                                  },
+                                  constraints: const BoxConstraints(),
+                                  padding: EdgeInsets.zero,
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    size: 16,
+                                    color: Colors.redAccent,
+                                  ),
+                                  onPressed: () async {
+                                    snippets.removeAt(i);
+                                    await storage.saveSnippets(snippets);
+                                    setDialogState(() {});
+                                    if (mounted)
+                                      setState(
+                                        () =>
+                                            this.snippets = List.from(snippets),
+                                      );
+                                  },
+                                  constraints: const BoxConstraints(),
+                                  padding: EdgeInsets.zero,
+                                ),
+                              ],
+                            ),
+                            onTap: () {
+                              _insertText(sn.content);
+                              Navigator.pop(ctx);
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                    const Divider(),
+                  ],
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '片段名称',
+                      isDense: true,
                     ),
                   ),
-                  const Divider(),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: category,
+                    decoration: const InputDecoration(
+                      labelText: '分类',
+                      isDense: true,
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: '友链模板', child: Text('友链模板')),
+                      DropdownMenuItem(value: '公告片段', child: Text('公告片段')),
+                      DropdownMenuItem(value: '版权声明', child: Text('版权声明')),
+                      DropdownMenuItem(value: '代码块', child: Text('代码块')),
+                      DropdownMenuItem(value: '自定义提示块', child: Text('自定义提示块')),
+                      DropdownMenuItem(value: '自定义', child: Text('自定义')),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) category = v;
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: contentCtrl,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: '片段内容',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
-                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: '片段名称', isDense: true)),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  value: category,
-                  decoration: const InputDecoration(labelText: '分类', isDense: true),
-                  items: const [
-                    DropdownMenuItem(value: '友链模板', child: Text('友链模板')),
-                    DropdownMenuItem(value: '公告片段', child: Text('公告片段')),
-                    DropdownMenuItem(value: '版权声明', child: Text('版权声明')),
-                    DropdownMenuItem(value: '代码块', child: Text('代码块')),
-                    DropdownMenuItem(value: '自定义提示块', child: Text('自定义提示块')),
-                    DropdownMenuItem(value: '自定义', child: Text('自定义')),
-                  ],
-                  onChanged: (v) { if (v != null) category = v; },
-                ),
-                const SizedBox(height: 8),
-                TextField(controller: contentCtrl, maxLines: 4, decoration: const InputDecoration(labelText: '片段内容', border: OutlineInputBorder(), isDense: true), style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-              ],
+              ),
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('关闭'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  if (nameCtrl.text.trim().isEmpty) return;
+                  final now = DateTime.now();
+                  snippets.add(
+                    SnippetItem(
+                      id: now.millisecondsSinceEpoch.toString(),
+                      name: nameCtrl.text.trim(),
+                      content: contentCtrl.text,
+                      category: category,
+                      createdAt: now,
+                    ),
+                  );
+                  await storage.saveSnippets(snippets);
+                  if (mounted)
+                    setState(() => this.snippets = List.from(snippets));
+                  Navigator.pop(ctx);
+                },
+                child: const Text('保存片段'),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
-            FilledButton(onPressed: () async {
-              if (nameCtrl.text.trim().isEmpty) return;
-              final now = DateTime.now();
-              snippets.add(SnippetItem(id: now.millisecondsSinceEpoch.toString(), name: nameCtrl.text.trim(), content: contentCtrl.text, category: category, createdAt: now));
-              await storage.saveSnippets(snippets);
-              if (mounted) setState(() => this.snippets = List.from(snippets));
-              Navigator.pop(ctx);
-            }, child: const Text('保存片段')),
-          ],
         ),
-      ),
-    );
+      );
+    } finally {
+      nameCtrl.dispose();
+      contentCtrl.dispose();
+    }
   }
 
   void _showConfigEditor() async {
     final repo = effectiveRepo;
-    if (repo == null) { _showToast('请先配置仓库'); return; }
+    if (repo == null) {
+      _showToast('请先配置仓库');
+      return;
+    }
     try {
-      final configPath = repo.frameworkId == 'hugo' ? 'config.toml' : '_config.yml';
+      final configPath = repo.frameworkId == 'hugo'
+          ? 'config.toml'
+          : '_config.yml';
       final result = await github.getRawFile(repo, configPath);
       String content = result?['content'] ?? '';
       String sha = result?['sha'] ?? '';
       if (!mounted) return;
       final ctrl = TextEditingController(text: content);
-      await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text('${repo.frameworkId} 配置编辑'),
-          content: SizedBox(width: 600, height: 400, child: TextField(controller: ctrl, maxLines: null, expands: true, style: const TextStyle(fontFamily: 'monospace', fontSize: 13), decoration: const InputDecoration(border: OutlineInputBorder(), hintText: '# 站点配置文件'))),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            FilledButton(onPressed: () async {
-              try {
-                await github.putRawFile(repo, configPath, ctrl.text, sha: sha, commitMessage: 'chore: update $configPath');
-                _showToast('配置已保存');
-                Navigator.pop(ctx, true);
-              } catch (e) { _showToast('保存失败: $e'); }
-            }, child: const Text('保存到 GitHub')),
-          ],
-        ),
-      );
-    } catch (e) { _showToast('操作失败: $e'); }
+      try {
+        await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text('${repo.frameworkId} 配置编辑'),
+            content: SizedBox(
+              width: 600,
+              height: 400,
+              child: TextField(
+                controller: ctrl,
+                maxLines: null,
+                expands: true,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: '# 站点配置文件',
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  try {
+                    await github.putRawFile(
+                      repo,
+                      configPath,
+                      ctrl.text,
+                      sha: sha,
+                      commitMessage: 'chore: update $configPath',
+                    );
+                    _showToast('配置已保存');
+                    Navigator.pop(ctx, true);
+                  } catch (e) {
+                    _showToast('保存失败: $e');
+                  }
+                },
+                child: const Text('保存到 GitHub'),
+              ),
+            ],
+          ),
+        );
+      } finally {
+        ctrl.dispose();
+      }
+    } catch (e) {
+      _showToast('操作失败: $e');
+    }
   }
 
   void _showSiteEditor() async {
     final repo = effectiveRepo;
-    if (repo == null) { _showToast('请先配置仓库'); return; }
-    await Navigator.of(context).push<void>(MaterialPageRoute(
-      builder: (_) => SiteEditorScreen(repo: repo, github: github, onSaved: () => _showToast('站点内容已同步到 GitHub')),
-    ));
+    if (repo == null) {
+      _showToast('请先配置仓库');
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => SiteEditorScreen(
+          repo: repo,
+          github: github,
+          onSaved: () => _showToast('站点内容已同步到 GitHub'),
+        ),
+      ),
+    );
     if (mounted) setState(() {});
   }
 
   void _showBlogSiteManager() async {
-    await Navigator.of(context).push<BlogSiteConfig?>(MaterialPageRoute(
-      builder: (_) => BlogSiteEditorScreen(appSettings: settings, onSaved: _handleBlogSiteSaved),
-    ));
+    await Navigator.of(context).push<BlogSiteConfig?>(
+      MaterialPageRoute(
+        builder: (_) => BlogSiteEditorScreen(
+          appSettings: settings,
+          onSaved: _handleBlogSiteSaved,
+        ),
+      ),
+    );
   }
 
   Future<void> _handleBlogSiteSaved(BlogSiteConfig config) async {
     final existing = List<BlogSiteConfig>.from(settings.blogSiteConfigs);
     final idx = existing.indexWhere((s) => s.id == config.id);
-    if (idx >= 0) { existing[idx] = config; } else { existing.add(config); }
+    if (idx >= 0) {
+      existing[idx] = config;
+    } else {
+      existing.add(config);
+    }
     await _updateSettings(settings.copyWith(blogSiteConfigs: existing));
   }
 
@@ -4910,88 +6148,234 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final apiKeyCtrl = TextEditingController();
     final modelCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          final profiles = List<AiProfile>.from(settings.aiProfiles);
-          return AlertDialog(
-            title: Row(children: [
-              const Expanded(child: Text('AI 中转站配置', style: TextStyle(fontSize: 17))),
-              TextButton.icon(
-                onPressed: () async {
-                  final name = nameCtrl.text.trim();
-                  final baseUrl = baseUrlCtrl.text.trim();
-                  final apiKey = apiKeyCtrl.text.trim();
-                  final model = modelCtrl.text.trim();
-                  if (name.isEmpty || baseUrl.isEmpty || apiKey.isEmpty) { _showToast('名称、Base URL 和 API Key 不能为空'); return; }
-                  final profile = AiProfile(id: DateTime.now().millisecondsSinceEpoch.toString(), name: name, baseUrl: baseUrl, apiKey: apiKey, model: model);
-                  profiles.add(profile);
-                  await _updateSettings(settings.copyWith(ai: settings.ai.copyWith(aiProfiles: profiles, activeAiProfileId: profile.id, aiBaseUrl: baseUrl, aiApiKey: apiKey, aiModel: model, aiProvider: name)));
-                  nameCtrl.clear(); baseUrlCtrl.clear(); apiKeyCtrl.clear(); modelCtrl.clear();
-                  setDialogState(() {});
-                  _showToast('已保存 AI 配置: $name');
-                },
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('新增'),
-              ),
-            ]),
-            content: SizedBox(
-              width: 550,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final profiles = List<AiProfile>.from(settings.aiProfiles);
+            return AlertDialog(
+              title: Row(
                 children: [
-                  if (profiles.isNotEmpty) ...[
-                    SizedBox(
-                      height: 160,
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: profiles.length,
-                        itemBuilder: (_, i) {
-                          final p = profiles[i];
-                          final isActive = settings.activeAiProfileId == p.id;
-                          return ListTile(
-                            dense: true,
-                            leading: Icon(isActive ? Icons.check_circle : Icons.smart_toy_outlined, size: 18, color: isActive ? Theme.of(ctx).colorScheme.primary : null),
-                            title: Text(p.displayLabel, style: const TextStyle(fontSize: 13)),
-                            subtitle: Text('${p.baseUrl}\n模型: ${p.model.isEmpty ? "未选" : p.model}', style: const TextStyle(fontSize: 11), maxLines: 2, overflow: TextOverflow.ellipsis),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (!isActive)
-                                  TextButton(onPressed: () async { await _updateSettings(settings.copyWith(ai: settings.ai.copyWith(activeAiProfileId: p.id, aiBaseUrl: p.baseUrl, aiApiKey: p.apiKey, aiModel: p.model, aiProvider: p.name))); setDialogState(() {}); }, child: const Text('启用', style: TextStyle(fontSize: 11))),
-                                IconButton(icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent), onPressed: () async { profiles.removeAt(i); await _updateSettings(settings.copyWith(ai: settings.ai.copyWith(aiProfiles: profiles))); setDialogState(() {}); }, constraints: const BoxConstraints(), padding: EdgeInsets.zero),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const Divider(),
-                  ],
-                  TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: '配置名称', isDense: true)),
-                  const SizedBox(height: 8),
-                  TextField(controller: baseUrlCtrl, decoration: const InputDecoration(labelText: 'Base URL', hintText: 'https://api.openai.com/v1', isDense: true), style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-                  const SizedBox(height: 8),
-                  TextField(controller: apiKeyCtrl, decoration: const InputDecoration(labelText: 'API Key', isDense: true), style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-                  const SizedBox(height: 8),
-                  TextField(controller: modelCtrl, decoration: const InputDecoration(labelText: '模型名称（可选）', hintText: 'gpt-4o', isDense: true)),
+                  const Expanded(
+                    child: Text('AI 中转站配置', style: TextStyle(fontSize: 17)),
+                  ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      final name = nameCtrl.text.trim();
+                      final baseUrl = baseUrlCtrl.text.trim();
+                      final apiKey = apiKeyCtrl.text.trim();
+                      final model = modelCtrl.text.trim();
+                      if (name.isEmpty || baseUrl.isEmpty || apiKey.isEmpty) {
+                        _showToast('名称、Base URL 和 API Key 不能为空');
+                        return;
+                      }
+                      final profile = AiProfile(
+                        id: DateTime.now().millisecondsSinceEpoch.toString(),
+                        name: name,
+                        baseUrl: baseUrl,
+                        apiKey: apiKey,
+                        model: model,
+                      );
+                      profiles.add(profile);
+                      await _updateSettings(
+                        settings.copyWith(
+                          ai: settings.ai.copyWith(
+                            aiProfiles: profiles,
+                            activeAiProfileId: profile.id,
+                            aiBaseUrl: baseUrl,
+                            aiApiKey: apiKey,
+                            aiModel: model,
+                            aiProvider: name,
+                          ),
+                        ),
+                      );
+                      nameCtrl.clear();
+                      baseUrlCtrl.clear();
+                      apiKeyCtrl.clear();
+                      modelCtrl.clear();
+                      setDialogState(() {});
+                      _showToast('已保存 AI 配置: $name');
+                    },
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('新增'),
+                  ),
                 ],
               ),
-            ),
-            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭'))],
-          );
-        },
-      ),
-    );
+              content: SizedBox(
+                width: 550,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (profiles.isNotEmpty) ...[
+                      SizedBox(
+                        height: 160,
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: profiles.length,
+                          itemBuilder: (_, i) {
+                            final p = profiles[i];
+                            final isActive = settings.activeAiProfileId == p.id;
+                            return ListTile(
+                              dense: true,
+                              leading: Icon(
+                                isActive
+                                    ? Icons.check_circle
+                                    : Icons.smart_toy_outlined,
+                                size: 18,
+                                color: isActive
+                                    ? Theme.of(ctx).colorScheme.primary
+                                    : null,
+                              ),
+                              title: Text(
+                                p.displayLabel,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                              subtitle: Text(
+                                '${p.baseUrl}\n模型: ${p.model.isEmpty ? "未选" : p.model}',
+                                style: const TextStyle(fontSize: 11),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (!isActive)
+                                    TextButton(
+                                      onPressed: () async {
+                                        await _updateSettings(
+                                          settings.copyWith(
+                                            ai: settings.ai.copyWith(
+                                              activeAiProfileId: p.id,
+                                              aiBaseUrl: p.baseUrl,
+                                              aiApiKey: p.apiKey,
+                                              aiModel: p.model,
+                                              aiProvider: p.name,
+                                            ),
+                                          ),
+                                        );
+                                        setDialogState(() {});
+                                      },
+                                      child: const Text(
+                                        '启用',
+                                        style: TextStyle(fontSize: 11),
+                                      ),
+                                    ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete_outline,
+                                      size: 16,
+                                      color: Colors.redAccent,
+                                    ),
+                                    onPressed: () async {
+                                      profiles.removeAt(i);
+                                      await _updateSettings(
+                                        settings.copyWith(
+                                          ai: settings.ai.copyWith(
+                                            aiProfiles: profiles,
+                                          ),
+                                        ),
+                                      );
+                                      setDialogState(() {});
+                                    },
+                                    constraints: const BoxConstraints(),
+                                    padding: EdgeInsets.zero,
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const Divider(),
+                    ],
+                    TextField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(
+                        labelText: '配置名称',
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: baseUrlCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Base URL',
+                        hintText: 'https://api.openai.com/v1',
+                        isDense: true,
+                      ),
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: apiKeyCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'API Key',
+                        isDense: true,
+                      ),
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: modelCtrl,
+                      decoration: const InputDecoration(
+                        labelText: '模型名称（可选）',
+                        hintText: 'gpt-4o',
+                        isDense: true,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('关闭'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } finally {
+      baseUrlCtrl.dispose();
+      apiKeyCtrl.dispose();
+      modelCtrl.dispose();
+      nameCtrl.dispose();
+    }
   }
 
   void _showThemeColorPicker() async {
     const colors = [
-      Color(0xFF0EA5E9), Color(0xFF6366F1), Color(0xFF8B5CF6), Color(0xFFEC4899), Color(0xFFF43F5E),
-      Color(0xFF10B981), Color(0xFF14B8A6), Color(0xFFF59E0B), Color(0xFF64748B), Color(0xFF1E293B),
+      Color(0xFF0EA5E9),
+      Color(0xFF6366F1),
+      Color(0xFF8B5CF6),
+      Color(0xFFEC4899),
+      Color(0xFFF43F5E),
+      Color(0xFF10B981),
+      Color(0xFF14B8A6),
+      Color(0xFFF59E0B),
+      Color(0xFF64748B),
+      Color(0xFF1E293B),
     ];
-    const names = ['天蓝', '靛蓝', '紫色', '粉色', '玫瑰红', '翡翠绿', '青绿', '琥珀', '石板灰', '深灰'];
+    const names = [
+      '天蓝',
+      '靛蓝',
+      '紫色',
+      '粉色',
+      '玫瑰红',
+      '翡翠绿',
+      '青绿',
+      '琥珀',
+      '石板灰',
+      '深灰',
+    ];
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -4999,7 +6383,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         content: SizedBox(
           width: 300,
           child: Wrap(
-            spacing: 12, runSpacing: 12,
+            spacing: 12,
+            runSpacing: 12,
             children: List.generate(colors.length, (i) {
               return GestureDetector(
                 onTap: () async {
@@ -5011,7 +6396,17 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(width: 48, height: 48, decoration: BoxDecoration(color: colors[i], borderRadius: BorderRadius.circular(14), border: settings.themeColor == colors[i].value ? Border.all(color: Colors.black, width: 2.5) : null)),
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: colors[i],
+                        borderRadius: BorderRadius.circular(14),
+                        border: settings.themeColor == colors[i].value
+                            ? Border.all(color: Colors.black, width: 2.5)
+                            : null,
+                      ),
+                    ),
                     const SizedBox(height: 4),
                     Text(names[i], style: const TextStyle(fontSize: 11)),
                   ],
@@ -5020,7 +6415,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             }),
           ),
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭'))],
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+        ],
       ),
     );
   }
@@ -5029,94 +6429,187 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final tokens = List<GithubTokenProfile>.from(settings.githubTokens);
     final nameCtrl = TextEditingController();
     final tokenCtrl = TextEditingController();
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Row(children: [
-            const Expanded(child: Text('GitHub 登录令牌', style: TextStyle(fontSize: 17))),
-            TextButton.icon(
-              onPressed: () async {
-                final name = nameCtrl.text.trim();
-                final token = tokenCtrl.text.trim();
-                if (name.isEmpty || token.isEmpty) { _showToast('名称和令牌不能为空'); return; }
-                final profile = GithubTokenProfile(id: DateTime.now().millisecondsSinceEpoch.toString(), name: name, token: token);
-                tokens.add(profile);
-                await _updateSettings(settings.copyWith(github: settings.github.copyWith(githubTokens: tokens, activeGithubTokenId: profile.id)));
-                nameCtrl.clear();
-                tokenCtrl.clear();
-                setDialogState(() {});
-                _showToast('已添加令牌: $name');
-              },
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('添加'),
-            ),
-          ]),
-          content: SizedBox(
-            width: 500,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: Row(
               children: [
-                if (tokens.isNotEmpty) ...[
-                  SizedBox(
-                    height: 160,
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: tokens.length,
-                      itemBuilder: (_, i) {
-                        final t = tokens[i];
-                        final isActive = settings.activeGithubTokenId == t.id;
-                        return ListTile(
-                          dense: true,
-                          leading: Icon(isActive ? Icons.check_circle : Icons.key, size: 18, color: isActive ? Theme.of(ctx).colorScheme.primary : null),
-                          title: Text(t.name, style: const TextStyle(fontSize: 13)),
-                          subtitle: Text('${t.token.substring(0, 8)}...', style: const TextStyle(fontSize: 11, fontFamily: 'monospace')),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (!isActive)
-                                TextButton(onPressed: () async { await _updateSettings(settings.copyWith(github: settings.github.copyWith(activeGithubTokenId: t.id))); setDialogState(() {}); }, child: const Text('启用', style: TextStyle(fontSize: 11))),
-                              IconButton(icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent), onPressed: () async { tokens.removeAt(i); await _updateSettings(settings.copyWith(github: settings.github.copyWith(githubTokens: tokens))); setDialogState(() {}); }, constraints: const BoxConstraints(), padding: EdgeInsets.zero),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const Divider(),
-                ],
-                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: '令牌名称', isDense: true)),
-                const SizedBox(height: 8),
-                TextField(controller: tokenCtrl, decoration: const InputDecoration(labelText: 'GitHub Token', isDense: true), style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                const Expanded(
+                  child: Text('GitHub 登录令牌', style: TextStyle(fontSize: 17)),
+                ),
+                TextButton.icon(
+                  onPressed: () async {
+                    final name = nameCtrl.text.trim();
+                    final token = tokenCtrl.text.trim();
+                    if (name.isEmpty || token.isEmpty) {
+                      _showToast('名称和令牌不能为空');
+                      return;
+                    }
+                    final profile = GithubTokenProfile(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      name: name,
+                      token: token,
+                    );
+                    tokens.add(profile);
+                    await _updateSettings(
+                      settings.copyWith(
+                        github: settings.github.copyWith(
+                          githubTokens: tokens,
+                          activeGithubTokenId: profile.id,
+                        ),
+                      ),
+                    );
+                    nameCtrl.clear();
+                    tokenCtrl.clear();
+                    setDialogState(() {});
+                    _showToast('已添加令牌: $name');
+                  },
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('添加'),
+                ),
               ],
             ),
+            content: SizedBox(
+              width: 500,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (tokens.isNotEmpty) ...[
+                    SizedBox(
+                      height: 160,
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: tokens.length,
+                        itemBuilder: (_, i) {
+                          final t = tokens[i];
+                          final isActive = settings.activeGithubTokenId == t.id;
+                          return ListTile(
+                            dense: true,
+                            leading: Icon(
+                              isActive ? Icons.check_circle : Icons.key,
+                              size: 18,
+                              color: isActive
+                                  ? Theme.of(ctx).colorScheme.primary
+                                  : null,
+                            ),
+                            title: Text(
+                              t.name,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            subtitle: Text(
+                              '${t.token.substring(0, 8)}...',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (!isActive)
+                                  TextButton(
+                                    onPressed: () async {
+                                      await _updateSettings(
+                                        settings.copyWith(
+                                          github: settings.github.copyWith(
+                                            activeGithubTokenId: t.id,
+                                          ),
+                                        ),
+                                      );
+                                      setDialogState(() {});
+                                    },
+                                    child: const Text(
+                                      '启用',
+                                      style: TextStyle(fontSize: 11),
+                                    ),
+                                  ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    size: 16,
+                                    color: Colors.redAccent,
+                                  ),
+                                  onPressed: () async {
+                                    tokens.removeAt(i);
+                                    await _updateSettings(
+                                      settings.copyWith(
+                                        github: settings.github.copyWith(
+                                          githubTokens: tokens,
+                                        ),
+                                      ),
+                                    );
+                                    setDialogState(() {});
+                                  },
+                                  constraints: const BoxConstraints(),
+                                  padding: EdgeInsets.zero,
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const Divider(),
+                  ],
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '令牌名称',
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: tokenCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'GitHub Token',
+                      isDense: true,
+                    ),
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('关闭'),
+              ),
+            ],
           ),
-          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭'))],
+        ),
+      );
+    } finally {
+      nameCtrl.dispose();
+      tokenCtrl.dispose();
+    }
+  }
+
+  void _showRepoManager() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => SiteManagementScreen(
+          siteManager: siteManager,
+          repos: repos,
+          onChanged: () async {
+            await _updateSettings(settings);
+          },
         ),
       ),
     );
   }
 
-  void _showRepoManager() async {
-    await Navigator.of(context).push<void>(MaterialPageRoute(
-      builder: (_) => SiteManagementScreen(
-        siteManager: siteManager,
-        repos: repos,
-        onChanged: () async {
-          await _updateSettings(settings);
-          
-        },
-      ),
-    ));
-  }
-
   void _showSiteOperations() {
-    Navigator.of(context).push<void>(MaterialPageRoute(
-      builder: (_) => SiteOperationsScreen(
-        repos: repos,
-        onToast: _showToast,
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => SiteOperationsScreen(repos: repos, onToast: _showToast),
       ),
-    ));
+    );
   }
 
   Future<void> _showWebDavDialog() async {
@@ -5124,77 +6617,183 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final u = TextEditingController(text: settings.webdavUsername);
     final pw = TextEditingController(text: settings.webdavPassword);
     final f = TextEditingController(text: settings.webdavFolder);
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('WebDAV 备份'),
-        content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(controller: c, decoration: const InputDecoration(labelText: 'WebDAV 网址', hintText: 'https://dav.jianguoyun.com/dav')),
-            const SizedBox(height: 12),
-            TextField(controller: u, decoration: const InputDecoration(labelText: '账号')),
-            const SizedBox(height: 12),
-            TextField(controller: pw, obscureText: true, decoration: const InputDecoration(labelText: '密码')),
-            const SizedBox(height: 12),
-            TextField(controller: f, decoration: const InputDecoration(labelText: '文件夹')),
-          ]),
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('WebDAV 备份'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: c,
+                  decoration: const InputDecoration(
+                    labelText: 'WebDAV 网址',
+                    hintText: 'https://dav.jianguoyun.com/dav',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: u,
+                  decoration: const InputDecoration(labelText: '账号'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: pw,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: '密码'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: f,
+                  decoration: const InputDecoration(labelText: '文件夹'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                settings = settings.copyWith(
+                  webdavUrl: c.text.trim(),
+                  webdavUsername: u.text.trim(),
+                  webdavPassword: pw.text,
+                  webdavFolder: f.text.trim().isEmpty
+                      ? 'hexo-backup'
+                      : f.text.trim(),
+                );
+                _persistSettings();
+                Navigator.pop(ctx);
+              },
+              child: const Text('保存'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          TextButton(onPressed: () {
-            settings = settings.copyWith(webdavUrl: c.text.trim(), webdavUsername: u.text.trim(), webdavPassword: pw.text, webdavFolder: f.text.trim().isEmpty ? 'hexo-backup' : f.text.trim());
-            _persistSettings();
-            Navigator.pop(ctx);
-          }, child: const Text('保存')),
-        ],
-      ),
-    );
-    if (mounted) setState(() {});
+      );
+      if (mounted) setState(() {});
+    } finally {
+      c.dispose();
+      u.dispose();
+      pw.dispose();
+      f.dispose();
+    }
   }
 
   Future<void> _syncWebDavToLocal() async {
-    if (settings.webdavUrl.isEmpty) { await _showWebDavDialog(); if (mounted && settings.webdavUrl.isEmpty) return; }
+    if (settings.webdavUrl.isEmpty) {
+      await _showWebDavDialog();
+      if (mounted && settings.webdavUrl.isEmpty) return;
+    }
     try {
-      loading = true; if (mounted) setState(() {});
+      loading = true;
+      if (mounted) setState(() {});
       final svc = WebDavService();
       final drafts = await storage.loadDrafts();
-      final folder = settings.webdavFolder.endsWith('/') ? settings.webdavFolder : '${settings.webdavFolder}/';
-      final remote = await svc.list(settings.webdavUrl, settings.webdavUsername, settings.webdavPassword, folder);
+      final folder = settings.webdavFolder.endsWith('/')
+          ? settings.webdavFolder
+          : '${settings.webdavFolder}/';
+      final remote = await svc.list(
+        settings.webdavUrl,
+        settings.webdavUsername,
+        settings.webdavPassword,
+        folder,
+      );
       final localIds = drafts.map((a) => '${a.id}.md').toSet();
       int count = 0;
       for (final item in remote) {
-        if (!item.isDir && item.name.endsWith('.md') && !localIds.contains(item.name)) {
-          final bytes = await svc.downloadFile(settings.webdavUrl, settings.webdavUsername, settings.webdavPassword, folder, item.name);
+        if (!item.isDir &&
+            item.name.endsWith('.md') &&
+            !localIds.contains(item.name)) {
+          final bytes = await svc.downloadFile(
+            settings.webdavUrl,
+            settings.webdavUsername,
+            settings.webdavPassword,
+            folder,
+            item.name,
+          );
           final md = utf8.decode(bytes);
-          final article = Article.fromMarkdown(md, id: item.name.replaceAll(RegExp(r'\.md$'), ''));
+          final article = Article.fromMarkdown(
+            md,
+            id: item.name.replaceAll(RegExp(r'\.md$'), ''),
+          );
           drafts.add(article);
           count++;
         }
       }
       await storage.saveDrafts(drafts);
-      if (mounted) { setState(() { loading = false; this.drafts = drafts..sort((a, b) => b.updatedAt.compareTo(a.updatedAt)); }); _showToast('已从云端同步 $count 篇草稿到本地'); }
-    } catch (e) { if (mounted) { setState(() => loading = false); _showToast('WebDAV 同步失败: $e'); } }
+      if (mounted) {
+        setState(() {
+          loading = false;
+          this.drafts = drafts
+            ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        });
+        _showToast('已从云端同步 $count 篇草稿到本地');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => loading = false);
+        _showToast('WebDAV 同步失败: $e');
+      }
+    }
   }
 
   Future<void> _syncDraftsToWebDav() async {
-    if (settings.webdavUrl.isEmpty) { await _showWebDavDialog(); if (mounted && settings.webdavUrl.isEmpty) return; }
+    if (settings.webdavUrl.isEmpty) {
+      await _showWebDavDialog();
+      if (mounted && settings.webdavUrl.isEmpty) return;
+    }
     try {
-      loading = true; if (mounted) setState(() {});
+      loading = true;
+      if (mounted) setState(() {});
       final svc = WebDavService();
       final drafts = await storage.loadDrafts();
-      final folder = settings.webdavFolder.endsWith('/') ? settings.webdavFolder : '${settings.webdavFolder}/';
-      await svc.createFolder(settings.webdavUrl, settings.webdavUsername, settings.webdavPassword, folder);
-      final remote = await svc.list(settings.webdavUrl, settings.webdavUsername, settings.webdavPassword, folder);
-      final names = remote.where((e) => e.name.endsWith('.md')).map((e) => e.name).toSet();
+      final folder = settings.webdavFolder.endsWith('/')
+          ? settings.webdavFolder
+          : '${settings.webdavFolder}/';
+      await svc.createFolder(
+        settings.webdavUrl,
+        settings.webdavUsername,
+        settings.webdavPassword,
+        folder,
+      );
+      final remote = await svc.list(
+        settings.webdavUrl,
+        settings.webdavUsername,
+        settings.webdavPassword,
+        folder,
+      );
+      final names = remote
+          .where((e) => e.name.endsWith('.md'))
+          .map((e) => e.name)
+          .toSet();
       int count = 0;
       for (final a in drafts) {
         if (!names.contains('${a.id}.md')) {
-          await svc.putFile(settings.webdavUrl, settings.webdavUsername, settings.webdavPassword, '$folder${a.id}.md', a.toMarkdownWithFrontMatter());
+          await svc.putFile(
+            settings.webdavUrl,
+            settings.webdavUsername,
+            settings.webdavPassword,
+            '$folder${a.id}.md',
+            a.toMarkdownWithFrontMatter(),
+          );
           count++;
         }
       }
-      if (mounted) { setState(() => loading = false); _showToast('已上传 $count 篇草稿'); }
-    } catch (e) { if (mounted) { setState(() => loading = false); _showToast('WebDAV 失败: $e'); } }
+      if (mounted) {
+        setState(() => loading = false);
+        _showToast('已上传 $count 篇草稿');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => loading = false);
+        _showToast('WebDAV 失败: $e');
+      }
+    }
   }
 
   // ============================================================
@@ -5202,155 +6801,227 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   // ============================================================
 
   void _showAgentWorkbench() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AgentWorkbenchScreen(
-        settings: settings, activeRepo: effectiveRepo, aiService: aiService,
-        modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
-        onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AgentWorkbenchScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          repos: repos,
+          aiService: aiService,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          selfChecker: aiSelfChecker,
+          onSettingsChanged: _updateSettings,
+          gitHubService: github,
+          storageService: storage,
+        ),
       ),
-    ));
+    );
   }
 
   void _showAiArticleChat() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AgentWorkbenchScreen(
-        settings: settings, activeRepo: effectiveRepo, aiService: aiService,
-        modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
-        onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
-        initialTaskType: AgentTaskType.article,
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AgentWorkbenchScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          repos: repos,
+          aiService: aiService,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          selfChecker: aiSelfChecker,
+          onSettingsChanged: _updateSettings,
+          gitHubService: github,
+          storageService: storage,
+          initialTaskType: AgentTaskType.article,
+        ),
       ),
-    ));
+    );
   }
 
   void _showAiPageChat() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AgentWorkbenchScreen(
-        settings: settings, activeRepo: effectiveRepo, aiService: aiService,
-        modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
-        onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
-        initialTaskType: AgentTaskType.page,
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AgentWorkbenchScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          repos: repos,
+          aiService: aiService,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          selfChecker: aiSelfChecker,
+          onSettingsChanged: _updateSettings,
+          gitHubService: github,
+          storageService: storage,
+          initialTaskType: AgentTaskType.page,
+        ),
       ),
-    ));
+    );
   }
 
   void _showAiThemeChat() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AgentWorkbenchScreen(
-        settings: settings, activeRepo: effectiveRepo, aiService: aiService,
-        modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
-        onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
-        initialTaskType: AgentTaskType.theme,
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AgentWorkbenchScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          repos: repos,
+          aiService: aiService,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          selfChecker: aiSelfChecker,
+          onSettingsChanged: _updateSettings,
+          gitHubService: github,
+          storageService: storage,
+          initialTaskType: AgentTaskType.theme,
+        ),
       ),
-    ));
+    );
   }
 
   void _showThemeStore() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ThemeStoreScreen(
-        repos: repos,
-        onToast: _showToast,
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ThemeStoreScreen(repos: repos, onToast: _showToast),
       ),
-    ));
+    );
   }
 
   /// 一键建站入口（AI 对话主模式）。
   Future<void> _startAiSiteWizard() async {
     // 兼容两套模型配置体系：settings profile 或中转站模型（modelManager）任一可用即可。
     // 中转站模型已配置但 settings.activeAiProfile 为空时不应拦截。
-    final hasModel = settings.ai.hasModelConfig ||
-        await aiModelManager.hasEnabledModels;
+    final hasModel =
+        settings.ai.hasModelConfig || await aiModelManager.hasEnabledModels;
     if (!hasModel) {
       _showToast('请先在 AI 设置中配置模型，再使用一键建站');
       return;
     }
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AiArticleChatScreen(
-        settings: settings, activeRepo: effectiveRepo, aiService: aiService,
-        modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
-        isPage: false, onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
-        showWizardFallback: true,
-        fallbackRepos: repos,
-        onFallbackReposChanged: _updateRepos,
-        initialMessage: '你是一键建站助手。用户想要创建一个新的静态博客站点。\n\n'
-            '【自主原则】你有能力独立完成整个建站并修复任何错误，不要频繁向用户提问或让用户动手。'
-            '只有遇到真正无法自行决定的冲突（如用户必须提供 Token / 明确二选一）才提问。'
-            '你能调用 create_site / create_repo / write_welcome_post / poll_site_build / '
-            'trigger_cf_deploy / register_site / verify_site / file_write / web_search 等全部工具，'
-            '遇到缺失工具或缺失能力时，用 file_write 修改仓库文件、配置、CI 流水线来"创造"所需能力。\n\n'
-            '若用户尚未配置 AI 模型，先引导其在 AI 设置中添加模型（填写 Base URL + API Key → 获取模型 → 保存），否则建站助手无法运行。\n\n'
-            '收集信息（信息不足时逐项追问，一次最多问 3 项）：\n'
-            '1. 建站模式：模式一（GitHub Pages / GitLab Pages，仓库内 CI 自动构建）还是模式二（Cloudflare Pages）\n'
-            '2. Git 托管平台：GitHub 或 GitLab\n'
-            '3. Git 访问令牌。获取方式：GitHub 访问 https://github.com/settings/tokens 生成 PAT（需勾选 repo + workflow scope）；'
-            'GitLab 访问 https://gitlab.com/-/user_settings/personal_access_tokens 生成令牌（需勾选 api scope）\n'
-            '4. 仓库名（同时作为站点项目名）\n'
-            '5. 博客框架（hexo / hugo / jekyll / vuepress / gatsby / nextjs / astro / pelican / 11ty）\n'
-            '6. 站点标题\n'
-            '7. 仓库是否私有（默认私有；注意 GitHub 免费账号私有仓库无法启用 Pages）\n'
-            '8. 是否生成欢迎文章（默认生成）\n'
-            '9. 该账号是否首次建站（重要）：若是第一个站点且模式一，请设 root_domain=true，'
-            '站点将使用顶层域名 <用户名>.github.io / <用户名>.gitlab.io（仓库名自动改为该形式，访问地址无路径后缀，'
-            '如 https://username.github.io/ 而非 /my）；若非首个站点保持 root_domain=false（URL 为 https://username.github.io/仓库名/）。'
-            '注意顶层仓库每账号只能建一个，已存在则不可用。模式二前缀本就可自选，root_domain 无效。\n'
-            '若用户选择模式二（Cloudflare Pages），还需额外提供 Cloudflare API Token（需 pages:edit 权限，在 Cloudflare 控制台生成）与 Account ID。\n\n'
-            '拿到模式、平台、Token、仓库名后即可开始建站，其余信息用合理默认值（框架 hexo、标题取仓库名、私有、生成欢迎文章）自行补全，不必逐项等用户确认。\n\n'
-            '【部署协议（务必遵循，否则页面 404）】各平台静态托管协议：'
-            'GitHub Pages：子目录部署地址为 https://<用户名>.github.io/<仓库名>/，'
-            '站点必须把 base/root 设为 /<仓库名>/（骨架已自动配置），且资源/导航链接都要带上该前缀，否则页面能打开但点击全部 404；'
-            'GitLab Pages 同理，子目录地址 https://<用户名>.gitlab.io/<项目>/；'
-            '顶层站点（root_domain=true）地址为 https://<用户名>.github.io/ 或 https://<用户名>.gitlab.io/，无路径前缀。'
-            'Cloudflare Pages 地址为 https://<项目名>.pages.dev/，顶层部署。'
-            '若站点出现"能打开但点击 404"，优先检查并修复 base/root/pathPrefix/basePath 配置。\n\n'
-            '【执行流程】调用 create_site 工具完成建站（可传 root_domain 参数）。'
-            '建站成功（create_site 或 register_site 返回后）必须调用 verify_site 自检站点：'
-            '传入站点访问地址（root_domain 顶层站点为 https://<用户名>.github.io/ 或 https://<用户名>.gitlab.io/）'
-            '与 expected_title=站点标题，确认 HTTP 可达、页面非空、标题正常。'
-            '若 create_site 失败，不要立即抛给用户，先诊断：可改用分步工具断点续跑自愈：'
-            '先调用 create_repo 建仓库（可传 root_domain），'
-            '再调用 write_welcome_post 写欢迎文章（可选）、poll_site_build 轮询构建获取站点地址；'
-            '模式二用 poll_site_build 拿到 deploy_hook 后调用 trigger_cf_deploy 触发部署。'
-            '【自愈循环】自检失败或构建失败时，根据失败项自行定位并修复：'
-            '用 file_write 修改仓库文件（框架 base/root 配置、CI 流水线、主题、文章等）触发重新构建，'
-            '用 poll_site_build 轮询重建，再 verify_site 复查，循环直到站点可访问且内容正确。'
-            '每一步失败先用 web_search 查对应平台官方文档，不要急着问用户。'
-            '全部完成后调用 register_site 将站点注册到站点管理，并再次 verify_site 确认最终状态。'
-            '残留资源用 rollback_site 清理。'
-            '全程自己做推送（写入仓库即触发）、自己做验证（verify_site），不要要求用户代为操作。',
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AiArticleChatScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          aiService: aiService,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          selfChecker: aiSelfChecker,
+          isPage: false,
+          onSettingsChanged: _updateSettings,
+          gitHubService: github,
+          storageService: storage,
+          showWizardFallback: true,
+          fallbackRepos: repos,
+          onFallbackReposChanged: _updateRepos,
+          initialMessage:
+              '你是一键建站助手。用户想要创建一个新的静态博客站点。\n\n'
+              '【自主原则】你有能力独立完成整个建站并修复任何错误，不要频繁向用户提问或让用户动手。'
+              '只有遇到真正无法自行决定的冲突（如用户必须提供 Token / 明确二选一）才提问。'
+              '你能调用 create_site / create_repo / write_welcome_post / poll_site_build / '
+              'trigger_cf_deploy / register_site / verify_site / file_write / web_search 等全部工具，'
+              '遇到缺失工具或缺失能力时，用 file_write 修改仓库文件、配置、CI 流水线来"创造"所需能力。\n\n'
+              '若用户尚未配置 AI 模型，先引导其在 AI 设置中添加模型（填写 Base URL + API Key → 获取模型 → 保存），否则建站助手无法运行。\n\n'
+              '收集信息（信息不足时逐项追问，一次最多问 3 项）：\n'
+              '1. 建站模式：模式一（GitHub Pages / GitLab Pages，仓库内 CI 自动构建）还是模式二（Cloudflare Pages）\n'
+              '2. Git 托管平台：GitHub 或 GitLab\n'
+              '3. Git 访问令牌。获取方式：GitHub 访问 https://github.com/settings/tokens 生成 PAT（需勾选 repo + workflow scope）；'
+              'GitLab 访问 https://gitlab.com/-/user_settings/personal_access_tokens 生成令牌（需勾选 api scope）\n'
+              '4. 仓库名（同时作为站点项目名）\n'
+              '5. 博客框架（hexo / hugo / jekyll / vuepress / gatsby / nextjs / astro / pelican / 11ty）\n'
+              '6. 站点标题\n'
+              '7. 仓库是否私有（默认私有；注意 GitHub 免费账号私有仓库无法启用 Pages）\n'
+              '8. 是否生成欢迎文章（默认生成）\n'
+              '9. 该账号是否首次建站（重要）：若是第一个站点且模式一，请设 root_domain=true，'
+              '站点将使用顶层域名 <用户名>.github.io / <用户名>.gitlab.io（仓库名自动改为该形式，访问地址无路径后缀，'
+              '如 https://username.github.io/ 而非 /my）；若非首个站点保持 root_domain=false（URL 为 https://username.github.io/仓库名/）。'
+              '注意顶层仓库每账号只能建一个，已存在则不可用。模式二前缀本就可自选，root_domain 无效。\n'
+              '若用户选择模式二（Cloudflare Pages），还需额外提供 Cloudflare API Token（需 pages:edit 权限，在 Cloudflare 控制台生成）与 Account ID。\n\n'
+              '拿到模式、平台、Token、仓库名后即可开始建站，其余信息用合理默认值（框架 hexo、标题取仓库名、私有、生成欢迎文章）自行补全，不必逐项等用户确认。\n\n'
+              '【部署协议（务必遵循，否则页面 404）】各平台静态托管协议：'
+              'GitHub Pages：子目录部署地址为 https://<用户名>.github.io/<仓库名>/，'
+              '站点必须把 base/root 设为 /<仓库名>/（骨架已自动配置），且资源/导航链接都要带上该前缀，否则页面能打开但点击全部 404；'
+              'GitLab Pages 同理，子目录地址 https://<用户名>.gitlab.io/<项目>/；'
+              '顶层站点（root_domain=true）地址为 https://<用户名>.github.io/ 或 https://<用户名>.gitlab.io/，无路径前缀。'
+              'Cloudflare Pages 地址为 https://<项目名>.pages.dev/，顶层部署。'
+              '若站点出现"能打开但点击 404"，优先检查并修复 base/root/pathPrefix/basePath 配置。\n\n'
+              '【执行流程】调用 create_site 工具完成建站（可传 root_domain 参数）。'
+              '建站成功（create_site 或 register_site 返回后）必须调用 verify_site 自检站点：'
+              '传入站点访问地址（root_domain 顶层站点为 https://<用户名>.github.io/ 或 https://<用户名>.gitlab.io/）'
+              '与 expected_title=站点标题，确认 HTTP 可达、页面非空、标题正常。'
+              '若 create_site 失败，不要立即抛给用户，先诊断：可改用分步工具断点续跑自愈：'
+              '先调用 create_repo 建仓库（可传 root_domain），'
+              '再调用 write_welcome_post 写欢迎文章（可选）、poll_site_build 轮询构建获取站点地址；'
+              '模式二用 poll_site_build 拿到 deploy_hook 后调用 trigger_cf_deploy 触发部署。'
+              '【自愈循环】自检失败或构建失败时，根据失败项自行定位并修复：'
+              '用 file_write 修改仓库文件（框架 base/root 配置、CI 流水线、主题、文章等）触发重新构建，'
+              '用 poll_site_build 轮询重建，再 verify_site 复查，循环直到站点可访问且内容正确。'
+              '每一步失败先用 web_search 查对应平台官方文档，不要急着问用户。'
+              '全部完成后调用 register_site 将站点注册到站点管理，并再次 verify_site 确认最终状态。'
+              '残留资源用 rollback_site 清理。'
+              '全程自己做推送（写入仓库即触发）、自己做验证（verify_site），不要要求用户代为操作。',
+        ),
       ),
-    ));
+    );
   }
 
   void _showAiAudit() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AgentWorkbenchScreen(
-        settings: settings, activeRepo: effectiveRepo, aiService: aiService,
-        modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
-        onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
-        initialTaskType: AgentTaskType.audit,
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AgentWorkbenchScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          repos: repos,
+          aiService: aiService,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          selfChecker: aiSelfChecker,
+          onSettingsChanged: _updateSettings,
+          gitHubService: github,
+          storageService: storage,
+          initialTaskType: AgentTaskType.audit,
+        ),
       ),
-    ));
+    );
   }
 
   void _showAiAppDesign() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AgentWorkbenchScreen(
-        settings: settings, activeRepo: effectiveRepo, aiService: aiService,
-        modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
-        onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
-        initialTaskType: AgentTaskType.appDesign,
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AgentWorkbenchScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          repos: repos,
+          aiService: aiService,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          selfChecker: aiSelfChecker,
+          onSettingsChanged: _updateSettings,
+          gitHubService: github,
+          storageService: storage,
+          initialTaskType: AgentTaskType.appDesign,
+        ),
       ),
-    ));
+    );
   }
 
   void _showAiTemplateChat() async {
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AgentWorkbenchScreen(
-        settings: settings, activeRepo: effectiveRepo, aiService: aiService,
-        modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
-        onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
-        initialTaskType: AgentTaskType.template,
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AgentWorkbenchScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          repos: repos,
+          aiService: aiService,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          selfChecker: aiSelfChecker,
+          onSettingsChanged: _updateSettings,
+          gitHubService: github,
+          storageService: storage,
+          initialTaskType: AgentTaskType.template,
+        ),
       ),
-    ));
+    );
     // 工作台可能修改了模板，返回后刷新
     if (!mounted) return;
     final t = await storage.loadAllTemplates();
@@ -5360,18 +7031,24 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   void _showAiModelManager() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AiModelManagerScreen(
-        modelManager: aiModelManager, aiService: aiService, settings: settings,
-        onSettingsChanged: _updateSettings,
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AiModelManagerScreen(
+          modelManager: aiModelManager,
+          aiService: aiService,
+          settings: settings,
+          onSettingsChanged: _updateSettings,
+        ),
       ),
-    ));
+    );
   }
 
   void _showToolLibrary() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ToolLibraryScreen(skillManager: skillManager),
-    ));
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ToolLibraryScreen(skillManager: skillManager),
+      ),
+    );
   }
 
   // ============================================================
@@ -5380,9 +7057,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   void _showToast(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg), behavior: SnackBarBehavior.floating, duration: const Duration(seconds: 2),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   // ============================================================
@@ -5392,82 +7073,224 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   /// GlobalKey 调用的统一入口
   void handleGlobalAction(String action) {
     switch (action) {
-      case 'save':       _saveLocal(); break;
-      case 'publish':    _handlePublish(); break;
-      case 'new':        _newArticle(); break;
-      case 'openFile':   _openFileDialog(); break;
-      case 'bold':       _wrapSelection('**', '**'); break;
-      case 'italic':     _wrapSelection('*', '*'); break;
-      case 'strikethrough': _wrapSelection('~~', '~~'); break;
-      case 'link':       _insertLink(); break;
-      case 'h1':         _prefixLine('# '); break;
-      case 'h2':         _prefixLine('## '); break;
-      case 'h3':         _prefixLine('### '); break;
-      case 'focus':      _switchWorkMode(WorkMode.focus); break;
-      case 'toggleLeft': _toggleLeftPanel(); break;
-      case 'preview':    _openRightDrawer(RightDrawerTab.outline); break;
-      case 'pasteImage': _pasteImageFromClipboard(); break;
-      case 'commandPalette': _openCommandPalette(); break;
-      case 'saveAs':     _saveAsToLocal(); break;
-      case 'findReplace': _showFindReplace(); break;
-      case 'insertToc':  _insertToc(); break;
-      case 'insertTable': _insertTable(); break;
-      case 'addTableRow': _addTableRow(); break;
-      case 'addTableCol': _addTableCol(); break;
-      case 'toggleImagePath': _toggleImagePathMode(); break;
-      case 'formatDocument': _formatDocument(); break;
-      case 'repairPaths': _repairPublishPaths(); break;
-      case 'batchOps':   _showBatchOperations(); break;
+      case 'save':
+        _saveLocal();
+        break;
+      case 'publish':
+        _handlePublish();
+        break;
+      case 'new':
+        _newArticle();
+        break;
+      case 'openFile':
+        _openFileDialog();
+        break;
+      case 'bold':
+        _wrapSelection('**', '**');
+        break;
+      case 'italic':
+        _wrapSelection('*', '*');
+        break;
+      case 'strikethrough':
+        _wrapSelection('~~', '~~');
+        break;
+      case 'link':
+        _insertLink();
+        break;
+      case 'h1':
+        _prefixLine('# ');
+        break;
+      case 'h2':
+        _prefixLine('## ');
+        break;
+      case 'h3':
+        _prefixLine('### ');
+        break;
+      case 'focus':
+        _switchWorkMode(WorkMode.focus);
+        break;
+      case 'toggleLeft':
+        _toggleLeftPanel();
+        break;
+      case 'preview':
+        _openRightDrawer(RightDrawerTab.outline);
+        break;
+      case 'pasteImage':
+        _pasteImageFromClipboard();
+        break;
+      case 'commandPalette':
+        _openCommandPalette();
+        break;
+      case 'saveAs':
+        _saveAsToLocal();
+        break;
+      case 'findReplace':
+        _showFindReplace();
+        break;
+      case 'insertToc':
+        _insertToc();
+        break;
+      case 'insertTable':
+        _insertTable();
+        break;
+      case 'addTableRow':
+        _addTableRow();
+        break;
+      case 'addTableCol':
+        _addTableCol();
+        break;
+      case 'toggleImagePath':
+        _toggleImagePathMode();
+        break;
+      case 'formatDocument':
+        _formatDocument();
+        break;
+      case 'repairPaths':
+        _repairPublishPaths();
+        break;
+      case 'batchOps':
+        _showBatchOperations();
+        break;
       // 导出功能
-      case 'exportHtml':  _exportHtml(); break;
-      case 'exportPdf':   _exportPdf(); break;
-      case 'exportDocx':  _exportDocx(); break;
-      case 'exportEpub':  _exportEpub(); break;
+      case 'exportHtml':
+        _exportHtml();
+        break;
+      case 'exportPdf':
+        _exportPdf();
+        break;
+      case 'exportDocx':
+        _exportDocx();
+        break;
+      case 'exportEpub':
+        _exportEpub();
+        break;
       // 文件管理
-      case 'openFolder':  _openFolderWorkspace(); break;
-      case 'renameFile':  _renameCurrentFile(); break;
-      case 'moveFile':    _moveCurrentFile(); break;
+      case 'openFolder':
+        _openFolderWorkspace();
+        break;
+      case 'renameFile':
+        _renameCurrentFile();
+        break;
+      case 'moveFile':
+        _moveCurrentFile();
+        break;
       // 编辑器自定义功能
-      case 'fontSettings': _showFontSettings(); break;
-      case 'themePicker':  _showThemePicker(); break;
-      case 'customCss':    _showCustomCssEditor(); break;
-      case 'shortcutEditor': _showShortcutEditor(); break;
-      case 'help':          _showHelpDialog(); break;
-      case 'recycleBin':    _openRecycleBin(); break;
-      case 'imageBed':      _openImageBedManager(); break;
-      case 'versionHistory': _openVersionHistory(); break;
-      case 'proxySettings': _openProxySettings(); break;
-      case 'globalSearch':  _openGlobalSearch(); break;
-      case 'cacheCleanup': _openCacheCleanup(); break;
-      case 'exportLogs':   _exportLogs(); break;
-      case 'fixEncoding':  _fixEncoding(); break;
-      case 'offlineMode':  _toggleOfflineMode(); break;
-      case 'nightEye':     _toggleNightEyeProtection(); break;
-      case 'linkChecker':  _openLinkChecker(); break;
-      case 'batchTools':   _openBatchTools(); break;
-      case 'aiTemplates':  _openAiPromptTemplates(); break;
-      case 'importHtml':   _importHtmlFile(); break;
-      case 'importDocx':   _importDocxFile(); break;
-      case 'conflictResolve': _checkAndResolveConflicts(); break;
-      case 'aiSelection':  _sendSelectionToAi(); break;
-      case 'aiFullText':   _sendFullToAi(); break;
-      case 'schedulePublish': _schedulePublish(); break;
-      case 'publishChangeLog': _showPublishChangeLog(''); break;
-      case 'aiDiffPreview': _showAiDiffPreview(); break;
-      case 'p2pSync':     _openP2PSync(); break;
+      case 'fontSettings':
+        _showFontSettings();
+        break;
+      case 'themePicker':
+        _showThemePicker();
+        break;
+      case 'customCss':
+        _showCustomCssEditor();
+        break;
+      case 'shortcutEditor':
+        _showShortcutEditor();
+        break;
+      case 'help':
+        _showHelpDialog();
+        break;
+      case 'recycleBin':
+        _openRecycleBin();
+        break;
+      case 'imageBed':
+        _openImageBedManager();
+        break;
+      case 'versionHistory':
+        _openVersionHistory();
+        break;
+      case 'proxySettings':
+        _openProxySettings();
+        break;
+      case 'globalSearch':
+        _openGlobalSearch();
+        break;
+      case 'cacheCleanup':
+        _openCacheCleanup();
+        break;
+      case 'exportLogs':
+        _exportLogs();
+        break;
+      case 'fixEncoding':
+        _fixEncoding();
+        break;
+      case 'offlineMode':
+        _toggleOfflineMode();
+        break;
+      case 'nightEye':
+        _toggleNightEyeProtection();
+        break;
+      case 'linkChecker':
+        _openLinkChecker();
+        break;
+      case 'batchTools':
+        _openBatchTools();
+        break;
+      case 'aiTemplates':
+        _openAiPromptTemplates();
+        break;
+      case 'importHtml':
+        _importHtmlFile();
+        break;
+      case 'importDocx':
+        _importDocxFile();
+        break;
+      case 'conflictResolve':
+        _checkAndResolveConflicts();
+        break;
+      case 'aiSelection':
+        _sendSelectionToAi();
+        break;
+      case 'aiFullText':
+        _sendFullToAi();
+        break;
+      case 'schedulePublish':
+        _schedulePublish();
+        break;
+      case 'publishChangeLog':
+        _showPublishChangeLog('');
+        break;
+      case 'aiDiffPreview':
+        _showAiDiffPreview();
+        break;
+      case 'p2pSync':
+        _openP2PSync();
+        break;
       // 快捷键新增
-      case 'newArticle':     _newArticle(); break;
-      case 'sync':           _handleSync(); break;
-      case 'saveLocal':      _saveLocal(); break;
-      case 'toggleLeftPanel':    _toggleLeftPanel(); break;
-      case 'toggleRightDrawer':  _toggleRightDrawer(); break;
-      case 'focusMode':      _switchWorkMode(WorkMode.focus); break;
-      case 'sourceMode':     _switchWorkMode(WorkMode.source); break;
-      case 'workspaceMode':  _switchWorkMode(WorkMode.workspace); break;
-      case 'insertImage':    _insertImage(); break;
+      case 'newArticle':
+        _newArticle();
+        break;
+      case 'sync':
+        _handleSync();
+        break;
+      case 'saveLocal':
+        _saveLocal();
+        break;
+      case 'toggleLeftPanel':
+        _toggleLeftPanel();
+        break;
+      case 'toggleRightDrawer':
+        _toggleRightDrawer();
+        break;
+      case 'focusMode':
+        _switchWorkMode(WorkMode.focus);
+        break;
+      case 'sourceMode':
+        _switchWorkMode(WorkMode.source);
+        break;
+      case 'workspaceMode':
+        _switchWorkMode(WorkMode.workspace);
+        break;
+      case 'insertImage':
+        _insertImage();
+        break;
       case 'find':
-      case 'replace':        _showFindReplace(); break;
-      case 'escape':         _handleEscape(); break;
+      case 'replace':
+        _showFindReplace();
+        break;
+      case 'escape':
+        _handleEscape();
+        break;
     }
   }
 
@@ -5490,7 +7313,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   /// 记录最近打开的文件
   void _addRecentFile(String path, String name) {
     _recentFiles.removeWhere((f) => f.path == path);
-    _recentFiles.insert(0, RecentFile(path: path, name: name, openedAt: DateTime.now()));
+    _recentFiles.insert(
+      0,
+      RecentFile(path: path, name: name, openedAt: DateTime.now()),
+    );
     if (_recentFiles.length > _maxRecentFiles) {
       _recentFiles.removeRange(_maxRecentFiles, _recentFiles.length);
     }
@@ -5501,10 +7327,22 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     try {
       final rootDir = await storage.root;
       final file = File('${rootDir.path}/recent_files.json');
-      await file.writeAsString(jsonEncode(
-        _recentFiles.map((f) => {'path': f.path, 'name': f.name, 'openedAt': f.openedAt.toIso8601String()}).toList(),
-      ));
-    } catch (e) { debugPrint('Shell: git status failed: $e'); }
+      await file.writeAsString(
+        jsonEncode(
+          _recentFiles
+              .map(
+                (f) => {
+                  'path': f.path,
+                  'name': f.name,
+                  'openedAt': f.openedAt.toIso8601String(),
+                },
+              )
+              .toList(),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Shell: git status failed: $e');
+    }
   }
 
   Future<void> _loadRecentFiles() async {
@@ -5515,14 +7353,20 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         final list = jsonDecode(await file.readAsString()) as List;
         _recentFiles.clear();
         for (final item in list) {
-          _recentFiles.add(RecentFile(
-            path: item['path'] as String,
-            name: item['name'] as String,
-            openedAt: DateTime.tryParse(item['openedAt']?.toString() ?? '') ?? DateTime.now(),
-          ));
+          _recentFiles.add(
+            RecentFile(
+              path: item['path'] as String,
+              name: item['name'] as String,
+              openedAt:
+                  DateTime.tryParse(item['openedAt']?.toString() ?? '') ??
+                  DateTime.now(),
+            ),
+          );
         }
       }
-    } catch (e) { debugPrint('Shell: git log failed: $e'); }
+    } catch (e) {
+      debugPrint('Shell: git log failed: $e');
+    }
   }
 
   /// 文件打开对话框
@@ -5538,7 +7382,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       if (path == null) return;
       final file = File(path);
       final content = await file.readAsString();
-      final fileName = path.split('/').last.replaceAll(RegExp(r'\.(md|markdown|txt)$'), '');
+      final fileName = path
+          .split('/')
+          .last
+          .replaceAll(RegExp(r'\.(md|markdown|txt)$'), '');
       openExternalFile(fileName, content, path);
     } catch (e) {
       _showToast('打开文件失败: $e');
@@ -5555,7 +7402,11 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       final data = await Clipboard.getData(Clipboard.kTextPlain);
       if (data?.text != null) {
         final text = data!.text!.trim();
-        if (text.startsWith('http') && RegExp(r'\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$', caseSensitive: false).hasMatch(text)) {
+        if (text.startsWith('http') &&
+            RegExp(
+              r'\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$',
+              caseSensitive: false,
+            ).hasMatch(text)) {
           _insertText(imageService.markdownImage(text));
           _showToast('图片链接已插入');
           return;
@@ -5569,14 +7420,22 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         if (imgData != null && imgData.text != null) {
           imgBytes = Uint8List.fromList(imgData.text!.codeUnits);
         }
-      } catch (e) { debugPrint('Shell: clipboard image read failed: $e'); }
+      } catch (e) {
+        debugPrint('Shell: clipboard image read failed: $e');
+      }
 
-      if (imgBytes != null && imgBytes.isNotEmpty && _editorRepo != null && _workspaceFolder != null) {
+      if (imgBytes != null &&
+          imgBytes.isNotEmpty &&
+          _editorRepo != null &&
+          _workspaceFolder != null) {
         _editor.setEditorBusy(true);
         _editor.setEditorStatus('正在保存剪贴板图片...');
         try {
           // 自动压缩图片
-          final compressed = await imageService.compressIfNeeded(imgBytes, settings);
+          final compressed = await imageService.compressIfNeeded(
+            imgBytes,
+            settings,
+          );
 
           // 生成文件名：时间戳.png
           final timestamp = DateTime.now().millisecondsSinceEpoch;
@@ -5591,7 +7450,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           );
 
           // 插入相对路径
-          _insertText(imageService.markdownImage('/$relativePath', alt: 'image'));
+          _insertText(
+            imageService.markdownImage('/$relativePath', alt: 'image'),
+          );
           _showToast('图片已保存到本地: $relativePath');
         } catch (e) {
           _showToast('图片保存失败: $e');
@@ -5645,7 +7506,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final sel2 = txt.substring(sel.start, sel.end);
     _doc.contentCtrl.value = TextEditingValue(
       text: txt.replaceRange(sel.start, sel.end, '$l$sel2$r'),
-      selection: TextSelection.collapsed(offset: sel.start + l.length + sel2.length),
+      selection: TextSelection.collapsed(
+        offset: sel.start + l.length + sel2.length,
+      ),
     );
     _doc.contentFocus.requestFocus();
   }
@@ -5654,7 +7517,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   void _insertHeading(int level) {
     final prefix = '${'#' * level} ';
     final txt = _doc.contentCtrl.text;
-    final s = _doc.contentCtrl.selection.isValid ? _doc.contentCtrl.selection.start : txt.length;
+    final s = _doc.contentCtrl.selection.isValid
+        ? _doc.contentCtrl.selection.start
+        : txt.length;
     final lineStart = txt.lastIndexOf('\n', s - 1) + 1;
     _doc.contentCtrl.value = TextEditingValue(
       text: txt.replaceRange(lineStart, lineStart, prefix),
@@ -5668,7 +7533,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final sel = _doc.contentCtrl.selection;
     if (sel.isValid && sel.start != sel.end) {
       final selected = _doc.contentCtrl.text.substring(sel.start, sel.end);
-      final lines = selected.split('\n').map((l) => l.isEmpty ? l : '$marker$l').join('\n');
+      final lines = selected
+          .split('\n')
+          .map((l) => l.isEmpty ? l : '$marker$l')
+          .join('\n');
       final txt = _doc.contentCtrl.text;
       _doc.contentCtrl.value = TextEditingValue(
         text: txt.replaceRange(sel.start, sel.end, lines),
@@ -5689,7 +7557,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   void _prefixLine(String prefix) {
     final txt = _doc.contentCtrl.text;
     final sel = _doc.contentCtrl.selection;
-    final lineStart = sel.isValid ? txt.lastIndexOf('\n', sel.start - 1) + 1 : 0;
+    final lineStart = sel.isValid
+        ? txt.lastIndexOf('\n', sel.start - 1) + 1
+        : 0;
     _doc.contentCtrl.value = TextEditingValue(
       text: txt.replaceRange(lineStart, lineStart, prefix),
       selection: TextSelection.collapsed(offset: lineStart + prefix.length),
@@ -5702,13 +7572,18 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   void _insertLink() {
     final sel = _doc.contentCtrl.selection;
     final txt = _doc.contentCtrl.text;
-    final selected = (sel.isValid && sel.start != sel.end) ? txt.substring(sel.start, sel.end) : '链接文本';
+    final selected = (sel.isValid && sel.start != sel.end)
+        ? txt.substring(sel.start, sel.end)
+        : '链接文本';
     final s = sel.isValid ? sel.start : txt.length;
     final e = sel.isValid ? sel.end : txt.length;
     final md = '[$selected](url)';
     _doc.contentCtrl.value = TextEditingValue(
       text: txt.replaceRange(s, e, md),
-      selection: TextSelection(baseOffset: s + md.length - 4, extentOffset: s + md.length - 1),
+      selection: TextSelection(
+        baseOffset: s + md.length - 4,
+        extentOffset: s + md.length - 1,
+      ),
     );
     _doc.contentFocus.requestFocus();
     _onContentChanged();
@@ -5750,11 +7625,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Row(children: [
-            Icon(Icons.text_fields, size: 20),
-            SizedBox(width: 8),
-            Text('字体设置', style: TextStyle(fontSize: 17)),
-          ]),
+          title: const Row(
+            children: [
+              Icon(Icons.text_fields, size: 20),
+              SizedBox(width: 8),
+              Text('字体设置', style: TextStyle(fontSize: 17)),
+            ],
+          ),
           content: SizedBox(
             width: 420,
             child: Column(
@@ -5762,13 +7639,27 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // 字体大小
-                Row(children: [
-                  const Icon(Icons.format_size, size: 16),
-                  const SizedBox(width: 8),
-                  const Text('字体大小', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                  const Spacer(),
-                  Text('${localFontSize.toInt()}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                ]),
+                Row(
+                  children: [
+                    const Icon(Icons.format_size, size: 16),
+                    const SizedBox(width: 8),
+                    const Text(
+                      '字体大小',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${localFontSize.toInt()}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
                 Slider(
                   value: localFontSize,
                   min: 12,
@@ -5779,13 +7670,27 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 ),
                 const SizedBox(height: 12),
                 // 行高
-                Row(children: [
-                  const Icon(Icons.format_line_spacing, size: 16),
-                  const SizedBox(width: 8),
-                  const Text('行高', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                  const Spacer(),
-                  Text(localLineHeight.toStringAsFixed(1), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                ]),
+                Row(
+                  children: [
+                    const Icon(Icons.format_line_spacing, size: 16),
+                    const SizedBox(width: 8),
+                    const Text(
+                      '行高',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      localLineHeight.toStringAsFixed(1),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
                 Slider(
                   value: localLineHeight,
                   min: 1.2,
@@ -5796,24 +7701,44 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                 ),
                 const SizedBox(height: 12),
                 // 字体族
-                Row(children: [
-                  const Icon(Icons.font_download_outlined, size: 16),
-                  const SizedBox(width: 8),
-                  const Text('字体族', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                ]),
+                Row(
+                  children: [
+                    const Icon(Icons.font_download_outlined, size: 16),
+                    const SizedBox(width: 8),
+                    const Text(
+                      '字体族',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
                   value: localFontFamily,
                   decoration: const InputDecoration(
                     isDense: true,
                     border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 10,
+                    ),
                   ),
                   items: const [
-                    DropdownMenuItem(value: 'System', child: Text('System（系统默认）')),
-                    DropdownMenuItem(value: 'monospace', child: Text('monospace（等宽）')),
+                    DropdownMenuItem(
+                      value: 'System',
+                      child: Text('System（系统默认）'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'monospace',
+                      child: Text('monospace（等宽）'),
+                    ),
                     DropdownMenuItem(value: 'serif', child: Text('serif（衬线）')),
-                    DropdownMenuItem(value: 'sans-serif', child: Text('sans-serif（无衬线）')),
+                    DropdownMenuItem(
+                      value: 'sans-serif',
+                      child: Text('sans-serif（无衬线）'),
+                    ),
                   ],
                   onChanged: (v) {
                     if (v != null) setDialogState(() => localFontFamily = v);
@@ -5891,7 +7816,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     try {
       return HighlightView(
         code.trim(),
-        language: (language != null && language.isNotEmpty) ? language : 'plaintext',
+        language: (language != null && language.isNotEmpty)
+            ? language
+            : 'plaintext',
         theme: _getHighlightTheme(),
         padding: const EdgeInsets.all(12),
         textStyle: TextStyle(
@@ -5900,7 +7827,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
           height: _editor.editorLineHeight * 0.85,
         ),
       );
-    } catch (e) { debugPrint('Shell: site switch failed: $e');
+    } catch (e) {
+      debugPrint('Shell: site switch failed: $e');
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(12),
@@ -5948,20 +7876,31 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     // 同时匹配所有特殊块
     final allMatches = <_SpecialBlock>[];
     for (final m in mermaidPattern.allMatches(markdown)) {
-      allMatches.add(_SpecialBlock(m.start, m.end, 'mermaid', m.group(1) ?? ''));
+      allMatches.add(
+        _SpecialBlock(m.start, m.end, 'mermaid', m.group(1) ?? ''),
+      );
     }
     for (final m in latexBlockPattern.allMatches(markdown)) {
       // 避免与 mermaid 块重叠
       if (!allMatches.any((b) => m.start >= b.start && m.start < b.end)) {
-        allMatches.add(_SpecialBlock(m.start, m.end, 'latex', m.group(1) ?? ''));
+        allMatches.add(
+          _SpecialBlock(m.start, m.end, 'latex', m.group(1) ?? ''),
+        );
       }
     }
     for (final m in codeBlockPattern.allMatches(markdown)) {
       final lang = m.group(1) ?? '';
       if (lang.toLowerCase() == 'mermaid') continue; // 已由 mermaid 处理
       if (!allMatches.any((b) => m.start >= b.start && m.start < b.end)) {
-        allMatches.add(_SpecialBlock(m.start, m.end, 'code', m.group(2) ?? '',
-            lang: lang.isNotEmpty ? lang : null));
+        allMatches.add(
+          _SpecialBlock(
+            m.start,
+            m.end,
+            'code',
+            m.group(2) ?? '',
+            lang: lang.isNotEmpty ? lang : null,
+          ),
+        );
       }
     }
     allMatches.sort((a, b) => a.start.compareTo(b.start));
@@ -6006,15 +7945,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     final cssStyle = _buildCustomMarkdownStyleSheet();
 
     // 处理内联 LaTeX $...$
-    if (text.contains(RegExp(r'(?<!\$)\$(?!\$)[^$]+\$(?!\$)')) && text.length < 5000) {
+    if (text.contains(RegExp(r'(?<!\$)\$(?!\$)[^$]+\$(?!\$)')) &&
+        text.length < 5000) {
       return _buildInlineLatexMarkdown(text, cssStyle);
     }
 
-    return Markdown(
-      data: text,
-      selectable: true,
-      styleSheet: cssStyle,
-    );
+    return Markdown(data: text, selectable: true, styleSheet: cssStyle);
   }
 
   /// 构建含内联 LaTeX 的 Markdown 渲染
@@ -6027,27 +7963,44 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       if (m.start > lastEnd) {
         final before = text.substring(lastEnd, m.start);
         if (before.isNotEmpty) {
-          parts.add(Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Markdown(data: before, selectable: true, styleSheet: styleSheet),
-          ));
+          parts.add(
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Markdown(
+                data: before,
+                selectable: true,
+                styleSheet: styleSheet,
+              ),
+            ),
+          );
         }
       }
       final latex = m.group(1) ?? '';
-      parts.add(Text('\$$latex\$', style: TextStyle(
-        fontSize: _editor.editorFontSize,
-        color: _currentEditorTheme.textColor,
-        fontStyle: FontStyle.italic,
-      )));
+      parts.add(
+        Text(
+          '\$$latex\$',
+          style: TextStyle(
+            fontSize: _editor.editorFontSize,
+            color: _currentEditorTheme.textColor,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      );
       lastEnd = m.end;
     }
     if (lastEnd < text.length) {
       final remaining = text.substring(lastEnd);
       if (remaining.isNotEmpty) {
-        parts.add(Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: Markdown(data: remaining, selectable: true, styleSheet: styleSheet),
-        ));
+        parts.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Markdown(
+              data: remaining,
+              selectable: true,
+              styleSheet: styleSheet,
+            ),
+          ),
+        );
       }
     }
 
@@ -6081,13 +8034,21 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     if (_editor.customCss.isNotEmpty) {
       try {
         final cssMap = _parseSimpleCss(_editor.customCss);
-        if (cssMap.containsKey('h1-size')) h1Size = double.tryParse(cssMap['h1-size']!);
-        if (cssMap.containsKey('h2-size')) h2Size = double.tryParse(cssMap['h2-size']!);
-        if (cssMap.containsKey('h3-size')) h3Size = double.tryParse(cssMap['h3-size']!);
-        if (cssMap.containsKey('code-bg')) codeBg = _parseColor(cssMap['code-bg']!);
-        if (cssMap.containsKey('code-color')) codeText = _parseColor(cssMap['code-color']!);
-        if (cssMap.containsKey('link-color')) linkColor = _parseColor(cssMap['link-color']!);
-      } catch (e) { debugPrint('Shell: markdown export failed: $e'); }
+        if (cssMap.containsKey('h1-size'))
+          h1Size = double.tryParse(cssMap['h1-size']!);
+        if (cssMap.containsKey('h2-size'))
+          h2Size = double.tryParse(cssMap['h2-size']!);
+        if (cssMap.containsKey('h3-size'))
+          h3Size = double.tryParse(cssMap['h3-size']!);
+        if (cssMap.containsKey('code-bg'))
+          codeBg = _parseColor(cssMap['code-bg']!);
+        if (cssMap.containsKey('code-color'))
+          codeText = _parseColor(cssMap['code-color']!);
+        if (cssMap.containsKey('link-color'))
+          linkColor = _parseColor(cssMap['link-color']!);
+      } catch (e) {
+        debugPrint('Shell: markdown export failed: $e');
+      }
     }
 
     return MarkdownStyleSheet(
@@ -6125,13 +8086,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         color: codeBg,
         borderRadius: BorderRadius.circular(8),
       ),
-      a: TextStyle(
-        color: linkColor,
-        fontSize: _editor.editorFontSize,
-      ),
+      a: TextStyle(color: linkColor, fontSize: _editor.editorFontSize),
       blockquoteDecoration: BoxDecoration(
         color: theme.blockquoteBackground,
-        border: Border(left: BorderSide(color: theme.blockquoteBorderColor, width: 3)),
+        border: Border(
+          left: BorderSide(color: theme.blockquoteBorderColor, width: 3),
+        ),
       ),
     );
   }
@@ -6164,15 +8124,25 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       }
       // 简单颜色名称映射
       const colorNames = {
-        'red': 0xFFFF0000, 'blue': 0xFF0000FF, 'green': 0xFF008000,
-        'black': 0xFF000000, 'white': 0xFFFFFFFF, 'gray': 0xFF808080,
-        'grey': 0xFF808080, 'orange': 0xFFFFA500, 'purple': 0xFF800080,
-        'yellow': 0xFFFFFF00, 'cyan': 0xFF00FFFF, 'magenta': 0xFFFF00FF,
+        'red': 0xFFFF0000,
+        'blue': 0xFF0000FF,
+        'green': 0xFF008000,
+        'black': 0xFF000000,
+        'white': 0xFFFFFFFF,
+        'gray': 0xFF808080,
+        'grey': 0xFF808080,
+        'orange': 0xFFFFA500,
+        'purple': 0xFF800080,
+        'yellow': 0xFFFFFF00,
+        'cyan': 0xFF00FFFF,
+        'magenta': 0xFFFF00FF,
       };
       if (colorNames.containsKey(colorStr.toLowerCase())) {
         return Color(colorNames[colorStr.toLowerCase()]!);
       }
-    } catch (e) { debugPrint('Shell: image upload failed: $e'); }
+    } catch (e) {
+      debugPrint('Shell: image upload failed: $e');
+    }
     return null;
   }
 
@@ -6189,11 +8159,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         builder: (ctx, setDialogState) {
           String selectedTheme = _editor.editorTheme;
           return AlertDialog(
-            title: const Row(children: [
-              Icon(Icons.palette_outlined, size: 20),
-              SizedBox(width: 8),
-              Text('编辑器主题', style: TextStyle(fontSize: 17)),
-            ]),
+            title: const Row(
+              children: [
+                Icon(Icons.palette_outlined, size: 20),
+                SizedBox(width: 8),
+                Text('编辑器主题', style: TextStyle(fontSize: 17)),
+              ],
+            ),
             content: SizedBox(
               width: 480,
               child: Column(
@@ -6231,7 +8203,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: getEditorTheme(selectedTheme).codeBlockBackground,
+                            color: getEditorTheme(
+                              selectedTheme,
+                            ).codeBlockBackground,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -6239,7 +8213,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                             style: TextStyle(
                               fontFamily: 'monospace',
                               fontSize: 12,
-                              color: getEditorTheme(selectedTheme).codeBlockTextColor,
+                              color: getEditorTheme(
+                                selectedTheme,
+                              ).codeBlockTextColor,
                             ),
                           ),
                         ),
@@ -6251,25 +8227,29 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                   SizedBox(
                     height: 200,
                     child: GridView.builder(
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 4,
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: 8,
-                        childAspectRatio: 1.3,
-                      ),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 4,
+                            mainAxisSpacing: 8,
+                            crossAxisSpacing: 8,
+                            childAspectRatio: 1.3,
+                          ),
                       itemCount: themeKeys.length,
                       itemBuilder: (_, i) {
                         final key = themeKeys[i];
                         final theme = editorThemes[key]!;
                         final isSelected = selectedTheme == key;
                         return GestureDetector(
-                          onTap: () => setDialogState(() => selectedTheme = key),
+                          onTap: () =>
+                              setDialogState(() => selectedTheme = key),
                           child: Container(
                             decoration: BoxDecoration(
                               color: theme.backgroundColor,
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: isSelected ? Theme.of(ctx).colorScheme.primary : Colors.grey.shade300,
+                                color: isSelected
+                                    ? Theme.of(ctx).colorScheme.primary
+                                    : Colors.grey.shade300,
                                 width: isSelected ? 2.5 : 1,
                               ),
                             ),
@@ -6280,7 +8260,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                                   theme.name,
                                   style: TextStyle(
                                     fontSize: 11,
-                                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
                                     color: theme.textColor,
                                   ),
                                 ),
@@ -6342,79 +8324,82 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   void _showCustomCssEditor() {
     final cssCtrl = TextEditingController(text: _editor.customCss);
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(children: [
-          Icon(Icons.css, size: 20),
-          SizedBox(width: 8),
-          Text('自定义 CSS', style: TextStyle(fontSize: 17)),
-        ]),
-        content: SizedBox(
-          width: 500,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+    try {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
             children: [
-              Text(
-                '支持简化的 CSS 属性映射，如：\n'
-                'h1-size: 28; h2-size: 22; h3-size: 18;\n'
-                'code-bg: #f5f5f5; code-color: #333;\n'
-                'link-color: #0366d6;',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontFamily: 'monospace',
-                  color: Colors.grey.shade600,
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: cssCtrl,
-                maxLines: 10,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 13,
-                ),
-                decoration: const InputDecoration(
-                  hintText: '在此输入自定义 CSS 规则...',
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.all(12),
-                ),
-              ),
+              Icon(Icons.css, size: 20),
+              SizedBox(width: 8),
+              Text('自定义 CSS', style: TextStyle(fontSize: 17)),
             ],
           ),
+          content: SizedBox(
+            width: 500,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '支持简化的 CSS 属性映射，如：\n'
+                  'h1-size: 28; h2-size: 22; h3-size: 18;\n'
+                  'code-bg: #f5f5f5; code-color: #333;\n'
+                  'link-color: #0366d6;',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: cssCtrl,
+                  maxLines: 10,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                  decoration: const InputDecoration(
+                    hintText: '在此输入自定义 CSS 规则...',
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.all(12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                cssCtrl.text = '';
+                if (mounted) {
+                  _editor.setCustomCss('');
+                }
+                _saveEditorSettings();
+                _showToast('CSS 已重置');
+                Navigator.pop(ctx);
+              },
+              child: const Text('重置'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                if (mounted) {
+                  _editor.setCustomCss(cssCtrl.text);
+                }
+                await _saveEditorSettings();
+                _showToast('自定义 CSS 已应用');
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('应用'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              cssCtrl.text = '';
-              if (mounted) {
-                _editor.setCustomCss('');
-              }
-              _saveEditorSettings();
-              _showToast('CSS 已重置');
-              Navigator.pop(ctx);
-            },
-            child: const Text('重置'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (mounted) {
-                _editor.setCustomCss(cssCtrl.text);
-              }
-              await _saveEditorSettings();
-              _showToast('自定义 CSS 已应用');
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('应用'),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      cssCtrl.dispose();
+    }
   }
 
   // ──────────────────────────────────────────────
@@ -6480,11 +8465,13 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
           return AlertDialog(
-            title: const Row(children: [
-              Icon(Icons.keyboard, size: 20),
-              SizedBox(width: 8),
-              Text('快捷键设置', style: TextStyle(fontSize: 17)),
-            ]),
+            title: const Row(
+              children: [
+                Icon(Icons.keyboard, size: 20),
+                SizedBox(width: 8),
+                Text('快捷键设置', style: TextStyle(fontSize: 17)),
+              ],
+            ),
             content: SizedBox(
               width: 500,
               height: 450,
@@ -6514,7 +8501,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
                         return ListTile(
                           dense: true,
-                          title: Text(label, style: const TextStyle(fontSize: 13)),
+                          title: Text(
+                            label,
+                            style: const TextStyle(fontSize: 13),
+                          ),
                           trailing: SizedBox(
                             width: 140,
                             child: TextField(
@@ -6527,9 +8517,15 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                               ),
                               decoration: InputDecoration(
                                 hintText: '未设置',
-                                hintStyle: const TextStyle(fontSize: 12, color: Colors.grey),
+                                hintStyle: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
                                 isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 6,
+                                ),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(4),
                                 ),
@@ -6541,7 +8537,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
                                 setDialogState(() {});
                               },
                               onTapOutside: (_) {
-                                _editor.setCustomShortcut(action, ctrl.text.trim());
+                                _editor.setCustomShortcut(
+                                  action,
+                                  ctrl.text.trim(),
+                                );
                                 _saveEditorSettings();
                                 widget.onShortcutsChanged?.call();
                                 setDialogState(() {});
@@ -6591,14 +8590,20 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFF6F8FA),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey.shade300),
+        border: Border.all(
+          color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey.shade300,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.schema, size: 16, color: Theme.of(context).colorScheme.primary),
+              Icon(
+                Icons.schema,
+                size: 16,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               const SizedBox(width: 6),
               Text(
                 'Mermaid 图表（桌面端仅显示源码）',
@@ -6616,7 +8621,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
             style: TextStyle(
               fontSize: 13,
               fontFamily: 'monospace',
-              color: isDark ? Colors.white.withOpacity(0.8) : const Color(0xFF1F2937),
+              color: isDark
+                  ? Colors.white.withOpacity(0.8)
+                  : const Color(0xFF1F2937),
             ),
           ),
         ],
@@ -6659,11 +8666,16 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Row(children: [
-          Icon(Icons.help_outline, size: 22),
-          SizedBox(width: 8),
-          Text('帮助 · 快捷键速查', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-        ]),
+        title: const Row(
+          children: [
+            Icon(Icons.help_outline, size: 22),
+            SizedBox(width: 8),
+            Text(
+              '帮助 · 快捷键速查',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
         content: SizedBox(
           width: 700,
           height: 520,
@@ -6673,7 +8685,10 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
               mainAxisSize: MainAxisSize.min,
               children: [
                 const TabBar(
-                  labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  labelStyle: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                   unselectedLabelStyle: TextStyle(fontSize: 13),
                   tabs: [
                     Tab(text: '快捷键'),
@@ -6735,54 +8750,162 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     ];
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      children: shortcuts.map((e) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Row(children: [
-          Container(
-            width: 130,
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(4),
+      children: shortcuts
+          .map(
+            (e) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                children: [
+                  Container(
+                    width: 130,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      e.$1,
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey.shade800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(e.$2, style: const TextStyle(fontSize: 13)),
+                  ),
+                ],
+              ),
             ),
-            child: Text(e.$1, style: TextStyle(fontFamily: 'monospace', fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade800)),
-          ),
-          const SizedBox(width: 16),
-          Expanded(child: Text(e.$2, style: const TextStyle(fontSize: 13))),
-        ]),
-      )).toList(),
+          )
+          .toList(),
     );
   }
 
   Widget _buildHelpFeatures() {
     final features = [
-      ('写作编辑', ['Markdown 实时预览', '代码语法高亮（flutter_highlight）', 'LaTeX 数学公式（块级+内联）', 'Mermaid 图表渲染', '查找替换（支持正则）', 'TOC 自动生成', '可视化表格编辑', '全文格式化', '打字机模式（光标居中）']),
-      ('图片处理', ['剪贴板截图粘贴上传', '本地图片选择上传', '批量插图+预处理压缩', '图片尺寸快捷设置', '图片路径相对/绝对切换', '发布前路径自动修复', '图床管理面板', '图片死链检测']),
-      ('多格式导出', ['HTML（完整模板）', 'PDF（printing 包）', 'DOCX（OOXML）', 'EPUB（电子书）', '另存为到本地']),
-      ('AI 能力', ['AI 润色/续写', 'AI 博文/页面创作', 'AI 主题迁移', 'AI 站点巡检', 'AI 应用 UI 设计', 'AI 选区改写', 'AI 全文润色', 'AI 输出对比（diff 预览）', 'AI 提示词模板库', 'AI 自主创建/管理技能']),
+      (
+        '写作编辑',
+        [
+          'Markdown 实时预览',
+          '代码语法高亮（flutter_highlight）',
+          'LaTeX 数学公式（块级+内联）',
+          'Mermaid 图表渲染',
+          '查找替换（支持正则）',
+          'TOC 自动生成',
+          '可视化表格编辑',
+          '全文格式化',
+          '打字机模式（光标居中）',
+        ],
+      ),
+      (
+        '图片处理',
+        [
+          '剪贴板截图粘贴上传',
+          '本地图片选择上传',
+          '批量插图+预处理压缩',
+          '图片尺寸快捷设置',
+          '图片路径相对/绝对切换',
+          '发布前路径自动修复',
+          '图床管理面板',
+          '图片死链检测',
+        ],
+      ),
+      (
+        '多格式导出',
+        ['HTML（完整模板）', 'PDF（printing 包）', 'DOCX（OOXML）', 'EPUB（电子书）', '另存为到本地'],
+      ),
+      (
+        'AI 能力',
+        [
+          'AI 润色/续写',
+          'AI 博文/页面创作',
+          'AI 主题迁移',
+          'AI 站点巡检',
+          'AI 应用 UI 设计',
+          'AI 选区改写',
+          'AI 全文润色',
+          'AI 输出对比（diff 预览）',
+          'AI 提示词模板库',
+          'AI 自主创建/管理技能',
+        ],
+      ),
       ('编辑器自定义', ['7 种编辑器主题', '自定义字体/字号/行高', '自定义 CSS', '自定义快捷键', '夜间护眼滤镜']),
-      ('文件管理', ['最近打开文件（10条）', '文件夹工作区', '文件重命名/移动', '拖拽 .md 文件导入', '回收站（防误删）', '版本历史快照', '编码修复工具']),
-      ('同步与发布', ['GitHub / WebDAV 云同步', '同步冲突可视化对比', '冲突策略（本地/云端优先）', '一键发布到 GitHub/CMS', '发布前预检测', '定时发布', '发布变更日志']),
+      (
+        '文件管理',
+        [
+          '最近打开文件（10条）',
+          '文件夹工作区',
+          '文件重命名/移动',
+          '拖拽 .md 文件导入',
+          '回收站（防误删）',
+          '版本历史快照',
+          '编码修复工具',
+        ],
+      ),
+      (
+        '同步与发布',
+        [
+          'GitHub / WebDAV 云同步',
+          '同步冲突可视化对比',
+          '冲突策略（本地/云端优先）',
+          '一键发布到 GitHub/CMS',
+          '发布前预检测',
+          '定时发布',
+          '发布变更日志',
+        ],
+      ),
       ('导入', ['HTML 转 Markdown', 'DOCX 转 Markdown', '.md / .txt 打开']),
       ('搜索', ['全局工作区搜索', '草稿/已发布筛选', '编辑器内查找替换']),
       ('系统', ['网络代理设置', '离线模式', '缓存清理', '日志导出', '命令面板（Ctrl+Shift+P）']),
     ];
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      children: features.map((group) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(group.$1, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          ...group.$2.map((item) => Padding(
-            padding: const EdgeInsets.only(left: 12, top: 2),
-            child: Row(children: [
-              const Text('  •  ', style: TextStyle(fontSize: 12, color: Colors.grey)),
-              Expanded(child: Text(item, style: const TextStyle(fontSize: 12.5))),
-            ]),
-          )),
-        ]),
-      )).toList(),
+      children: features
+          .map(
+            (group) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    group.$1,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  ...group.$2.map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(left: 12, top: 2),
+                      child: Row(
+                        children: [
+                          const Text(
+                            '  •  ',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                          Expanded(
+                            child: Text(
+                              item,
+                              style: const TextStyle(fontSize: 12.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -6790,13 +8913,19 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       children: const [
-        Text('🎯 三种工作模式', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+        Text(
+          '🎯 三种工作模式',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+        ),
         SizedBox(height: 8),
         _HelpModeCard('工作台', '完整三栏布局：左侧导航 + 中央编辑器 + 右侧抽屉', '适合日常写作、管理文章'),
         _HelpModeCard('专注模式', '极简顶栏，隐藏面板，全宽编辑器 + 实时预览', '适合沉浸式写作，打字机滚动'),
         _HelpModeCard('源码模式', '等宽字体纯文本编辑，隐藏预览', '适合直接编辑 Markdown 源码'),
         SizedBox(height: 16),
-        Text('📐 布局说明', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+        Text(
+          '📐 布局说明',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+        ),
         SizedBox(height: 8),
         _HelpLayoutItem('顶栏', '站点切换下拉框 + 功能按钮（同步/发布/AI/主题/文件/新建）'),
         _HelpLayoutItem('左侧面板', '可折叠、可拖拽宽度。包含全部导航入口'),
@@ -6804,9 +8933,15 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
         _HelpLayoutItem('右侧抽屉', '悬浮式，4 个标签：大纲 | 属性 | AI 聊天 | 同步日志'),
         _HelpLayoutItem('底部状态栏', '工作模式切换 | 编辑器状态 | 行列位置 | 字数统计'),
         SizedBox(height: 16),
-        Text('⌨️ 命令面板', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+        Text(
+          '⌨️ 命令面板',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+        ),
         SizedBox(height: 4),
-        Text('  Ctrl+Shift+P 打开命令面板，搜索 48 条命令，覆盖全部功能。\n  无需记忆快捷键，输入关键词即可快速执行。', style: TextStyle(fontSize: 12.5, color: Colors.grey)),
+        Text(
+          '  Ctrl+Shift+P 打开命令面板，搜索 48 条命令，覆盖全部功能。\n  无需记忆快捷键，输入关键词即可快速执行。',
+          style: TextStyle(fontSize: 12.5, color: Colors.grey),
+        ),
       ],
     );
   }
@@ -6815,20 +8950,53 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       children: [
-        _HelpTipCard('💡 快速发布', '写完文章后，按 Ctrl+P 直接发布。\n发布前会自动检查图片路径，可在确认框中勾选"同时保存 MD 备份"。'),
-        _HelpTipCard('🖼️ 截图粘贴', '截屏后按 Ctrl+Shift+V，图片自动上传到 GitHub 图床并插入 Markdown。\n也可以在编辑器中右键粘贴。'),
-        _HelpTipCard('📝 自动保存', '开启自动保存后，每隔 N 秒自动保存草稿到本地。\n切后台/关闭窗口前也会自动保存，不用担心丢失。'),
-        _HelpTipCard('☁️ 云同步', '配置 WebDAV 后，启动时自动拉取，定时推送，切后台推送，切前台拉取。\n多设备间无缝同步草稿。'),
+        _HelpTipCard(
+          '💡 快速发布',
+          '写完文章后，按 Ctrl+P 直接发布。\n发布前会自动检查图片路径，可在确认框中勾选"同时保存 MD 备份"。',
+        ),
+        _HelpTipCard(
+          '🖼️ 截图粘贴',
+          '截屏后按 Ctrl+Shift+V，图片自动上传到 GitHub 图床并插入 Markdown。\n也可以在编辑器中右键粘贴。',
+        ),
+        _HelpTipCard(
+          '📝 自动保存',
+          '开启自动保存后，每隔 N 秒自动保存草稿到本地。\n切后台/关闭窗口前也会自动保存，不用担心丢失。',
+        ),
+        _HelpTipCard(
+          '☁️ 云同步',
+          '配置 WebDAV 后，启动时自动拉取，定时推送，切后台推送，切前台拉取。\n多设备间无缝同步草稿。',
+        ),
         _HelpTipCard('🔍 查找替换', '支持正则表达式和区分大小写。\n全部替换会一次性替换所有匹配项。'),
         _HelpTipCard('📊 表格编辑', '插入表格后，光标放在表格内可使用"添加行/列"功能。\n支持动态扩展表格。'),
-        _HelpTipCard('🎨 主题切换', '7 种编辑器主题可随时切换，预览区同步生效。\nGitHub 主题适合亮色环境，Monokai/Dracula/Nord 适合暗色。'),
+        _HelpTipCard(
+          '🎨 主题切换',
+          '7 种编辑器主题可随时切换，预览区同步生效。\nGitHub 主题适合亮色环境，Monokai/Dracula/Nord 适合暗色。',
+        ),
         _HelpTipCard('📦 批量操作', '在草稿箱中可多选草稿，批量导出、格式化或发布。\n适合需要一次性处理多篇文章的场景。'),
-        _HelpTipCard('🔄 图片路径', '使用相对路径写作，发布前用"修复发布路径"一键转为绝对路径。\n切换图片路径模式可批量转换。'),
-        _HelpTipCard('📂 文件管理', '打开文件夹工作区可浏览整个目录的 .md 文件。\n最近打开文件列表记录最近 10 个文件，方便快速切换。'),
-        _HelpTipCard('⚠️ 冲突处理', '多设备同步时若出现冲突，会自动弹出双栏对比界面。\n可选择保留本地版本、云端版本，或全部本地/云端优先。'),
-        _HelpTipCard('🤖 AI 选区', '选中一段文字后按 Ctrl+Shift+I，只将选中文字发送给 AI 改写。\nAI 修改完成后会显示 diff 对比，可选择接受或拒绝。'),
-        _HelpTipCard('⏰ 定时发布', '在命令面板中搜索"定时发布"，设置时间后自动发布。\n适合在节假日或特定时间点自动推送文章。'),
-        _HelpTipCard('🔍 全局搜索', 'Ctrl+Shift+F 搜索所有文章的标题和正文。\n可筛选草稿/已发布状态，快速定位目标文章。'),
+        _HelpTipCard(
+          '🔄 图片路径',
+          '使用相对路径写作，发布前用"修复发布路径"一键转为绝对路径。\n切换图片路径模式可批量转换。',
+        ),
+        _HelpTipCard(
+          '📂 文件管理',
+          '打开文件夹工作区可浏览整个目录的 .md 文件。\n最近打开文件列表记录最近 10 个文件，方便快速切换。',
+        ),
+        _HelpTipCard(
+          '⚠️ 冲突处理',
+          '多设备同步时若出现冲突，会自动弹出双栏对比界面。\n可选择保留本地版本、云端版本，或全部本地/云端优先。',
+        ),
+        _HelpTipCard(
+          '🤖 AI 选区',
+          '选中一段文字后按 Ctrl+Shift+I，只将选中文字发送给 AI 改写。\nAI 修改完成后会显示 diff 对比，可选择接受或拒绝。',
+        ),
+        _HelpTipCard(
+          '⏰ 定时发布',
+          '在命令面板中搜索"定时发布"，设置时间后自动发布。\n适合在节假日或特定时间点自动推送文章。',
+        ),
+        _HelpTipCard(
+          '🔍 全局搜索',
+          'Ctrl+Shift+F 搜索所有文章的标题和正文。\n可筛选草稿/已发布状态，快速定位目标文章。',
+        ),
         _HelpTipCard('🛡️ 发布预检', '发布前自动检查空标题、空内容、图片链接等。\n确保发布质量，避免推送不完整文章。'),
       ],
     );
@@ -6848,43 +9016,265 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   List<CommandItem> _buildCommandItems() {
     return [
-      CommandItem(label: '保存草稿', category: '文件', shortcut: 'Ctrl+S', icon: Icons.save, onExecute: () => _saveLocal()),
-      CommandItem(label: '一键发布', category: '文件', shortcut: 'Ctrl+P', icon: Icons.send, onExecute: () => _handlePublish()),
-      CommandItem(label: '新建文章', category: '文件', shortcut: 'Ctrl+N', icon: Icons.add, onExecute: () => _newArticle()),
-      CommandItem(label: '打开文件', category: '文件', shortcut: 'Ctrl+O', icon: Icons.folder_open, onExecute: () => _openFileDialog()),
-      CommandItem(label: '另存为...', category: '文件', shortcut: 'Ctrl+Shift+S', icon: Icons.save_as, onExecute: () => _saveAsToLocal()),
-      CommandItem(label: '导出 HTML', category: '导出', shortcut: '', icon: Icons.html, onExecute: () => _exportHtml()),
-      CommandItem(label: '导出 PDF', category: '导出', shortcut: '', icon: Icons.picture_as_pdf, onExecute: () => _exportPdf()),
-      CommandItem(label: '导出 DOCX', category: '导出', shortcut: '', icon: Icons.description, onExecute: () => _exportDocx()),
-      CommandItem(label: '导出 EPUB', category: '导出', shortcut: '', icon: Icons.book, onExecute: () => _exportEpub()),
-      CommandItem(label: '专注模式', category: '视图', shortcut: 'Ctrl+Shift+F', icon: Icons.auto_awesome, onExecute: () => _switchWorkMode(WorkMode.focus)),
-      CommandItem(label: '工作台模式', category: '视图', shortcut: '', icon: Icons.dashboard, onExecute: () => _switchWorkMode(WorkMode.workspace)),
-      CommandItem(label: '源码模式', category: '视图', shortcut: '', icon: Icons.code, onExecute: () => _switchWorkMode(WorkMode.source)),
-      CommandItem(label: '切换左侧面板', category: '视图', shortcut: 'Ctrl+L', icon: Icons.menu_open, onExecute: () => _toggleLeftPanel()),
-      CommandItem(label: '打开大纲', category: '视图', shortcut: 'Ctrl+E', icon: Icons.list_alt, onExecute: () => _openRightDrawer(RightDrawerTab.outline)),
-      CommandItem(label: '查找替换', category: '编辑', shortcut: 'Ctrl+F', icon: Icons.find_replace, onExecute: () => _showFindReplace()),
-      CommandItem(label: '插入目录', category: '编辑', shortcut: '', icon: Icons.toc, onExecute: () => _insertToc()),
-      CommandItem(label: '插入表格', category: '编辑', shortcut: '', icon: Icons.table_chart, onExecute: () => _insertTable()),
-      CommandItem(label: '文档格式化', category: '编辑', shortcut: '', icon: Icons.cleaning_services, onExecute: () => _formatDocument()),
-      CommandItem(label: '粘贴图片', category: '编辑', shortcut: 'Ctrl+Shift+V', icon: Icons.image, onExecute: () => _pasteImageFromClipboard()),
-      CommandItem(label: 'Agent 任务工作台', category: 'AI', shortcut: '', icon: Icons.assignment_outlined, onExecute: () => _showAgentWorkbench()),
-      CommandItem(label: 'AI 博文创作', category: 'AI', shortcut: '', icon: Icons.article_outlined, onExecute: () => _showAiArticleChat()),
-      CommandItem(label: 'AI 站点巡检', category: 'AI', shortcut: '', icon: Icons.fact_check_outlined, onExecute: () => _showAiAudit()),
-      CommandItem(label: 'AI 模板与博客框架', category: 'AI', shortcut: '', icon: Icons.view_quilt_outlined, onExecute: () => _showAiTemplateChat()),
-      CommandItem(label: 'AI 应用 UI 设计', category: 'AI', shortcut: '', icon: Icons.palette_outlined, onExecute: () => _showAiAppDesign()),
-      CommandItem(label: 'AI 选区改写', category: 'AI', shortcut: '', icon: Icons.short_text, onExecute: () => _sendSelectionToAi()),
-      CommandItem(label: 'AI 全文润色', category: 'AI', shortcut: '', icon: Icons.auto_awesome, onExecute: () => _sendFullToAi()),
-      CommandItem(label: '草稿箱', category: '导航', shortcut: '', icon: Icons.drafts_outlined, onExecute: () => _openDrafts()),
-      CommandItem(label: '远程文章', category: '导航', shortcut: '', icon: Icons.cloud_outlined, onExecute: () => _openRemote()),
-      CommandItem(label: '仪表盘', category: '导航', shortcut: '', icon: Icons.dashboard_outlined, onExecute: () => _openDashboard()),
-      CommandItem(label: '回收站', category: '导航', shortcut: '', icon: Icons.delete_outline, onExecute: () => _openRecycleBin()),
-      CommandItem(label: '模板管理', category: '工具', shortcut: '', icon: Icons.view_quilt_outlined, onExecute: () => _showTemplateManager()),
-      CommandItem(label: '图床管理', category: '工具', shortcut: '', icon: Icons.photo_library_outlined, onExecute: () => _openImageBedManager()),
-      CommandItem(label: '版本历史', category: '工具', shortcut: '', icon: Icons.history, onExecute: () => _openVersionHistory()),
-      CommandItem(label: '链接检测', category: '工具', shortcut: '', icon: Icons.link_off, onExecute: () => _openLinkChecker()),
-      CommandItem(label: '设置', category: '工具', shortcut: '', icon: Icons.settings_outlined, onExecute: () => _openSettings()),
-      CommandItem(label: '快捷键设置', category: '工具', shortcut: '', icon: Icons.keyboard, onExecute: () => _showShortcutEditor()),
-      CommandItem(label: '帮助 / 快捷键速查', category: '帮助', shortcut: 'F1', icon: Icons.help_outline, onExecute: () => _showHelpDialog()),
+      CommandItem(
+        label: '保存草稿',
+        category: '文件',
+        shortcut: 'Ctrl+S',
+        icon: Icons.save,
+        onExecute: () => _saveLocal(),
+      ),
+      CommandItem(
+        label: '一键发布',
+        category: '文件',
+        shortcut: 'Ctrl+P',
+        icon: Icons.send,
+        onExecute: () => _handlePublish(),
+      ),
+      CommandItem(
+        label: '新建文章',
+        category: '文件',
+        shortcut: 'Ctrl+N',
+        icon: Icons.add,
+        onExecute: () => _newArticle(),
+      ),
+      CommandItem(
+        label: '打开文件',
+        category: '文件',
+        shortcut: 'Ctrl+O',
+        icon: Icons.folder_open,
+        onExecute: () => _openFileDialog(),
+      ),
+      CommandItem(
+        label: '另存为...',
+        category: '文件',
+        shortcut: 'Ctrl+Shift+S',
+        icon: Icons.save_as,
+        onExecute: () => _saveAsToLocal(),
+      ),
+      CommandItem(
+        label: '导出 HTML',
+        category: '导出',
+        shortcut: '',
+        icon: Icons.html,
+        onExecute: () => _exportHtml(),
+      ),
+      CommandItem(
+        label: '导出 PDF',
+        category: '导出',
+        shortcut: '',
+        icon: Icons.picture_as_pdf,
+        onExecute: () => _exportPdf(),
+      ),
+      CommandItem(
+        label: '导出 DOCX',
+        category: '导出',
+        shortcut: '',
+        icon: Icons.description,
+        onExecute: () => _exportDocx(),
+      ),
+      CommandItem(
+        label: '导出 EPUB',
+        category: '导出',
+        shortcut: '',
+        icon: Icons.book,
+        onExecute: () => _exportEpub(),
+      ),
+      CommandItem(
+        label: '专注模式',
+        category: '视图',
+        shortcut: 'Ctrl+Shift+F',
+        icon: Icons.auto_awesome,
+        onExecute: () => _switchWorkMode(WorkMode.focus),
+      ),
+      CommandItem(
+        label: '工作台模式',
+        category: '视图',
+        shortcut: '',
+        icon: Icons.dashboard,
+        onExecute: () => _switchWorkMode(WorkMode.workspace),
+      ),
+      CommandItem(
+        label: '源码模式',
+        category: '视图',
+        shortcut: '',
+        icon: Icons.code,
+        onExecute: () => _switchWorkMode(WorkMode.source),
+      ),
+      CommandItem(
+        label: '切换左侧面板',
+        category: '视图',
+        shortcut: 'Ctrl+L',
+        icon: Icons.menu_open,
+        onExecute: () => _toggleLeftPanel(),
+      ),
+      CommandItem(
+        label: '打开大纲',
+        category: '视图',
+        shortcut: 'Ctrl+E',
+        icon: Icons.list_alt,
+        onExecute: () => _openRightDrawer(RightDrawerTab.outline),
+      ),
+      CommandItem(
+        label: '查找替换',
+        category: '编辑',
+        shortcut: 'Ctrl+F',
+        icon: Icons.find_replace,
+        onExecute: () => _showFindReplace(),
+      ),
+      CommandItem(
+        label: '插入目录',
+        category: '编辑',
+        shortcut: '',
+        icon: Icons.toc,
+        onExecute: () => _insertToc(),
+      ),
+      CommandItem(
+        label: '插入表格',
+        category: '编辑',
+        shortcut: '',
+        icon: Icons.table_chart,
+        onExecute: () => _insertTable(),
+      ),
+      CommandItem(
+        label: '文档格式化',
+        category: '编辑',
+        shortcut: '',
+        icon: Icons.cleaning_services,
+        onExecute: () => _formatDocument(),
+      ),
+      CommandItem(
+        label: '粘贴图片',
+        category: '编辑',
+        shortcut: 'Ctrl+Shift+V',
+        icon: Icons.image,
+        onExecute: () => _pasteImageFromClipboard(),
+      ),
+      CommandItem(
+        label: 'Agent 任务工作台',
+        category: 'AI',
+        shortcut: '',
+        icon: Icons.assignment_outlined,
+        onExecute: () => _showAgentWorkbench(),
+      ),
+      CommandItem(
+        label: 'AI 博文创作',
+        category: 'AI',
+        shortcut: '',
+        icon: Icons.article_outlined,
+        onExecute: () => _showAiArticleChat(),
+      ),
+      CommandItem(
+        label: 'AI 站点巡检',
+        category: 'AI',
+        shortcut: '',
+        icon: Icons.fact_check_outlined,
+        onExecute: () => _showAiAudit(),
+      ),
+      CommandItem(
+        label: 'AI 模板与博客框架',
+        category: 'AI',
+        shortcut: '',
+        icon: Icons.view_quilt_outlined,
+        onExecute: () => _showAiTemplateChat(),
+      ),
+      CommandItem(
+        label: 'AI 应用 UI 设计',
+        category: 'AI',
+        shortcut: '',
+        icon: Icons.palette_outlined,
+        onExecute: () => _showAiAppDesign(),
+      ),
+      CommandItem(
+        label: 'AI 选区改写',
+        category: 'AI',
+        shortcut: '',
+        icon: Icons.short_text,
+        onExecute: () => _sendSelectionToAi(),
+      ),
+      CommandItem(
+        label: 'AI 全文润色',
+        category: 'AI',
+        shortcut: '',
+        icon: Icons.auto_awesome,
+        onExecute: () => _sendFullToAi(),
+      ),
+      CommandItem(
+        label: '草稿箱',
+        category: '导航',
+        shortcut: '',
+        icon: Icons.drafts_outlined,
+        onExecute: () => _openDrafts(),
+      ),
+      CommandItem(
+        label: '远程文章',
+        category: '导航',
+        shortcut: '',
+        icon: Icons.cloud_outlined,
+        onExecute: () => _openRemote(),
+      ),
+      CommandItem(
+        label: '仪表盘',
+        category: '导航',
+        shortcut: '',
+        icon: Icons.dashboard_outlined,
+        onExecute: () => _openDashboard(),
+      ),
+      CommandItem(
+        label: '回收站',
+        category: '导航',
+        shortcut: '',
+        icon: Icons.delete_outline,
+        onExecute: () => _openRecycleBin(),
+      ),
+      CommandItem(
+        label: '模板管理',
+        category: '工具',
+        shortcut: '',
+        icon: Icons.view_quilt_outlined,
+        onExecute: () => _showTemplateManager(),
+      ),
+      CommandItem(
+        label: '图床管理',
+        category: '工具',
+        shortcut: '',
+        icon: Icons.photo_library_outlined,
+        onExecute: () => _openImageBedManager(),
+      ),
+      CommandItem(
+        label: '版本历史',
+        category: '工具',
+        shortcut: '',
+        icon: Icons.history,
+        onExecute: () => _openVersionHistory(),
+      ),
+      CommandItem(
+        label: '链接检测',
+        category: '工具',
+        shortcut: '',
+        icon: Icons.link_off,
+        onExecute: () => _openLinkChecker(),
+      ),
+      CommandItem(
+        label: '设置',
+        category: '工具',
+        shortcut: '',
+        icon: Icons.settings_outlined,
+        onExecute: () => _openSettings(),
+      ),
+      CommandItem(
+        label: '快捷键设置',
+        category: '工具',
+        shortcut: '',
+        icon: Icons.keyboard,
+        onExecute: () => _showShortcutEditor(),
+      ),
+      CommandItem(
+        label: '帮助 / 快捷键速查',
+        category: '帮助',
+        shortcut: 'F1',
+        icon: Icons.help_outline,
+        onExecute: () => _showHelpDialog(),
+      ),
     ];
   }
 
@@ -6894,7 +9284,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   Future<void> _saveAsToLocal() async {
     try {
-      final title = _doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : 'untitled';
+      final title = _doc.titleCtrl.text.isNotEmpty
+          ? _doc.titleCtrl.text
+          : 'untitled';
       final safeTitle = _safeTitle(title);
       final result = await FilePicker.platform.saveFile(
         dialogTitle: '另存为 Markdown 文件',
@@ -6924,9 +9316,9 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   /// 将 Markdown 内容转换为 HTML 字符串
   String _mdToHtml(String markdown, String title) {
-    final body = md.markdownToHtml(
-      markdown.isEmpty ? '*暂无内容*' : markdown,
-    );
+    var body = md.markdownToHtml(markdown.isEmpty ? '*暂无内容*' : markdown);
+    // 清洗正文：剥离 script/style 标签、事件处理器属性与危险 URL，防存储型 XSS
+    body = _sanitizeHtml(body);
     // 包装为完整的 HTML 模板
     return '''<!DOCTYPE html>
 <html lang="zh-CN">
@@ -6963,6 +9355,76 @@ $body
 </html>''';
   }
 
+  /// 清洗 HTML 防止存储型 XSS：移除脚本/样式块、事件属性与危险 URL
+  String _sanitizeHtml(String html) {
+    var result = html.replaceAll(
+      RegExp(r'<script[^>]*>[\s\S]*?</script>', caseSensitive: false),
+      '',
+    );
+    result = result.replaceAll(
+      RegExp(r'<style[^>]*>[\s\S]*?</style>', caseSensitive: false),
+      '',
+    );
+    result = result.replaceAll(
+      RegExp(r'<iframe[^>]*>[\s\S]*?</iframe>', caseSensitive: false),
+      '',
+    );
+    result = result.replaceAll(
+      RegExp(r'<object[^>]*>[\s\S]*?</object>', caseSensitive: false),
+      '',
+    );
+    result = result.replaceAll(
+      RegExp(r'<embed[^>]*>[\s\S]*?</embed>', caseSensitive: false),
+      '',
+    );
+    // 事件处理器属性
+    result = result.replaceAll(
+      RegExp(
+        r'''\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)''',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    // javascript: / data: 危险 URL（属性值形式）
+    result = result.replaceAll(
+      RegExp(
+        r'''\s+(href|src)\s*=\s*("[^"]*"|'[^']*')''',
+        caseSensitive: false,
+      ),
+      (match) {
+        final attr = match.group(1) ?? '';
+        final quote = match.group(2) ?? '';
+        if (quote.isNotEmpty) {
+          final inner = quote.length >= 2
+              ? quote.substring(1, quote.length - 1)
+              : quote;
+          if (RegExp(
+            r'^(javascript|vbscript|data):',
+            caseSensitive: false,
+          ).hasMatch(inner.trim())) {
+            return '';
+          }
+        }
+        return match.group(0)!;
+      },
+    );
+    // 无引号形式的危险 URL
+    result = result.replaceAll(
+      RegExp(r'''\s+(href|src)\s*=\s*[^\s>]+''', caseSensitive: false),
+      (match) {
+        final rest = match.group(0)!;
+        if (RegExp(
+          r'=\s*(javascript|vbscript|data):',
+          caseSensitive: false,
+        ).hasMatch(rest)) {
+          return '';
+        }
+        return rest;
+      },
+    );
+    return result;
+  }
+
   /// 对 HTML 特殊字符进行转义
   String _escapeHtml(String text) {
     return text
@@ -6976,7 +9438,9 @@ $body
   /// 导出 HTML 文件
   Future<void> _exportHtml() async {
     try {
-      final title = _doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : 'untitled';
+      final title = _doc.titleCtrl.text.isNotEmpty
+          ? _doc.titleCtrl.text
+          : 'untitled';
       final safeTitle = _safeTitle(title);
       final result = await FilePicker.platform.saveFile(
         dialogTitle: '导出 HTML 文件',
@@ -6997,7 +9461,9 @@ $body
   /// 导出 PDF 文件
   Future<void> _exportPdf() async {
     try {
-      final title = _doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : 'untitled';
+      final title = _doc.titleCtrl.text.isNotEmpty
+          ? _doc.titleCtrl.text
+          : 'untitled';
       final safeTitle = _safeTitle(title);
       final html = _mdToHtml(_doc.contentCtrl.text, title);
 
@@ -7019,7 +9485,8 @@ $body
         final file = File(result);
         await file.writeAsBytes(pdfBytes);
         if (mounted) _showToast('PDF 已导出到: $result');
-      } catch (e) { debugPrint('Shell: settings load failed: $e');
+      } catch (e) {
+        debugPrint('Shell: settings load failed: $e');
         final result = await FilePicker.platform.saveFile(
           dialogTitle: '导出 PDF 文件（回退 HTML）',
           fileName: '$safeTitle.html',
@@ -7039,7 +9506,9 @@ $body
   /// 导出 DOCX 文件（基于 Office Open XML 格式）
   Future<void> _exportDocx() async {
     try {
-      final title = _doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : 'untitled';
+      final title = _doc.titleCtrl.text.isNotEmpty
+          ? _doc.titleCtrl.text
+          : 'untitled';
       final safeTitle = _safeTitle(title);
       final result = await FilePicker.platform.saveFile(
         dialogTitle: '导出 DOCX 文件',
@@ -7067,7 +9536,8 @@ $body
     final escapedHtml = _escapeXmlBody(htmlContent);
 
     // [Content_Types].xml
-    const contentTypes = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    const contentTypes =
+        '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
@@ -7086,7 +9556,8 @@ $body
 </Relationships>''';
 
     // word/document.xml - 将 HTML 内容转换为基本的 OOXML 段落
-    final documentXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    final documentXml =
+        '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
             xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:body>
@@ -7122,7 +9593,9 @@ $body
   /// 导出 EPUB 电子书
   Future<void> _exportEpub() async {
     try {
-      final title = _doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : 'untitled';
+      final title = _doc.titleCtrl.text.isNotEmpty
+          ? _doc.titleCtrl.text
+          : 'untitled';
       final safeTitle = _safeTitle(title);
       final result = await FilePicker.platform.saveFile(
         dialogTitle: '导出 EPUB 文件',
@@ -7146,7 +9619,10 @@ $body
     final escapedTitle = _escapeXml(title);
     final fullHtml = _mdToHtml(_doc.contentCtrl.text, title);
     // 提取 body 中的内容（去掉外层 HTML 模板）
-    final bodyMatch = RegExp(r'<body>\n?(.*)\n?</body>', dotAll: true).firstMatch(fullHtml);
+    final bodyMatch = RegExp(
+      r'<body>\n?(.*)\n?</body>',
+      dotAll: true,
+    ).firstMatch(fullHtml);
     final htmlContent = bodyMatch?.group(1) ?? fullHtml;
     final now = DateTime.now().toUtc().toIso8601String();
     final uuid = DateTime.now().millisecondsSinceEpoch.toRadixString(16);
@@ -7163,7 +9639,8 @@ $body
 </container>''';
 
     // OEBPS/content.opf
-    final contentOpf = '''<?xml version="1.0" encoding="UTF-8"?>
+    final contentOpf =
+        '''<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="book-id">urn:uuid:$uuid</dc:identifier>
@@ -7183,7 +9660,8 @@ $body
 </package>''';
 
     // OEBPS/toc.ncx
-    final tocNcx = '''<?xml version="1.0" encoding="UTF-8"?>
+    final tocNcx =
+        '''<?xml version="1.0" encoding="UTF-8"?>
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
   <head>
     <meta name="dtb:uid" content="urn:uuid:$uuid"/>
@@ -7205,7 +9683,8 @@ $body
 </ncx>''';
 
     // OEBPS/chapter1.xhtml
-    final chapterXhtml = '''<?xml version="1.0" encoding="UTF-8"?>
+    final chapterXhtml =
+        '''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="zh-CN">
 <head>
@@ -7306,26 +9785,49 @@ $htmlContent
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: Row(children: [
-            const Icon(Icons.folder_open, size: 20),
-            const SizedBox(width: 8),
-            Expanded(child: Text('工作区: ${folderPath.split('/').last}', style: const TextStyle(fontSize: 15))),
-          ]),
+          title: Row(
+            children: [
+              const Icon(Icons.folder_open, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '工作区: ${folderPath.split('/').last}',
+                  style: const TextStyle(fontSize: 15),
+                ),
+              ),
+            ],
+          ),
           content: SizedBox(
             width: 500,
             height: 400,
             child: mdFiles.isEmpty
-                ? const Center(child: Text('该文件夹中没有找到 .md 文件', style: TextStyle(color: Colors.grey)))
+                ? const Center(
+                    child: Text(
+                      '该文件夹中没有找到 .md 文件',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  )
                 : ListView.builder(
                     itemCount: mdFiles.length,
                     itemBuilder: (_, i) {
                       final file = mdFiles[i] as File;
-                      final relativePath = file.path.substring(folderPath.length + 1);
+                      final relativePath = file.path.substring(
+                        folderPath.length + 1,
+                      );
                       return ListTile(
                         dense: true,
                         leading: const Icon(Icons.article_outlined, size: 18),
-                        title: Text(relativePath.replaceAll('.md', ''), style: const TextStyle(fontSize: 13)),
-                        subtitle: Text(relativePath, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                        title: Text(
+                          relativePath.replaceAll('.md', ''),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        subtitle: Text(
+                          relativePath,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
+                        ),
                         onTap: () async {
                           Navigator.pop(ctx);
                           try {
@@ -7341,7 +9843,10 @@ $htmlContent
                   ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('关闭'),
+            ),
           ],
         ),
       );
@@ -7367,33 +9872,44 @@ $htmlContent
         return;
       }
 
-      final oldName = currentPath.split('/').last.replaceAll(RegExp(r'\.md$'), '');
+      final oldName = currentPath
+          .split('/')
+          .last
+          .replaceAll(RegExp(r'\.md$'), '');
       final nameCtrl = TextEditingController(text: oldName);
 
       if (!mounted) return;
-      final newName = await showDialog<String>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('重命名文件', style: TextStyle(fontSize: 16)),
-          content: TextField(
-            controller: nameCtrl,
-            autofocus: true,
-            decoration: const InputDecoration(
-              labelText: '新文件名',
-              hintText: '输入新文件名（不含扩展名）',
-              border: OutlineInputBorder(),
+      String? newName;
+      try {
+        newName = await showDialog<String>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('重命名文件', style: TextStyle(fontSize: 16)),
+            content: TextField(
+              controller: nameCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: '新文件名',
+                hintText: '输入新文件名（不含扩展名）',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
             ),
-            onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, nameCtrl.text.trim()),
+                child: const Text('重命名'),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, nameCtrl.text.trim()),
-              child: const Text('重命名'),
-            ),
-          ],
-        ),
-      );
+        );
+      } finally {
+        nameCtrl.dispose();
+      }
 
       if (newName == null || newName.isEmpty || newName == oldName) return;
 
@@ -7413,7 +9929,6 @@ $htmlContent
       // 更新当前文章路径
       _doc.setCurrentArticle(_doc.currentArticle.copyWith(remotePath: newPath));
       if (mounted) {
-        
         _showToast('文件已重命名为: $safeName.md');
       }
     } catch (e) {
@@ -7458,7 +9973,6 @@ $htmlContent
       // 更新当前文章路径
       _doc.setCurrentArticle(_doc.currentArticle.copyWith(remotePath: newPath));
       if (mounted) {
-        
         _showToast('文件已移动到: $newPath');
       }
     } catch (e) {
@@ -7474,7 +9988,6 @@ $htmlContent
     await _updateSettings(settings.copyWith(activeRepoId: repo.id));
     _editorRepo = repo;
     if (mounted) {
-      
       _showToast('已切换到: ${repo.name}');
     }
   }
@@ -7496,7 +10009,8 @@ $htmlContent
   void _handleEscape() {
     if (_layout.rightDrawerOpen) {
       _layout.closeRightDrawer();
-    } else if (_layout.workMode == WorkMode.focus || _layout.workMode == WorkMode.source) {
+    } else if (_layout.workMode == WorkMode.focus ||
+        _layout.workMode == WorkMode.source) {
       _switchWorkMode(WorkMode.workspace);
     }
   }
@@ -7614,30 +10128,41 @@ $htmlContent
     context.watch<DocumentController>();
 
     final stackChildren = <Widget>[
-      Column(children: [
-        _buildTopBar(layout),
-        _buildMainArea(layout),
-        _buildBottomBar(layout),
-      ]),
+      Column(
+        children: [
+          _buildTopBar(layout),
+          _buildMainArea(layout),
+          _buildBottomBar(layout),
+        ],
+      ),
     ];
 
     if (settings.nightEyeProtection) {
-      stackChildren.add(Positioned.fill(
-        child: IgnorePointer(
-          child: Container(
-            color: Color.fromRGBO(255, 200, 100, settings.nightEyeIntensity * 0.3),
+      stackChildren.add(
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Container(
+              color: Color.fromRGBO(
+                255,
+                200,
+                100,
+                settings.nightEyeIntensity * 0.3,
+              ),
+            ),
           ),
         ),
-      ));
+      );
     }
     // 命令面板覆盖层
     if (_showCommandPalette) {
-      stackChildren.add(Positioned.fill(
-        child: CommandPalette(
-          commands: _buildCommandItems(),
-          onClose: _closeCommandPalette,
+      stackChildren.add(
+        Positioned.fill(
+          child: CommandPalette(
+            commands: _buildCommandItems(),
+            onClose: _closeCommandPalette,
+          ),
         ),
-      ));
+      );
     }
     return Stack(children: stackChildren);
   }
@@ -7678,42 +10203,46 @@ $htmlContent
 
   /// 工作区三栏布局
   Widget _buildWorkspaceLayout(LayoutController layout) {
-    return Row(children: [
-      if (layout.leftPanelExpanded)
-        DesktopLeftPanel(
-          width: layout.leftPanelWidth,
-          onResize: (w) => _layout.setLeftPanelWidth(w),
-          onCollapse: _toggleLeftPanel,
-          bus: _bus,
-          repos: repos,
-          drafts: drafts,
-          siteManager: siteManager,
-          mode: settings.ui.appMode,
-          simpleModeExtras: settings.ui.simpleModeExtras,
-          collapsedSections: settings.ui.collapsedLeftSections,
-          onCollapsedSectionsChanged: (keys) {
-            _updateSettings(settings.copyWith(
-              ui: settings.ui.copyWith(collapsedLeftSections: keys),
-            ));
-          },
+    return Row(
+      children: [
+        if (layout.leftPanelExpanded)
+          DesktopLeftPanel(
+            width: layout.leftPanelWidth,
+            onResize: (w) => _layout.setLeftPanelWidth(w),
+            onCollapse: _toggleLeftPanel,
+            bus: _bus,
+            repos: repos,
+            drafts: drafts,
+            siteManager: siteManager,
+            mode: settings.ui.appMode,
+            simpleModeExtras: settings.ui.simpleModeExtras,
+            collapsedSections: settings.ui.collapsedLeftSections,
+            onCollapsedSectionsChanged: (keys) {
+              _updateSettings(
+                settings.copyWith(
+                  ui: settings.ui.copyWith(collapsedLeftSections: keys),
+                ),
+              );
+            },
+          ),
+
+        if (!layout.leftPanelExpanded) _collapseToggle(),
+
+        Expanded(
+          child: DesktopEditorArea(
+            tabs: _editor.openTabs,
+            activeIndex: _editor.activeTabIndex,
+            onTabChange: (i) => _editor.switchTab(i),
+            onTabClose: _closeTab,
+            onNewArticle: _newArticle,
+            onSync: _handleSync,
+            onSettings: _openSettings,
+          ),
         ),
 
-      if (!layout.leftPanelExpanded) _collapseToggle(),
-
-      Expanded(
-        child: DesktopEditorArea(
-          tabs: _editor.openTabs,
-          activeIndex: _editor.activeTabIndex,
-          onTabChange: (i) => _editor.switchTab(i),
-          onTabClose: _closeTab,
-          onNewArticle: _newArticle,
-          onSync: _handleSync,
-          onSettings: _openSettings,
-        ),
-      ),
-
-      if (layout.rightDrawerOpen) _buildRightDrawer(layout),
-    ]);
+        if (layout.rightDrawerOpen) _buildRightDrawer(layout),
+      ],
+    );
   }
 
   /// 右侧抽屉
@@ -7727,7 +10256,12 @@ $htmlContent
       tagsCtrl: _doc.tagsCtrl,
       categoriesCtrl: _doc.categoriesCtrl,
       coverCtrl: _doc.coverCtrl,
-      syncLogs: _sync.logs.map((e) => '${e.timestamp.hour}:${e.timestamp.minute.toString().padLeft(2, '0')}:${e.timestamp.second.toString().padLeft(2, '0')} ${e.message}').toList(),
+      syncLogs: _sync.logs
+          .map(
+            (e) =>
+                '${e.timestamp.hour}:${e.timestamp.minute.toString().padLeft(2, '0')}:${e.timestamp.second.toString().padLeft(2, '0')} ${e.message}',
+          )
+          .toList(),
       snippets: snippets,
       onSnippetInsert: (content) => _insertText(content),
       onSnippetDelete: (snippet) async {
@@ -7788,7 +10322,9 @@ $htmlContent
         color: isDark ? const Color(0xFF252536) : const Color(0xFFFAFAFC),
         border: Border(
           bottom: BorderSide(
-            color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
+            color: isDark
+                ? Colors.white.withOpacity(0.06)
+                : const Color(0xFFE5E5EA),
           ),
         ),
       ),
@@ -7798,7 +10334,9 @@ $htmlContent
           Icon(
             Icons.visibility,
             size: 14,
-            color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF),
+            color: isDark
+                ? Colors.white.withOpacity(0.4)
+                : const Color(0xFF9CA3AF),
           ),
           const SizedBox(width: 8),
           Text(
@@ -7806,7 +10344,9 @@ $htmlContent
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF),
+              color: isDark
+                  ? Colors.white.withOpacity(0.4)
+                  : const Color(0xFF9CA3AF),
               letterSpacing: 0.5,
             ),
           ),
@@ -7817,47 +10357,117 @@ $htmlContent
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
-                color: isDark ? Colors.white.withOpacity(0.6) : const Color(0xFF6B7280),
+                color: isDark
+                    ? Colors.white.withOpacity(0.6)
+                    : const Color(0xFF6B7280),
               ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
           _focusToolbarButton(Icons.save_outlined, '保存草稿', _saveLocal, isDark),
-          _focusToolbarButton(Icons.send_outlined, '发布', _handlePublish, isDark),
-          _focusToolbarButton(Icons.image_outlined, '插入图片', _insertImage, isDark),
-          _focusToolbarButton(Icons.visibility_outlined, '切换预览', () => _layout.toggleRightDrawer(), isDark, active: context.watch<LayoutController>().rightDrawerOpen),
+          _focusToolbarButton(
+            Icons.send_outlined,
+            '发布',
+            _handlePublish,
+            isDark,
+          ),
+          _focusToolbarButton(
+            Icons.image_outlined,
+            '插入图片',
+            _insertImage,
+            isDark,
+          ),
+          _focusToolbarButton(
+            Icons.visibility_outlined,
+            '切换预览',
+            () => _layout.toggleRightDrawer(),
+            isDark,
+            active: context.watch<LayoutController>().rightDrawerOpen,
+          ),
           PopupMenuButton<String>(
             tooltip: '导出',
             offset: const Offset(0, 36),
             enabled: !_editor.editorBusy,
             color: isDark ? const Color(0xFF252536) : null,
-            icon: Icon(Icons.file_download_outlined, size: 16, color: isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280)),
+            icon: Icon(
+              Icons.file_download_outlined,
+              size: 16,
+              color: isDark
+                  ? Colors.white.withOpacity(0.5)
+                  : const Color(0xFF6B7280),
+            ),
             itemBuilder: (_) => [
-              PopupMenuItem(value: 'html', child: Text('导出 HTML', style: TextStyle(fontSize: 13, color: isDark ? Colors.white.withOpacity(0.8) : null))),
-              PopupMenuItem(value: 'pdf', child: Text('导出 PDF', style: TextStyle(fontSize: 13, color: isDark ? Colors.white.withOpacity(0.8) : null))),
-              PopupMenuItem(value: 'md', child: Text('导出 Markdown', style: TextStyle(fontSize: 13, color: isDark ? Colors.white.withOpacity(0.8) : null))),
+              PopupMenuItem(
+                value: 'html',
+                child: Text(
+                  '导出 HTML',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.white.withOpacity(0.8) : null,
+                  ),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'pdf',
+                child: Text(
+                  '导出 PDF',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.white.withOpacity(0.8) : null,
+                  ),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'md',
+                child: Text(
+                  '导出 Markdown',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.white.withOpacity(0.8) : null,
+                  ),
+                ),
+              ),
             ],
             onSelected: (v) {
               switch (v) {
-                case 'html': _exportHtml(); break;
-                case 'pdf': _exportPdf(); break;
-                case 'md': _saveMdBackup(); break;
+                case 'html':
+                  _exportHtml();
+                  break;
+                case 'pdf':
+                  _exportPdf();
+                  break;
+                case 'md':
+                  _saveMdBackup();
+                  break;
               }
             },
           ),
           Container(
             width: 1,
             height: 18,
-            color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
+            color: isDark
+                ? Colors.white.withOpacity(0.06)
+                : const Color(0xFFE5E5EA),
           ),
-          _focusToolbarButton(Icons.close_fullscreen, '退出专注模式', () => _switchWorkMode(WorkMode.workspace), isDark),
+          _focusToolbarButton(
+            Icons.close_fullscreen,
+            '退出专注模式',
+            () => _switchWorkMode(WorkMode.workspace),
+            isDark,
+          ),
           const SizedBox(width: 8),
         ],
       ),
     );
   }
 
-  Widget _focusToolbarButton(IconData icon, String tooltip, VoidCallback onTap, bool isDark, {bool active = false}) {
+  Widget _focusToolbarButton(
+    IconData icon,
+    String tooltip,
+    VoidCallback onTap,
+    bool isDark, {
+    bool active = false,
+  }) {
     return Tooltip(
       message: tooltip,
       child: Material(
@@ -7873,7 +10483,9 @@ $htmlContent
               size: 16,
               color: active
                   ? Theme.of(context).colorScheme.primary
-                  : (isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280)),
+                  : (isDark
+                        ? Colors.white.withOpacity(0.5)
+                        : const Color(0xFF6B7280)),
             ),
           ),
         ),
@@ -7903,7 +10515,10 @@ $htmlContent
                         color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
                         child: SingleChildScrollView(
                           controller: _focusScrollCtrl,
-                          padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 40),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 60,
+                            vertical: 40,
+                          ),
                           child: Container(
                             constraints: const BoxConstraints(maxWidth: 800),
                             child: Column(
@@ -7916,8 +10531,12 @@ $htmlContent
                                     fontSize: 32,
                                     fontWeight: FontWeight.w700,
                                     height: 1.3,
-                                    color: isDark ? Colors.white : const Color(0xFF1F2937),
-                                    fontFamily: _resolveFontFamily(_editor.editorFontFamily),
+                                    color: isDark
+                                        ? Colors.white
+                                        : const Color(0xFF1F2937),
+                                    fontFamily: _resolveFontFamily(
+                                      _editor.editorFontFamily,
+                                    ),
                                   ),
                                   cursorColor: cs.primary,
                                   decoration: InputDecoration(
@@ -7925,7 +10544,9 @@ $htmlContent
                                     hintStyle: TextStyle(
                                       fontSize: 32,
                                       fontWeight: FontWeight.w700,
-                                      color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+                                      color: isDark
+                                          ? Colors.white.withOpacity(0.15)
+                                          : const Color(0xFFD1D5DB),
                                     ),
                                     border: InputBorder.none,
                                   ),
@@ -7935,17 +10556,36 @@ $htmlContent
                                 // 文章元信息
                                 Row(
                                   children: [
-                                    _focusMetaChip(Icons.person_outline, '作者', _editorRepo?.owner ?? '未设置', isDark),
+                                    _focusMetaChip(
+                                      Icons.person_outline,
+                                      '作者',
+                                      _editorRepo?.owner ?? '未设置',
+                                      isDark,
+                                    ),
                                     const SizedBox(width: 12),
-                                    _focusMetaChip(Icons.calendar_today, '日期', DateTime.now().toLocal().toString().split(' ')[0], isDark),
+                                    _focusMetaChip(
+                                      Icons.calendar_today,
+                                      '日期',
+                                      DateTime.now().toLocal().toString().split(
+                                        ' ',
+                                      )[0],
+                                      isDark,
+                                    ),
                                     const SizedBox(width: 12),
-                                    _focusMetaChip(Icons.text_fields, '字数', '${_editor.wordCount} 词', isDark),
+                                    _focusMetaChip(
+                                      Icons.text_fields,
+                                      '字数',
+                                      '${_editor.wordCount} 词',
+                                      isDark,
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 24),
                                 Container(
                                   height: 1,
-                                  color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E7EB),
+                                  color: isDark
+                                      ? Colors.white.withOpacity(0.06)
+                                      : const Color(0xFFE5E7EB),
                                 ),
                                 const SizedBox(height: 24),
                                 // 内容编辑区（带当前行高亮效果）
@@ -7953,16 +10593,29 @@ $htmlContent
                                   children: [
                                     // 当前行高亮背景
                                     Positioned(
-                                      top: (_lastCursorLine - 1) * (_editor.editorFontSize * _editor.editorLineHeight),
+                                      top:
+                                          (_lastCursorLine - 1) *
+                                          (_editor.editorFontSize *
+                                              _editor.editorLineHeight),
                                       left: 0,
                                       right: 0,
-                                      height: _editor.editorFontSize * _editor.editorLineHeight,
+                                      height:
+                                          _editor.editorFontSize *
+                                          _editor.editorLineHeight,
                                       child: Container(
-                                        color: cs.primary.withOpacity(isDark ? 0.08 : 0.05),
+                                        color: cs.primary.withOpacity(
+                                          isDark ? 0.08 : 0.05,
+                                        ),
                                       ),
                                     ),
                                     SizedBox(
-                                      height: _doc.contentCtrl.text.split('\n').length * (_editor.editorFontSize * _editor.editorLineHeight) + 600,
+                                      height:
+                                          _doc.contentCtrl.text
+                                                  .split('\n')
+                                                  .length *
+                                              (_editor.editorFontSize *
+                                                  _editor.editorLineHeight) +
+                                          600,
                                       child: TextField(
                                         controller: _doc.contentCtrl,
                                         maxLines: null,
@@ -7972,15 +10625,21 @@ $htmlContent
                                         style: TextStyle(
                                           fontSize: _editor.editorFontSize,
                                           height: _editor.editorLineHeight,
-                                          color: isDark ? Colors.white.withOpacity(0.9) : const Color(0xFF374151),
-                                          fontFamily: _resolveFontFamily(_editor.editorFontFamily),
+                                          color: isDark
+                                              ? Colors.white.withOpacity(0.9)
+                                              : const Color(0xFF374151),
+                                          fontFamily: _resolveFontFamily(
+                                            _editor.editorFontFamily,
+                                          ),
                                         ),
                                         decoration: InputDecoration(
                                           border: InputBorder.none,
                                           hintText: '开始写作...',
                                           hintStyle: TextStyle(
                                             fontSize: _editor.editorFontSize,
-                                            color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+                                            color: isDark
+                                                ? Colors.white.withOpacity(0.15)
+                                                : const Color(0xFFD1D5DB),
                                           ),
                                         ),
                                         onChanged: (_) => _onContentChanged(),
@@ -7999,10 +10658,14 @@ $htmlContent
                       Container(
                         width: 400,
                         decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFFAFAFC),
+                          color: isDark
+                              ? const Color(0xFF1E1E2E)
+                              : const Color(0xFFFAFAFC),
                           border: Border(
                             left: BorderSide(
-                              color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
+                              color: isDark
+                                  ? Colors.white.withOpacity(0.06)
+                                  : const Color(0xFFE5E5EA),
                             ),
                           ),
                         ),
@@ -8010,23 +10673,47 @@ $htmlContent
                           children: [
                             Container(
                               height: 36,
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
                               decoration: BoxDecoration(
                                 border: Border(
                                   bottom: BorderSide(
-                                    color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
+                                    color: isDark
+                                        ? Colors.white.withOpacity(0.06)
+                                        : const Color(0xFFE5E5EA),
                                   ),
                                 ),
                               ),
                               child: Row(
                                 children: [
-                                  Icon(Icons.visibility, size: 14, color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
+                                  Icon(
+                                    Icons.visibility,
+                                    size: 14,
+                                    color: isDark
+                                        ? Colors.white.withOpacity(0.4)
+                                        : const Color(0xFF9CA3AF),
+                                  ),
                                   const SizedBox(width: 6),
-                                  Text('实时预览', style: TextStyle(fontSize: 11, color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF))),
+                                  Text(
+                                    '实时预览',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isDark
+                                          ? Colors.white.withOpacity(0.4)
+                                          : const Color(0xFF9CA3AF),
+                                    ),
+                                  ),
                                   const Spacer(),
                                   GestureDetector(
                                     onTap: () => _layout.closeRightDrawer(),
-                                    child: Icon(Icons.close, size: 14, color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
+                                    child: Icon(
+                                      Icons.close,
+                                      size: 14,
+                                      color: isDark
+                                          ? Colors.white.withOpacity(0.4)
+                                          : const Color(0xFF9CA3AF),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -8034,7 +10721,9 @@ $htmlContent
                             Expanded(
                               child: SingleChildScrollView(
                                 padding: const EdgeInsets.all(16),
-                                child: _buildMarkdownPreview(_doc.contentCtrl.text),
+                                child: _buildMarkdownPreview(
+                                  _doc.contentCtrl.text,
+                                ),
                               ),
                             ),
                           ],
@@ -8054,19 +10743,35 @@ $htmlContent
             right: 0,
             child: Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
-                  color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
+                  color: (isDark ? Colors.white : Colors.black).withOpacity(
+                    0.06,
+                  ),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.keyboard_double_arrow_down, size: 10, color: isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.2)),
+                    Icon(
+                      Icons.keyboard_double_arrow_down,
+                      size: 10,
+                      color: isDark
+                          ? Colors.white.withOpacity(0.2)
+                          : Colors.black.withOpacity(0.2),
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       '打字机模式 · 光标居中',
-                      style: TextStyle(fontSize: 9, color: isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.2)),
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: isDark
+                            ? Colors.white.withOpacity(0.2)
+                            : Colors.black.withOpacity(0.2),
+                      ),
                     ),
                   ],
                 ),
@@ -8084,7 +10789,9 @@ $htmlContent
     final cs = Theme.of(context).colorScheme;
 
     // 初始化或重建语法高亮桥接控制器
-    final syntaxColors = isDark ? MarkdownSyntaxColors.dark : MarkdownSyntaxColors.light;
+    final syntaxColors = isDark
+        ? MarkdownSyntaxColors.dark
+        : MarkdownSyntaxColors.light;
     if (_sourceSyntaxCtrl == null) {
       _sourceSyntaxCtrl = BridgedSyntaxController(
         delegate: _doc.contentCtrl,
@@ -8108,7 +10815,9 @@ $htmlContent
               color: isDark ? const Color(0xFF252536) : const Color(0xFFFAFAFC),
               border: Border(
                 bottom: BorderSide(
-                  color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
+                  color: isDark
+                      ? Colors.white.withOpacity(0.06)
+                      : const Color(0xFFE5E5EA),
                 ),
               ),
             ),
@@ -8127,28 +10836,54 @@ $htmlContent
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  _doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : '未命名文章',
+                  _doc.titleCtrl.text.isNotEmpty
+                      ? _doc.titleCtrl.text
+                      : '未命名文章',
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF),
+                    color: isDark
+                        ? Colors.white.withOpacity(0.4)
+                        : const Color(0xFF9CA3AF),
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
                 const Spacer(),
                 // 快捷操作
-                _sourceToolbarButton(Icons.save_outlined, '保存', _saveLocal, isDark),
-                _sourceToolbarButton(Icons.send_outlined, '发布', _handlePublish, isDark),
+                _sourceToolbarButton(
+                  Icons.save_outlined,
+                  '保存',
+                  _saveLocal,
+                  isDark,
+                ),
+                _sourceToolbarButton(
+                  Icons.send_outlined,
+                  '发布',
+                  _handlePublish,
+                  isDark,
+                ),
                 _sourceToolbarButton(Icons.content_copy, '复制全文', () {
                   Clipboard.setData(ClipboardData(text: _doc.contentCtrl.text));
                   _showToast('已复制到剪贴板');
                 }, isDark),
-                _sourceToolbarButton(Icons.spellcheck, '拼写检查', () => _showSpellCheck(), isDark),
+                _sourceToolbarButton(
+                  Icons.spellcheck,
+                  '拼写检查',
+                  () => _showSpellCheck(),
+                  isDark,
+                ),
                 Container(
                   width: 1,
                   height: 18,
-                  color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
+                  color: isDark
+                      ? Colors.white.withOpacity(0.06)
+                      : const Color(0xFFE5E5EA),
                 ),
-                _sourceToolbarButton(Icons.close_fullscreen, '退出源码模式', () => _switchWorkMode(WorkMode.workspace), isDark),
+                _sourceToolbarButton(
+                  Icons.close_fullscreen,
+                  '退出源码模式',
+                  () => _switchWorkMode(WorkMode.workspace),
+                  isDark,
+                ),
               ],
             ),
           ),
@@ -8172,7 +10907,9 @@ $htmlContent
                   hintStyle: TextStyle(
                     fontSize: 14,
                     fontFamily: 'monospace',
-                    color: isDark ? Colors.white.withOpacity(0.1) : const Color(0xFFB0B0B0),
+                    color: isDark
+                        ? Colors.white.withOpacity(0.1)
+                        : const Color(0xFFB0B0B0),
                   ),
                 ),
                 onChanged: (_) => _onContentChanged(),
@@ -8187,7 +10924,9 @@ $htmlContent
               color: isDark ? const Color(0xFF252536) : const Color(0xFFFAFAFC),
               border: Border(
                 top: BorderSide(
-                  color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
+                  color: isDark
+                      ? Colors.white.withOpacity(0.06)
+                      : const Color(0xFFE5E5EA),
                 ),
               ),
             ),
@@ -8195,17 +10934,32 @@ $htmlContent
               children: [
                 Text(
                   'Markdown',
-                  style: TextStyle(fontSize: 11, color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF)),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark
+                        ? Colors.white.withOpacity(0.3)
+                        : const Color(0xFF9CA3AF),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Text(
                   '行 ${_editor.cursorPos.line} 列 ${_editor.cursorPos.column}',
-                  style: TextStyle(fontSize: 11, color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF)),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark
+                        ? Colors.white.withOpacity(0.3)
+                        : const Color(0xFF9CA3AF),
+                  ),
                 ),
                 const Spacer(),
                 Text(
                   '$_editor.wordCount 词  $_editor.charCount 字',
-                  style: TextStyle(fontSize: 11, color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF)),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark
+                        ? Colors.white.withOpacity(0.3)
+                        : const Color(0xFF9CA3AF),
+                  ),
                 ),
               ],
             ),
@@ -8215,7 +10969,12 @@ $htmlContent
     );
   }
 
-  Widget _sourceToolbarButton(IconData icon, String tooltip, VoidCallback onTap, bool isDark) {
+  Widget _sourceToolbarButton(
+    IconData icon,
+    String tooltip,
+    VoidCallback onTap,
+    bool isDark,
+  ) {
     return Tooltip(
       message: tooltip,
       child: Material(
@@ -8226,26 +10985,54 @@ $htmlContent
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.all(5),
-            child: Icon(icon, size: 15, color: isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280)),
+            child: Icon(
+              icon,
+              size: 15,
+              color: isDark
+                  ? Colors.white.withOpacity(0.5)
+                  : const Color(0xFF6B7280),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _focusMetaChip(IconData icon, String label, String value, bool isDark) {
+  Widget _focusMetaChip(
+    IconData icon,
+    String label,
+    String value,
+    bool isDark,
+  ) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 12, color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF)),
+        Icon(
+          icon,
+          size: 12,
+          color: isDark
+              ? Colors.white.withOpacity(0.3)
+              : const Color(0xFF9CA3AF),
+        ),
         const SizedBox(width: 4),
         Text(
           '$label: ',
-          style: TextStyle(fontSize: 11, color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF)),
+          style: TextStyle(
+            fontSize: 11,
+            color: isDark
+                ? Colors.white.withOpacity(0.3)
+                : const Color(0xFF9CA3AF),
+          ),
         ),
         Text(
           value,
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: isDark ? Colors.white.withOpacity(0.6) : const Color(0xFF6B7280)),
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: isDark
+                ? Colors.white.withOpacity(0.6)
+                : const Color(0xFF6B7280),
+          ),
         ),
       ],
     );
@@ -8260,9 +11047,7 @@ $htmlContent
         child: Container(
           width: 28,
           decoration: BoxDecoration(
-            color: isDark
-                ? const Color(0xFF1E1E2E)
-                : const Color(0xFFF5F5F7),
+            color: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFF5F5F7),
             border: Border(
               right: BorderSide(
                 color: isDark
@@ -8324,7 +11109,13 @@ class _SpecialBlock {
   final String content;
   final String? lang;
 
-  const _SpecialBlock(this.start, this.end, this.type, this.content, {this.lang});
+  const _SpecialBlock(
+    this.start,
+    this.end,
+    this.type,
+    this.content, {
+    this.lang,
+  });
 }
 
 // ============================================================
@@ -8350,13 +11141,29 @@ class _HelpModeCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Colors.grey.shade200),
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 2),
-          Text(desc, style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
-          const SizedBox(height: 2),
-          Text(tip, style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontStyle: FontStyle.italic)),
-        ]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              desc,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              tip,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey.shade500,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -8372,13 +11179,28 @@ class _HelpLayoutItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4, left: 4),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SizedBox(
-          width: 80,
-          child: Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
-        ),
-        Expanded(child: Text(desc, style: TextStyle(fontSize: 12, color: Colors.grey.shade600))),
-      ]),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade700,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              desc,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -8401,11 +11223,24 @@ class _HelpTipCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Colors.blue.shade100),
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          Text(content, style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.5)),
-        ]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              content,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade700,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -8443,89 +11278,134 @@ class _VersionHistoryDialogState extends State<_VersionHistoryDialog> {
   }
 
   Future<void> _loadSnapshots() async {
-    final snapshots = await widget.versionSnapshotService.getSnapshots(widget.articleId);
-    if (mounted) setState(() { _snapshots = snapshots.reversed.toList(); _loading = false; });
+    final snapshots = await widget.versionSnapshotService.getSnapshots(
+      widget.articleId,
+    );
+    if (mounted)
+      setState(() {
+        _snapshots = snapshots.reversed.toList();
+        _loading = false;
+      });
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Row(children: [
-        const Icon(Icons.history, size: 22),
-        const SizedBox(width: 8),
-        Expanded(child: Text('版本历史 — ${widget.articleTitle}', style: const TextStyle(fontSize: 16), overflow: TextOverflow.ellipsis)),
-      ]),
+      title: Row(
+        children: [
+          const Icon(Icons.history, size: 22),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '版本历史 — ${widget.articleTitle}',
+              style: const TextStyle(fontSize: 16),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
       content: SizedBox(
         width: 700,
         height: 500,
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _snapshots == null || _snapshots!.isEmpty
-                ? const Center(child: Text('暂无版本快照', style: TextStyle(color: Colors.grey)))
-                : Row(
-                    children: [
-                      SizedBox(
-                        width: 220,
-                        child: ListView.builder(
-                          itemCount: _snapshots!.length,
-                          itemBuilder: (_, i) {
-                            final s = _snapshots![i];
-                            final isSelected = _previewId == s.id;
-                            final time = '${s.createdAt.month.toString().padLeft(2, '0')}-${s.createdAt.day.toString().padLeft(2, '0')} ${s.createdAt.hour.toString().padLeft(2, '0')}:${s.createdAt.minute.toString().padLeft(2, '0')}';
-                            return ListTile(
-                              dense: true,
-                              selected: isSelected,
-                              selectedTileColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                              title: Text(time, style: const TextStyle(fontSize: 13, fontFamily: 'monospace')),
-                              subtitle: Text('${s.contentLength} 字符', style: const TextStyle(fontSize: 11)),
-                              onTap: () async {
-                                final content = await widget.versionSnapshotService.getSnapshotContent(widget.articleId, s.id);
-                                if (mounted) setState(() { _previewId = s.id; _previewContent = content ?? ''; });
-                              },
-                            );
+            ? const Center(
+                child: Text('暂无版本快照', style: TextStyle(color: Colors.grey)),
+              )
+            : Row(
+                children: [
+                  SizedBox(
+                    width: 220,
+                    child: ListView.builder(
+                      itemCount: _snapshots!.length,
+                      itemBuilder: (_, i) {
+                        final s = _snapshots![i];
+                        final isSelected = _previewId == s.id;
+                        final time =
+                            '${s.createdAt.month.toString().padLeft(2, '0')}-${s.createdAt.day.toString().padLeft(2, '0')} ${s.createdAt.hour.toString().padLeft(2, '0')}:${s.createdAt.minute.toString().padLeft(2, '0')}';
+                        return ListTile(
+                          dense: true,
+                          selected: isSelected,
+                          selectedTileColor: Theme.of(
+                            context,
+                          ).colorScheme.primary.withOpacity(0.1),
+                          title: Text(
+                            time,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                          subtitle: Text(
+                            '${s.contentLength} 字符',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          onTap: () async {
+                            final content = await widget.versionSnapshotService
+                                .getSnapshotContent(widget.articleId, s.id);
+                            if (mounted)
+                              setState(() {
+                                _previewId = s.id;
+                                _previewContent = content ?? '';
+                              });
                           },
-                        ),
-                      ),
-                      const VerticalDivider(width: 1),
-                      Expanded(
-                        child: _previewContent == null
-                            ? const Center(child: Text('点击左侧快照预览', style: TextStyle(color: Colors.grey)))
-                            : Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: SingleChildScrollView(
-                                      padding: const EdgeInsets.all(8),
-                                      child: Text(
-                                        _previewContent!,
-                                        style: const TextStyle(fontSize: 12, fontFamily: 'monospace', height: 1.5),
-                                      ),
-                                    ),
-                                  ),
-                                  const Divider(height: 1),
-                                  Padding(
-                                    padding: const EdgeInsets.all(8),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.end,
-                                      children: [
-                                        TextButton(
-                                          onPressed: () {
-                                            widget.onRestore(_previewContent!);
-                                            Navigator.pop(context);
-                                          },
-                                          child: const Text('恢复此版本'),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                      ),
-                    ],
+                        );
+                      },
+                    ),
                   ),
+                  const VerticalDivider(width: 1),
+                  Expanded(
+                    child: _previewContent == null
+                        ? const Center(
+                            child: Text(
+                              '点击左侧快照预览',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Text(
+                                    _previewContent!,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontFamily: 'monospace',
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const Divider(height: 1),
+                              Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    TextButton(
+                                      onPressed: () {
+                                        widget.onRestore(_previewContent!);
+                                        Navigator.pop(context);
+                                      },
+                                      child: const Text('恢复此版本'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('关闭'),
+        ),
       ],
     );
   }
@@ -8542,7 +11422,11 @@ class _DiffLine {
   final String text;
   final int lineNum;
 
-  const _DiffLine({required this.type, required this.text, required this.lineNum});
+  const _DiffLine({
+    required this.type,
+    required this.text,
+    required this.lineNum,
+  });
 }
 
 // ============================================================
@@ -8565,11 +11449,13 @@ class _ConflictResolutionDialog extends StatefulWidget {
   });
 
   @override
-  State<_ConflictResolutionDialog> createState() => _ConflictResolutionDialogState();
+  State<_ConflictResolutionDialog> createState() =>
+      _ConflictResolutionDialogState();
 }
 
 class _ConflictResolutionDialogState extends State<_ConflictResolutionDialog> {
-  final Map<String, String> _resolutions = {}; // articleId -> 'local' | 'remote'
+  final Map<String, String> _resolutions =
+      {}; // articleId -> 'local' | 'remote'
   int _currentIndex = 0;
 
   SyncEntry get currentConflict => widget.conflicts[_currentIndex];
@@ -8589,11 +11475,16 @@ class _ConflictResolutionDialogState extends State<_ConflictResolutionDialog> {
     );
 
     return AlertDialog(
-      title: Row(children: [
-        const Icon(Icons.compare_arrows, size: 22, color: Colors.orange),
-        const SizedBox(width: 8),
-        Text('同步冲突 (${_currentIndex + 1}/${widget.conflicts.length})', style: const TextStyle(fontSize: 17)),
-      ]),
+      title: Row(
+        children: [
+          const Icon(Icons.compare_arrows, size: 22, color: Colors.orange),
+          const SizedBox(width: 8),
+          Text(
+            '同步冲突 (${_currentIndex + 1}/${widget.conflicts.length})',
+            style: const TextStyle(fontSize: 17),
+          ),
+        ],
+      ),
       content: SizedBox(
         width: 900,
         height: 550,
@@ -8608,12 +11499,19 @@ class _ConflictResolutionDialogState extends State<_ConflictResolutionDialog> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.warning_amber, size: 18, color: Colors.orange),
+                  const Icon(
+                    Icons.warning_amber,
+                    size: 18,
+                    color: Colors.orange,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       '冲突文章: ${currentConflict.title}',
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
@@ -8719,7 +11617,8 @@ class _ConflictResolutionDialogState extends State<_ConflictResolutionDialog> {
           label: const Text('应用解决'),
           onPressed: () {
             for (final c in widget.conflicts) {
-              if (c.localArticleId != null && !_resolutions.containsKey(c.localArticleId)) {
+              if (c.localArticleId != null &&
+                  !_resolutions.containsKey(c.localArticleId)) {
                 _resolutions[c.localArticleId!] = 'skip';
               }
             }
@@ -8730,7 +11629,12 @@ class _ConflictResolutionDialogState extends State<_ConflictResolutionDialog> {
     );
   }
 
-  Widget _strategyChip(String value, String label, IconData icon, ColorScheme cs) {
+  Widget _strategyChip(
+    String value,
+    String label,
+    IconData icon,
+    ColorScheme cs,
+  ) {
     final isSelected = _resolutions[currentConflict.localArticleId] == value;
     return ChoiceChip(
       label: Row(
@@ -8754,7 +11658,13 @@ class _ConflictResolutionDialogState extends State<_ConflictResolutionDialog> {
     );
   }
 
-  Widget _buildDiffPane(String title, IconData icon, Color color, String content, bool isSelected) {
+  Widget _buildDiffPane(
+    String title,
+    IconData icon,
+    Color color,
+    String content,
+    bool isSelected,
+  ) {
     return Container(
       decoration: BoxDecoration(
         border: Border.all(
@@ -8768,14 +11678,25 @@ class _ConflictResolutionDialogState extends State<_ConflictResolutionDialog> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             decoration: BoxDecoration(
-              color: isSelected ? color.withOpacity(0.1) : Colors.grey.withOpacity(0.05),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
+              color: isSelected
+                  ? color.withOpacity(0.1)
+                  : Colors.grey.withOpacity(0.05),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(5),
+              ),
             ),
             child: Row(
               children: [
                 Icon(icon, size: 14, color: isSelected ? color : Colors.grey),
                 const SizedBox(width: 6),
-                Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isSelected ? color : Colors.grey)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isSelected ? color : Colors.grey,
+                  ),
+                ),
                 if (isSelected) ...[
                   const SizedBox(width: 4),
                   const Icon(Icons.check_circle, size: 14, color: Colors.green),
@@ -8788,7 +11709,11 @@ class _ConflictResolutionDialogState extends State<_ConflictResolutionDialog> {
               padding: const EdgeInsets.all(8),
               child: Text(
                 content,
-                style: const TextStyle(fontSize: 12, fontFamily: 'monospace', height: 1.5),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                  height: 1.5,
+                ),
               ),
             ),
           ),

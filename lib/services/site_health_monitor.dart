@@ -127,8 +127,10 @@ class SiteHealthMonitor {
       throw Exception('仅支持 GitHub 站点触发构建');
     }
     final base = 'https://api.github.com';
-    final refPath =
-        '/repos/${repo.owner}/${repo.repo}/git/refs/heads/${repo.branch}';
+    final owner = Uri.encodeComponent(repo.owner);
+    final name = Uri.encodeComponent(repo.repo);
+    final branch = Uri.encodeComponent(repo.branch);
+    final refPath = '/repos/$owner/$name/git/refs/heads/$branch';
 
     // 1. 取当前 tip commit sha
     final refData = await _request('GET', '$base$refPath', repo.token);
@@ -139,7 +141,7 @@ class SiteHealthMonitor {
 
     // 2. 取 tip tree sha（保持内容不变）
     final treeData = await _request(
-        'GET', '$base/repos/${repo.owner}/${repo.repo}/git/trees/$tip',
+        'GET', '$base/repos/$owner/$name/git/trees/$tip',
         repo.token);
     final treeSha = treeData?['sha']?.toString();
     if (treeSha == null || treeSha.isEmpty) {
@@ -148,7 +150,7 @@ class SiteHealthMonitor {
 
     // 3. 创建空提交
     final commitData = await _request(
-        'POST', '$base/repos/${repo.owner}/${repo.repo}/git/commits',
+        'POST', '$base/repos/$owner/$name/git/commits',
         repo.token,
         body: {
       'message': 'chore: trigger CI build (site operations)',

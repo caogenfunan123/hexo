@@ -8,7 +8,6 @@ import '../models/repo_config.dart';
 import '../models/wizard_models.dart';
 import '../services/git_providers.dart';
 import '../services/site_wizard_service.dart';
-import '../services/storage_service.dart';
 import '../services/framework_build_map.dart';
 import '../services/rollback_manager.dart';
 
@@ -85,6 +84,7 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
       final missing = _gitProvider == GitProviderType.gitlab
           ? (await GitLabProvider().verifyScopes(token))['missing'] as List
           : (await GitHubProvider().verifyScopes(token))['missing'] as List;
+      if (!mounted) return;
       setState(() {
         _tokenVerified = missing.isEmpty;
         _error = missing.isEmpty

@@ -72,9 +72,11 @@ class AgentContext {
         'pagesPath': pagesPath,
         'themesPath': themesPath,
         'targetFramework': targetFramework,
+        'activeRepoFullName': activeRepo?.fullName,
       };
 
-  /// 从 JSON 恢复（仅反序列化非仓库字段；activeRepo 由工作台按 fullName 重建）
+  /// 从 JSON 恢复（activeRepo 由工作台按 activeRepoFullName 重建，
+  /// 因为 RepoConfig 需引用仓库 token 等敏感字段，不适合整体序列化）
   factory AgentContext.fromJson(Map<String, dynamic> j) {
     return AgentContext(
       taskType: AgentTaskType.fromKey(j['taskType']?.toString()),
@@ -85,4 +87,7 @@ class AgentContext {
       targetFramework: j['targetFramework']?.toString(),
     );
   }
+
+  /// 恢复时携带的仓库 fullName（供工作台从 repos 列表重建 activeRepo）
+  String? get activeRepoFullName => activeRepo?.fullName;
 }

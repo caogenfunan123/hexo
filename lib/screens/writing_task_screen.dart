@@ -39,55 +39,60 @@ class _WritingTaskScreenState extends State<WritingTaskScreen> {
   Future<void> _create() async {
     final titleCtrl = TextEditingController();
     final topicCtrl = TextEditingController();
-    final created = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('新建写作任务'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleCtrl,
-                decoration: const InputDecoration(labelText: '任务标题'),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: topicCtrl,
-                decoration: const InputDecoration(labelText: '选题说明'),
-                maxLines: 3,
-              ),
-            ],
+    try {
+      final created = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('新建写作任务'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleCtrl,
+                  decoration: const InputDecoration(labelText: '任务标题'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: topicCtrl,
+                  decoration: const InputDecoration(labelText: '选题说明'),
+                  maxLines: 3,
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final title = titleCtrl.text.trim();
+                if (title.isEmpty) return;
+                await _manager!.create(
+                  title: title,
+                  topic: topicCtrl.text.trim(),
+                );
+                if (ctx.mounted) Navigator.pop(ctx, true);
+              },
+              child: const Text('创建'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(
-            onPressed: () async {
-              final title = titleCtrl.text.trim();
-              if (title.isEmpty) return;
-              await _manager!.create(
-                title: title,
-                topic: topicCtrl.text.trim(),
-              );
-              if (ctx.mounted) Navigator.pop(ctx, true);
-            },
-            child: const Text('创建'),
-          ),
-        ],
-      ),
-    );
-    if (created == true) _refresh();
+      );
+      if (created == true) _refresh();
+    } finally {
+      titleCtrl.dispose();
+      topicCtrl.dispose();
+    }
   }
 
   void _openDetail(WritingTask task) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => _TaskDetailScreen(
-          manager: _manager!,
-          task: task,
-        ),
+        builder: (_) => _TaskDetailScreen(manager: _manager!, task: task),
       ),
     ).then((_) => _refresh());
   }
@@ -99,7 +104,10 @@ class _WritingTaskScreenState extends State<WritingTaskScreen> {
         title: const Text('删除任务'),
         content: Text('删除「${task.title}」？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('删除', style: TextStyle(color: Colors.red)),
@@ -131,59 +139,71 @@ class _WritingTaskScreenState extends State<WritingTaskScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _manager!.tasks.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.task_alt, size: 64, color: Colors.grey.shade300),
-                      const SizedBox(height: 16),
-                      Text('暂无写作任务',
-                          style: TextStyle(color: Colors.grey.shade500, fontSize: 16)),
-                      const SizedBox(height: 8),
-                      Text('创建任务，跟踪从选题到发布的写作流程',
-                          style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.task_alt, size: 64, color: Colors.grey.shade300),
+                  const SizedBox(height: 16),
+                  Text(
+                    '暂无写作任务',
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
                   ),
-                )
-              : ListView(
-                  padding: const EdgeInsets.all(12),
-                  children: _manager!.tasks.map((task) {
-                    final statusColor = _statusColor(task.status, cs);
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        onTap: () => _openDetail(task),
-                        leading: CircleAvatar(
-                          backgroundColor: statusColor.withOpacity(0.12),
-                          child: Icon(_statusIcon(task.status), color: statusColor, size: 20),
-                        ),
-                        title: Text(task.title,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (task.topic.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 2),
-                                child: Text(task.topic,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 12)),
-                              ),
-                            const SizedBox(height: 4),
-                            _statusBar(task.status, cs),
-                          ],
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline, size: 18),
-                          onPressed: () => _delete(task),
-                        ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '创建任务，跟踪从选题到发布的写作流程',
+                    style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                  ),
+                ],
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.all(12),
+              children: _manager!.tasks.map((task) {
+                final statusColor = _statusColor(task.status, cs);
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    onTap: () => _openDetail(task),
+                    leading: CircleAvatar(
+                      backgroundColor: statusColor.withOpacity(0.12),
+                      child: Icon(
+                        _statusIcon(task.status),
+                        color: statusColor,
+                        size: 20,
                       ),
-                    );
-                  }).toList(),
-                ),
+                    ),
+                    title: Text(
+                      task.title,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (task.topic.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              task.topic,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        const SizedBox(height: 4),
+                        _statusBar(task.status, cs),
+                      ],
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      onPressed: () => _delete(task),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
     );
   }
 
@@ -205,10 +225,7 @@ class _WritingTaskScreenState extends State<WritingTaskScreen> {
           child: Row(
             children: [
               Expanded(
-                child: Container(
-                  height: 3,
-                  color: color.withOpacity(0.5),
-                ),
+                child: Container(height: 3, color: color.withOpacity(0.5)),
               ),
               const SizedBox(width: 4),
               Icon(
@@ -225,18 +242,18 @@ class _WritingTaskScreenState extends State<WritingTaskScreen> {
   }
 
   Color _statusColor(WritingTaskStatus s, ColorScheme cs) => switch (s) {
-        WritingTaskStatus.topic => Colors.blue,
-        WritingTaskStatus.outline => Colors.orange,
-        WritingTaskStatus.writing => Colors.teal,
-        WritingTaskStatus.published => Colors.green,
-      };
+    WritingTaskStatus.topic => Colors.blue,
+    WritingTaskStatus.outline => Colors.orange,
+    WritingTaskStatus.writing => Colors.teal,
+    WritingTaskStatus.published => Colors.green,
+  };
 
   IconData _statusIcon(WritingTaskStatus s) => switch (s) {
-        WritingTaskStatus.topic => Icons.lightbulb_outline,
-        WritingTaskStatus.outline => Icons.list_alt,
-        WritingTaskStatus.writing => Icons.edit_note,
-        WritingTaskStatus.published => Icons.published_with_changes,
-      };
+    WritingTaskStatus.topic => Icons.lightbulb_outline,
+    WritingTaskStatus.outline => Icons.list_alt,
+    WritingTaskStatus.writing => Icons.edit_note,
+    WritingTaskStatus.published => Icons.published_with_changes,
+  };
 }
 
 /// 任务详情页：编辑各阶段内容 + 推进状态
@@ -264,6 +281,7 @@ class _TaskDetailScreenState extends State<_TaskDetailScreen> {
     if (next == null) return;
     final updated = await widget.manager.advance(_task.id);
     if (updated != null) {
+      if (!mounted) return;
       setState(() => _task = updated);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('已推进至「${updated.status.label}」阶段')),
@@ -273,28 +291,36 @@ class _TaskDetailScreenState extends State<_TaskDetailScreen> {
 
   void _editField(String title, String initial, {int maxLines = 6}) async {
     final ctrl = TextEditingController(text: initial);
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: ctrl,
-          maxLines: maxLines,
-          style: const TextStyle(fontSize: 13),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('保存'),
+    try {
+      final saved = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(title),
+          content: TextField(
+            controller: ctrl,
+            maxLines: maxLines,
+            style: const TextStyle(fontSize: 13),
           ),
-        ],
-      ),
-    );
-    if (saved == true) {
-      final updated = _task.copyWith(topic: ctrl.text.trim());
-      await widget.manager.saveTask(updated);
-      setState(() => _task = updated);
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      );
+      if (saved == true) {
+        final updated = _task.copyWith(topic: ctrl.text.trim());
+        await widget.manager.saveTask(updated);
+        if (!mounted) return;
+        setState(() => _task = updated);
+      }
+    } finally {
+      ctrl.dispose();
     }
   }
 
@@ -303,7 +329,10 @@ class _TaskDetailScreenState extends State<_TaskDetailScreen> {
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: const Icon(Icons.article_outlined, size: 20),
-        title: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+        title: Text(
+          label,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Text(
@@ -352,8 +381,13 @@ class _TaskDetailScreenState extends State<_TaskDetailScreen> {
               children: [
                 Icon(Icons.flag, color: cs.primary, size: 18),
                 const SizedBox(width: 8),
-                Text('当前阶段：${_task.status.label}',
-                    style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface)),
+                Text(
+                  '当前阶段：${_task.status.label}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface,
+                  ),
+                ),
               ],
             ),
           ),

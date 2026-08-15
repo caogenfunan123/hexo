@@ -8,7 +8,7 @@ import '../services/writing_stats_service.dart';
 ///
 /// 数据全部来自本地 drafts + repos，无需网络与 AI。
 /// 统计维度：总量指标、标签云、分类分布、近 30 天写作趋势、站点分布。
-class ContentStatsScreen extends StatelessWidget {
+class ContentStatsScreen extends StatefulWidget {
   final List<Article> drafts;
   final List<RepoConfig> repos;
 
@@ -19,9 +19,30 @@ class ContentStatsScreen extends StatelessWidget {
   });
 
   @override
+  State<ContentStatsScreen> createState() => _ContentStatsScreenState();
+}
+
+class _ContentStatsScreenState extends State<ContentStatsScreen> {
+  _ContentStats? _cached;
+  List<Article>? _cachedDrafts;
+  List<RepoConfig>? _cachedRepos;
+
+  _ContentStats _stats() {
+    if (_cached == null ||
+        _cachedDrafts != widget.drafts ||
+        _cachedRepos != widget.repos) {
+      _cached = _buildStats();
+      _cachedDrafts = widget.drafts;
+      _cachedRepos = widget.repos;
+    }
+    return _cached!;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final stats = _buildStats();
+    final drafts = widget.drafts;
+    final stats = _stats();
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -190,17 +211,18 @@ class ContentStatsScreen extends StatelessWidget {
     final siteCount = <String, int>{};
     final todayKey = _dateKey(DateTime.now());
 
-    for (final a in drafts) {
+    for (final a in widget.drafts) {
       final words = WritingStatsService.countWords(a.content);
       totalWords += words;
       if (a.published || !a.isDraft) published++;
       if (_dateKey(a.updatedAt) == todayKey) todayDrafts++;
       for (final t in a.tags) {
-        final k = t.trim();
+        // 大小写归一化，避免同一标签重复计数
+        final k = t.trim().toLowerCase();
         if (k.isNotEmpty) tagCount[k] = (tagCount[k] ?? 0) + 1;
       }
       for (final c in a.categories) {
-        final k = c.trim();
+        final k = c.trim().toLowerCase();
         if (k.isNotEmpty) catCount[k] = (catCount[k] ?? 0) + 1;
       }
       final siteId = a.repoId;
@@ -216,7 +238,7 @@ class ContentStatsScreen extends StatelessWidget {
       final d = now.subtract(Duration(days: i));
       dailyTrend[_dateKey(d)] = 0;
     }
-    for (final a in drafts) {
+    for (final a in widget.drafts) {
       final k = _dateKey(a.updatedAt);
       if (dailyTrend.containsKey(k)) dailyTrend[k] = dailyTrend[k]! + 1;
     }
@@ -233,7 +255,7 @@ class ContentStatsScreen extends StatelessWidget {
 
     // 站点名映射
     final nameById = <String, String>{
-      for (final r in repos) r.id: r.name,
+      for (final r in widget.repos) r.id: r.name,
     };
     final siteEntries = <(String, int)>[
       for (final e in topSites)
@@ -390,6 +412,7 @@ class _TrendBarPainter extends CustomPainter {
     final paint = Paint()..color = barColor;
     for (var i = 0; i < entries.length; i++) {
       final e = entries[i];
+      if (e.value <= 0) continue;
       final ratio = e.value / maxValue;
       final barHeight = (ratio * height).clamp(2.0, height);
       final x = i * gap + (gap - barWidth) / 2;

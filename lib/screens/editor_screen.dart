@@ -50,8 +50,6 @@ class EditorScreen extends StatefulWidget {
   State<EditorScreen> createState() => _EditorScreenState();
 }
 
-
-
 class _EditorScreenState extends State<EditorScreen> {
   late TextEditingController _title;
   late TextEditingController _content;
@@ -72,7 +70,8 @@ class _EditorScreenState extends State<EditorScreen> {
     _article = widget.article;
     _articleType = _article.articleType;
     _selectedTemplateId = _article.templateId;
-    _repo = widget.activeRepo ??
+    _repo =
+        widget.activeRepo ??
         (widget.repos.isNotEmpty ? widget.repos.first : null);
     if (_article.repoId != null) {
       for (final r in widget.repos) {
@@ -80,15 +79,12 @@ class _EditorScreenState extends State<EditorScreen> {
       }
     }
 
-
     _title = TextEditingController(text: _article.title);
     _content = TextEditingController(text: _article.content);
     _tags = TextEditingController(text: _article.tags.join(', '));
     _categories = TextEditingController(text: _article.categories.join(', '));
     _cover = TextEditingController(text: _article.cover ?? '');
   }
-
-
 
   @override
   void dispose() {
@@ -100,8 +96,6 @@ class _EditorScreenState extends State<EditorScreen> {
     _contentFocus.dispose();
     super.dispose();
   }
-
-
 
   Article _collect({bool draft = true}) {
     final cover = _cover.text.trim();
@@ -129,8 +123,6 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-
-
   RepoConfig? get _resolvedRepo {
     final r = _repo;
     if (r == null) return null;
@@ -139,8 +131,6 @@ class _EditorScreenState extends State<EditorScreen> {
     if (t.isEmpty) return r;
     return r.copyWith(token: t);
   }
-
-
 
   Future<void> _saveLocal() async {
     final a = _collect(draft: true);
@@ -151,15 +141,11 @@ class _EditorScreenState extends State<EditorScreen> {
     });
     await widget.onSaveLocal(a);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已保存到首页')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已保存到首页')));
     }
-
-
   }
-
-
 
   Future<void> _exportMarkdown() async {
     try {
@@ -167,35 +153,28 @@ class _EditorScreenState extends State<EditorScreen> {
       await widget.storage.exportDraftMarkdown(a);
       final dir = await widget.storage.draftsDir();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已导出到 ${dir.path}')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已导出到 ${dir.path}')));
       }
-
 
       setState(() => _status = '已导出 Markdown');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导出失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('导出失败: $e')));
       }
-
-
     }
-
-
   }
-
-
 
   /// 发布选项：立即发布 / 定时发布（写入未来 date，Hexo/Hugo 原生 future posts 展示）
   Future<void> _showPublishOptions() async {
     final repo = _resolvedRepo;
     if (repo == null || repo.token.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先配置仓库与 GitHub Token')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先配置仓库与 GitHub Token')));
       return;
     }
     final action = await showModalBottomSheet<String>(
@@ -221,7 +200,9 @@ class _EditorScreenState extends State<EditorScreen> {
               onTap: () async {
                 final picked = await showDatePicker(
                   context: context,
-                  initialDate: _article.schedulePublishAt ?? DateTime.now().add(const Duration(days: 1)),
+                  initialDate:
+                      _article.schedulePublishAt ??
+                      DateTime.now().add(const Duration(days: 1)),
                   firstDate: DateTime.now(),
                   lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
                 );
@@ -229,13 +210,23 @@ class _EditorScreenState extends State<EditorScreen> {
                   final withTime = await showTimePicker(
                     context: context,
                     initialTime: TimeOfDay.fromDateTime(
-                        _article.schedulePublishAt ?? DateTime.now().add(const Duration(hours: 1))),
+                      _article.schedulePublishAt ??
+                          DateTime.now().add(const Duration(hours: 1)),
+                    ),
                   );
                   if (withTime != null) {
-                    final t = DateTime(picked.year, picked.month, picked.day,
-                        withTime.hour, withTime.minute);
+                    final t = DateTime(
+                      picked.year,
+                      picked.month,
+                      picked.day,
+                      withTime.hour,
+                      withTime.minute,
+                    );
                     if (mounted) {
-                      setState(() => _article = _article.copyWith(schedulePublishAt: t));
+                      setState(
+                        () =>
+                            _article = _article.copyWith(schedulePublishAt: t),
+                      );
                     }
                     if (mounted) {
                       Navigator.pop(context, 'schedule');
@@ -250,7 +241,10 @@ class _EditorScreenState extends State<EditorScreen> {
                 title: const Text('清除定时，改为立即发布'),
                 onTap: () {
                   if (mounted) {
-                    setState(() => _article = _article.copyWith(schedulePublishAt: null));
+                    setState(
+                      () =>
+                          _article = _article.copyWith(schedulePublishAt: null),
+                    );
                   }
                   Navigator.pop(context, 'now');
                 },
@@ -274,9 +268,9 @@ class _EditorScreenState extends State<EditorScreen> {
   Future<void> _publish() async {
     final repo = _resolvedRepo;
     if (repo == null || repo.token.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先配置仓库与 GitHub Token')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先配置仓库与 GitHub Token')));
       return;
     }
 
@@ -287,7 +281,11 @@ class _EditorScreenState extends State<EditorScreen> {
     });
     try {
       final a = _collect(draft: false);
-      final published = await widget.github.upsertArticle(repo, a, templates: widget.templates);
+      final published = await widget.github.upsertArticle(
+        repo,
+        a,
+        templates: widget.templates,
+      );
       setState(() {
         _article = published;
         _status = '发布成功';
@@ -295,54 +293,51 @@ class _EditorScreenState extends State<EditorScreen> {
       await widget.onPublished(published);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已发布到 ${repo.fullName}/${published.remotePath}')),
+          SnackBar(
+            content: Text('已发布到 ${repo.fullName}/${published.remotePath}'),
+          ),
         );
       }
-
-
     } catch (e) {
       setState(() => _status = '发布失败');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('发布失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('发布失败: $e')));
       }
-
-
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-
-
   }
-
-
 
   Future<void> _deleteRemote() async {
     final repo = _resolvedRepo;
     if (repo == null || repo.token.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先配置仓库与 GitHub Token')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先配置仓库与 GitHub Token')));
       return;
     }
-
 
     if (_article.remotePath == null || _article.remoteSha == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('当前不是远程已发布文章，无法删除')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('当前不是远程已发布文章，无法删除')));
       return;
     }
-
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除已发布文章'),
-        content: Text('确认从 GitHub 删除「${_article.title}」？\n${_article.remotePath}'),
+        content: Text(
+          '确认从 GitHub 删除「${_article.title}」？\n${_article.remotePath}',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -374,31 +369,22 @@ class _EditorScreenState extends State<EditorScreen> {
         await widget.onSaveLocal(local);
       }
 
-
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已删除远程文章')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已删除远程文章')));
         Navigator.pop(context);
       }
-
-
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('删除失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('删除失败: $e')));
       }
-
-
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-
-
   }
-
-
 
   Future<void> _insertImage() async {
     if (!mounted) return;
@@ -413,7 +399,6 @@ class _EditorScreenState extends State<EditorScreen> {
         return;
       }
 
-
       final url = await widget.imageService.uploadToImageBed(
         bytes,
         widget.settings,
@@ -423,27 +408,20 @@ class _EditorScreenState extends State<EditorScreen> {
       setState(() => _status = '图片已插入');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('图片上传失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('图片上传失败: $e')));
       }
-
-
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-
-
   }
-
-
 
   Future<void> _aiContinue() async {
     if (widget.settings.activeAiProfile == null) {
       setState(() => _status = '请先在设置中配置 AI');
       return;
     }
-
 
     final before = _content.text.split('\n').take(8).join('\n');
     if (before.trim().isEmpty) {
@@ -465,11 +443,7 @@ class _EditorScreenState extends State<EditorScreen> {
     } catch (e) {
       setState(() => _status = 'AI 续写失败: $e');
     }
-
-
   }
-
-
 
   Future<void> _ai(String action) async {
     if (!mounted) return;
@@ -518,101 +492,115 @@ class _EditorScreenState extends State<EditorScreen> {
             );
           }
 
-
           break;
         case 'outline':
           final topic = _title.text.isEmpty ? text : _title.text;
-          result = await widget.aiService.generateOutline(widget.settings, topic);
+          result = await widget.aiService.generateOutline(
+            widget.settings,
+            topic,
+          );
           _content.text = result;
           break;
         case 'code':
           final promptCtrl = TextEditingController(
             text: selected.isEmpty ? '' : selected,
           );
-          final ok = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('AI 生成代码'),
-              content: TextField(
-                controller: promptCtrl,
-                maxLines: 5,
-                decoration: const InputDecoration(
-                  hintText: '描述需要的代码，例如：Python 读取 CSV 并画图',
+          try {
+            final ok = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('AI 生成代码'),
+                content: TextField(
+                  controller: promptCtrl,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    hintText: '描述需要的代码，例如：Python 读取 CSV 并画图',
+                  ),
                 ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('生成'),
+                  ),
+                ],
               ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('生成')),
-              ],
-            ),
-          );
-          if (ok != true) break;
-          result = await widget.aiService.generateCode(
-            widget.settings,
-            promptCtrl.text.trim().isEmpty ? '写一段示例代码' : promptCtrl.text.trim(),
-          );
-          if (selected.isNotEmpty) {
-            _wrapOrReplace(result);
-          } else {
-            _insertText('\n\n$result\n');
+            );
+            if (ok != true) break;
+            result = await widget.aiService.generateCode(
+              widget.settings,
+              promptCtrl.text.trim().isEmpty
+                  ? '写一段示例代码'
+                  : promptCtrl.text.trim(),
+            );
+            if (selected.isNotEmpty) {
+              _wrapOrReplace(result);
+            } else {
+              _insertText('\n\n$result\n');
+            }
+          } finally {
+            promptCtrl.dispose();
           }
-
-
           break;
         case 'rewrite':
           if (selected.isEmpty) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('请先选中要改写的文字')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('请先选中要改写的文字')));
             }
             return;
           }
 
-
           final instr = TextEditingController(text: '更简洁专业');
-          final ok2 = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('AI 改写选中'),
-              content: TextField(
-                controller: instr,
-                decoration: const InputDecoration(hintText: '改写指令'),
+          try {
+            final ok2 = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('AI 改写选中'),
+                content: TextField(
+                  controller: instr,
+                  decoration: const InputDecoration(hintText: '改写指令'),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('改写'),
+                  ),
+                ],
               ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('改写')),
-              ],
-            ),
-          );
-          if (ok2 != true) break;
-          result = await widget.aiService.rewriteSelection(
-            widget.settings,
-            selected,
-            instr.text.trim(),
-          );
-          _wrapOrReplace(result);
+            );
+            if (ok2 != true) break;
+            result = await widget.aiService.rewriteSelection(
+              widget.settings,
+              selected,
+              instr.text.trim(),
+            );
+            _wrapOrReplace(result);
+          } finally {
+            instr.dispose();
+          }
           break;
       }
-
 
       setState(() => _status = 'AI 完成');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('AI 失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('AI 失败: $e')));
       }
-
-
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-
-
   }
-
-
 
   void _insertText(String insert) {
     final sel = _content.selection;
@@ -627,8 +615,6 @@ class _EditorScreenState extends State<EditorScreen> {
     _contentFocus.requestFocus();
   }
 
-
-
   void _wrapOrReplace(String replacement) {
     final sel = _content.selection;
     final text = _content.text;
@@ -637,15 +623,14 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
-
     _content.value = TextEditingValue(
       text: text.replaceRange(sel.start, sel.end, replacement),
-      selection: TextSelection.collapsed(offset: sel.start + replacement.length),
+      selection: TextSelection.collapsed(
+        offset: sel.start + replacement.length,
+      ),
     );
     _contentFocus.requestFocus();
   }
-
-
 
   void _wrapSelection(String left, String right, {String placeholder = ''}) {
     final sel = _content.selection;
@@ -664,7 +649,6 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
-
     final selected = text.substring(sel.start, sel.end);
     final replacement = '$left$selected$right';
     _content.value = TextEditingValue(
@@ -676,8 +660,6 @@ class _EditorScreenState extends State<EditorScreen> {
     );
     _contentFocus.requestFocus();
   }
-
-
 
   void _insertCodeBlock({String language = ''}) {
     final sel = _content.selection;
@@ -699,8 +681,6 @@ class _EditorScreenState extends State<EditorScreen> {
     _contentFocus.requestFocus();
   }
 
-
-
   void _indentSelection() {
     final sel = _content.selection;
     final text = _content.text;
@@ -721,8 +701,6 @@ class _EditorScreenState extends State<EditorScreen> {
     _contentFocus.requestFocus();
   }
 
-
-
   void _outdentSelection() {
     final sel = _content.selection;
     final text = _content.text;
@@ -731,11 +709,14 @@ class _EditorScreenState extends State<EditorScreen> {
     final lineEnd = text.indexOf('\n', sel.end);
     final end = lineEnd < 0 ? text.length : lineEnd;
     final block = text.substring(lineStart, end);
-    final out = block.split('\n').map((l) {
-      if (l.startsWith('  ')) return l.substring(2);
-      if (l.startsWith('\t')) return l.substring(1);
-      return l;
-    }).join('\n');
+    final out = block
+        .split('\n')
+        .map((l) {
+          if (l.startsWith('  ')) return l.substring(2);
+          if (l.startsWith('\t')) return l.substring(1);
+          return l;
+        })
+        .join('\n');
     final newText = text.replaceRange(lineStart, end, out);
     _content.value = TextEditingValue(
       text: newText,
@@ -746,8 +727,6 @@ class _EditorScreenState extends State<EditorScreen> {
     );
     _contentFocus.requestFocus();
   }
-
-
 
   Future<void> _pickCodeLang() async {
     const langs = [
@@ -776,7 +755,12 @@ class _EditorScreenState extends State<EditorScreen> {
         child: ListView(
           shrinkWrap: true,
           children: [
-            const ListTile(title: Text('插入代码块', style: TextStyle(fontWeight: FontWeight.w700))),
+            const ListTile(
+              title: Text(
+                '插入代码块',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
             ...langs.map(
               (l) => ListTile(
                 title: Text(l.isEmpty ? '无语言标记' : l),
@@ -789,8 +773,6 @@ class _EditorScreenState extends State<EditorScreen> {
     );
     if (lang != null) _insertCodeBlock(language: lang);
   }
-
-
 
   void _insertHeading(int level) {
     final prefix = '${'#' * level} ';
@@ -807,31 +789,27 @@ class _EditorScreenState extends State<EditorScreen> {
     _contentFocus.requestFocus();
   }
 
-
-
   void _insertList(String marker) {
     final sel = _content.selection;
     final text = _content.text;
     if (sel.isValid && sel.start != sel.end) {
       final selected = text.substring(sel.start, sel.end);
-      final lines = selected.split('\n').map((l) => l.isEmpty ? l : '$marker$l').join('\n');
+      final lines = selected
+          .split('\n')
+          .map((l) => l.isEmpty ? l : '$marker$l')
+          .join('\n');
       _wrapOrReplace(lines);
       return;
     }
 
-
     _insertText('\n$marker');
   }
-
-
 
   String get _aiLabel {
     final p = widget.settings.activeAiProfile;
     if (p == null) return '未配置 AI';
     return p.displayLabel;
   }
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -842,12 +820,18 @@ class _EditorScreenState extends State<EditorScreen> {
         actions: [
           IconButton(
             tooltip: '预览',
-            onPressed: _busy ? null : () {
-              final md = _content.text.isEmpty ? '*（暂无内容）*' : _content.text;
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => _PreviewPage(markdown: md)),
-              );
-            },
+            onPressed: _busy
+                ? null
+                : () {
+                    final md = _content.text.isEmpty
+                        ? '*（暂无内容）*'
+                        : _content.text;
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => _PreviewPage(markdown: md),
+                      ),
+                    );
+                  },
             icon: const Icon(Icons.visibility_outlined),
           ),
           IconButton(
@@ -913,7 +897,8 @@ class _EditorScreenState extends State<EditorScreen> {
                             ? '目录: ${_repo!.postsPath}'
                             : '文章目录',
                         active: _articleType == ArticleType.post,
-                        onTap: () => setState(() => _articleType = ArticleType.post),
+                        onTap: () =>
+                            setState(() => _articleType = ArticleType.post),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -925,7 +910,8 @@ class _EditorScreenState extends State<EditorScreen> {
                             ? '目录: ${_repo!.pagesPath}'
                             : '页面目录',
                         active: _articleType == ArticleType.page,
-                        onTap: () => setState(() => _articleType = ArticleType.page),
+                        onTap: () =>
+                            setState(() => _articleType = ArticleType.page),
                       ),
                     ),
                   ],
@@ -939,9 +925,13 @@ class _EditorScreenState extends State<EditorScreen> {
                         child: DropdownButtonFormField<String>(
                           value: _selectedTemplateId,
                           decoration: InputDecoration(
-                            labelText: '模板 (${_articleType == ArticleType.post ? '博文' : '页面'})',
+                            labelText:
+                                '模板 (${_articleType == ArticleType.post ? '博文' : '页面'})',
                             prefixIcon: const Icon(Icons.view_quilt_outlined),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
                           ),
                           items: [
                             const DropdownMenuItem<String>(
@@ -949,33 +939,51 @@ class _EditorScreenState extends State<EditorScreen> {
                               child: Text('无模板（手动编写）'),
                             ),
                             ...widget.templates
-                                .where((t) => t.isPost == (_articleType == ArticleType.post))
-                                .map((t) => DropdownMenuItem<String>(
-                                      value: t.id,
-                                      child: Row(
-                                        children: [
-                                          if (t.isBuiltin)
-                                            const Icon(Icons.check_circle, size: 14, color: Color(0xFF10B981)),
-                                          if (!t.isBuiltin)
-                                            const Icon(Icons.edit, size: 14, color: Color(0xFF8B5CF6)),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(
-                                              t.name,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(fontSize: 14),
+                                .where(
+                                  (t) =>
+                                      t.isPost ==
+                                      (_articleType == ArticleType.post),
+                                )
+                                .map(
+                                  (t) => DropdownMenuItem<String>(
+                                    value: t.id,
+                                    child: Row(
+                                      children: [
+                                        if (t.isBuiltin)
+                                          const Icon(
+                                            Icons.check_circle,
+                                            size: 14,
+                                            color: Color(0xFF10B981),
+                                          ),
+                                        if (!t.isBuiltin)
+                                          const Icon(
+                                            Icons.edit,
+                                            size: 14,
+                                            color: Color(0xFF8B5CF6),
+                                          ),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            t.name,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 14,
                                             ),
                                           ),
-                                        ],
-                                      ),
-                                    )),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                           ],
                           onChanged: (v) {
                             setState(() => _selectedTemplateId = v);
                             if (v != null) {
                               // 应用模板到标题/标签占位
                               if (_title.text.isEmpty) {
-                                _title.text = _articleType == ArticleType.page ? '新页面' : '新文章';
+                                _title.text = _articleType == ArticleType.page
+                                    ? '新页面'
+                                    : '新文章';
                               }
                             }
                           },
@@ -996,7 +1004,10 @@ class _EditorScreenState extends State<EditorScreen> {
                 // ── 框架信息 ──
                 if (_repo != null) ...[
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF0F9FF),
                       borderRadius: BorderRadius.circular(8),
@@ -1004,13 +1015,20 @@ class _EditorScreenState extends State<EditorScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.info_outline, size: 16, color: Color(0xFF0EA5E9)),
+                        const Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: Color(0xFF0EA5E9),
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             '框架: ${BlogFramework.byId(_repo!.frameworkId)?.name ?? _repo!.frameworkId} | '
                             '文件名: ${_articleType == ArticleType.page ? '无日期' : (_repo!.fileNameRule.postDatePrefix ? '自动加日期' : '纯标题')}',
-                            style: const TextStyle(fontSize: 12, color: Color(0xFF0369A1)),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF0369A1),
+                            ),
                           ),
                         ),
                       ],
@@ -1057,7 +1075,10 @@ class _EditorScreenState extends State<EditorScreen> {
                 const SizedBox(height: 8),
                 Text(
                   '当前 AI: $_aiLabel',
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF64748B),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 SingleChildScrollView(
@@ -1067,22 +1088,26 @@ class _EditorScreenState extends State<EditorScreen> {
                       _ToolChip(
                         icon: Icons.format_bold,
                         label: '粗体',
-                        onTap: () => _wrapSelection('**', '**', placeholder: '粗体'),
+                        onTap: () =>
+                            _wrapSelection('**', '**', placeholder: '粗体'),
                       ),
                       _ToolChip(
                         icon: Icons.format_italic,
                         label: '斜体',
-                        onTap: () => _wrapSelection('*', '*', placeholder: '斜体'),
+                        onTap: () =>
+                            _wrapSelection('*', '*', placeholder: '斜体'),
                       ),
                       _ToolChip(
                         icon: Icons.format_strikethrough,
                         label: '删除线',
-                        onTap: () => _wrapSelection('~~', '~~', placeholder: '删除线'),
+                        onTap: () =>
+                            _wrapSelection('~~', '~~', placeholder: '删除线'),
                       ),
                       _ToolChip(
                         icon: Icons.code,
                         label: '行内码',
-                        onTap: () => _wrapSelection('`', '`', placeholder: 'code'),
+                        onTap: () =>
+                            _wrapSelection('`', '`', placeholder: 'code'),
                       ),
                       _ToolChip(
                         icon: Icons.code_off,
@@ -1147,7 +1172,11 @@ class _EditorScreenState extends State<EditorScreen> {
                       _ToolChip(
                         icon: Icons.link,
                         label: '链接',
-                        onTap: () => _wrapSelection('[', '](https://)', placeholder: '链接文字'),
+                        onTap: () => _wrapSelection(
+                          '[',
+                          '](https://)',
+                          placeholder: '链接文字',
+                        ),
                       ),
                       _ToolChip(
                         icon: Icons.grid_on,
@@ -1196,24 +1225,24 @@ class _EditorScreenState extends State<EditorScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                  TextField(
-                    controller: _content,
-                    focusNode: _contentFocus,
-                    minLines: 16,
-                    maxLines: null,
-                    keyboardType: TextInputType.multiline,
-                    decoration: const InputDecoration(
-                      labelText: 'Markdown 正文',
-                      alignLabelWithHint: true,
-                      hintText:
-                          '支持 # 标题、**粗体**、`行内代码`、```代码块```、列表、引用、表格、图片...\n编辑完可存草稿或直接发布',
-                    ),
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      height: 1.5,
-                      fontSize: 14.5,
-                    ),
+                TextField(
+                  controller: _content,
+                  focusNode: _contentFocus,
+                  minLines: 16,
+                  maxLines: null,
+                  keyboardType: TextInputType.multiline,
+                  decoration: const InputDecoration(
+                    labelText: 'Markdown 正文',
+                    alignLabelWithHint: true,
+                    hintText:
+                        '支持 # 标题、**粗体**、`行内代码`、```代码块```、列表、引用、表格、图片...\n编辑完可存草稿或直接发布',
                   ),
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    height: 1.5,
+                    fontSize: 14.5,
+                  ),
+                ),
                 if (_status != null) ...[
                   const SizedBox(height: 12),
                   Text(
@@ -1227,7 +1256,10 @@ class _EditorScreenState extends State<EditorScreen> {
                   const SizedBox(height: 8),
                   Text(
                     '远程: ${_article.remotePath}',
-                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                    style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ],
@@ -1274,7 +1306,9 @@ class _EditorScreenState extends State<EditorScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: active ? const Color(0xFF0EA5E9).withOpacity(0.08) : Colors.white,
+          color: active
+              ? const Color(0xFF0EA5E9).withOpacity(0.08)
+              : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: active ? const Color(0xFF0EA5E9) : const Color(0xFFE2E8F0),
@@ -1283,7 +1317,11 @@ class _EditorScreenState extends State<EditorScreen> {
         ),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: active ? const Color(0xFF0EA5E9) : const Color(0xFF94A3B8)),
+            Icon(
+              icon,
+              size: 20,
+              color: active ? const Color(0xFF0EA5E9) : const Color(0xFF94A3B8),
+            ),
             const SizedBox(width: 8),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1293,12 +1331,17 @@ class _EditorScreenState extends State<EditorScreen> {
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 14,
-                    color: active ? const Color(0xFF0EA5E9) : const Color(0xFF475569),
+                    color: active
+                        ? const Color(0xFF0EA5E9)
+                        : const Color(0xFF475569),
                   ),
                 ),
                 Text(
                   subtitle,
-                  style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Color(0xFF94A3B8),
+                  ),
                 ),
               ],
             ),
@@ -1307,7 +1350,6 @@ class _EditorScreenState extends State<EditorScreen> {
       ),
     );
   }
-
 }
 
 class _ToolChip extends StatelessWidget {
@@ -1315,11 +1357,7 @@ class _ToolChip extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
 
-  const _ToolChip({
-    required this.icon,
-    required this.label,
-    this.onTap,
-  });
+  const _ToolChip({required this.icon, required this.label, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1332,8 +1370,6 @@ class _ToolChip extends StatelessWidget {
       ),
     );
   }
-
-
 }
 
 class _PreviewPage extends StatelessWidget {
@@ -1354,12 +1390,41 @@ class _PreviewPage extends StatelessWidget {
         .join('\n');
 
     final style = MarkdownStyleSheet(
-      h1: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, height: 1.6, color: Color(0xFF1a1a2e)),
-      h2: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, height: 1.6, color: Color(0xFF1a1a2e)),
-      h3: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, height: 1.6, color: Color(0xFF1a1a2e)),
-      p: const TextStyle(fontSize: 17, height: 1.8, color: Color(0xFF333333), letterSpacing: 0.3),
-      listBullet: const TextStyle(fontSize: 17, height: 1.8, color: Color(0xFF333333)),
-      code: TextStyle(fontSize: 14, backgroundColor: const Color(0xFFF0F0F0), color: const Color(0xFFE53935), fontFamily: 'monospace'),
+      h1: const TextStyle(
+        fontSize: 26,
+        fontWeight: FontWeight.bold,
+        height: 1.6,
+        color: Color(0xFF1a1a2e),
+      ),
+      h2: const TextStyle(
+        fontSize: 22,
+        fontWeight: FontWeight.bold,
+        height: 1.6,
+        color: Color(0xFF1a1a2e),
+      ),
+      h3: const TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.w600,
+        height: 1.6,
+        color: Color(0xFF1a1a2e),
+      ),
+      p: const TextStyle(
+        fontSize: 17,
+        height: 1.8,
+        color: Color(0xFF333333),
+        letterSpacing: 0.3,
+      ),
+      listBullet: const TextStyle(
+        fontSize: 17,
+        height: 1.8,
+        color: Color(0xFF333333),
+      ),
+      code: TextStyle(
+        fontSize: 14,
+        backgroundColor: const Color(0xFFF0F0F0),
+        color: const Color(0xFFE53935),
+        fontFamily: 'monospace',
+      ),
       codeblockDecoration: BoxDecoration(
         color: const Color(0xFFF5F5F5),
         borderRadius: BorderRadius.circular(12),
@@ -1367,18 +1432,43 @@ class _PreviewPage extends StatelessWidget {
       ),
       blockquoteDecoration: BoxDecoration(
         color: const Color(0xFFF8F9FA),
-        border: const Border(left: BorderSide(color: Color(0xFF4A90D9), width: 4)),
+        border: const Border(
+          left: BorderSide(color: Color(0xFF4A90D9), width: 4),
+        ),
         borderRadius: BorderRadius.circular(4),
       ),
-      blockquote: const TextStyle(fontSize: 16, height: 1.7, color: Color(0xFF555555), fontStyle: FontStyle.italic),
-      horizontalRuleDecoration: BoxDecoration(
-        border: Border(top: BorderSide(color: const Color(0xFFE0E0E0), width: 1)),
+      blockquote: const TextStyle(
+        fontSize: 16,
+        height: 1.7,
+        color: Color(0xFF555555),
+        fontStyle: FontStyle.italic,
       ),
-      strong: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1a1a2e)),
-      em: const TextStyle(fontStyle: FontStyle.italic, color: Color(0xFF555555)),
-      del: const TextStyle(decoration: TextDecoration.lineThrough, color: Color(0xFF999999)),
-      a: const TextStyle(color: Color(0xFF4A90D9), decoration: TextDecoration.underline),
-      tableHead: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF333333)),
+      horizontalRuleDecoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: const Color(0xFFE0E0E0), width: 1),
+        ),
+      ),
+      strong: const TextStyle(
+        fontWeight: FontWeight.bold,
+        color: Color(0xFF1a1a2e),
+      ),
+      em: const TextStyle(
+        fontStyle: FontStyle.italic,
+        color: Color(0xFF555555),
+      ),
+      del: const TextStyle(
+        decoration: TextDecoration.lineThrough,
+        color: Color(0xFF999999),
+      ),
+      a: const TextStyle(
+        color: Color(0xFF4A90D9),
+        decoration: TextDecoration.underline,
+      ),
+      tableHead: const TextStyle(
+        fontWeight: FontWeight.bold,
+        fontSize: 15,
+        color: Color(0xFF333333),
+      ),
       tableBody: const TextStyle(fontSize: 15, color: Color(0xFF333333)),
       tableBorder: TableBorder.all(color: const Color(0xFFE0E0E0), width: 1),
       blockquotePadding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
@@ -1408,7 +1498,11 @@ class _PreviewPage extends StatelessWidget {
               color: Colors.white,
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4)),
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
               ],
             ),
             child: MarkdownBody(

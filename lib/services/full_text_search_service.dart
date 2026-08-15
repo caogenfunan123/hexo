@@ -127,6 +127,8 @@ class FullTextSearchService {
       args.addAll(['-g', '*.$type']);
     }
 
+    // `--` 分隔选项与路径/查询，防止以 `-` 开头的查询被当作选项解析
+    args.add('--');
     args.add(query);
     args.add(directory);
 

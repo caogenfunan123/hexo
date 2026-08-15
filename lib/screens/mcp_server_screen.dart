@@ -30,6 +30,7 @@ class _McpServerScreenState extends State<McpServerScreen> {
     final root = await _storage.root;
     final manager = McpServerManager(root: root, registry: ToolRegistry());
     await manager.load();
+    if (!mounted) return;
     setState(() {
       _manager = manager;
       _servers = manager.servers;
@@ -40,6 +41,7 @@ class _McpServerScreenState extends State<McpServerScreen> {
   Future<void> _refresh() async {
     if (_manager == null) return;
     await _manager!.load();
+    if (!mounted) return;
     setState(() {
       _servers = _manager!.servers;
       _syncError = null;
@@ -65,9 +67,7 @@ class _McpServerScreenState extends State<McpServerScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          errors.isEmpty
-              ? '已同步全部 MCP 工具'
-              : '同步完成，${errors.length} 个服务器失败',
+          errors.isEmpty ? '已同步全部 MCP 工具' : '同步完成，${errors.length} 个服务器失败',
         ),
       ),
     );
@@ -78,95 +78,104 @@ class _McpServerScreenState extends State<McpServerScreen> {
     final urlCtrl = TextEditingController(text: server?.url ?? '');
     final headersCtrl = TextEditingController(
       text: server != null && server.headers.isNotEmpty
-          ? server.headers.entries
-              .map((e) => '${e.key}: ${e.value}')
-              .join('\n')
+          ? server.headers.entries.map((e) => '${e.key}: ${e.value}').join('\n')
           : '',
     );
     final enableSwitch = server?.enabled ?? true;
     var enabled = enableSwitch;
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(server == null ? '添加 MCP 服务器' : '编辑 MCP 服务器'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '名称',
-                    hintText: '例如：我的 MCP 服务',
+    try {
+      showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: Text(server == null ? '添加 MCP 服务器' : '编辑 MCP 服务器'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '名称',
+                      hintText: '例如：我的 MCP 服务',
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: urlCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '服务器 URL',
-                    hintText: 'https://example.com/mcp',
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: urlCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '服务器 URL',
+                      hintText: 'https://example.com/mcp',
+                    ),
+                    keyboardType: TextInputType.url,
                   ),
-                  keyboardType: TextInputType.url,
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: headersCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '认证头（每行一个 Key: Value）',
-                    hintText: 'Authorization: Bearer xxx',
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: headersCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '认证头（每行一个 Key: Value）',
+                      hintText: 'Authorization: Bearer xxx',
+                    ),
+                    maxLines: 3,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                    ),
                   ),
-                  maxLines: 3,
-                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('启用'),
-                  value: enabled,
-                  onChanged: (v) => setDialogState(() => enabled = v),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('启用'),
+                    value: enabled,
+                    onChanged: (v) => setDialogState(() => enabled = v),
+                  ),
+                ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final name = nameCtrl.text.trim();
-                final url = urlCtrl.text.trim();
-                if (name.isEmpty || url.isEmpty) return;
-                final headers = <String, String>{};
-                for (final line in headersCtrl.text.split('\n')) {
-                  final idx = line.indexOf(':');
-                  if (idx > 0) {
-                    headers[line.substring(0, idx).trim()] =
-                        line.substring(idx + 1).trim();
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  final name = nameCtrl.text.trim();
+                  final url = urlCtrl.text.trim();
+                  if (name.isEmpty || url.isEmpty) return;
+                  final headers = <String, String>{};
+                  for (final line in headersCtrl.text.split('\n')) {
+                    final idx = line.indexOf(':');
+                    if (idx > 0) {
+                      headers[line.substring(0, idx).trim()] = line
+                          .substring(idx + 1)
+                          .trim();
+                    }
                   }
-                }
-                final newServer = McpServer(
-                  id: server?.id ??
-                      'mcp_${DateTime.now().millisecondsSinceEpoch}',
-                  name: name,
-                  url: url,
-                  headers: headers,
-                  enabled: enabled,
-                );
-                await _manager!.addServer(newServer);
-                if (ctx.mounted) Navigator.pop(ctx);
-                await _refresh();
-              },
-              child: const Text('保存'),
-            ),
-          ],
+                  final newServer = McpServer(
+                    id:
+                        server?.id ??
+                        'mcp_${DateTime.now().millisecondsSinceEpoch}',
+                    name: name,
+                    url: url,
+                    headers: headers,
+                    enabled: enabled,
+                  );
+                  await _manager!.addServer(newServer);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  await _refresh();
+                },
+                child: const Text('保存'),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      nameCtrl.dispose();
+      urlCtrl.dispose();
+      headersCtrl.dispose();
+    }
   }
 
   Future<void> _remove(McpServer server) async {
@@ -176,7 +185,10 @@ class _McpServerScreenState extends State<McpServerScreen> {
         title: const Text('删除服务器'),
         content: Text('删除 "${server.name}" 及其所有远端工具？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('删除', style: TextStyle(color: Colors.red)),
@@ -226,112 +238,132 @@ class _McpServerScreenState extends State<McpServerScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _servers.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.dns_outlined,
-                          size: 64, color: Colors.grey.shade300),
-                      const SizedBox(height: 16),
-                      Text('尚未配置 MCP 服务器',
-                          style: TextStyle(color: Colors.grey.shade500, fontSize: 16)),
-                      const SizedBox(height: 8),
-                      Text('点击右上角添加外部 MCP 服务器\n保存后同步即可把远端工具加入工具库',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.dns_outlined,
+                    size: 64,
+                    color: Colors.grey.shade300,
                   ),
-                )
-              : ListView(
-                  padding: const EdgeInsets.all(12),
-                  children: [
-                    if (_syncError != null) ...[
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          _syncError!,
-                          style: const TextStyle(fontSize: 12, color: Colors.red),
-                        ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '尚未配置 MCP 服务器',
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '点击右上角添加外部 MCP 服务器\n保存后同步即可把远端工具加入工具库',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                  ),
+                ],
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.all(12),
+              children: [
+                if (_syncError != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _syncError!,
+                      style: const TextStyle(fontSize: 12, color: Colors.red),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                ..._servers.map(
+                  (s) => Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: cs.primary.withOpacity(0.1),
+                        child: Icon(Icons.dns, color: cs.primary, size: 20),
                       ),
-                      const SizedBox(height: 8),
-                    ],
-                    ..._servers.map((s) => Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: cs.primary.withOpacity(0.1),
-                              child: Icon(Icons.dns, color: cs.primary, size: 20),
-                            ),
-                            title: Row(
-                              children: [
-                                Flexible(
-                                  child: Text(s.name,
-                                      style: const TextStyle(fontWeight: FontWeight.w600),
-                                      overflow: TextOverflow.ellipsis),
-                                ),
-                                const SizedBox(width: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: (s.enabled ? Colors.green : Colors.grey)
-                                        .withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    s.enabled ? '已启用' : '已停用',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: s.enabled ? Colors.green : Colors.grey,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            subtitle: Text(
-                              s.url,
-                              style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                              maxLines: 1,
+                      title: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              s.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: Icon(
-                                    s.enabled ? Icons.visibility : Icons.visibility_off,
-                                    size: 18,
-                                    color: s.enabled ? cs.primary : cs.outline,
-                                  ),
-                                  tooltip: s.enabled ? '停用' : '启用',
-                                  onPressed: () => _toggle(s, !s.enabled),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.edit_outlined, size: 18),
-                                  onPressed: () => _showEditor(s),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline, size: 18),
-                                  onPressed: () => _remove(s),
-                                ),
-                              ],
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: (s.enabled ? Colors.green : Colors.grey)
+                                  .withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              s.enabled ? '已启用' : '已停用',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: s.enabled ? Colors.green : Colors.grey,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
-                        )),
-                    const SizedBox(height: 8),
-                    Text(
-                      '通过 JSON-RPC (tools/list / tools/call) 与远端 MCP 服务器交互。'
-                      '同步后工具会出现在工具库中，可在聊天中调用。',
-                      style: TextStyle(fontSize: 11, color: cs.outline),
+                        ],
+                      ),
+                      subtitle: Text(
+                        s.url,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Icon(
+                              s.enabled
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
+                              size: 18,
+                              color: s.enabled ? cs.primary : cs.outline,
+                            ),
+                            tooltip: s.enabled ? '停用' : '启用',
+                            onPressed: () => _toggle(s, !s.enabled),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, size: 18),
+                            onPressed: () => _showEditor(s),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            onPressed: () => _remove(s),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
+                  ),
                 ),
+                const SizedBox(height: 8),
+                Text(
+                  '通过 JSON-RPC (tools/list / tools/call) 与远端 MCP 服务器交互。'
+                  '同步后工具会出现在工具库中，可在聊天中调用。',
+                  style: TextStyle(fontSize: 11, color: cs.outline),
+                ),
+              ],
+            ),
     );
   }
 }

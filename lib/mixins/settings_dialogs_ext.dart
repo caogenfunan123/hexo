@@ -816,157 +816,166 @@ extension SettingsDialogsExt on _RootShellState {
     final nameCtrl = TextEditingController();
     final contentCtrl = TextEditingController();
     String category = '自定义';
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          return AlertDialog(
-            title: const Text('片段素材库'),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // 已有片段列表
-                  if (snippets.isNotEmpty) ...[
-                    SizedBox(
-                      height: 160,
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: snippets.length,
-                        itemBuilder: (_, i) {
-                          final sn = snippets[i];
-                          return ListTile(
-                            dense: true,
-                            title: Text(
-                              sn.name,
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                            subtitle: Text(
-                              sn.category,
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.content_copy,
-                                    size: 16,
+    try {
+      showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              title: const Text('片段素材库'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 已有片段列表
+                    if (snippets.isNotEmpty) ...[
+                      SizedBox(
+                        height: 160,
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: snippets.length,
+                          itemBuilder: (_, i) {
+                            final sn = snippets[i];
+                            return ListTile(
+                              dense: true,
+                              title: Text(
+                                sn.name,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                              subtitle: Text(
+                                sn.category,
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.content_copy,
+                                      size: 16,
+                                    ),
+                                    onPressed: () {
+                                      _insertText(sn.content);
+                                      Navigator.pop(ctx);
+                                    },
+                                    constraints: const BoxConstraints(),
+                                    padding: EdgeInsets.zero,
                                   ),
-                                  onPressed: () {
-                                    _insertText(sn.content);
-                                    Navigator.pop(ctx);
-                                  },
-                                  constraints: const BoxConstraints(),
-                                  padding: EdgeInsets.zero,
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.delete_outline,
-                                    size: 16,
-                                    color: Colors.redAccent,
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete_outline,
+                                      size: 16,
+                                      color: Colors.redAccent,
+                                    ),
+                                    onPressed: () async {
+                                      snippets.removeAt(i);
+                                      await storage.saveSnippets(snippets);
+                                      setDialogState(() {});
+                                      if (mounted) {
+                                        _applyState(
+                                          () => this.snippets = List.from(
+                                            snippets,
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    constraints: const BoxConstraints(),
+                                    padding: EdgeInsets.zero,
                                   ),
-                                  onPressed: () async {
-                                    snippets.removeAt(i);
-                                    await storage.saveSnippets(snippets);
-                                    setDialogState(() {});
-                                    if (mounted) {
-                                      _applyState(
-                                        () =>
-                                            this.snippets = List.from(snippets),
-                                      );
-                                    }
-                                  },
-                                  constraints: const BoxConstraints(),
-                                  padding: EdgeInsets.zero,
-                                ),
-                              ],
-                            ),
-                            onTap: () {
-                              _insertText(sn.content);
-                              Navigator.pop(ctx);
-                            },
-                          );
-                        },
+                                ],
+                              ),
+                              onTap: () {
+                                _insertText(sn.content);
+                                Navigator.pop(ctx);
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                      const Divider(),
+                    ],
+                    // 新增片段
+                    TextField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(
+                        labelText: '片段名称',
+                        isDense: true,
                       ),
                     ),
-                    const Divider(),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: category,
+                      decoration: const InputDecoration(
+                        labelText: '分类',
+                        isDense: true,
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: '友链模板', child: Text('友链模板')),
+                        DropdownMenuItem(value: '公告片段', child: Text('公告片段')),
+                        DropdownMenuItem(value: '版权声明', child: Text('版权声明')),
+                        DropdownMenuItem(value: '代码块', child: Text('代码块')),
+                        DropdownMenuItem(
+                          value: '自定义提示块',
+                          child: Text('自定义提示块'),
+                        ),
+                        DropdownMenuItem(value: '自定义', child: Text('自定义')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) category = v;
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: contentCtrl,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        labelText: '片段内容',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
-                  // 新增片段
-                  TextField(
-                    controller: nameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: '片段名称',
-                      isDense: true,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    value: category,
-                    decoration: const InputDecoration(
-                      labelText: '分类',
-                      isDense: true,
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: '友链模板', child: Text('友链模板')),
-                      DropdownMenuItem(value: '公告片段', child: Text('公告片段')),
-                      DropdownMenuItem(value: '版权声明', child: Text('版权声明')),
-                      DropdownMenuItem(value: '代码块', child: Text('代码块')),
-                      DropdownMenuItem(value: '自定义提示块', child: Text('自定义提示块')),
-                      DropdownMenuItem(value: '自定义', child: Text('自定义')),
-                    ],
-                    onChanged: (v) {
-                      if (v != null) category = v;
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: contentCtrl,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: '片段内容',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('关闭'),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  if (nameCtrl.text.trim().isEmpty) return;
-                  final now = DateTime.now();
-                  snippets.add(
-                    SnippetItem(
-                      id: now.millisecondsSinceEpoch.toString(),
-                      name: nameCtrl.text.trim(),
-                      content: contentCtrl.text,
-                      category: category,
-                      createdAt: now,
-                    ),
-                  );
-                  await storage.saveSnippets(snippets);
-                  if (mounted)
-                    _applyState(() => this.snippets = List.from(snippets));
-                  Navigator.pop(ctx);
-                },
-                child: const Text('保存片段'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('关闭'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    if (nameCtrl.text.trim().isEmpty) return;
+                    final now = DateTime.now();
+                    snippets.add(
+                      SnippetItem(
+                        id: now.millisecondsSinceEpoch.toString(),
+                        name: nameCtrl.text.trim(),
+                        content: contentCtrl.text,
+                        category: category,
+                        createdAt: now,
+                      ),
+                    );
+                    await storage.saveSnippets(snippets);
+                    if (mounted)
+                      _applyState(() => this.snippets = List.from(snippets));
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('保存片段'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } finally {
+      nameCtrl.dispose();
+      contentCtrl.dispose();
+    }
   }
 
   void _showConfigEditor() async {
@@ -986,50 +995,54 @@ extension SettingsDialogsExt on _RootShellState {
 
       if (!mounted) return;
       final ctrl = TextEditingController(text: content);
-      await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text('${repo.frameworkId} 配置编辑'),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 400,
-            child: TextField(
-              controller: ctrl,
-              maxLines: null,
-              expands: true,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: '# 站点配置文件',
+      try {
+        await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text('${repo.frameworkId} 配置编辑'),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 400,
+              child: TextField(
+                controller: ctrl,
+                maxLines: null,
+                expands: true,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: '# 站点配置文件',
+                ),
               ),
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  try {
+                    await github.putRawFile(
+                      repo,
+                      configPath,
+                      ctrl.text,
+                      sha: sha,
+                      commitMessage: 'chore: update $configPath',
+                    );
+                    _showToast('配置已保存');
+                    Navigator.pop(ctx, true);
+                  } catch (e) {
+                    _showToast('保存失败: $e');
+                  }
+                },
+                child: const Text('保存到GitHub'),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                try {
-                  await github.putRawFile(
-                    repo,
-                    configPath,
-                    ctrl.text,
-                    sha: sha,
-                    commitMessage: 'chore: update $configPath',
-                  );
-                  _showToast('配置已保存');
-                  Navigator.pop(ctx, true);
-                } catch (e) {
-                  _showToast('保存失败: $e');
-                }
-              },
-              child: const Text('保存到GitHub'),
-            ),
-          ],
-        ),
-      );
+        );
+      } finally {
+        ctrl.dispose();
+      }
     } catch (e) {
       _showToast('读取配置失败: $e');
     }
@@ -1051,5 +1064,4 @@ extension SettingsDialogsExt on _RootShellState {
   void _showSiteConfigEditor() {
     _showConfigEditor();
   }
-
 }

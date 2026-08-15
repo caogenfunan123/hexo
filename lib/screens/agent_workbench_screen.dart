@@ -7,7 +7,6 @@ import 'package:file_picker/file_picker.dart';
 import '../core/ai/ai_model_manager.dart';
 import '../core/ai/ai_request_dispatcher.dart';
 import '../core/ai/ai_self_checker.dart';
-import '../core/ai/ai_session_manager.dart';
 import '../core/task/agent_context.dart';
 import '../core/task/agent_task_type.dart';
 import '../core/task/task_model.dart';
@@ -27,6 +26,7 @@ import '../widgets/ai_chat_panel.dart';
 class AgentWorkbenchScreen extends StatefulWidget {
   final AppSettings settings;
   final RepoConfig? activeRepo;
+  final List<RepoConfig> repos;
   final AiService aiService;
   final AiModelManager modelManager;
   final AiRequestDispatcher dispatcher;
@@ -43,6 +43,7 @@ class AgentWorkbenchScreen extends StatefulWidget {
     super.key,
     required this.settings,
     this.activeRepo,
+    this.repos = const [],
     required this.aiService,
     required this.modelManager,
     required this.dispatcher,
@@ -135,6 +136,36 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
         ..clear()
         ..addAll(task.attachmentPaths);
     });
+  }
+
+  /// 重建任务上下文：将持久化的仓库 fullName 还原为 RepoConfig
+  ///
+  /// [context] 任务持久化的上下文（activeRepo 可能为空）
+  /// [task] 任务（workspacePath 存仓库 fullName）
+  AgentContext _restoreContext(AgentContext? context, AgentTask task) {
+    final base = context ??
+        AgentContext.fromRepo(
+          repo: widget.activeRepo,
+          taskType: task.taskType,
+        );
+    if (base.activeRepo != null) return base;
+
+    final fullName = task.workspacePath;
+    if (fullName == null || fullName.isEmpty) {
+      return base.copyWith(activeRepo: widget.activeRepo);
+    }
+    // 从仓库列表按 fullName 精确匹配；匹配失败时回退当前仓库
+    RepoConfig? matched;
+    for (final r in widget.repos) {
+      if (r.fullName == fullName) {
+        matched = r;
+        break;
+      }
+    }
+    if (matched != null) {
+      return AgentContext.fromRepo(repo: matched, taskType: task.taskType);
+    }
+    return base.copyWith(activeRepo: widget.activeRepo);
   }
 
   /// 保存任务（断点）
@@ -725,12 +756,9 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
   }
 
   Widget _buildChatArea(AgentTask task) {
-    // 优先使用任务持久化的场景上下文；老任务（无 context）从当前仓库重建
-    final context = task.context ??
-        AgentContext.fromRepo(
-          repo: widget.activeRepo,
-          taskType: task.taskType,
-        );
+    // 优先使用任务持久化的场景上下文（activeRepo 按 workspacePath 重建）；
+    // 老任务（无 context）从当前仓库重建
+    final context = _restoreContext(task.context, task);
     final repo = context.activeRepo ?? widget.activeRepo;
     final starter = task.taskType.starterPrompt(context);
     return AiChatPanel(

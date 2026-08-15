@@ -124,6 +124,7 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
         await widget.migrationService.cloneThemeRepo(url, tempDir);
       }
 
+      if (!mounted) return;
       setState(() => _status = '正在分析主题结构...');
 
       final dirStructure = await widget.migrationService.readDirectoryStructure(tempDir);
@@ -146,6 +147,7 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
         sourceCode: sourceCode.toString(),
       );
 
+      if (!mounted) return;
       setState(() => _status = '分析完成：源框架 ${_analysis!.sourceFrameworkName}');
 
       _chatKey.currentState?.addMessage('assistant',
@@ -157,6 +159,7 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
         '正在开始跨框架迁移转换...',
       );
 
+      if (!mounted) return;
       setState(() => _status = '正在 AI 跨框架迁移转换...');
 
       final allSourceCode = StringBuffer();
@@ -192,6 +195,7 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
 
       _selectedFilePaths = _migrationResult!.files.map((f) => f.path).toSet();
 
+      if (!mounted) return;
       setState(() => _status = '迁移完成！共 ${_migrationResult!.files.length} 个文件');
 
       _chatKey.currentState?.addMessage('assistant',
@@ -203,6 +207,7 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
       );
 
       if (_selfCheckEnabled) {
+        if (!mounted) return;
         setState(() => _status = '正在自动检测代码...');
         final checkResult = await widget.selfChecker.check(
           settings: widget.settings,
@@ -218,7 +223,7 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
       }
     } catch (e) {
       _chatKey.currentState?.addMessage('assistant', '❌ 迁移过程出错: $e');
-      setState(() => _status = '迁移失败: $e');
+      if (mounted) setState(() => _status = '迁移失败: $e');
     } finally {
       _cleanupTemp();
       if (mounted) setState(() => _busy = false);

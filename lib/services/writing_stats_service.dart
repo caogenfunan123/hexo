@@ -79,11 +79,16 @@ class WritingStatsService {
   Future<void> _save() async {
     try {
       final f = File('${_root.path}/$_file');
-      await f.writeAsString(
+      final tmp = File('${f.path}.tmp.${DateTime.now().microsecondsSinceEpoch}');
+      await tmp.writeAsString(
         const JsonEncoder.withIndent('  ').convert(
           _days.map((d) => d.toJson()).toList(),
         ),
       );
+      if (await f.exists()) {
+        await f.delete();
+      }
+      await tmp.rename(f.path);
     } catch (_) {}
   }
 
@@ -136,12 +141,17 @@ class WritingStatsService {
       }
     }
 
-    // 合并持久化日志：今日字数以日志为准（更准确反映增量写入）
-    final todayLog = _days.where((d) => d.dateKey == todayKey).firstOrNull;
+    // 合并持久化日志：今日字数以日志为准（更准确反映增量写入），
+    // 无日志时以草稿重算兜底。
+    WritingDayStat? todayLog;
+    for (final d in _days) {
+      if (d.dateKey == todayKey) {
+        todayLog = d;
+        break;
+      }
+    }
     if (todayLog != null && todayLog.wordCount > 0) {
-      todayWords = todayLog.wordCount > todayWords
-          ? todayLog.wordCount
-          : todayWords;
+      todayWords = todayLog.wordCount;
     }
 
     // 连续写作天数：从今天（或昨天）往前数，日期连续
@@ -171,11 +181,28 @@ class WritingStatsService {
   }
 
   /// 统计字数：中文按字符、英文按单词
+  /// 先剥离 Markdown 语法（代码块/行内代码/链接/图片/强调/标题/分隔线），
+  /// 避免符号被计入。
   static int countWords(String text) {
     if (text.isEmpty) return 0;
+    var t = text;
+    // 移除代码块
+    t = t.replaceAll(RegExp(r'```[\s\S]*?```'), ' ');
+    t = t.replaceAll(RegExp(r'`[^`\n]*`'), ' ');
+    // 移除图片/链接，仅保留其文本（alt/文字）
+    t = t.replaceAll(RegExp(r'!\[([^\]]*)\]\([^)]*\)'), r'$1');
+    t = t.replaceAll(RegExp(r'\[([^\]]*)\]\([^)]*\)'), r'$1');
+    // 移除行首标题井号与分隔线
+    t = t.replaceAll(RegExp(r'^#{1,6}\s+', multiLine: true), '');
+    t = t.replaceAll(RegExp(r'^(\s*[-*_]\s*){3,}$', multiLine: true), '');
+    // 移除强调/删除线符号
+    t = t.replaceAll(RegExp(r'\*\*|__|\*|_|~~|`'), ' ');
+    // 移除 HTML 标签
+    t = t.replaceAll(RegExp(r'<[^>]*>'), ' ');
+
     final cn = RegExp(r'[\u4e00-\u9fff\u3400-\u4dbf]');
-    final cnCount = cn.allMatches(text).length;
-    final en = text
+    final cnCount = cn.allMatches(t).length;
+    final en = t
         .replaceAll(cn, ' ')
         .replaceAll(RegExp(r'[^\x00-\x7F]'), ' ')
         .trim()

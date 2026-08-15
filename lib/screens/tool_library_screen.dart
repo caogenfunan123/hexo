@@ -12,7 +12,9 @@ class ToolLibraryScreen extends StatefulWidget {
 
   @override
   State<ToolLibraryScreen> createState() => _ToolLibraryScreenState();
-}class _ToolLibraryScreenState extends State<ToolLibraryScreen> {
+}
+
+class _ToolLibraryScreenState extends State<ToolLibraryScreen> {
   List<ToolEntity> _tools = [];
   bool _loading = true;
 
@@ -36,61 +38,76 @@ class ToolLibraryScreen extends StatefulWidget {
     return PopScope(
       canPop: true,
       child: Scaffold(
-      appBar: AppBar(
-        title: const Text('工具库'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.task_alt_outlined),
-            tooltip: '写作任务',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const WritingTaskScreen()),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.dns_outlined),
-            tooltip: 'MCP 服务器',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const McpServerScreen()),
-              ).then((_) => _refresh());
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: '新建技能',
-            onPressed: () => _showSkillEditor(),
-          ),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _tools.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.build_outlined, size: 64, color: Colors.grey.shade300),
-                      const SizedBox(height: 16),
-                      Text('工具库为空', style: TextStyle(color: Colors.grey.shade500, fontSize: 16)),
-                      const SizedBox(height: 8),
-                      Text('AI 可以自动创建 MCP/Skill 工具\n或点击右上角手动创建',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: _tools.length,
-                  itemBuilder: (ctx, i) {
-                    final tool = _tools[i];
-                    return _buildToolCard(tool, cs);
-                  },
+        appBar: AppBar(
+          title: const Text('工具库'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.task_alt_outlined),
+              tooltip: '写作任务',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const WritingTaskScreen()),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.dns_outlined),
+              tooltip: 'MCP 服务器',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const McpServerScreen()),
+                ).then((_) => _refresh());
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: '新建技能',
+              onPressed: () => _showSkillEditor(),
+            ),
+          ],
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _tools.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.build_outlined,
+                      size: 64,
+                      color: Colors.grey.shade300,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      '工具库为空',
+                      style: TextStyle(
+                        color: Colors.grey.shade500,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'AI 可以自动创建 MCP/Skill 工具\n或点击右上角手动创建',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ),
+              )
+            : ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: _tools.length,
+                itemBuilder: (ctx, i) {
+                  final tool = _tools[i];
+                  return _buildToolCard(tool, cs);
+                },
+              ),
       ),
     );
   }
@@ -108,7 +125,13 @@ class ToolLibraryScreen extends StatefulWidget {
         ),
         title: Row(
           children: [
-            Flexible(child: Text(tool.name, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
+            Flexible(
+              child: Text(
+                tool.name,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
             const SizedBox(width: 6),
             _sourceChip(tool.source),
             if (tool.scope == ToolScope.sitePrivate) ...[
@@ -117,11 +140,18 @@ class ToolLibraryScreen extends StatefulWidget {
             ],
             if (tool.riskLevel != null && tool.riskLevel != 'low') ...[
               const SizedBox(width: 4),
-              _scopeChip(tool.riskLevel!, color: tool.riskLevel == 'high' ? Colors.red : Colors.orange),
+              _scopeChip(
+                tool.riskLevel!,
+                color: tool.riskLevel == 'high' ? Colors.red : Colors.orange,
+              ),
             ],
           ],
         ),
-        subtitle: Text(tool.description, maxLines: 2, overflow: TextOverflow.ellipsis),
+        subtitle: Text(
+          tool.description,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -163,7 +193,11 @@ class ToolLibraryScreen extends StatefulWidget {
       ),
       child: Text(
         isAi ? 'AI 生成' : '手动',
-        style: TextStyle(fontSize: 10, color: isAi ? Colors.purple : Colors.blueGrey, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          fontSize: 10,
+          color: isAi ? Colors.purple : Colors.blueGrey,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -176,7 +210,10 @@ class ToolLibraryScreen extends StatefulWidget {
         color: c.withOpacity(0.1),
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Text(label, style: TextStyle(fontSize: 10, color: c, fontWeight: FontWeight.w600)),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 10, color: c, fontWeight: FontWeight.w600),
+      ),
     );
   }
 
@@ -196,7 +233,10 @@ class ToolLibraryScreen extends StatefulWidget {
         title: const Text('删除 MCP 工具'),
         content: Text('确定删除 "${tool.name}" 吗？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('删除', style: TextStyle(color: Colors.red)),
@@ -212,17 +252,23 @@ class ToolLibraryScreen extends StatefulWidget {
 
   IconData _typeIcon(ToolType type) {
     switch (type) {
-      case ToolType.builtin: return Icons.bolt;
-      case ToolType.skill: return Icons.auto_fix_high;
-      case ToolType.mcp: return Icons.api;
+      case ToolType.builtin:
+        return Icons.bolt;
+      case ToolType.skill:
+        return Icons.auto_fix_high;
+      case ToolType.mcp:
+        return Icons.api;
     }
   }
 
   Color _typeColor(ToolType type, ColorScheme cs) {
     switch (type) {
-      case ToolType.builtin: return Colors.blue;
-      case ToolType.skill: return Colors.orange;
-      case ToolType.mcp: return Colors.green;
+      case ToolType.builtin:
+        return Colors.blue;
+      case ToolType.skill:
+        return Colors.orange;
+      case ToolType.mcp:
+        return Colors.green;
     }
   }
 
@@ -243,7 +289,14 @@ class ToolLibraryScreen extends StatefulWidget {
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 
@@ -259,9 +312,13 @@ class ToolLibraryScreen extends StatefulWidget {
             children: [
               Text('类型: ${tool.type.name}'),
               const SizedBox(height: 4),
-              Text('来源: ${tool.source == ToolSource.ai ? "AI 会话生成" : "用户手动创建"}'),
+              Text(
+                '来源: ${tool.source == ToolSource.ai ? "AI 会话生成" : "用户手动创建"}',
+              ),
               const SizedBox(height: 4),
-              Text('作用域: ${tool.scope == ToolScope.sitePrivate ? "站点私有${tool.siteId != null ? " (${tool.siteId})" : ""}" : "全局公用"}'),
+              Text(
+                '作用域: ${tool.scope == ToolScope.sitePrivate ? "站点私有${tool.siteId != null ? " (${tool.siteId})" : ""}" : "全局公用"}',
+              ),
               if (tool.riskLevel != null) ...[
                 const SizedBox(height: 4),
                 Text('风险等级: ${tool.riskLevel}'),
@@ -270,12 +327,23 @@ class ToolLibraryScreen extends StatefulWidget {
               Text('描述: ${tool.description}'),
               if (tool.parameters.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                const Text('参数:', style: TextStyle(fontWeight: FontWeight.w600)),
-                ...tool.parameters.map((p) => Text('  - ${p.name} (${p.type}${p.required ? ', 必填' : ''}): ${p.description}')),
+                const Text(
+                  '参数:',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                ...tool.parameters.map(
+                  (p) => Text(
+                    '  - ${p.name} (${p.type}${p.required ? ', 必填' : ''}): ${p.description}',
+                  ),
+                ),
               ],
-              if (tool.skillContent != null && tool.skillContent!.isNotEmpty) ...[
+              if (tool.skillContent != null &&
+                  tool.skillContent!.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                const Text('内容:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const Text(
+                  '内容:',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 4),
                 Container(
                   padding: const EdgeInsets.all(8),
@@ -283,15 +351,23 @@ class ToolLibraryScreen extends StatefulWidget {
                     color: Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Text(tool.skillContent!,
-                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                  child: Text(
+                    tool.skillContent!,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
                 ),
               ],
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
         ],
       ),
     );
@@ -304,7 +380,10 @@ class ToolLibraryScreen extends StatefulWidget {
         title: const Text('删除技能'),
         content: Text('确定删除 "${tool.name}" 吗？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('删除', style: TextStyle(color: Colors.red)),
@@ -323,55 +402,70 @@ class ToolLibraryScreen extends StatefulWidget {
     final descCtrl = TextEditingController();
     final contentCtrl = TextEditingController();
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('新建技能'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(labelText: '技能名称', hintText: '例如：主题一键迁移'),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: descCtrl,
-                decoration: const InputDecoration(labelText: '描述', hintText: '技能功能简述'),
-                maxLines: 2,
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: contentCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Skill JSON 内容',
-                  hintText: '粘贴 AI 生成的 Skill JSON',
+    try {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('新建技能'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '技能名称',
+                    hintText: '例如：主题一键迁移',
+                  ),
                 ),
-                maxLines: 6,
-                style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-              ),
-            ],
+                const SizedBox(height: 8),
+                TextField(
+                  controller: descCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '描述',
+                    hintText: '技能功能简述',
+                  ),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: contentCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Skill JSON 内容',
+                    hintText: '粘贴 AI 生成的 Skill JSON',
+                  ),
+                  maxLines: 6,
+                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final name = nameCtrl.text.trim();
+                if (name.isEmpty) return;
+                await widget.skillManager.createSkill(
+                  name: name,
+                  description: descCtrl.text.trim(),
+                  content: contentCtrl.text.trim(),
+                );
+                Navigator.pop(ctx);
+                _refresh();
+              },
+              child: const Text('保存'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () async {
-              final name = nameCtrl.text.trim();
-              if (name.isEmpty) return;
-              await widget.skillManager.createSkill(
-                name: name,
-                description: descCtrl.text.trim(),
-                content: contentCtrl.text.trim(),
-              );
-              Navigator.pop(ctx);
-              _refresh();
-            },
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      nameCtrl.dispose();
+      descCtrl.dispose();
+      contentCtrl.dispose();
+    }
   }
 }

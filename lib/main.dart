@@ -324,6 +324,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   RecycleBinService? _recycleBin;
   VersionSnapshotService? _snapshotService;
   QuickNoteService? _quickNoteService; // ignore: unused_field 保持监听器生命周期
+  StreamSubscription<QuickNoteRequest>? _quickNoteSub;
   WritingStatsService? _statsService;
   /// 每个草稿上次统计的字数（用于记录增量，避免重复累计）
   final Map<String, int> _lastWordCounts = {};
@@ -490,6 +491,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _quickNoteSub?.cancel();
+    _quickNoteSub = null;
     _stopAutoSave();
     _stopAutoSync();
     _typewriterCtrl.dispose();
@@ -757,7 +760,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       final service = QuickNoteService();
       _quickNoteService = service;
       // 热启动推送（应用已在运行）
-      service.requests.listen(_handleQuickNote);
+      _quickNoteSub = service.requests.listen(_handleQuickNote);
       // 冷启动参数（引擎刚就绪时拉取）
       service.fetchLaunchRequest().then((req) {
         if (req != null && mounted) _handleQuickNote(req);

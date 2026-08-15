@@ -94,6 +94,9 @@ class P2PSyncService {
   final String _deviceId;
   final String _deviceName;
 
+  /// 共享同步密钥（非空时要求连接方提供相同密钥；空则保持旧的无认证行为）
+  String _syncToken = '';
+
   P2PState _state = P2PState.idle;
   String? _errorMessage;
 
@@ -132,6 +135,10 @@ class P2PSyncService {
   List<P2PDevice> get discoveredDevices => List.unmodifiable(_discoveredDevices);
   P2PDevice? get connectedDevice => _connectedDevice;
   String get deviceId => _deviceId;
+
+  /// 共享同步密钥
+  String get syncToken => _syncToken;
+  set syncToken(String value) => _syncToken = value.trim();
   Stream<P2PDevice> get onDeviceDiscovered => _deviceDiscoveredController.stream;
   Stream<P2PDevice> get onDeviceLost => _deviceLostController.stream;
   Stream<P2PFileEntry> get onFileReceived => _fileReceivedController.stream;
@@ -338,6 +345,20 @@ class P2PSyncService {
 
   Future<void> _handleHttpRequest(HttpRequest request) async {
     try {
+      // 认证：若设置了共享密钥，校验 X-Sync-Token 头
+      final authorized = _syncToken.isEmpty ||
+          request.headers.value('X-Sync-Token') == _syncToken;
+      if (!authorized) {
+        request.response.statusCode = 403;
+        request.response.write(jsonEncode({
+          'error': 'unauthorized',
+          'message': '同步密钥不匹配',
+        }));
+        await request.response.close();
+        _log('拒绝未授权请求: ${request.connectionInfo?.remoteAddress}');
+        return;
+      }
+
       if (request.uri.path == '/ping') {
         // 健康检查
         request.response.statusCode = 200;
@@ -405,6 +426,9 @@ class P2PSyncService {
         Uri.parse('http://${device.address}:${device.port}/sync'),
       );
       request.headers.contentType = ContentType.json;
+      if (_syncToken.isNotEmpty) {
+        request.headers.set('X-Sync-Token', _syncToken);
+      }
       request.write(jsonEncode({'type': 'ping'}));
 
       final response = await request.close();
@@ -419,6 +443,10 @@ class P2PSyncService {
           client.close();
           return true;
         }
+      }
+      if (response.statusCode == 403) {
+        _errorMessage = '连接被拒绝：同步密钥不匹配';
+        _log(_errorMessage!);
       }
       client.close();
     } catch (e) {
@@ -461,6 +489,9 @@ class P2PSyncService {
         Uri.parse('http://${device.address}:${device.port}/sync'),
       );
       request.headers.contentType = ContentType.json;
+      if (_syncToken.isNotEmpty) {
+        request.headers.set('X-Sync-Token', _syncToken);
+      }
       request.write(jsonEncode({
         'type': 'file_list',
         'files': files.map((f) => f.toJson()).toList(),

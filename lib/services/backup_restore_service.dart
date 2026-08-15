@@ -11,6 +11,10 @@ const List<String> backupCoreFiles = [
   'templates.json',
   'snippets.json',
   'writing_stats.json',
+  // 加密态草稿与其元数据、设备密钥（云同步解密依赖）
+  'drafts.json.enc',
+  'draft_enc.json',
+  '.device_key',
 ];
 
 /// 备份恢复服务：将本地全部数据（配置/仓库/草稿/模板/片段/站点/写作统计）打包为
@@ -95,8 +99,19 @@ class BackupRestoreService {
     final errors = <String>[];
     for (final entry in files.entries) {
       final rel = entry.key;
-      // 安全校验：禁止路径穿越
-      if (rel.contains('..') || rel.startsWith('/') || rel.startsWith('\\')) {
+      // 安全校验：拒绝路径穿越、绝对路径、Windows 盘符、空段与空路径
+      final uri = Uri.tryParse(rel.replaceAll('\\', '/'));
+      final isAbsolute = rel.startsWith('/') ||
+          rel.startsWith('\\') ||
+          RegExp(r'^[a-zA-Z]:').hasMatch(rel);
+      final isTraversal = rel.split('/').any((seg) => seg == '..') ||
+          rel.split('\\').any((seg) => seg == '..');
+      final hasEmptySegment = rel.contains('//') || rel.endsWith('/');
+      if (isAbsolute ||
+          isTraversal ||
+          hasEmptySegment ||
+          rel.isEmpty ||
+          (uri != null && uri.isAbsolute)) {
         errors.add('跳过非法路径: $rel');
         continue;
       }

@@ -218,6 +218,7 @@ class AiChatPanelState extends State<AiChatPanel> {
     if (dispatcherChanged) {
       oldWidget.dispatcher.onModelSwitched = null;
       oldWidget.dispatcher.onToolsExecuted = null;
+      oldWidget.dispatcher.onToolConfirm = null;
       _bindDispatcherCallbacks();
     }
     if (historyScopeChanged || dispatcherChanged) {
@@ -1140,6 +1141,7 @@ class AiChatPanelState extends State<AiChatPanel> {
   void dispose() {
     widget.dispatcher.onModelSwitched = null;
     widget.dispatcher.onToolsExecuted = null;
+    widget.dispatcher.onToolConfirm = null;
     _streamSub?.cancel();
     _chatCtrl.dispose();
     _scrollCtrl.dispose();

@@ -43,10 +43,11 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     final all = await widget.storage.loadAllTemplates();
-    if (mounted) setState(() {
-      _templates = all;
-      _loading = false;
-    });
+    if (mounted)
+      setState(() {
+        _templates = all;
+        _loading = false;
+      });
   }
 
   List<TemplateItem> get _filtered {
@@ -61,153 +62,194 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
   Future<void> _addCustom() async {
     final nameCtrl = TextEditingController();
     final fmCtrl = TextEditingController();
-    final isPost = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('新建自定义模板'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(labelText: '模板名称'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: fmCtrl,
-              maxLines: 8,
-              decoration: const InputDecoration(
-                labelText: 'FrontMatter 模板',
-                hintText: '---\ntitle: {{title}}\ndate: {{date}}\ntags: {{tags}}\n---',
-                border: OutlineInputBorder(),
+    try {
+      final isPost = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('新建自定义模板'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: '模板名称'),
               ),
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+              const SizedBox(height: 12),
+              TextField(
+                controller: fmCtrl,
+                maxLines: 8,
+                decoration: const InputDecoration(
+                  labelText: 'FrontMatter 模板',
+                  hintText:
+                      '---\ntitle: {{title}}\ndate: {{date}}\ntags: {{tags}}\n---',
+                  border: OutlineInputBorder(),
+                ),
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('博文模板'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('页面模板'),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('博文模板')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('页面模板')),
-        ],
-      ),
-    );
-    if (isPost == null) return;
-    if (nameCtrl.text.trim().isEmpty) return;
-    final now = DateTime.now();
-    final t = TemplateItem(
-      id: 'custom_${now.millisecondsSinceEpoch}',
-      name: nameCtrl.text.trim(),
-      frontMatter: fmCtrl.text.trim().isEmpty
-          ? '---\ntitle: {{title}}\ndate: {{date}}\ntags: {{tags}}\n---'
-          : fmCtrl.text.trim(),
-      isPost: isPost,
-      isBuiltin: false,
-      createdAt: now,
-    );
-    final saved = await widget.storage.loadTemplates();
-    saved.add(t);
-    await widget.storage.saveTemplates(saved);
-    await _load();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已创建模板: ${t.name}')),
       );
+      if (isPost == null) return;
+      if (nameCtrl.text.trim().isEmpty) return;
+      final now = DateTime.now();
+      final t = TemplateItem(
+        id: 'custom_${now.millisecondsSinceEpoch}',
+        name: nameCtrl.text.trim(),
+        frontMatter: fmCtrl.text.trim().isEmpty
+            ? '---\ntitle: {{title}}\ndate: {{date}}\ntags: {{tags}}\n---'
+            : fmCtrl.text.trim(),
+        isPost: isPost,
+        isBuiltin: false,
+        createdAt: now,
+      );
+      final saved = await widget.storage.loadTemplates();
+      saved.add(t);
+      await widget.storage.saveTemplates(saved);
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已创建模板: ${t.name}')));
+      }
+    } finally {
+      nameCtrl.dispose();
+      fmCtrl.dispose();
     }
   }
 
   Future<void> _aiGenerate() async {
     final promptCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('AI 生成模板'),
-        content: TextField(
-          controller: promptCtrl,
-          maxLines: 3,
-          decoration: const InputDecoration(
-            labelText: '描述你需要的模板',
-            hintText: '例如：生成 Butterfly 主题友链页面模板\n或：生成 Hugo 归档页面模板',
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('AI 生成')),
-        ],
-      ),
-    );
-    if (ok != true || promptCtrl.text.trim().isEmpty) return;
-
-    setState(() => _loading = true);
     try {
-      final result = await widget.aiService.generateTemplate(
-        settings: widget.settings,
-        userPrompt: promptCtrl.text.trim(),
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('AI 生成模板'),
+          content: TextField(
+            controller: promptCtrl,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: '描述你需要的模板',
+              hintText: '例如：生成 Butterfly 主题友链页面模板\n或：生成 Hugo 归档页面模板',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('AI 生成'),
+            ),
+          ],
+        ),
       );
-      if (mounted) {
-        final nameCtrl = TextEditingController(text: 'AI: ${promptCtrl.text.trim().substring(0, 20)}');
-        final ok2 = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('AI 生成的模板'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextField(
-                    controller: nameCtrl,
-                    decoration: const InputDecoration(labelText: '模板名称'),
+      if (ok != true || promptCtrl.text.trim().isEmpty) return;
+
+      setState(() => _loading = true);
+      try {
+        final result = await widget.aiService.generateTemplate(
+          settings: widget.settings,
+          userPrompt: promptCtrl.text.trim(),
+        );
+        if (mounted) {
+          final nameCtrl = TextEditingController(
+            text: 'AI: ${promptCtrl.text.trim().substring(0, 20)}',
+          );
+          try {
+            final ok2 = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('AI 生成的模板'),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextField(
+                        controller: nameCtrl,
+                        decoration: const InputDecoration(labelText: '模板名称'),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5F5F5),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: SelectableText(
+                          result,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF5F5F5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: SelectableText(
-                      result,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                    ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('放弃'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('保存模板'),
                   ),
                 ],
               ),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('放弃')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存模板')),
-            ],
-          ),
-        );
-        if (ok2 == true) {
-          final now = DateTime.now();
-          final t = TemplateItem(
-            id: 'ai_${now.millisecondsSinceEpoch}',
-            name: nameCtrl.text.trim().isEmpty ? 'AI 模板' : nameCtrl.text.trim(),
-            frontMatter: result,
-            isPost: !result.contains('page') && !result.contains('layout: page'),
-            isBuiltin: false,
-            createdAt: now,
-          );
-          final saved = await widget.storage.loadTemplates();
-          saved.add(t);
-          await widget.storage.saveTemplates(saved);
-          await _load();
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('AI 模板已保存: ${t.name}')),
             );
+            if (ok2 == true) {
+              final now = DateTime.now();
+              final t = TemplateItem(
+                id: 'ai_${now.millisecondsSinceEpoch}',
+                name: nameCtrl.text.trim().isEmpty
+                    ? 'AI 模板'
+                    : nameCtrl.text.trim(),
+                frontMatter: result,
+                isPost:
+                    !result.contains('page') &&
+                    !result.contains('layout: page'),
+                isBuiltin: false,
+                createdAt: now,
+              );
+              final saved = await widget.storage.loadTemplates();
+              saved.add(t);
+              await widget.storage.saveTemplates(saved);
+              await _load();
+              if (mounted) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text('AI 模板已保存: ${t.name}')));
+              }
+            }
+          } finally {
+            nameCtrl.dispose();
           }
         }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('AI 生成失败: $e')),
-        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('AI 生成失败: $e')));
+        }
+      } finally {
+        if (mounted) setState(() => _loading = false);
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      promptCtrl.dispose();
     }
   }
 
@@ -227,54 +269,65 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
       await widget.storage.saveTemplates(saved);
       target = copy;
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已复制内置模板为可编辑: ${copy.name}')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已复制内置模板为可编辑: ${copy.name}')));
       }
     }
     final nameCtrl = TextEditingController(text: target.name);
     final fmCtrl = TextEditingController(text: target.frontMatter);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('编辑模板'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(labelText: '名称'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: fmCtrl,
-                maxLines: 10,
-                decoration: const InputDecoration(
-                  labelText: 'FrontMatter',
-                  border: OutlineInputBorder(),
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('编辑模板'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: '名称'),
                 ),
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-              ),
-            ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: fmCtrl,
+                  maxLines: 10,
+                  decoration: const InputDecoration(
+                    labelText: 'FrontMatter',
+                    border: OutlineInputBorder(),
+                  ),
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('保存'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    final saved = await widget.storage.loadTemplates();
-    final idx = saved.indexWhere((e) => e.id == target.id);
-    if (idx >= 0) {
-      saved[idx] = target.copyWith(
-        name: nameCtrl.text.trim(),
-        frontMatter: fmCtrl.text.trim(),
       );
-      await widget.storage.saveTemplates(saved);
-      await _load();
+      if (ok != true) return;
+      final saved = await widget.storage.loadTemplates();
+      final idx = saved.indexWhere((e) => e.id == target.id);
+      if (idx >= 0) {
+        saved[idx] = target.copyWith(
+          name: nameCtrl.text.trim(),
+          frontMatter: fmCtrl.text.trim(),
+        );
+        await widget.storage.saveTemplates(saved);
+        await _load();
+      }
+    } finally {
+      nameCtrl.dispose();
+      fmCtrl.dispose();
     }
   }
 
@@ -291,9 +344,9 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
     await widget.storage.saveTemplates(saved);
     await _load();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已复制: ${copy.name}')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('已复制: ${copy.name}')));
     }
   }
 
@@ -305,7 +358,10 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
         title: const Text('删除模板'),
         content: Text('确认删除「${t.name}」？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -325,9 +381,9 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
     final json = t.exportString();
     await Clipboard.setData(ClipboardData(text: json));
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('模板已复制到剪贴板，可分享给他人')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('模板已复制到剪贴板，可分享给他人')));
     }
   }
 
@@ -335,9 +391,9 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     if (data?.text == null || data!.text!.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('剪贴板为空，请先复制他人分享的模板 JSON')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('剪贴板为空，请先复制他人分享的模板 JSON')));
       }
       return;
     }
@@ -348,15 +404,15 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
       await widget.storage.saveTemplates(saved);
       await _load();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已导入模板: ${t.name}')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已导入模板: ${t.name}')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导入失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('导入失败: $e')));
       }
     }
   }
@@ -364,15 +420,15 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
   /// AI 适配：分析仓库，自动检测框架并生成模板
   Future<void> _aiAnalyzeRepo() async {
     if (widget.githubService == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先配置 GitHub 仓库')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先配置 GitHub 仓库')));
       return;
     }
     if (widget.repos.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('没有可用的仓库，请先添加仓库')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('没有可用的仓库，请先添加仓库')));
       return;
     }
 
@@ -383,10 +439,14 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
         context: context,
         builder: (ctx) => SimpleDialog(
           title: const Text('选择要分析的仓库'),
-          children: widget.repos.map((r) => SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, r),
-            child: Text('${r.owner}/${r.repo} (${r.frameworkId})'),
-          )).toList(),
+          children: widget.repos
+              .map(
+                (r) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(ctx, r),
+                  child: Text('${r.owner}/${r.repo} (${r.frameworkId})'),
+                ),
+              )
+              .toList(),
         ),
       );
       if (chosen == null) return;
@@ -396,7 +456,9 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
     setState(() => _loading = true);
     try {
       // 读取仓库文件
-      final files = await widget.githubService!.readRepoAnalysisFiles(selectedRepo);
+      final files = await widget.githubService!.readRepoAnalysisFiles(
+        selectedRepo,
+      );
       if (files.isEmpty) {
         if (mounted) {
           setState(() => _loading = false);
@@ -447,21 +509,32 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
         final postTemplate = result['postTemplate']?.toString() ?? '';
         final pageTemplate = result['pageTemplate']?.toString() ?? '';
 
-        await _showAiResultDialog(framework, frameworkName, theme, explanation, postTemplate, pageTemplate);
+        await _showAiResultDialog(
+          framework,
+          frameworkName,
+          theme,
+          explanation,
+          postTemplate,
+          pageTemplate,
+        );
       }
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('AI 分析失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('AI 分析失败: $e')));
       }
     }
   }
 
   Future<void> _showAiResultDialog(
-    String framework, String frameworkName, String theme, String explanation,
-    String postTemplate, String pageTemplate,
+    String framework,
+    String frameworkName,
+    String theme,
+    String explanation,
+    String postTemplate,
+    String pageTemplate,
   ) async {
     await showDialog<void>(
       context: context,
@@ -482,7 +555,10 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
               _resultRow('主题', theme),
               _resultRow('说明', explanation),
               const SizedBox(height: 12),
-              const Text('📝 博文模板:', style: TextStyle(fontWeight: FontWeight.w600)),
+              const Text(
+                '📝 博文模板:',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
               const SizedBox(height: 4),
               Container(
                 width: double.infinity,
@@ -491,11 +567,17 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
                   color: const Color(0xFFF5F5F5),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(postTemplate, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                child: Text(
+                  postTemplate,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                ),
               ),
               if (pageTemplate.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                const Text('📄 页面模板:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const Text(
+                  '📄 页面模板:',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 4),
                 Container(
                   width: double.infinity,
@@ -504,7 +586,13 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
                     color: const Color(0xFFF5F5F5),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(pageTemplate, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                  child: Text(
+                    pageTemplate,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                    ),
+                  ),
                 ),
               ],
             ],
@@ -536,9 +624,9 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
                 await _load();
                 if (ctx.mounted) Navigator.pop(ctx);
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('已保存模板: ${t.name}')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('已保存模板: ${t.name}')));
                 }
               },
             ),
@@ -550,7 +638,8 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
                 final now = DateTime.now();
                 final t = TemplateItem(
                   id: 'ai_repo_${now.millisecondsSinceEpoch}_page',
-                  name: 'AI适配: $frameworkName${theme != '未知' ? ' $theme' : ''} 页面',
+                  name:
+                      'AI适配: $frameworkName${theme != '未知' ? ' $theme' : ''} 页面',
                   frontMatter: pageTemplate,
                   frameworkId: framework,
                   isPost: false,
@@ -563,9 +652,9 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
                 await _load();
                 if (ctx.mounted) Navigator.pop(ctx);
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('已保存模板: ${t.name}')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text('已保存模板: ${t.name}')));
                 }
               },
             ),
@@ -582,12 +671,12 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
         children: [
           SizedBox(
             width: 40,
-            child: Text('$label:',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            child: Text(
+              '$label:',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
           ),
-          Expanded(
-            child: Text(value, style: const TextStyle(fontSize: 13)),
-          ),
+          Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
         ],
       ),
     );
@@ -600,67 +689,67 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
     return PopScope(
       canPop: true,
       child: Scaffold(
-      appBar: AppBar(
-        title: const Text('模板管理'),
-        actions: [
-          IconButton(
-            tooltip: '导入模板',
-            onPressed: _import,
-            icon: const Icon(Icons.file_download_outlined),
-          ),
-          IconButton(
-            tooltip: 'AI 生成',
-            onPressed: _aiGenerate,
-            icon: const Icon(Icons.auto_awesome),
-          ),
-          IconButton(
-            tooltip: 'AI 适配仓库',
-            onPressed: widget.githubService != null ? _aiAnalyzeRepo : null,
-            icon: const Icon(Icons.analytics_outlined),
-          ),
-          IconButton(
-            tooltip: '新建自定义',
-            onPressed: _addCustom,
-            icon: const Icon(Icons.add),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // 筛选栏
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _filterChip('全部', 'all'),
-                  _filterChip('博文', 'post'),
-                  _filterChip('页面', 'page'),
-                  _filterChip('自定义', 'custom'),
-                  _filterChip('内置', 'builtin'),
-                ],
+        appBar: AppBar(
+          title: const Text('模板管理'),
+          actions: [
+            IconButton(
+              tooltip: '导入模板',
+              onPressed: _import,
+              icon: const Icon(Icons.file_download_outlined),
+            ),
+            IconButton(
+              tooltip: 'AI 生成',
+              onPressed: _aiGenerate,
+              icon: const Icon(Icons.auto_awesome),
+            ),
+            IconButton(
+              tooltip: 'AI 适配仓库',
+              onPressed: widget.githubService != null ? _aiAnalyzeRepo : null,
+              icon: const Icon(Icons.analytics_outlined),
+            ),
+            IconButton(
+              tooltip: '新建自定义',
+              onPressed: _addCustom,
+              icon: const Icon(Icons.add),
+            ),
+          ],
+        ),
+        body: Column(
+          children: [
+            // 筛选栏
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _filterChip('全部', 'all'),
+                    _filterChip('博文', 'post'),
+                    _filterChip('页面', 'page'),
+                    _filterChip('自定义', 'custom'),
+                    _filterChip('内置', 'builtin'),
+                  ],
+                ),
               ),
             ),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _filtered.isEmpty
-                    ? const Center(child: Text('暂无模板'))
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _filtered.length,
-                        itemBuilder: (ctx, i) {
-                          final t = _filtered[i];
-                          return _templateCard(t);
-                        },
-                      ),
-          ),
-        ],
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filtered.isEmpty
+                  ? const Center(child: Text('暂无模板'))
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: _filtered.length,
+                      itemBuilder: (ctx, i) {
+                        final t = _filtered[i];
+                        return _templateCard(t);
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
   }
 
   Widget _filterChip(String label, String value) {
@@ -694,18 +783,26 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
                 Icon(
                   t.isPost ? Icons.article_outlined : Icons.web_outlined,
                   size: 18,
-                  color: t.isPost ? const Color(0xFF0EA5E9) : const Color(0xFF10B981),
+                  color: t.isPost
+                      ? const Color(0xFF0EA5E9)
+                      : const Color(0xFF10B981),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     t.name,
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
                   ),
                 ),
                 if (t.isBuiltin)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: cs.primary.withOpacity(0.08),
                       borderRadius: BorderRadius.circular(6),
@@ -717,7 +814,10 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
                   ),
                 if (!t.isBuiltin)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF8B5CF6).withOpacity(0.08),
                       borderRadius: BorderRadius.circular(6),
@@ -730,7 +830,10 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
                 const SizedBox(width: 4),
                 Text(
                   t.frameworkId == 'custom' ? '通用' : t.frameworkId,
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF64748B),
+                  ),
                 ),
               ],
             ),
@@ -788,7 +891,11 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
                   IconButton(
                     tooltip: '删除',
                     onPressed: () => _delete(t),
-                    icon: const Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      size: 18,
+                      color: Colors.redAccent,
+                    ),
                     constraints: const BoxConstraints(),
                     padding: const EdgeInsets.all(4),
                   ),

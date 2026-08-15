@@ -44,6 +44,9 @@ class StorageService {
   static String? Function(String plainJson)? draftsEncryptor;
   static String? Function(String encJson)? draftsDecryptor;
 
+  /// 最近一次草稿加载的错误（如解密失败），供 UI 提示
+  static String? lastDraftsError;
+
   /// 配置自定义全局存储根目录（空串表示重置为默认目录）
   void setCustomRoot(String path) {
     _customRoot = path.trim();
@@ -163,15 +166,12 @@ class StorageService {
     var count = 0;
     await for (final entity in source.list(followLinks: false)) {
       try {
-        final dest = Directory('${target.path}/${entity.path.split('/').last}');
+        final name = entity.uri.pathSegments.last;
         if (entity is Directory) {
-          await _copyDirectory(entity, dest);
+          await _copyDirectory(entity, Directory('${target.path}/$name'));
           count++;
         } else if (entity is File) {
-          if (!await dest.exists()) {
-            await dest.create(recursive: true);
-          }
-          await entity.copy('${dest.path}/${entity.uri.pathSegments.last}');
+          await entity.copy('${target.path}/$name');
           count++;
         }
       } catch (e) {
@@ -229,8 +229,9 @@ class StorageService {
 
   Future<void> _write(String name, Object data) async {
     final f = await _file(name);
-    // 临时文件 + rename 原子写入，防止崩溃留下截断文件
-    final tmp = File('${f.path}.tmp');
+    // 临时文件 + rename 原子写入，防止崩溃留下截断文件；
+    // 唯一后缀避免并发写同一文件时互相截断
+    final tmp = File('${f.path}.tmp.${DateTime.now().microsecondsSinceEpoch}.${Random().nextInt(0xFFFFFF)}');
     await tmp.writeAsString(
         const JsonEncoder.withIndent('  ').convert(data), flush: true);
     await tmp.rename(f.path);
@@ -302,7 +303,11 @@ class StorageService {
             }
           }
         } catch (e) {
-          debugPrint('Storage: 草稿解密失败，回退明文: $e');
+          // 解密失败：不静默回退明文（加密态明文不存在或为陈旧备份，
+          // 读它会掩盖"密码错误/文件损坏"这一真实状态，导致草稿静默丢失）。
+          lastDraftsError = '草稿解密失败：$e';
+          debugPrint('Storage: 草稿解密失败（不回退明文）: $e');
+          return const [];
         }
       }
     }
@@ -343,7 +348,7 @@ class StorageService {
   /// 写入原始文本（原子写入）
   Future<void> _writeRaw(String name, String content) async {
     final f = await _file(name);
-    final tmp = File('${f.path}.tmp');
+    final tmp = File('${f.path}.tmp.${DateTime.now().microsecondsSinceEpoch}.${Random().nextInt(0xFFFFFF)}');
     await tmp.writeAsString(content, flush: true);
     await tmp.rename(f.path);
   }
@@ -354,8 +359,15 @@ class StorageService {
 
   Future<void> exportDraftMarkdown(Article a) async {
     final dir = await draftsDir();
-    final f = File('${dir.path}/${a.id}_${a.fileName()}');
+    final f = File('${dir.path}/${_safePathSegment(a.id)}_${a.fileName()}');
     await f.writeAsString(a.toMarkdownWithFrontMatter());
+  }
+
+  /// 将不可信字符串消毒为安全的单一路径段（用于文件名拼接）
+  static String _safePathSegment(String input) {
+    return input
+        .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1f]'), '_')
+        .replaceAll(RegExp(r'\s+'), '_');
   }
 
   // ── 原生悬浮速记窗 md 导入 ──
@@ -491,12 +503,11 @@ class StorageService {
     await f.writeAsString(key);
   }
 
-  /// 生成一个随机设备密钥（Random.secure 替代时间戳伪随机，避免可预测/碰撞）
+  /// 生成一个随机设备密钥（128-bit 熵，用于云端同步 AES-GCM 加密）
   String _generateDeviceKey() {
     final rand = Random.secure();
-    final r = rand.nextInt(1 << 30).toRadixString(36);
-    final s = rand.nextInt(0x10000).toRadixString(16).padLeft(4, '0');
-    return 'hexo_${r}_$s';
+    final bytes = List.generate(16, (_) => rand.nextInt(256));
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 }
 

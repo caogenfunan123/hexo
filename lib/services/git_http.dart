@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -5,42 +6,57 @@ import 'dart:io';
 ///
 /// [jsonBody] 与 [formBody] 互斥；都不传时发起无 body 请求。
 /// 2xx 返回解码后的 JSON（空响应返回 null），否则抛异常。
+/// 对 GitHub 限流（403 rate-limit / 429）自动退避重试（最多 3 次）。
 Future<dynamic> gitHttpRequest(
   String method,
   String url,
   Map<String, String> headers, {
   Object? jsonBody,
   String? formBody,
+  int maxRetries = 3,
 }) async {
-  final client = HttpClient()
-    ..connectionTimeout = const Duration(seconds: 15);
-  try {
-    final req = await client.openUrl(method, Uri.parse(url));
-    headers.forEach(req.headers.set);
-    if (jsonBody != null) {
-      req.headers.contentType = ContentType.json;
-      final bytes = utf8.encode(jsonEncode(jsonBody));
-      req.headers.contentLength = bytes.length;
-      req.add(bytes);
-    } else if (formBody != null) {
-      req.headers.contentType =
-          ContentType('application', 'x-www-form-urlencoded');
-      final bytes = utf8.encode(formBody);
-      req.headers.contentLength = bytes.length;
-      req.add(bytes);
+  for (var attempt = 0; ; attempt++) {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
+    try {
+      final req = await client.openUrl(method, Uri.parse(url));
+      headers.forEach(req.headers.set);
+      if (jsonBody != null) {
+        req.headers.contentType = ContentType.json;
+        final bytes = utf8.encode(jsonEncode(jsonBody));
+        req.headers.contentLength = bytes.length;
+        req.add(bytes);
+      } else if (formBody != null) {
+        req.headers.contentType =
+            ContentType('application', 'x-www-form-urlencoded');
+        final bytes = utf8.encode(formBody);
+        req.headers.contentLength = bytes.length;
+        req.add(bytes);
+      }
+      final res = await req.close().timeout(const Duration(seconds: 30));
+      final text = await res
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 30));
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        if (text.isEmpty) return null;
+        return jsonDecode(text);
+      }
+
+      // 限流：读取 Retry-After 头退避重试
+      final isRateLimit = res.statusCode == 429 ||
+          (res.statusCode == 403 && text.contains('rate limit'));
+      if (isRateLimit && attempt < maxRetries) {
+        final retryAfterRaw = res.headers.value('retry-after');
+        final retryAfter = int.tryParse(retryAfterRaw ?? '') ?? 60;
+        await Future<void>.delayed(
+            Duration(seconds: retryAfter.clamp(1, 120)));
+        continue;
+      }
+      throw Exception('HTTP ${res.statusCode}: $text');
+    } finally {
+      client.close(force: true);
     }
-    final res = await req.close().timeout(const Duration(seconds: 30));
-    final text = await res
-        .transform(utf8.decoder)
-        .join()
-        .timeout(const Duration(seconds: 30));
-    if (res.statusCode >= 200 && res.statusCode < 300) {
-      if (text.isEmpty) return null;
-      return jsonDecode(text);
-    }
-    throw Exception('HTTP ${res.statusCode}: $text');
-  } finally {
-    client.close(force: true);
   }
 }
 

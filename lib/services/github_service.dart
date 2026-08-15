@@ -598,13 +598,15 @@ class GitHubService {
         workingDirectory: workingDirectory ?? Directory.current.path);
     final out = (result.stdout?.toString() ?? '').trim();
     final err = (result.stderr?.toString() ?? '').trim();
-    var shownErr = err;
-    if (noAuthUrl != null && shownErr.isNotEmpty) {
-      // 隐藏 URL 中的 token 凭据
-      shownErr = shownErr
-          .replaceAll(RegExp('//[^/@\\s]+@'), '//***@');
-    }
-    debugPrint('CLI: $cmd $args\n  out: $out\n  err: $shownErr');
+
+    // 隐藏 URL 中的 token 凭据（args / stdout / stderr 全量脱敏）
+    String redact(String s) =>
+        s.replaceAll(RegExp('//[^/@\\s]+@'), '//***@');
+    final shownArgs = args.map(redact).toList();
+    final shownOut = noAuthUrl != null ? redact(out) : out;
+    final shownErr = noAuthUrl != null ? redact(err) : err;
+
+    debugPrint('CLI: $cmd $shownArgs\n  out: $shownOut\n  err: $shownErr');
     return (ok: result.exitCode == 0, stdout: out, stderr: shownErr);
   }
 
@@ -632,15 +634,25 @@ class GitHubService {
     final encoded = Uri.encodeQueryComponent(parts.join(' '));
     final url =
         'https://api.github.com/search/code?q=$encoded&per_page=$perPage';
-    final data = await const GitHubProvider()
-        .request('GET', url, repo.token);
-    if (data is! Map) return [];
-    final items = data['items'];
-    if (items is! List) return [];
-    return items
-        .whereType<Map>()
-        .map((e) => GitHubSearchHit.fromJson(Map<String, dynamic>.from(e)))
-        .toList();
+
+    final results = <GitHubSearchHit>[];
+    // 翻页拉取（最多 3 页，避免逐页请求过多触发次级限流）
+    for (var page = 1; page <= 3; page++) {
+      final data = await const GitHubProvider()
+          .request('GET', '$url&page=$page', repo.token);
+      if (data is! Map) break;
+      final items = data['items'];
+      final total = (data['total_count'] as num?)?.toInt() ?? 0;
+      if (items is! List) break;
+      final pageHits = items
+          .whereType<Map>()
+          .map((e) => GitHubSearchHit.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      results.addAll(pageHits);
+      // 已拉完或到总数则停止
+      if (pageHits.isEmpty || results.length >= total || total == 0) break;
+    }
+    return results;
   }
 
   /// 兼容旧调用：返回格式化 JSON 字符串

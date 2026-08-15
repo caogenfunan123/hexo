@@ -201,216 +201,224 @@ extension EditorAiExt on _RootShellState {
     var useBearer = existing?.useBearer ?? true;
     String? err;
 
-    return showDialog<AiProfile>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setDlg) {
-            Future<void> fetchModels() async {
-              setDlg(() {
-                fetching = true;
-                err = null;
-              });
-              try {
-                final temp = AiProfile(
-                  id: existing?.id ?? 'tmp',
-                  name: nameCtrl.text.trim().isEmpty
-                      ? '中转站'
-                      : nameCtrl.text.trim(),
-                  baseUrl: baseCtrl.text.trim(),
-                  apiKey: keyCtrl.text.trim(),
-                  model: modelCtrl.text.trim(),
-                  useBearer: useBearer,
-                  cachedModels: models,
-                );
-                final list = await AiService().listModels(
-                  settings,
-                  profile: temp,
-                );
+    try {
+      final result = await showDialog<AiProfile>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          return StatefulBuilder(
+            builder: (ctx, setDlg) {
+              Future<void> fetchModels() async {
                 setDlg(() {
-                  models = list;
-                  if (selectedModel.isEmpty && list.isNotEmpty) {
-                    selectedModel = list.first;
-                    modelCtrl.text = selectedModel;
-                  } else if (selectedModel.isNotEmpty &&
-                      list.contains(selectedModel)) {
-                    modelCtrl.text = selectedModel;
+                  fetching = true;
+                  err = null;
+                });
+                try {
+                  final temp = AiProfile(
+                    id: existing?.id ?? 'tmp',
+                    name: nameCtrl.text.trim().isEmpty
+                        ? '中转站'
+                        : nameCtrl.text.trim(),
+                    baseUrl: baseCtrl.text.trim(),
+                    apiKey: keyCtrl.text.trim(),
+                    model: modelCtrl.text.trim(),
+                    useBearer: useBearer,
+                    cachedModels: models,
+                  );
+                  final list = await AiService().listModels(
+                    settings,
+                    profile: temp,
+                  );
+                  setDlg(() {
+                    models = list;
+                    if (selectedModel.isEmpty && list.isNotEmpty) {
+                      selectedModel = list.first;
+                      modelCtrl.text = selectedModel;
+                    } else if (selectedModel.isNotEmpty &&
+                        list.contains(selectedModel)) {
+                      modelCtrl.text = selectedModel;
+                    }
+                    fetching = false;
+                  });
+                  if (list.isEmpty) {
+                    _showToast('未拉到模型，可手动填写模型名');
+                  } else {
+                    _showToast('已获取 ${list.length} 个模型');
                   }
-                  fetching = false;
-                });
-                if (list.isEmpty) {
-                  _showToast('未拉到模型，可手动填写模型名');
-                } else {
-                  _showToast('已获取 ${list.length} 个模型');
+                } catch (e) {
+                  setDlg(() {
+                    fetching = false;
+                    err = e.toString();
+                  });
                 }
-              } catch (e) {
-                setDlg(() {
-                  fetching = false;
-                  err = e.toString();
-                });
               }
-            }
 
-            return AlertDialog(
-              title: Text(existing == null ? '新增 AI 配置' : '编辑 AI 配置'),
-              content: SizedBox(
-                width: 420,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextField(
-                        controller: nameCtrl,
-                        decoration: const InputDecoration(
-                          labelText: '名称',
-                          hintText: '如 DeepSeek / 硅基流动 / 自建中转',
+              return AlertDialog(
+                title: Text(existing == null ? '新增 AI 配置' : '编辑 AI 配置'),
+                content: SizedBox(
+                  width: 420,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextField(
+                          controller: nameCtrl,
+                          decoration: const InputDecoration(
+                            labelText: '名称',
+                            hintText: '如 DeepSeek / 硅基流动 / 自建中转',
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: baseCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Base URL',
-                          hintText: 'https://api.xxx.com/v1',
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: baseCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Base URL',
+                            hintText: 'https://api.xxx.com/v1',
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: keyCtrl,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                          labelText: 'API Key',
-                          hintText: 'sk-...',
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: keyCtrl,
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            labelText: 'API Key',
+                            hintText: 'sk-...',
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Bearer 鉴权'),
-                        subtitle: const Text('关闭则同时发送 api-key / x-api-key'),
-                        value: useBearer,
-                        onChanged: (v) => setDlg(() => useBearer = v),
-                      ),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: modelCtrl,
-                              decoration: const InputDecoration(
-                                labelText: '模型',
-                                hintText: '可手动填写或从列表选择',
+                        const SizedBox(height: 8),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Bearer 鉴权'),
+                          subtitle: const Text('关闭则同时发送 api-key / x-api-key'),
+                          value: useBearer,
+                          onChanged: (v) => setDlg(() => useBearer = v),
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: modelCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: '模型',
+                                  hintText: '可手动填写或从列表选择',
+                                ),
+                                onChanged: (v) => selectedModel = v.trim(),
                               ),
-                              onChanged: (v) => selectedModel = v.trim(),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton.tonal(
+                              onPressed: fetching ? null : fetchModels,
+                              child: fetching
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text('获取模型'),
+                            ),
+                          ],
+                        ),
+                        if (err != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            err!,
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontSize: 12,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          FilledButton.tonal(
-                            onPressed: fetching ? null : fetchModels,
-                            child: fetching
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
+                        ],
+                        if (models.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String>(
+                            value: models.contains(selectedModel)
+                                ? selectedModel
+                                : null,
+                            decoration: const InputDecoration(
+                              labelText: '从列表选择模型',
+                            ),
+                            items: models
+                                .map(
+                                  (m) => DropdownMenuItem(
+                                    value: m,
+                                    child: Text(
+                                      m,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                  )
-                                : const Text('获取模型'),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setDlg(() {
+                                selectedModel = v;
+                                modelCtrl.text = v;
+                              });
+                            },
                           ),
                         ],
-                      ),
-                      if (err != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          err!,
-                          style: const TextStyle(
-                            color: Colors.red,
-                            fontSize: 12,
-                          ),
-                        ),
                       ],
-                      if (models.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        DropdownButtonFormField<String>(
-                          value: models.contains(selectedModel)
-                              ? selectedModel
-                              : null,
-                          decoration: const InputDecoration(
-                            labelText: '从列表选择模型',
-                          ),
-                          items: models
-                              .map(
-                                (m) => DropdownMenuItem(
-                                  value: m,
-                                  child: Text(
-                                    m,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (v) {
-                            if (v == null) return;
-                            setDlg(() {
-                              selectedModel = v;
-                              modelCtrl.text = v;
-                            });
-                          },
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    final name = nameCtrl.text.trim().isEmpty
-                        ? '中转站'
-                        : nameCtrl.text.trim();
-                    final base = baseCtrl.text.trim();
-                    final key = keyCtrl.text.trim();
-                    final model = modelCtrl.text.trim();
-                    if (base.isEmpty) {
-                      _showToast('请填写 Base URL');
-                      return;
-                    }
-                    if (key.isEmpty) {
-                      _showToast('请填写 API Key');
-                      return;
-                    }
-                    if (model.isEmpty) {
-                      _showToast('请选择或填写模型');
-                      return;
-                    }
-                    final id =
-                        existing?.id ??
-                        'ai_${DateTime.now().millisecondsSinceEpoch}';
-                    Navigator.pop(
-                      ctx,
-                      AiProfile(
-                        id: id,
-                        name: name,
-                        baseUrl: base,
-                        apiKey: key,
-                        model: model,
-                        useBearer: useBearer,
-                        cachedModels: models,
-                      ),
-                    );
-                  },
-                  child: const Text('保存'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () {
+                      final name = nameCtrl.text.trim().isEmpty
+                          ? '中转站'
+                          : nameCtrl.text.trim();
+                      final base = baseCtrl.text.trim();
+                      final key = keyCtrl.text.trim();
+                      final model = modelCtrl.text.trim();
+                      if (base.isEmpty) {
+                        _showToast('请填写 Base URL');
+                        return;
+                      }
+                      if (key.isEmpty) {
+                        _showToast('请填写 API Key');
+                        return;
+                      }
+                      if (model.isEmpty) {
+                        _showToast('请选择或填写模型');
+                        return;
+                      }
+                      final id =
+                          existing?.id ??
+                          'ai_${DateTime.now().millisecondsSinceEpoch}';
+                      Navigator.pop(
+                        ctx,
+                        AiProfile(
+                          id: id,
+                          name: name,
+                          baseUrl: base,
+                          apiKey: key,
+                          model: model,
+                          useBearer: useBearer,
+                          cachedModels: models,
+                        ),
+                      );
+                    },
+                    child: const Text('保存'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+      return result;
+    } finally {
+      nameCtrl.dispose();
+      baseCtrl.dispose();
+      keyCtrl.dispose();
+      modelCtrl.dispose();
+    }
   }
 
   void _showAgentWorkbench() {
@@ -490,7 +498,8 @@ extension EditorAiExt on _RootShellState {
           showWizardFallback: true,
           fallbackRepos: repos,
           onFallbackReposChanged: _updateRepos,
-          initialMessage: '你是一键建站助手。用户想要创建一个新的静态博客站点。\n\n'
+          initialMessage:
+              '你是一键建站助手。用户想要创建一个新的静态博客站点。\n\n'
               '若用户尚未配置 AI 模型，先引导其在 AI 设置中添加模型（填写 Base URL + API Key → 获取模型 → 保存），否则建站助手无法运行。\n\n'
               '请先向用户确认以下信息（信息不足时逐项追问，一次最多问 3 项）：\n'
               '1. 建站模式：模式一（GitHub Pages / GitLab Pages，仓库内 CI 自动构建）还是模式二（Cloudflare Pages）\n'
@@ -576,5 +585,4 @@ extension EditorAiExt on _RootShellState {
       _applyState(() => templates = t);
     }
   }
-
 }

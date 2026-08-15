@@ -51,6 +51,7 @@ class _VersionSnapshotViewState extends State<VersionSnapshotView> {
     } catch (_) {
       _snapshots = [];
     }
+    if (!mounted) return;
     setState(() => _loading = false);
   }
 
@@ -59,6 +60,7 @@ class _VersionSnapshotViewState extends State<VersionSnapshotView> {
       widget.articleId,
       snapshotId,
     );
+    if (!mounted) return;
     setState(() {
       _selectedSnapshotId = snapshotId;
       _previewContent = content;
@@ -81,7 +83,6 @@ class _VersionSnapshotViewState extends State<VersionSnapshotView> {
       widget.onRestore?.call(content);
     }
   }
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;

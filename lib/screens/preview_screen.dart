@@ -23,11 +23,13 @@ class _PreviewScreenState extends State<PreviewScreen> {
   /// 初始 URL 优先级：
   /// 1. 设置中的站点预览 URL（settings.sitePreviewUrl）
   /// 2. 当前仓库的 siteUrl
-  String get _initialUrl => widget.sitePreviewUrl?.isNotEmpty == true
-      ? widget.sitePreviewUrl!
-      : (widget.activeRepo?.siteUrl.isNotEmpty == true
-          ? widget.activeRepo!.siteUrl
-          : '');
+  /// 仅放行 http/https，非法时返回空串不加载
+  String get _initialUrl => _sanitizeUrl(widget.sitePreviewUrl?.isNotEmpty == true
+          ? widget.sitePreviewUrl!
+          : (widget.activeRepo?.siteUrl.isNotEmpty == true
+              ? widget.activeRepo!.siteUrl
+              : '')) ??
+      '';
 
   @override
   void initState() {
@@ -53,16 +55,23 @@ class _PreviewScreenState extends State<PreviewScreen> {
     super.dispose();
   }
 
-  void _loadUrl(String text) {
-    final input = text.trim();
-    if (input.isEmpty) return;
-    // 未带协议时自动补全 https
-    var candidate = input;
+  /// 校验 URL 是否为可加载的 http/https 地址，返回规范化后的 URL；非法返回 null
+  String? _sanitizeUrl(String raw) {
+    var candidate = raw.trim();
+    if (candidate.isEmpty) return null;
     if (!candidate.startsWith('http://') && !candidate.startsWith('https://')) {
       candidate = 'https://$candidate';
     }
     final uri = Uri.tryParse(candidate);
     if (uri == null || !uri.isAbsolute || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      return null;
+    }
+    return candidate;
+  }
+
+  void _loadUrl(String text) {
+    final candidate = _sanitizeUrl(text);
+    if (candidate == null) {
       _showSnack('无效的网址');
       return;
     }
@@ -175,6 +184,11 @@ class _PreviewScreenState extends State<PreviewScreen> {
               final uri = navigationAction.request.url;
               if (uri != null) {
                 _urlCtrl.text = uri.toString();
+                // 仅放行 http/https，阻止 file/data/javascript 等危险 scheme 注入
+                if (uri.scheme != 'http' && uri.scheme != 'https') {
+                  _showSnack('已阻止非 http/https 链接: ${uri.scheme}');
+                  return NavigationActionPolicy.CANCEL;
+                }
               }
               return NavigationActionPolicy.ALLOW;
             },

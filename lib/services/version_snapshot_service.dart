@@ -64,8 +64,15 @@ class VersionSnapshotService {
 
   /// 获取文章快照目录
   Directory _articleDir(String articleId) {
-    final d = Directory('${_snapshotDir.path}/$articleId');
+    final d = Directory('${_snapshotDir.path}/${_safeSegment(articleId)}');
     return d;
+  }
+
+  /// 消毒不可信 articleId 为安全路径段，防止路径穿越
+  static String _safeSegment(String input) {
+    return input
+        .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1f]'), '_')
+        .replaceAll(RegExp(r'\s+'), '_');
   }
 
   /// 创建快照

@@ -913,15 +913,12 @@ extension EditorUiExt on _RootShellState {
     final l10n = AppLocalizations.ofContext(context);
     final repoName = activeRepo?.name ?? '未配置';
     final repoFullName = activeRepo?.fullName ?? '';
-    final siteName = settings.siteName.isNotEmpty
-        ? settings.siteName
-        : '拓墨 写作';
+    final siteName = settings.siteName.isNotEmpty ? settings.siteName : '拓墨 写作';
 
     final mode = settings.ui.appMode;
     final extras = settings.ui.simpleModeExtras;
 
-    bool navVisible(String id) =>
-        NavEntries.visibleEntry(id, mode, extras);
+    bool navVisible(String id) => NavEntries.visibleEntry(id, mode, extras);
 
     return Drawer(
       backgroundColor: Colors.white,
@@ -979,240 +976,248 @@ extension EditorUiExt on _RootShellState {
             ),
 
             // ── 菜单项 ──
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  children: [
-                    if (navVisible('home'))
-                      _drawerItem(
-                        14,
-                        Icons.home_outlined,
-                        l10n.translate('nav_home'),
-                      ),
-                    // ── 创作分区（可折叠） ──
-                    _drawerSectionGroup(
-                      'create',
-                      l10n.translate('drawer_section_create'),
-                      Icons.edit_outlined,
-                      children: [
-                        if (navVisible('new_article'))
-                          _drawerItem(
-                            0,
-                            Icons.edit_square,
-                            l10n.translate('nav_write'),
-                            isPrimary: true,
-                          ),
-                        if (navVisible('create_site'))
-                          _drawerAction(
-                            Icons.add_business_outlined,
-                            '一键建站',
-                            _startAiSiteWizard,
-                          ),
-                        if (navVisible('drafts'))
-                          _drawerItem(
-                            1,
-                            Icons.drafts_outlined,
-                            l10n.translate('nav_drafts'),
-                            badge: drafts.where((d) => !d.published).length,
-                          ),
-                      ],
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                children: [
+                  if (navVisible('home'))
+                    _drawerItem(
+                      14,
+                      Icons.home_outlined,
+                      l10n.translate('nav_home'),
                     ),
-                    // ── 文章分区（平铺全部文章，仿桌面左栏） ──
-                    _drawerSectionGroup(
-                      'articles',
-                      l10n.translate('drawer_recent_articles'),
-                      Icons.article_outlined,
-                      children: _buildDrawerArticleItems(),
-                    ),
-                    // ── 管理分区（可折叠） ──
-                    _drawerSectionGroup(
-                      'manage',
-                      l10n.translate('drawer_section_manage'),
-                      Icons.folder_outlined,
-                      children: [
-                        if (navVisible('remote_posts'))
-                          _drawerItem(
-                            2,
-                            Icons.cloud_outlined,
-                            l10n.translate('nav_remote'),
-                          ),
-                        if (navVisible('site_manager'))
-                          _drawerAction(
-                            Icons.article_outlined,
-                            l10n.translate('static_blog_posts'),
-                            _showStaticBlogPosts,
-                          ),
-                        if (navVisible('add_site'))
-                          _drawerAction(
-                            Icons.library_books_outlined,
-                            l10n.translate('all_blog_manage'),
-                            _showAllStaticBlogs,
-                          ),
-                        if (navVisible('sync_status'))
-                          _drawerItem(
-                            12,
-                            Icons.sync,
-                            l10n.translate('nav_sync_status'),
-                          ),
-                        if (navVisible('p2p_sync'))
-                          _drawerAction(
-                            Icons.wifi,
-                            l10n.translate('p2p_sync'),
-                            _openP2PSync,
-                          ),
-                        if (navVisible('dashboard'))
-                          _drawerItem(
-                            3,
-                            Icons.dashboard_outlined,
-                            l10n.translate('nav_dashboard'),
-                          ),
-                        if (navVisible('history'))
-                          _drawerItem(
-                            5,
-                            Icons.history_outlined,
-                            l10n.translate('nav_history'),
-                          ),
-                        if (navVisible('recycle_bin'))
-                          _drawerAction(
-                            Icons.delete_outline,
-                            '回收站',
-                            _showMobileRecycleBin,
-                          ),
-                      ],
-                    ),
-                    // ── 工具分区（可折叠） ──
-                    _drawerSectionGroup(
-                      'tools',
-                      l10n.translate('drawer_section_tools'),
-                      Icons.handyman_outlined,
-                      children: [
-                        if (navVisible('batch_upload'))
-                          _drawerItem(
-                            6,
-                            Icons.drive_folder_upload,
-                            l10n.translate('nav_upload'),
-                          ),
-                        if (navVisible('preview'))
-                          _drawerItem(7, Icons.language, l10n.translate('nav_preview')),
-                        if (navVisible('rss'))
-                          _drawerItem(
-                            4,
-                            Icons.rss_feed_outlined,
-                            l10n.translate('nav_rss'),
-                          ),
-                        if (navVisible('template_manager'))
-                          _drawerAction(
-                            Icons.view_quilt_outlined,
-                            l10n.translate('template_manager'),
-                            _showTemplateManager,
-                          ),
-                        if (navVisible('snippets'))
-                          _drawerAction(
-                            Icons.content_paste,
-                            l10n.translate('snippet_library'),
-                            _showSnippetManager,
-                          ),
-                        if (navVisible('config_editor'))
-                          _drawerAction(
-                            Icons.settings_applications,
-                            l10n.translate('config_editor'),
-                            _showSiteConfigEditor,
-                          ),
-                        if (navVisible('theme_migration'))
-                          _drawerAction(
-                            Icons.swap_horiz,
-                            l10n.translate('ai_batch_migrate'),
-                            _showMigrationTool,
-                          ),
-                      ],
-                    ),
-                    // ── AI 分区（可折叠） ──
-                    _drawerSectionGroup(
-                      'ai',
-                      l10n.translate('drawer_section_ai'),
-                      Icons.auto_awesome_outlined,
-                      children: [
-                        if (navVisible('agent_workbench'))
-                          _drawerAction(
-                            Icons.assignment_outlined,
-                            l10n.translate('agent_workbench'),
-                            _showAgentWorkbench,
-                          ),
-                        if (navVisible('ai_article'))
-                          _drawerAction(
-                            Icons.article_outlined,
-                            l10n.translate('ai_post_create'),
-                            _showAiArticleChat,
-                          ),
-                        if (navVisible('ai_page'))
-                          _drawerAction(
-                            Icons.web_outlined,
-                            l10n.translate('ai_page_create'),
-                            _showAiPageChat,
-                          ),
-                        if (navVisible('ai_theme'))
-                          _drawerAction(
-                            Icons.palette_outlined,
-                            l10n.translate('ai_theme_dev'),
-                            _showAiThemeChat,
-                          ),
-                        if (navVisible('theme_migration'))
-                          _drawerItem(
-                            10,
-                            Icons.auto_fix_high,
-                            l10n.translate('nav_ai_theme_migrate'),
-                          ),
-                        if (navVisible('ai_audit'))
-                          _drawerAction(
-                            Icons.fact_check_outlined,
-                            l10n.translate('ai_site_audit'),
-                            _showAiAudit,
-                          ),
-                        if (navVisible('ai_template_chat'))
-                          _drawerAction(
-                            Icons.view_quilt_outlined,
-                            l10n.translate('ai_templates'),
-                            _showAiTemplateChat,
-                          ),
-                        if (navVisible('ai_model_manager'))
-                          _drawerAction(
-                            Icons.psychology_outlined,
-                            l10n.translate('ai_models'),
-                            _showAiModelManager,
-                          ),
-                        if (navVisible('tool_library'))
-                          _drawerAction(
-                            Icons.build_outlined,
-                            l10n.translate('tool_library'),
-                            _showToolLibrary,
-                          ),
-                      ],
-                    ),
-                    // ── 系统分区（可折叠） ──
-                    _drawerSectionGroup(
-                      'system',
-                      l10n.translate('drawer_section_system'),
-                      Icons.settings_outlined,
-                      children: [
-                        if (navVisible('cloud_sync'))
-                          _drawerItem(
-                            13,
-                            Icons.cloud_sync,
-                            l10n.translate('nav_cloud_sync'),
-                          ),
-                        if (navVisible('settings'))
-                          _drawerItem(
-                            8,
-                            Icons.settings_outlined,
-                            l10n.translate('nav_settings'),
-                          ),
-                        if (navVisible('logs'))
-                          _drawerItem(11, Icons.history, l10n.translate('nav_log')),
-                      ],
-                    ),
-                  ],
-                ),
+                  // ── 创作分区（可折叠） ──
+                  _drawerSectionGroup(
+                    'create',
+                    l10n.translate('drawer_section_create'),
+                    Icons.edit_outlined,
+                    children: [
+                      if (navVisible('new_article'))
+                        _drawerItem(
+                          0,
+                          Icons.edit_square,
+                          l10n.translate('nav_write'),
+                          isPrimary: true,
+                        ),
+                      if (navVisible('create_site'))
+                        _drawerAction(
+                          Icons.add_business_outlined,
+                          '一键建站',
+                          _startAiSiteWizard,
+                        ),
+                      if (navVisible('drafts'))
+                        _drawerItem(
+                          1,
+                          Icons.drafts_outlined,
+                          l10n.translate('nav_drafts'),
+                          badge: drafts.where((d) => !d.published).length,
+                        ),
+                    ],
+                  ),
+                  // ── 文章分区（平铺全部文章，仿桌面左栏） ──
+                  _drawerSectionGroup(
+                    'articles',
+                    l10n.translate('drawer_recent_articles'),
+                    Icons.article_outlined,
+                    children: _buildDrawerArticleItems(),
+                  ),
+                  // ── 管理分区（可折叠） ──
+                  _drawerSectionGroup(
+                    'manage',
+                    l10n.translate('drawer_section_manage'),
+                    Icons.folder_outlined,
+                    children: [
+                      if (navVisible('remote_posts'))
+                        _drawerItem(
+                          2,
+                          Icons.cloud_outlined,
+                          l10n.translate('nav_remote'),
+                        ),
+                      if (navVisible('site_manager'))
+                        _drawerAction(
+                          Icons.article_outlined,
+                          l10n.translate('static_blog_posts'),
+                          _showStaticBlogPosts,
+                        ),
+                      if (navVisible('add_site'))
+                        _drawerAction(
+                          Icons.library_books_outlined,
+                          l10n.translate('all_blog_manage'),
+                          _showAllStaticBlogs,
+                        ),
+                      if (navVisible('sync_status'))
+                        _drawerItem(
+                          12,
+                          Icons.sync,
+                          l10n.translate('nav_sync_status'),
+                        ),
+                      if (navVisible('p2p_sync'))
+                        _drawerAction(
+                          Icons.wifi,
+                          l10n.translate('p2p_sync'),
+                          _openP2PSync,
+                        ),
+                      if (navVisible('dashboard'))
+                        _drawerItem(
+                          3,
+                          Icons.dashboard_outlined,
+                          l10n.translate('nav_dashboard'),
+                        ),
+                      if (navVisible('history'))
+                        _drawerItem(
+                          5,
+                          Icons.history_outlined,
+                          l10n.translate('nav_history'),
+                        ),
+                      if (navVisible('recycle_bin'))
+                        _drawerAction(
+                          Icons.delete_outline,
+                          '回收站',
+                          _showMobileRecycleBin,
+                        ),
+                    ],
+                  ),
+                  // ── 工具分区（可折叠） ──
+                  _drawerSectionGroup(
+                    'tools',
+                    l10n.translate('drawer_section_tools'),
+                    Icons.handyman_outlined,
+                    children: [
+                      if (navVisible('batch_upload'))
+                        _drawerItem(
+                          6,
+                          Icons.drive_folder_upload,
+                          l10n.translate('nav_upload'),
+                        ),
+                      if (navVisible('preview'))
+                        _drawerItem(
+                          7,
+                          Icons.language,
+                          l10n.translate('nav_preview'),
+                        ),
+                      if (navVisible('rss'))
+                        _drawerItem(
+                          4,
+                          Icons.rss_feed_outlined,
+                          l10n.translate('nav_rss'),
+                        ),
+                      if (navVisible('template_manager'))
+                        _drawerAction(
+                          Icons.view_quilt_outlined,
+                          l10n.translate('template_manager'),
+                          _showTemplateManager,
+                        ),
+                      if (navVisible('snippets'))
+                        _drawerAction(
+                          Icons.content_paste,
+                          l10n.translate('snippet_library'),
+                          _showSnippetManager,
+                        ),
+                      if (navVisible('config_editor'))
+                        _drawerAction(
+                          Icons.settings_applications,
+                          l10n.translate('config_editor'),
+                          _showSiteConfigEditor,
+                        ),
+                      if (navVisible('theme_migration'))
+                        _drawerAction(
+                          Icons.swap_horiz,
+                          l10n.translate('ai_batch_migrate'),
+                          _showMigrationTool,
+                        ),
+                    ],
+                  ),
+                  // ── AI 分区（可折叠） ──
+                  _drawerSectionGroup(
+                    'ai',
+                    l10n.translate('drawer_section_ai'),
+                    Icons.auto_awesome_outlined,
+                    children: [
+                      if (navVisible('agent_workbench'))
+                        _drawerAction(
+                          Icons.assignment_outlined,
+                          l10n.translate('agent_workbench'),
+                          _showAgentWorkbench,
+                        ),
+                      if (navVisible('ai_article'))
+                        _drawerAction(
+                          Icons.article_outlined,
+                          l10n.translate('ai_post_create'),
+                          _showAiArticleChat,
+                        ),
+                      if (navVisible('ai_page'))
+                        _drawerAction(
+                          Icons.web_outlined,
+                          l10n.translate('ai_page_create'),
+                          _showAiPageChat,
+                        ),
+                      if (navVisible('ai_theme'))
+                        _drawerAction(
+                          Icons.palette_outlined,
+                          l10n.translate('ai_theme_dev'),
+                          _showAiThemeChat,
+                        ),
+                      if (navVisible('theme_migration'))
+                        _drawerItem(
+                          10,
+                          Icons.auto_fix_high,
+                          l10n.translate('nav_ai_theme_migrate'),
+                        ),
+                      if (navVisible('ai_audit'))
+                        _drawerAction(
+                          Icons.fact_check_outlined,
+                          l10n.translate('ai_site_audit'),
+                          _showAiAudit,
+                        ),
+                      if (navVisible('ai_template_chat'))
+                        _drawerAction(
+                          Icons.view_quilt_outlined,
+                          l10n.translate('ai_templates'),
+                          _showAiTemplateChat,
+                        ),
+                      if (navVisible('ai_model_manager'))
+                        _drawerAction(
+                          Icons.psychology_outlined,
+                          l10n.translate('ai_models'),
+                          _showAiModelManager,
+                        ),
+                      if (navVisible('tool_library'))
+                        _drawerAction(
+                          Icons.build_outlined,
+                          l10n.translate('tool_library'),
+                          _showToolLibrary,
+                        ),
+                    ],
+                  ),
+                  // ── 系统分区（可折叠） ──
+                  _drawerSectionGroup(
+                    'system',
+                    l10n.translate('drawer_section_system'),
+                    Icons.settings_outlined,
+                    children: [
+                      if (navVisible('cloud_sync'))
+                        _drawerItem(
+                          13,
+                          Icons.cloud_sync,
+                          l10n.translate('nav_cloud_sync'),
+                        ),
+                      if (navVisible('settings'))
+                        _drawerItem(
+                          8,
+                          Icons.settings_outlined,
+                          l10n.translate('nav_settings'),
+                        ),
+                      if (navVisible('logs'))
+                        _drawerItem(
+                          11,
+                          Icons.history,
+                          l10n.translate('nav_log'),
+                        ),
+                    ],
+                  ),
+                ],
               ),
+            ),
 
             // ── 底部信息 ──
             Container(
@@ -1828,39 +1833,46 @@ extension EditorUiExt on _RootShellState {
 
   Future<void> _mobileRenameArticle(Article a) async {
     final ctrl = TextEditingController(text: a.title);
-    final newTitle = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('重命名文章'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: '新标题',
-            hintText: '输入新的文章标题',
+    try {
+      final newTitle = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('重命名文章'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: '新标题',
+              hintText: '输入新的文章标题',
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('确定'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('确定'),
-          ),
-        ],
-      ),
-    );
-    if (newTitle == null || newTitle.isEmpty || newTitle == a.title) return;
-    final idx = drafts.indexWhere((e) => e.id == a.id);
-    if (idx < 0) return;
-    final updated = drafts[idx].copyWith(
-      title: newTitle,
-      updatedAt: DateTime.now(),
-    );
-    _applyState(() => drafts[idx] = updated);
-    await storage.saveDrafts(drafts);
-    await storage.exportDraftMarkdown(updated);
-    logService.add('重命名文章', '「${a.title}」→「$newTitle」');
-    if (mounted) _showToast('已重命名为「$newTitle」');
+      );
+      if (newTitle == null || newTitle.isEmpty || newTitle == a.title) return;
+      final idx = drafts.indexWhere((e) => e.id == a.id);
+      if (idx < 0) return;
+      final updated = drafts[idx].copyWith(
+        title: newTitle,
+        updatedAt: DateTime.now(),
+      );
+      _applyState(() => drafts[idx] = updated);
+      await storage.saveDrafts(drafts);
+      await storage.exportDraftMarkdown(updated);
+      logService.add('重命名文章', '「${a.title}」→「$newTitle」');
+      if (mounted) _showToast('已重命名为「$newTitle」');
+    } finally {
+      ctrl.dispose();
+    }
   }
 
   Future<void> _mobileMoveArticleVolume(Article a) async {
@@ -1878,9 +1890,7 @@ extension EditorUiExt on _RootShellState {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlgState) {
           final isNew = selected != null && !volList.contains(selected);
-          final ctrl = TextEditingController(
-            text: isNew ? selected! : '',
-          );
+          final ctrl = TextEditingController(text: isNew ? selected! : '');
           return AlertDialog(
             title: const Text('移动到卷宗'),
             content: SizedBox(
@@ -1889,7 +1899,10 @@ extension EditorUiExt on _RootShellState {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('选择目标卷宗：', style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+                  const Text(
+                    '选择目标卷宗：',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
@@ -1900,11 +1913,13 @@ extension EditorUiExt on _RootShellState {
                         selected: selected == null || selected!.isEmpty,
                         onSelected: (_) => setDlgState(() => selected = null),
                       ),
-                      ...volList.map((v) => ChoiceChip(
-                        label: Text(v),
-                        selected: selected == v,
-                        onSelected: (_) => setDlgState(() => selected = v),
-                      )),
+                      ...volList.map(
+                        (v) => ChoiceChip(
+                          label: Text(v),
+                          selected: selected == v,
+                          onSelected: (_) => setDlgState(() => selected = v),
+                        ),
+                      ),
                       ChoiceChip(
                         avatar: const Icon(Icons.add, size: 16),
                         label: const Text('新建卷宗'),
@@ -1929,7 +1944,10 @@ extension EditorUiExt on _RootShellState {
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
               FilledButton(
                 onPressed: () {
                   final v = (selected == null || selected!.isEmpty)
@@ -1996,5 +2014,4 @@ extension EditorUiExt on _RootShellState {
       ),
     );
   }
-
 }

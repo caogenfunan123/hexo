@@ -68,7 +68,7 @@ class DraftEncryptionService {
   /// [confirm] 确认密码
   /// 返回 null 表示成功，否则返回错误提示
   static String? setPassword(String password, String confirm, StorageService storage) {
-    if (password.length < 4) return '密码至少 4 位';
+    if (password.length < 8) return '密码至少 8 位';
     if (password != confirm) return '两次输入的密码不一致';
 
     final salt = _generateSalt();
@@ -97,7 +97,7 @@ class DraftEncryptionService {
   static String? changePassword(String oldPassword, String newPassword, String confirm, StorageService storage) {
     final verifyResult = verifyPassword(oldPassword, storage);
     if (verifyResult != null) return verifyResult;
-    if (newPassword.length < 4) return '新密码至少 4 位';
+    if (newPassword.length < 8) return '新密码至少 8 位';
     if (newPassword != confirm) return '两次输入的新密码不一致';
     return setPassword(newPassword, confirm, storage);
   }
@@ -160,9 +160,9 @@ class DraftEncryptionService {
   }
 
   static String _deriveHash(String password, String salt) {
-    // 用轻量 SHA-256 组合 + 迭代，仅用于校验密码，不用于派生数据密钥
+    // 用 SHA-256 组合 + 迭代（仅用于校验密码，不用于派生数据密钥）
     var h = '$salt|$password';
-    for (int i = 0; i < 1000; i++) {
+    for (int i = 0; i < 50000; i++) {
       h = _sha256Hex(h);
     }
     return h;
@@ -200,10 +200,9 @@ class DraftEncryptionService {
       if (text.trim().isEmpty || _password == null) return;
       final enc = SiteEncryptionService.encrypt(text.trim(), _password!);
       await encFile.writeAsString(enc, flush: true);
-      // 保留明文备份
-      final bak = File('${plainFile.path}.bak');
-      if (!await bak.exists()) {
-        await plainFile.rename(bak.path);
+      // 删除明文文件，避免明文残留（加密后的数据由 .enc 保管）
+      if (await plainFile.exists()) {
+        await plainFile.delete();
       }
     } catch (e) {
       debugPrint('DraftEncryption: encrypt existing error: $e');

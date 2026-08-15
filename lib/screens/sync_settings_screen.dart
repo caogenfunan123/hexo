@@ -39,18 +39,30 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final githubBackend = widget.cloudSyncService.getBackend(SyncBackendType.github);
-    final webdavBackend = widget.cloudSyncService.getBackend(SyncBackendType.webdav);
+    final githubBackend = widget.cloudSyncService.getBackend(
+      SyncBackendType.github,
+    );
+    final webdavBackend = widget.cloudSyncService.getBackend(
+      SyncBackendType.webdav,
+    );
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         // ── 标题 ──
-        Text('云同步',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: cs.primary)),
+        Text(
+          '云同步',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: cs.primary,
+          ),
+        ),
         const SizedBox(height: 4),
-        Text('将草稿、设置、同步映射同步到云端，实现手机版与桌面版数据互通',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+        Text(
+          '将草稿、设置、同步映射同步到云端，实现手机版与桌面版数据互通',
+          style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+        ),
         const SizedBox(height: 24),
 
         // ── 手动操作 ──
@@ -86,8 +98,10 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
         const SizedBox(height: 4),
         const Padding(
           padding: EdgeInsets.only(bottom: 8),
-          child: Text('使用独立的专用仓库保存草稿和同步数据，避免污染网站站点仓库',
-              style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+          child: Text(
+            '使用独立的专用仓库保存草稿和同步数据，避免污染网站站点仓库',
+            style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
+          ),
         ),
         _buildGitHubConfig(githubBackend as GitHubSyncBackend),
         const SizedBox(height: 16),
@@ -108,7 +122,9 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
         _sectionTitle('草稿同步'),
         const SizedBox(height: 8),
         Card(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           color: Colors.white,
           elevation: 0,
           child: Padding(
@@ -116,7 +132,10 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
             child: Column(
               children: [
                 SwitchListTile(
-                  title: const Text('启用草稿云同步', style: TextStyle(fontWeight: FontWeight.w600)),
+                  title: const Text(
+                    '启用草稿云同步',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   subtitle: const Text('将草稿自动同步到配置的云端仓库，默认关闭'),
                   value: widget.settings.draftSyncEnabled,
                   onChanged: (v) {
@@ -130,14 +149,19 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
                   const Divider(),
                   ListTile(
                     title: const Text('同步间隔', style: TextStyle(fontSize: 14)),
-                    subtitle: Text('${widget.settings.webdavAutoSyncIntervalSeconds ~/ 60} 分钟'),
+                    subtitle: Text(
+                      '${widget.settings.webdavAutoSyncIntervalSeconds ~/ 60} 分钟',
+                    ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _showIntervalPicker(),
                     contentPadding: EdgeInsets.zero,
                   ),
                   const Divider(),
                   SwitchListTile(
-                    title: const Text('仅 WiFi 下同步', style: TextStyle(fontSize: 14)),
+                    title: const Text(
+                      '仅 WiFi 下同步',
+                      style: TextStyle(fontSize: 14),
+                    ),
                     value: widget.settings.webdavSyncWifiOnly,
                     onChanged: (v) {
                       widget.onSettingsChanged(
@@ -181,12 +205,15 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
   }
 
   Widget _sectionTitle(String title) {
-    return Text(title,
-        style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: Colors.grey.shade500,
-            letterSpacing: 0.5));
+    return Text(
+      title,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+        color: Colors.grey.shade500,
+        letterSpacing: 0.5,
+      ),
+    );
   }
 
   Widget _actionButton({
@@ -212,11 +239,19 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
             children: [
               Icon(icon, color: color, size: 28),
               const SizedBox(height: 8),
-              Text(label,
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: color)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  color: color,
+                ),
+              ),
               const SizedBox(height: 2),
-              Text(subtitle,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+              Text(
+                subtitle,
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+              ),
             ],
           ),
         ),
@@ -251,25 +286,40 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
                         : Colors.grey.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(icon,
-                      size: 20,
-                      color: isConfigured ? const Color(0xFF059669) : Colors.grey),
+                  child: Icon(
+                    icon,
+                    size: 20,
+                    color: isConfigured ? const Color(0xFF059669) : Colors.grey,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(name,
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
                       const SizedBox(height: 2),
-                      Text(description,
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                      Text(
+                        description,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: isConfigured
                         ? const Color(0xFF059669).withOpacity(0.1)
@@ -281,7 +331,9 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: isConfigured ? const Color(0xFF059669) : Colors.orange,
+                      color: isConfigured
+                          ? const Color(0xFF059669)
+                          : Colors.orange,
                     ),
                   ),
                 ),
@@ -310,9 +362,15 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _infoRow('仓库', '${widget.settings.syncRepoOwner}/${widget.settings.syncRepoName}'),
+                _infoRow(
+                  '仓库',
+                  '${widget.settings.syncRepoOwner}/${widget.settings.syncRepoName}',
+                ),
                 _infoRow('分支', widget.settings.syncRepoBranch),
-                _infoRow('Token', widget.settings.syncRepoToken.isNotEmpty ? '已配置' : '未配置'),
+                _infoRow(
+                  'Token',
+                  widget.settings.syncRepoToken.isNotEmpty ? '已配置' : '未配置',
+                ),
               ],
             ),
           ),
@@ -367,13 +425,17 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
         children: [
           SizedBox(
             width: 40,
-            child: Text(label,
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+            ),
           ),
           Expanded(
-            child: Text(value,
-                style: const TextStyle(fontSize: 12),
-                overflow: TextOverflow.ellipsis),
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 12),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
@@ -381,166 +443,199 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
   }
 
   Future<void> _showGitHubSyncRepoDialog(GitHubSyncBackend backend) async {
-    final ownerCtrl = TextEditingController(text: widget.settings.syncRepoOwner);
-    final repoCtrl = TextEditingController(text: widget.settings.syncRepoName);
-    final branchCtrl = TextEditingController(text: widget.settings.syncRepoBranch);
-    final tokenCtrl = TextEditingController(text: widget.settings.syncRepoToken);
-
-    await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('配置同步仓库'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: ownerCtrl,
-                decoration: const InputDecoration(
-                  labelText: '仓库 Owner',
-                  hintText: 'your-github-username',
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: repoCtrl,
-                decoration: const InputDecoration(
-                  labelText: '仓库名称',
-                  hintText: 'hexo-sync-backup',
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: branchCtrl,
-                decoration: const InputDecoration(
-                  labelText: '分支',
-                  hintText: 'main',
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: tokenCtrl,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'GitHub Token',
-                  hintText: 'ghp_xxxxxxxxxxxx',
-                ),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.amber.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  '请使用与网站仓库不同的独立仓库，避免同步草稿污染网站代码',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF92400E)),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final newSettings = widget.settings.copyWith(
-                syncRepoOwner: ownerCtrl.text.trim(),
-                syncRepoName: repoCtrl.text.trim(),
-                syncRepoBranch: branchCtrl.text.trim().isEmpty ? 'main' : branchCtrl.text.trim(),
-                syncRepoToken: tokenCtrl.text.trim(),
-              );
-              widget.onSettingsChanged(newSettings);
-              backend.configureFromSyncSettings(newSettings.sync);
-              setState(() {});
-              widget.logService.add('云同步', '已配置 GitHub 同步仓库: ${ownerCtrl.text.trim()}/${repoCtrl.text.trim()}');
-              Navigator.pop(ctx, true);
-            },
-            child: const Text('保存'),
-          ),
-        ],
-      ),
+    final ownerCtrl = TextEditingController(
+      text: widget.settings.syncRepoOwner,
     );
+    final repoCtrl = TextEditingController(text: widget.settings.syncRepoName);
+    final branchCtrl = TextEditingController(
+      text: widget.settings.syncRepoBranch,
+    );
+    final tokenCtrl = TextEditingController(
+      text: widget.settings.syncRepoToken,
+    );
+
+    try {
+      await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('配置同步仓库'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: ownerCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '仓库 Owner',
+                    hintText: 'your-github-username',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: repoCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '仓库名称',
+                    hintText: 'hexo-sync-backup',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: branchCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '分支',
+                    hintText: 'main',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: tokenCtrl,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'GitHub Token',
+                    hintText: 'ghp_xxxxxxxxxxxx',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    '请使用与网站仓库不同的独立仓库，避免同步草稿污染网站代码',
+                    style: TextStyle(fontSize: 11, color: Color(0xFF92400E)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final newSettings = widget.settings.copyWith(
+                  syncRepoOwner: ownerCtrl.text.trim(),
+                  syncRepoName: repoCtrl.text.trim(),
+                  syncRepoBranch: branchCtrl.text.trim().isEmpty
+                      ? 'main'
+                      : branchCtrl.text.trim(),
+                  syncRepoToken: tokenCtrl.text.trim(),
+                );
+                widget.onSettingsChanged(newSettings);
+                backend.configureFromSyncSettings(newSettings.sync);
+                setState(() {});
+                widget.logService.add(
+                  '云同步',
+                  '已配置 GitHub 同步仓库: ${ownerCtrl.text.trim()}/${repoCtrl.text.trim()}',
+                );
+                Navigator.pop(ctx, true);
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      ownerCtrl.dispose();
+      repoCtrl.dispose();
+      branchCtrl.dispose();
+      tokenCtrl.dispose();
+    }
   }
 
   Future<void> _showWebDavConfigDialog() async {
     final urlCtrl = TextEditingController(text: widget.settings.webdavUrl);
-    final userCtrl = TextEditingController(text: widget.settings.webdavUsername);
-    final passCtrl = TextEditingController(text: widget.settings.webdavPassword);
-    final folderCtrl = TextEditingController(text: widget.settings.webdavFolder);
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('WebDAV 配置'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: urlCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'WebDAV 地址',
-                  hintText: 'https://dav.jianguoyun.com/dav',
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: userCtrl,
-                decoration: const InputDecoration(labelText: '账号'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: passCtrl,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: '密码'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: folderCtrl,
-                decoration: const InputDecoration(
-                  labelText: '同步目录',
-                  hintText: 'hexo-sync',
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              widget.onSettingsChanged(
-                widget.settings.copyWith(
-                  webdavUrl: urlCtrl.text.trim(),
-                  webdavUsername: userCtrl.text.trim(),
-                  webdavPassword: passCtrl.text,
-                  webdavFolder: folderCtrl.text.trim().isEmpty
-                      ? 'hexo-sync'
-                      : folderCtrl.text.trim(),
-                ),
-              );
-              // 同步配置到 WebDAV 后端
-              final backend = widget.cloudSyncService.getBackend(SyncBackendType.webdav);
-              if (backend is WebDavSyncBackend) {
-                backend.configureFromSettings(widget.settings);
-              }
-              Navigator.pop(ctx, true);
-            },
-            child: const Text('保存'),
-          ),
-        ],
-      ),
+    final userCtrl = TextEditingController(
+      text: widget.settings.webdavUsername,
     );
-    if (result == true && mounted) {
-      setState(() {});
+    final passCtrl = TextEditingController(
+      text: widget.settings.webdavPassword,
+    );
+    final folderCtrl = TextEditingController(
+      text: widget.settings.webdavFolder,
+    );
+
+    try {
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('WebDAV 配置'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: urlCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'WebDAV 地址',
+                    hintText: 'https://dav.jianguoyun.com/dav',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: userCtrl,
+                  decoration: const InputDecoration(labelText: '账号'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: passCtrl,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: '密码'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: folderCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '同步目录',
+                    hintText: 'hexo-sync',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                widget.onSettingsChanged(
+                  widget.settings.copyWith(
+                    webdavUrl: urlCtrl.text.trim(),
+                    webdavUsername: userCtrl.text.trim(),
+                    webdavPassword: passCtrl.text,
+                    webdavFolder: folderCtrl.text.trim().isEmpty
+                        ? 'hexo-sync'
+                        : folderCtrl.text.trim(),
+                  ),
+                );
+                // 同步配置到 WebDAV 后端
+                final backend = widget.cloudSyncService.getBackend(
+                  SyncBackendType.webdav,
+                );
+                if (backend is WebDavSyncBackend) {
+                  backend.configureFromSettings(widget.settings);
+                }
+                Navigator.pop(ctx, true);
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      );
+      if (result == true && mounted) {
+        setState(() {});
+      }
+    } finally {
+      urlCtrl.dispose();
+      userCtrl.dispose();
+      passCtrl.dispose();
+      folderCtrl.dispose();
     }
   }
 

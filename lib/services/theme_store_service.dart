@@ -20,7 +20,7 @@ import 'git_providers.dart';
 /// 5. 写回 config，触发一次 CI 构建
 class ThemeStoreService {
   const ThemeStoreService({GitHubProvider? githubProvider})
-      : _github = githubProvider ?? const GitHubProvider();
+    : _github = githubProvider ?? const GitHubProvider();
 
   final GitHubProvider _github;
 
@@ -38,7 +38,8 @@ class ThemeStoreService {
       repoOwner: 'next-theme',
       repoName: 'hexo-theme-next',
       defaultBranch: 'master',
-      screenshotUrl: 'https://raw.githubusercontent.com/next-theme/hexo-theme-next/master/images/schemes.png',
+      screenshotUrl:
+          'https://raw.githubusercontent.com/next-theme/hexo-theme-next/master/images/schemes.png',
     ),
     ThemeStoreItem(
       id: 'hexo-fluid',
@@ -160,8 +161,7 @@ class ThemeStoreService {
   }
 
   Future<List<int>> _download(String url) async {
-    final resp = await http.get(Uri.parse(url))
-        .timeout(_downloadTimeout);
+    final resp = await http.get(Uri.parse(url)).timeout(_downloadTimeout);
     if (resp.statusCode != 200) {
       throw Exception('下载主题包失败 (HTTP ${resp.statusCode})');
     }
@@ -180,35 +180,66 @@ class ThemeStoreService {
   }
 
   /// 找出 tarball 顶层目录名（如 next-theme-hexo-theme-next-master/）
+  ///
+  /// 要求所有文件共享同一顶层目录前缀，否则返回 null（避免混合结构包
+  /// 只安装一部分导致"安装成功但文件不全"）。
   String? _findRootDir(Archive archive) {
     if (archive.files.isEmpty) return null;
-    final first = archive.files.first.name;
-    final idx = first.indexOf('/');
-    return idx > 0 ? first.substring(0, idx) : null;
+    final roots = <String>{};
+    for (final f in archive.files) {
+      final name = f.name;
+      final idx = name.indexOf('/');
+      if (idx <= 0) {
+        // 存在无目录前缀的顶层文件 → 结构不规则
+        return null;
+      }
+      roots.add(name.substring(0, idx));
+      if (roots.length > 1) return null;
+    }
+    return roots.isEmpty ? null : roots.first;
   }
 
-  /// 去掉顶层目录前缀
+  /// 去掉顶层目录前缀；对非法路径（穿越/绝对/空段）返回 null
   String? _stripRoot(String name, String root) {
+    final String rel;
     if (name.startsWith('$root/')) {
-      return name.substring(root.length + 1);
+      rel = name.substring(root.length + 1);
+    } else if (name == root) {
+      rel = '';
+    } else {
+      return null;
     }
-    if (name == root) return '';
-    return null;
+    // 安全校验：拒绝路径穿越、绝对路径、Windows 分隔符与空路径
+    if (rel.isEmpty) return null;
+    if (rel.contains('..') ||
+        rel.startsWith('/') ||
+        rel.startsWith('\\') ||
+        rel.contains('\\') ||
+        rel.contains('//')) {
+      return null;
+    }
+    return rel;
   }
 
   /// 过滤示例内容与文档（避免主题仓库夹带无关文件）
+  ///
+  /// 仅排除 screenshots/screenshot 目录下的图片与常见文档，保留主题自身资源图。
   bool _isExcluded(String rel) {
     final lower = rel.toLowerCase();
     if (lower.startsWith('.git')) return true;
     if (lower.startsWith('.github')) return true;
     if (lower.startsWith('docs/') ||
         lower.startsWith('doc/') ||
-        lower == 'readme.md' ||
-        lower.startsWith('screenshots') ||
-        lower.endsWith('.png') ||
-        lower.endsWith('.jpg') ||
-        lower.endsWith('.jpeg') ||
-        lower.endsWith('.gif')) {
+        lower == 'readme.md') {
+      return true;
+    }
+    final isScreenshot =
+        lower.startsWith('screenshots/') || lower.startsWith('screenshot/');
+    if (isScreenshot &&
+        (lower.endsWith('.png') ||
+            lower.endsWith('.jpg') ||
+            lower.endsWith('.jpeg') ||
+            lower.endsWith('.gif'))) {
       return true;
     }
     return false;
@@ -216,17 +247,21 @@ class ThemeStoreService {
 
   /// 读取配置文件并改写 theme 字段；返回是否发生变更
   Future<bool> _setConfigTheme(
-      RepoConfig repo, String configPath, ThemeStoreItem item) async {
+    RepoConfig repo,
+    String configPath,
+    ThemeStoreItem item,
+  ) async {
     final existing = await _github.readFile(repo, configPath);
     var content = existing?['content'] ?? '';
 
     final newThemeValue = item.configKey;
+    // 依据配置文件后缀区分 YAML（Hexo _config.yml）与 TOML（Hugo hugo.toml/config.toml）
+    final isToml = configPath.endsWith('.toml');
     final String updated;
     if (content.trim().isEmpty) {
-      updated = '$newThemeValue: ${item.name}\n';
+      updated = isToml ? 'theme = "${item.name}"\n' : 'theme: ${item.name}\n';
     } else {
-      // 处理 hugo.toml / config.toml 的 [params] 风格与 YAML 两种
-      updated = _replaceThemeField(content, newThemeValue, item.name);
+      updated = _replaceThemeField(content, newThemeValue, item.name, isToml);
     }
     if (updated == content) return false;
 
@@ -240,28 +275,41 @@ class ThemeStoreService {
     return true;
   }
 
-  String _replaceThemeField(String content, String key, String themeName) {
+  String _replaceThemeField(
+    String content,
+    String key,
+    String themeName,
+    bool isToml,
+  ) {
     final lines = content.split('\n');
     final buf = <String>[];
     for (final line in lines) {
-      // 匹配顶层 `theme: xxx`（YAML）或 `theme = "xxx"`（TOML）
-      final yamlMatch = RegExp(r'^(\s*)theme\s*:\s*(.*)$').firstMatch(line);
-      final tomlMatch = RegExp(r'^(\s*)theme\s*=\s*"[^"]*"').firstMatch(line);
-      if (yamlMatch != null) {
-        final indent = yamlMatch.group(1) ?? '';
-        buf.add('${indent}theme: $themeName');
-        continue;
-      }
-      if (tomlMatch != null) {
-        buf.add('theme = "$themeName"');
-        continue;
+      if (isToml) {
+        // TOML：theme = "xxx"（单双引号均可）
+        final tomlMatch = RegExp(
+          "^(\\s*)theme\\s*=\\s*(\".*\"|'.*')",
+        ).firstMatch(line);
+        if (tomlMatch != null) {
+          buf.add('theme = "$themeName"');
+          continue;
+        }
+      } else {
+        // YAML：仅匹配顶层 theme（无缩进）或保持缩进一致的字段
+        final yamlMatch = RegExp(r'^(\s*)theme\s*:\s*(.*)$').firstMatch(line);
+        if (yamlMatch != null) {
+          final indent = yamlMatch.group(1) ?? '';
+          buf.add('${indent}theme: $themeName');
+          continue;
+        }
       }
       buf.add(line);
     }
     final joined = buf.join('\n');
-    // 未匹配到 theme 字段则追加
+    // 未匹配到 theme 字段则追加（TOML 用合法语法）
     if (joined == content) {
-      return '$content\ntheme: $themeName\n';
+      return isToml
+          ? '$content\ntheme = "$themeName"\n'
+          : '$content\ntheme: $themeName\n';
     }
     return joined;
   }

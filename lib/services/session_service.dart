@@ -81,7 +81,10 @@ class SessionService {
   }) async {
     final dir = await _autoSaveDirectory();
     final ts = DateTime.now().millisecondsSinceEpoch;
-    final fileName = '${articleId}_$ts.md';
+    final safeId = articleId
+        .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1f]'), '_')
+        .replaceAll(RegExp(r'\s+'), '_');
+    final fileName = '${safeId}_$ts.md';
     final f = File('${dir.path}/$fileName');
 
     final buffer = StringBuffer();

@@ -79,8 +79,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _siteNameCtrl = TextEditingController(text: widget.settings.siteName);
     _siteBioCtrl = TextEditingController(text: widget.settings.siteBio);
-    _quickNoteAnchorCtrl =
-        TextEditingController(text: widget.settings.ui.quickNoteAnchor);
+    _quickNoteAnchorCtrl = TextEditingController(
+      text: widget.settings.ui.quickNoteAnchor,
+    );
     _collapsedSettingsSections =
         (widget.settings.ui.collapsedSettingsSections.isNotEmpty
                 ? widget.settings.ui.collapsedSettingsSections
@@ -1204,7 +1205,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // 桌面小部件 / 通知栏磁贴引导
           ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.widgets_outlined, color: Color(0xFF0EA5E9)),
+            leading: const Icon(
+              Icons.widgets_outlined,
+              color: Color(0xFF0EA5E9),
+            ),
             title: const Text('桌面小部件 / 通知栏磁贴'),
             subtitle: const Text(
               '长按桌面 → 添加小部件「速记」；下拉通知栏 → 编辑磁贴 → 拖入「速记」',
@@ -1268,131 +1272,136 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         const SizedBox(height: 20),
         // ── 隐私与加密 ──
-        _section('privacy_encryption', '隐私与加密', [
-          _buildDraftEncryptionTile(),
-        ]),
+        _section('privacy_encryption', '隐私与加密', [_buildDraftEncryptionTile()]),
 
         const SizedBox(height: 20),
         // ── 站点与 PWA ──
         if (sectionVisible('site_pwa')) ...[
-        _section('site_pwa', l10n.translate('settings_site_pwa'), [
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.language),
-            title: Text(l10n.translate('blog_address')),
-            subtitle: Text(
-              activeRepo?.siteUrl.isNotEmpty == true
-                  ? activeRepo!.siteUrl
-                  : (s.sitePreviewUrl.isNotEmpty
-                        ? s.sitePreviewUrl
-                        : l10n.translate('site_url_not_set')),
+          _section('site_pwa', l10n.translate('settings_site_pwa'), [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.language),
+              title: Text(l10n.translate('blog_address')),
+              subtitle: Text(
+                activeRepo?.siteUrl.isNotEmpty == true
+                    ? activeRepo!.siteUrl
+                    : (s.sitePreviewUrl.isNotEmpty
+                          ? s.sitePreviewUrl
+                          : l10n.translate('site_url_not_set')),
+              ),
+              trailing: const Icon(Icons.copy),
+              onTap: () {
+                final u = activeRepo?.siteUrl.isNotEmpty == true
+                    ? activeRepo!.siteUrl
+                    : (s.sitePreviewUrl.isNotEmpty ? s.sitePreviewUrl : '');
+                if (u.isEmpty) {
+                  widget.onShowToast(l10n.translate('site_url_not_set'));
+                  return;
+                }
+                Clipboard.setData(ClipboardData(text: u));
+                widget.onShowToast(l10n.translate('site_url_copied'));
+              },
             ),
-            trailing: const Icon(Icons.copy),
-            onTap: () {
-              final u = activeRepo?.siteUrl.isNotEmpty == true
-                  ? activeRepo!.siteUrl
-                  : (s.sitePreviewUrl.isNotEmpty ? s.sitePreviewUrl : '');
-              if (u.isEmpty) {
-                widget.onShowToast(l10n.translate('site_url_not_set'));
-                return;
-              }
-              Clipboard.setData(ClipboardData(text: u));
-              widget.onShowToast(l10n.translate('site_url_copied'));
-            },
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.install_mobile),
-            title: Text(l10n.translate('pwa_guide')),
-            subtitle: Text(l10n.translate('pwa_guide_hint')),
-            onTap: widget.onShowPwaGuide,
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.cloud_upload),
-            title: Text(l10n.translate('cloudflare_hook')),
-            subtitle: Text(
-              s.deployHooks.isNotEmpty
-                  ? l10n.translate('deploy_hook_configured', params: {'count': '${s.deployHooks.length}'})
-                  : l10n.translate('deploy_hook_not_configured'),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.install_mobile),
+              title: Text(l10n.translate('pwa_guide')),
+              subtitle: Text(l10n.translate('pwa_guide_hint')),
+              onTap: widget.onShowPwaGuide,
             ),
-            trailing: const Icon(Icons.edit, size: 18),
-            onTap: () async {
-              final ctrl = TextEditingController(
-                text: s.deployHooks.join('\n'),
-              );
-              final ok = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: Text(l10n.translate('deploy_hook_title')),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        l10n.translate('deploy_hook_desc'),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: ctrl,
-                        maxLines: 5,
-                        minLines: 2,
-                        decoration: InputDecoration(
-                          labelText: l10n.translate('deploy_hook_label'),
-                          hintText: l10n.translate('deploy_hook_hint'),
-                          border: const OutlineInputBorder(),
-                        ),
-                      ),
-                    ],
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: Text(l10n.translate('cancel')),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: Text(l10n.translate('save')),
-                    ),
-                  ],
-                ),
-              );
-              if (ok == true) {
-                final hooks = ctrl.text
-                    .split('\n')
-                    .map((e) => e.trim())
-                    .where((e) => e.isNotEmpty)
-                    .toList();
-                await widget.onSettingsChanged(
-                  widget.settings.copyWith(deployHooks: hooks),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.cloud_upload),
+              title: Text(l10n.translate('cloudflare_hook')),
+              subtitle: Text(
+                s.deployHooks.isNotEmpty
+                    ? l10n.translate(
+                        'deploy_hook_configured',
+                        params: {'count': '${s.deployHooks.length}'},
+                      )
+                    : l10n.translate('deploy_hook_not_configured'),
+              ),
+              trailing: const Icon(Icons.edit, size: 18),
+              onTap: () async {
+                final ctrl = TextEditingController(
+                  text: s.deployHooks.join('\n'),
                 );
-                widget.onShowToast(l10n.translate('cloudflare_hook_saved'));
-              }
-            },
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.web),
-            title: Text(l10n.translate('website_pages')),
-            subtitle: Text(l10n.translate('site_editor_pages')),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: widget.onShowSiteEditor,
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.palette),
-            title: Text(l10n.translate('theme_color')),
-            subtitle: Text(l10n.translate('theme_color_hint')),
-            trailing: CircleAvatar(
-              backgroundColor: Color(s.themeColor),
-              radius: 14,
+                try {
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: Text(l10n.translate('deploy_hook_title')),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            l10n.translate('deploy_hook_desc'),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: ctrl,
+                            maxLines: 5,
+                            minLines: 2,
+                            decoration: InputDecoration(
+                              labelText: l10n.translate('deploy_hook_label'),
+                              hintText: l10n.translate('deploy_hook_hint'),
+                              border: const OutlineInputBorder(),
+                            ),
+                          ),
+                        ],
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: Text(l10n.translate('cancel')),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: Text(l10n.translate('save')),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (ok == true) {
+                    final hooks = ctrl.text
+                        .split('\n')
+                        .map((e) => e.trim())
+                        .where((e) => e.isNotEmpty)
+                        .toList();
+                    await widget.onSettingsChanged(
+                      widget.settings.copyWith(deployHooks: hooks),
+                    );
+                    widget.onShowToast(l10n.translate('cloudflare_hook_saved'));
+                  }
+                } finally {
+                  ctrl.dispose();
+                }
+              },
             ),
-            onTap: widget.onShowThemeColorPicker,
-          ),
-        ]),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.web),
+              title: Text(l10n.translate('website_pages')),
+              subtitle: Text(l10n.translate('site_editor_pages')),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: widget.onShowSiteEditor,
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.palette),
+              title: Text(l10n.translate('theme_color')),
+              subtitle: Text(l10n.translate('theme_color_hint')),
+              trailing: CircleAvatar(
+                backgroundColor: Color(s.themeColor),
+                radius: 14,
+              ),
+              onTap: widget.onShowThemeColorPicker,
+            ),
+          ]),
         ],
 
         const SizedBox(height: 20),
@@ -1402,10 +1411,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             title: Text(
               l10n.translate('hexo_writing_system'),
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             subtitle: Text(l10n.translate('local_drafts')),
           ),
@@ -1533,7 +1539,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 4),
         Text(
           l10n.translate(bodyKey),
-          style: const TextStyle(fontSize: 13, height: 1.5, color: Color(0xFF475569)),
+          style: const TextStyle(
+            fontSize: 13,
+            height: 1.5,
+            color: Color(0xFF475569),
+          ),
         ),
       ],
     );
@@ -1554,44 +1564,99 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 const Text(
                   '本项目的架构设计与功能实现深度参考了以下开源项目，在此向各位原作者致敬：',
-                  style: TextStyle(fontSize: 13, height: 1.5, color: Color(0xFF475569)),
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: Color(0xFF475569),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _creditGroup('直接复刻 / 深度参考', [
-                  ('QuickDaily', '悬浮速记窗、任务小部件、阅读小部件', 'MIT',
-                      'https://github.com/agarcabin/QuickDaily'),
-                  ('MonkeyCode', 'AI 工具/模型编排、MCP 服务器管理', 'AGPL-3.0',
-                      'https://github.com/chaitin/MonkeyCode'),
-                  ('MarkText', '沉浸式写作布局、专注模式、打字机滚动', 'MIT',
-                      'https://github.com/marktext/marktext'),
-                  ('VS Code', 'MVVM 架构、命令面板、Markdown 语法着色', 'MIT',
-                      'https://github.com/microsoft/vscode'),
-                  ('super_editor', 'Document / Composer 编辑器架构', 'MIT',
-                      'https://github.com/superlistapp/super_editor'),
-                  ('Zettlr', 'FrontMatter 解析、FSAL 全文搜索架构', 'GPL-3.0',
-                      'https://github.com/Zettlr/Zettlr'),
+                  (
+                    'QuickDaily',
+                    '悬浮速记窗、任务小部件、阅读小部件',
+                    'MIT',
+                    'https://github.com/agarcabin/QuickDaily',
+                  ),
+                  (
+                    'MonkeyCode',
+                    'AI 工具/模型编排、MCP 服务器管理',
+                    'AGPL-3.0',
+                    'https://github.com/chaitin/MonkeyCode',
+                  ),
+                  (
+                    'MarkText',
+                    '沉浸式写作布局、专注模式、打字机滚动',
+                    'MIT',
+                    'https://github.com/marktext/marktext',
+                  ),
+                  (
+                    'VS Code',
+                    'MVVM 架构、命令面板、Markdown 语法着色',
+                    'MIT',
+                    'https://github.com/microsoft/vscode',
+                  ),
+                  (
+                    'super_editor',
+                    'Document / Composer 编辑器架构',
+                    'MIT',
+                    'https://github.com/superlistapp/super_editor',
+                  ),
+                  (
+                    'Zettlr',
+                    'FrontMatter 解析、FSAL 全文搜索架构',
+                    'GPL-3.0',
+                    'https://github.com/Zettlr/Zettlr',
+                  ),
                 ]),
                 const SizedBox(height: 12),
                 _creditGroup('布局与交互参考', [
-                  ('PureWriter', '左栏源码 + 右栏实时预览', '资源仓库',
-                      'https://github.com/PureWriter/PureWriter'),
-                  ('Notion', '左栏文章平铺内嵌、可折叠列表', '闭源产品',
-                      'https://www.notion.so'),
-                  ('Obsidian', 'Vault 工作区隔离思想', '闭源产品',
-                      'https://github.com/obsidianmd/obsidian-releases'),
-                  ('Cursor', 'AI inline edit + 编辑器 diff 交互', '闭源产品',
-                      'https://github.com/getcursor/cursor'),
+                  (
+                    'PureWriter',
+                    '左栏源码 + 右栏实时预览',
+                    '资源仓库',
+                    'https://github.com/PureWriter/PureWriter',
+                  ),
+                  ('Notion', '左栏文章平铺内嵌、可折叠列表', '闭源产品', 'https://www.notion.so'),
+                  (
+                    'Obsidian',
+                    'Vault 工作区隔离思想',
+                    '闭源产品',
+                    'https://github.com/obsidianmd/obsidian-releases',
+                  ),
+                  (
+                    'Cursor',
+                    'AI inline edit + 编辑器 diff 交互',
+                    '闭源产品',
+                    'https://github.com/getcursor/cursor',
+                  ),
                 ]),
                 const SizedBox(height: 12),
                 _creditGroup('能力依赖参考', [
-                  ('hexo-mobile', 'FrontMatter 处理思路（源自 Hexo 生态，仓库已归档）', 'MIT',
-                      'https://github.com/hexojs/hexo'),
-                  ('flutter_udp_broadcast', 'P2P 局域网同步广播（UDP 广播思路参考）', '思路参考',
-                      'https://pub.dev/packages?q=udp+broadcast'),
-                  ('ripgrep', '全文检索二进制预编译方案', 'Unlicense',
-                      'https://github.com/BurntSushi/ripgrep'),
-                  ('GitHub REST API', 'Contents API / Git Data API 批量上传', '服务条款',
-                      'https://docs.github.com/rest'),
+                  (
+                    'hexo-mobile',
+                    'FrontMatter 处理思路（源自 Hexo 生态，仓库已归档）',
+                    'MIT',
+                    'https://github.com/hexojs/hexo',
+                  ),
+                  (
+                    'flutter_udp_broadcast',
+                    'P2P 局域网同步广播（UDP 广播思路参考）',
+                    '思路参考',
+                    'https://pub.dev/packages?q=udp+broadcast',
+                  ),
+                  (
+                    'ripgrep',
+                    '全文检索二进制预编译方案',
+                    'Unlicense',
+                    'https://github.com/BurntSushi/ripgrep',
+                  ),
+                  (
+                    'GitHub REST API',
+                    'Contents API / Git Data API 批量上传',
+                    '服务条款',
+                    'https://docs.github.com/rest',
+                  ),
                 ]),
               ],
             ),
@@ -1607,7 +1672,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _creditGroup(String title, List<(String, String, String, String)> items) {
+  Widget _creditGroup(
+    String title,
+    List<(String, String, String, String)> items,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1624,13 +1692,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('• ',
-                      style: TextStyle(fontSize: 13, color: Color(0xFF475569))),
+                  const Text(
+                    '• ',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
+                  ),
                   Expanded(
                     child: Text(
                       '$name — $desc\n$url  [$license]',
                       style: const TextStyle(
-                          fontSize: 13, height: 1.4, color: Color(0xFF475569)),
+                        fontSize: 13,
+                        height: 1.4,
+                        color: Color(0xFF475569),
+                      ),
                     ),
                   ),
                 ],
@@ -1675,9 +1748,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: const Text('草稿内容加密'),
               subtitle: Text(
                 encEnabled
-                    ? (unlocked
-                          ? '草稿已加密保存，解锁密码在本机'
-                          : '加密已开启，需输入密码解锁')
+                    ? (unlocked ? '草稿已加密保存，解锁密码在本机' : '加密已开启，需输入密码解锁')
                     : '对本地草稿内容 AES-256 加密',
               ),
               trailing: Switch(
@@ -1721,66 +1792,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final pwdCtrl = TextEditingController();
     final confCtrl = TextEditingController();
     final errCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('开启草稿加密'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('开启后草稿内容将加密保存。请设置至少 4 位密码。'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: pwdCtrl,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: '密码'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: confCtrl,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: '确认密码'),
-            ),
-            const SizedBox(height: 8),
-            ListenableBuilder(
-              listenable: errCtrl,
-              builder: (context, _) => Text(
-                errCtrl.text,
-                style: const TextStyle(color: Colors.red, fontSize: 12),
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('开启草稿加密'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('开启后草稿内容将加密保存。请设置至少 8 位密码。'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: pwdCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: '密码'),
               ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: confCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: '确认密码'),
+              ),
+              const SizedBox(height: 8),
+              ListenableBuilder(
+                listenable: errCtrl,
+                builder: (context, _) => Text(
+                  errCtrl.text,
+                  style: const TextStyle(color: Colors.red, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final storage = widget.storage;
+                final err = DraftEncryptionService.setPassword(
+                  pwdCtrl.text,
+                  confCtrl.text,
+                  storage,
+                );
+                if (err != null) {
+                  errCtrl.text = err;
+                  if (ctx.mounted) setState(() {});
+                  return;
+                }
+                // 加密现有草稿
+                await DraftEncryptionService.encryptExistingDrafts(storage);
+                if (ctx.mounted) Navigator.pop(ctx, true);
+              },
+              child: const Text('开启'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final storage = widget.storage;
-              final err = DraftEncryptionService.setPassword(
-                pwdCtrl.text,
-                confCtrl.text,
-                storage,
-              );
-              if (err != null) {
-                errCtrl.text = err;
-                if (ctx.mounted) setState(() {});
-                return;
-              }
-              // 加密现有草稿
-              await DraftEncryptionService.encryptExistingDrafts(storage);
-              if (ctx.mounted) Navigator.pop(ctx, true);
-            },
-            child: const Text('开启'),
-          ),
-        ],
-      ),
-    );
-    if (ok == true && mounted) {
-      widget.onShowToast('草稿加密已开启');
-      setState(() {});
+      );
+      if (ok == true && mounted) {
+        widget.onShowToast('草稿加密已开启');
+        setState(() {});
+      }
+    } finally {
+      pwdCtrl.dispose();
+      confCtrl.dispose();
+      errCtrl.dispose();
     }
   }
 
@@ -1788,52 +1865,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<bool> _showUnlockDialog() async {
     final pwdCtrl = TextEditingController();
     final errCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('输入密码'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: pwdCtrl,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: '密码'),
-            ),
-            ListenableBuilder(
-              listenable: errCtrl,
-              builder: (context, _) => Text(
-                errCtrl.text,
-                style: const TextStyle(color: Colors.red, fontSize: 12),
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('输入密码'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: pwdCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: '密码'),
               ),
+              ListenableBuilder(
+                listenable: errCtrl,
+                builder: (context, _) => Text(
+                  errCtrl.text,
+                  style: const TextStyle(color: Colors.red, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final storage = widget.storage;
+                final err = DraftEncryptionService.verifyPassword(
+                  pwdCtrl.text,
+                  storage,
+                );
+                if (err != null) {
+                  errCtrl.text = err;
+                  setState(() {});
+                  return;
+                }
+                Navigator.pop(ctx, true);
+              },
+              child: const Text('确认'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final storage = widget.storage;
-              final err = DraftEncryptionService.verifyPassword(
-                pwdCtrl.text,
-                storage,
-              );
-              if (err != null) {
-                errCtrl.text = err;
-                setState(() {});
-                return;
-              }
-              Navigator.pop(ctx, true);
-            },
-            child: const Text('确认'),
-          ),
-        ],
-      ),
-    );
-    return ok == true;
+      );
+      return ok == true;
+    } finally {
+      pwdCtrl.dispose();
+      errCtrl.dispose();
+    }
   }
 
   /// 关闭加密对话框
@@ -1878,67 +1960,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final newCtrl = TextEditingController();
     final confCtrl = TextEditingController();
     final errCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('修改密码'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: oldCtrl,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: '当前密码'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: newCtrl,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: '新密码'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: confCtrl,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: '确认新密码'),
-            ),
-            ListenableBuilder(
-              listenable: errCtrl,
-              builder: (context, _) => Text(
-                errCtrl.text,
-                style: const TextStyle(color: Colors.red, fontSize: 12),
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('修改密码'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: oldCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: '当前密码'),
               ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: newCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: '新密码'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: confCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: '确认新密码'),
+              ),
+              ListenableBuilder(
+                listenable: errCtrl,
+                builder: (context, _) => Text(
+                  errCtrl.text,
+                  style: const TextStyle(color: Colors.red, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final storage = widget.storage;
+                final err = DraftEncryptionService.changePassword(
+                  oldCtrl.text,
+                  newCtrl.text,
+                  confCtrl.text,
+                  storage,
+                );
+                if (err != null) {
+                  errCtrl.text = err;
+                  setState(() {});
+                  return;
+                }
+                Navigator.pop(ctx, true);
+              },
+              child: const Text('确认'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final storage = widget.storage;
-              final err = DraftEncryptionService.changePassword(
-                oldCtrl.text,
-                newCtrl.text,
-                confCtrl.text,
-                storage,
-              );
-              if (err != null) {
-                errCtrl.text = err;
-                setState(() {});
-                return;
-              }
-              Navigator.pop(ctx, true);
-            },
-            child: const Text('确认'),
-          ),
-        ],
-      ),
-    );
-    if (ok == true && mounted) {
-      widget.onShowToast('密码已修改');
+      );
+      if (ok == true && mounted) {
+        widget.onShowToast('密码已修改');
+      }
+    } finally {
+      oldCtrl.dispose();
+      newCtrl.dispose();
+      confCtrl.dispose();
+      errCtrl.dispose();
     }
   }
 
@@ -1958,6 +2047,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     widget.onSettingsChanged(ns);
   }
+
   /// 可折叠分区：标题行（点击展开/折叠）+ 内容卡片
   Widget _section(String key, String title, List<Widget> children) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1975,7 +2065,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Icon(
                   collapsed ? Icons.chevron_right : Icons.expand_more,
                   size: 18,
-                  color: isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF64748B),
+                  color: isDark
+                      ? Colors.white.withOpacity(0.5)
+                      : const Color(0xFF64748B),
                 ),
                 const SizedBox(width: 4),
                 Expanded(
@@ -1984,7 +2076,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 15,
-                      color: isDark ? Colors.white.withOpacity(0.9) : const Color(0xFF0F172A),
+                      color: isDark
+                          ? Colors.white.withOpacity(0.9)
+                          : const Color(0xFF0F172A),
                     ),
                   ),
                 ),
@@ -2019,9 +2113,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         value: enabled,
         title: Text(e.value, style: const TextStyle(fontSize: 13.5)),
         onChanged: (v) async {
-          final next = v
-              ? extras.union({e.key})
-              : extras.difference({e.key});
+          final next = v ? extras.union({e.key}) : extras.difference({e.key});
           final ns = s.copyWith(
             ui: s.ui.copyWith(simpleModeExtras: next.toList()..sort()),
           );

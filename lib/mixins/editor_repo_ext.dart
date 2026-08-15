@@ -97,188 +97,194 @@ extension EditorRepoExt on _RootShellState {
     String htmlUrl = existing?.htmlUrl ?? '';
     var provider = existing?.provider ?? GitProviderType.github;
 
-    return showDialog<GithubTokenProfile>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setDlg) {
-            Future<void> verifyAndFill() async {
-              final token = tokenCtrl.text.trim();
-              if (token.isEmpty) {
-                setDlg(() => err = '请先填写 Token');
-                return;
-              }
-              setDlg(() {
-                verifying = true;
-                err = null;
-              });
-              try {
-                final user = await github.getUser(token, provider: provider);
-                login = user['login']?.toString() ?? '';
-                avatarUrl = user['avatar_url']?.toString() ?? '';
-                htmlUrl = user['html_url']?.toString() ?? '';
-                if (nameCtrl.text.trim().isEmpty ||
-                    nameCtrl.text.trim() == 'GitHub Token' ||
-                    nameCtrl.text.trim() == '默认 Token') {
-                  if (login.isNotEmpty) nameCtrl.text = login;
+    try {
+      final result = await showDialog<GithubTokenProfile>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          return StatefulBuilder(
+            builder: (ctx, setDlg) {
+              Future<void> verifyAndFill() async {
+                final token = tokenCtrl.text.trim();
+                if (token.isEmpty) {
+                  setDlg(() => err = '请先填写 Token');
+                  return;
                 }
-                setDlg(() => verifying = false);
-                _showToast(login.isEmpty ? 'Token 有效' : '验证成功 · @$login');
-              } catch (e) {
                 setDlg(() {
-                  verifying = false;
-                  err = e.toString();
+                  verifying = true;
+                  err = null;
                 });
+                try {
+                  final user = await github.getUser(token, provider: provider);
+                  login = user['login']?.toString() ?? '';
+                  avatarUrl = user['avatar_url']?.toString() ?? '';
+                  htmlUrl = user['html_url']?.toString() ?? '';
+                  if (nameCtrl.text.trim().isEmpty ||
+                      nameCtrl.text.trim() == 'GitHub Token' ||
+                      nameCtrl.text.trim() == '默认 Token') {
+                    if (login.isNotEmpty) nameCtrl.text = login;
+                  }
+                  setDlg(() => verifying = false);
+                  _showToast(login.isEmpty ? 'Token 有效' : '验证成功 · @$login');
+                } catch (e) {
+                  setDlg(() {
+                    verifying = false;
+                    err = e.toString();
+                  });
+                }
               }
-            }
 
-            return AlertDialog(
-              title: Text(existing == null ? '登录仓库 Token' : '编辑 Token'),
-              content: SizedBox(
-                width: 420,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      DropdownButtonFormField<GitProviderType>(
-                        key: ValueKey(provider),
-                        initialValue: provider,
-                        decoration: const InputDecoration(
-                          labelText: '仓库平台',
-                          helperText: '选择 Token 所属的平台',
+              return AlertDialog(
+                title: Text(existing == null ? '登录仓库 Token' : '编辑 Token'),
+                content: SizedBox(
+                  width: 420,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        DropdownButtonFormField<GitProviderType>(
+                          key: ValueKey(provider),
+                          initialValue: provider,
+                          decoration: const InputDecoration(
+                            labelText: '仓库平台',
+                            helperText: '选择 Token 所属的平台',
+                          ),
+                          items: [
+                            for (final p in GitProviderType.values)
+                              DropdownMenuItem(value: p, child: Text(p.label)),
+                          ],
+                          onChanged: (v) {
+                            if (v != null) {
+                              setDlg(() {
+                                provider = v;
+                                login = '';
+                                avatarUrl = '';
+                                htmlUrl = '';
+                                err = null;
+                              });
+                            }
+                          },
                         ),
-                        items: [
-                          for (final p in GitProviderType.values)
-                            DropdownMenuItem(
-                              value: p,
-                              child: Text(p.label),
-                            ),
-                        ],
-                        onChanged: (v) {
-                          if (v != null) {
-                            setDlg(() {
-                              provider = v;
-                              login = '';
-                              avatarUrl = '';
-                              htmlUrl = '';
-                              err = null;
-                            });
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: nameCtrl,
-                        decoration: const InputDecoration(
-                          labelText: '备注名称',
-                          hintText: '如 主账号 / 图床专用',
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: tokenCtrl,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Token',
-                          hintText: '平台访问令牌（PAT / App Password）',
-                          helperText: '需要仓库 contents 读写权限',
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      if (login.isNotEmpty)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.account_circle_outlined),
-                          title: Text('@$login'),
-                          subtitle: Text(htmlUrl.isEmpty ? '已验证' : htmlUrl),
-                        ),
-                      if (err != null)
-                        Text(
-                          err!,
-                          style: const TextStyle(
-                            color: Colors.red,
-                            fontSize: 12,
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: nameCtrl,
+                          decoration: const InputDecoration(
+                            labelText: '备注名称',
+                            hintText: '如 主账号 / 图床专用',
                           ),
                         ),
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: FilledButton.tonalIcon(
-                          onPressed: verifying ? null : verifyAndFill,
-                          icon: verifying
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.verified_user_outlined),
-                          label: Text(verifying ? '验证中…' : '验证并识别账号'),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: tokenCtrl,
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Token',
+                            hintText: '平台访问令牌（PAT / App Password）',
+                            helperText: '需要仓库 contents 读写权限',
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        if (login.isNotEmpty)
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.account_circle_outlined),
+                            title: Text('@$login'),
+                            subtitle: Text(htmlUrl.isEmpty ? '已验证' : htmlUrl),
+                          ),
+                        if (err != null)
+                          Text(
+                            err!,
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontSize: 12,
+                            ),
+                          ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: FilledButton.tonalIcon(
+                            onPressed: verifying ? null : verifyAndFill,
+                            icon: verifying
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.verified_user_outlined),
+                            label: Text(verifying ? '验证中…' : '验证并识别账号'),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: verifying
-                      ? null
-                      : () async {
-                          final token = tokenCtrl.text.trim();
-                          if (token.isEmpty) {
-                            _showToast('请填写 Token');
-                            return;
-                          }
-                          if (login.isEmpty) {
-                            try {
-                              final user = await github.getUser(token,
-                                  provider: provider);
-                              login = user['login']?.toString() ?? '';
-                              avatarUrl = user['avatar_url']?.toString() ?? '';
-                              htmlUrl = user['html_url']?.toString() ?? '';
-                            } catch (e) {
-                              final force = await _confirm(
-                                'Token 校验失败：\n$e\n\n仍要保存吗？',
-                              );
-                              if (!force) return;
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: verifying
+                        ? null
+                        : () async {
+                            final token = tokenCtrl.text.trim();
+                            if (token.isEmpty) {
+                              _showToast('请填写 Token');
+                              return;
                             }
-                          }
-                          final name = nameCtrl.text.trim().isEmpty
-                              ? (login.isNotEmpty ? login : provider.label)
-                              : nameCtrl.text.trim();
-                          Navigator.pop(
-                            ctx,
-                            GithubTokenProfile(
-                              id:
-                                  existing?.id ??
-                                  '${provider.key}_${DateTime.now().millisecondsSinceEpoch}',
-                              name: name,
-                              token: token,
-                              login: login,
-                              avatarUrl: avatarUrl,
-                              htmlUrl: htmlUrl,
-                              provider: provider,
-                              lastVerifiedAt: login.isNotEmpty
-                                  ? DateTime.now()
-                                  : existing?.lastVerifiedAt,
-                            ),
-                          );
-                        },
-                  child: const Text('保存'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
+                            if (login.isEmpty) {
+                              try {
+                                final user = await github.getUser(
+                                  token,
+                                  provider: provider,
+                                );
+                                login = user['login']?.toString() ?? '';
+                                avatarUrl =
+                                    user['avatar_url']?.toString() ?? '';
+                                htmlUrl = user['html_url']?.toString() ?? '';
+                              } catch (e) {
+                                final force = await _confirm(
+                                  'Token 校验失败：\n$e\n\n仍要保存吗？',
+                                );
+                                if (!force) return;
+                              }
+                            }
+                            final name = nameCtrl.text.trim().isEmpty
+                                ? (login.isNotEmpty ? login : provider.label)
+                                : nameCtrl.text.trim();
+                            Navigator.pop(
+                              ctx,
+                              GithubTokenProfile(
+                                id:
+                                    existing?.id ??
+                                    '${provider.key}_${DateTime.now().millisecondsSinceEpoch}',
+                                name: name,
+                                token: token,
+                                login: login,
+                                avatarUrl: avatarUrl,
+                                htmlUrl: htmlUrl,
+                                provider: provider,
+                                lastVerifiedAt: login.isNotEmpty
+                                    ? DateTime.now()
+                                    : existing?.lastVerifiedAt,
+                              ),
+                            );
+                          },
+                    child: const Text('保存'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+      return result;
+    } finally {
+      nameCtrl.dispose();
+      tokenCtrl.dispose();
+    }
   }
 
   Future<void> _editRepo({RepoConfig? existing}) async {
@@ -309,8 +315,10 @@ extension EditorRepoExt on _RootShellState {
     // 镜像仓库：每行 owner/repo|branch|token|provider，同一文章同步推送
     final mirrorsCtrl = TextEditingController(
       text: (existing?.mirrorRemotes ?? const [])
-          .map((m) =>
-              '${m.fullName}|${m.branch.isEmpty ? 'main' : m.branch}|${m.token}|${m.provider.key}')
+          .map(
+            (m) =>
+                '${m.fullName}|${m.branch.isEmpty ? 'main' : m.branch}|${m.token}|${m.provider.key}',
+          )
           .join('\n'),
     );
     String? selectedTokenId = settings.activeGithubTokenId;
@@ -323,392 +331,419 @@ extension EditorRepoExt on _RootShellState {
       }
     }
 
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setDlg) {
-            return AlertDialog(
-              title: Text(existing == null ? '添加仓库' : '编辑仓库'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // ── 博客框架选择 ──
-                    DropdownButtonFormField<String>(
-                      value: frameworkId,
-                      decoration: const InputDecoration(
-                        labelText: '博客框架',
-                        prefixIcon: Icon(Icons.web, size: 18),
-                      ),
-                      items: [
-                        ...BlogFramework.presets.map(
-                          (f) => DropdownMenuItem(
-                            value: f.id,
-                            child: Text('${f.name} (${f.defaultPostsPath})'),
-                          ),
-                        ),
-                        const DropdownMenuItem(
-                          value: 'custom',
-                          child: Text('自定义'),
-                        ),
-                      ],
-                      onChanged: (v) {
-                        if (v == null) return;
-                        setDlg(() {
-                          frameworkId = v;
-                          if (v != 'custom') {
-                            final fw = BlogFramework.byId(v);
-                            if (fw != null) {
-                              posts.text = fw.defaultPostsPath;
-                              pages.text = fw.defaultPagesPath;
-                              postDatePrefix = fw.postDatePrefix;
-                            }
-                          }
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    // ── 发布时区选择 ──
-                    DropdownButtonFormField<int>(
-                      value: publishTimeZoneOffsetMinutes,
-                      decoration: const InputDecoration(
-                        labelText: '发布时区',
-                        helperText:
-                            'Front Matter 日期带该时区偏移，避免 Cloudflare(UTC) 构建日期错位',
-                        prefixIcon: Icon(Icons.schedule, size: 18),
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: 0, child: Text('UTC (UTC+0)')),
-                        DropdownMenuItem(value: 480, child: Text('北京 (UTC+8)')),
-                        DropdownMenuItem(value: 540, child: Text('东京 (UTC+9)')),
-                        DropdownMenuItem(
-                          value: 600,
-                          child: Text('悉尼 (UTC+10)'),
-                        ),
-                        DropdownMenuItem(
-                          value: -300,
-                          child: Text('纽约 (UTC-5)'),
-                        ),
-                        DropdownMenuItem(
-                          value: -480,
-                          child: Text('洛杉矶 (UTC-8)'),
-                        ),
-                        DropdownMenuItem(
-                          value: 330,
-                          child: Text('孟买 (UTC+5:30)'),
-                        ),
-                      ],
-                      onChanged: (v) {
-                        if (v != null) {
-                          setDlg(() => publishTimeZoneOffsetMinutes = v);
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: name,
-                      decoration: const InputDecoration(labelText: '显示名称'),
-                    ),
-                    TextField(
-                      controller: owner,
-                      decoration: const InputDecoration(labelText: 'Owner'),
-                    ),
-                    TextField(
-                      controller: repo,
-                      decoration: const InputDecoration(labelText: 'Repo'),
-                    ),
-                    TextField(
-                      controller: branch,
-                      decoration: const InputDecoration(labelText: 'Branch'),
-                    ),
-                    // ── 仓库平台选择 ──
-                    DropdownButtonFormField<GitProviderType>(
-                      key: ValueKey(repoProvider),
-                      initialValue: repoProvider,
-                      decoration: const InputDecoration(
-                        labelText: '仓库平台',
-                        helperText: '选择仓库托管平台，Token 需匹配该平台',
-                      ),
-                      items: [
-                        for (final p in GitProviderType.values)
-                          DropdownMenuItem(
-                            value: p,
-                            child: Text(p.label),
-                          ),
-                      ],
-                      onChanged: (v) {
-                        if (v != null) {
-                          setDlg(() => repoProvider = v);
-                        }
-                      },
-                    ),
-                    // ── 双目录配置 ──
-                    TextField(
-                      controller: posts,
-                      decoration: const InputDecoration(
-                        labelText: '博文目录 (posts)',
-                        helperText: '例如: source/_posts, content/posts',
-                      ),
-                    ),
-                    TextField(
-                      controller: pages,
-                      decoration: const InputDecoration(
-                        labelText: '页面目录 (pages)',
-                        helperText: '例如: source, content',
-                      ),
-                    ),
-                    // ── 文件名规则 ──
-                    CheckboxListTile(
-                      title: const Text('博文自动日期前缀'),
-                      subtitle: const Text('2026-08-02-title.md (Jekyll/Hugo)'),
-                      value: postDatePrefix,
-                      dense: true,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      onChanged: (v) =>
-                          setDlg(() => postDatePrefix = v ?? false),
-                    ),
-                    TextField(
-                      controller: site,
-                      decoration: const InputDecoration(labelText: '站点 URL'),
-                    ),
-                    if (settings.githubTokens.isNotEmpty) ...[
-                      const SizedBox(height: 8),
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) {
+          return StatefulBuilder(
+            builder: (ctx, setDlg) {
+              return AlertDialog(
+                title: Text(existing == null ? '添加仓库' : '编辑仓库'),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // ── 博客框架选择 ──
                       DropdownButtonFormField<String>(
-                        value:
-                            settings.githubTokens.any(
-                              (e) => e.id == selectedTokenId,
-                            )
-                            ? selectedTokenId
-                            : null,
+                        value: frameworkId,
                         decoration: const InputDecoration(
-                          labelText: '选用已登录 Token',
-                          helperText: '可选择已保存令牌，或下方手动填写',
+                          labelText: '博客框架',
+                          prefixIcon: Icon(Icons.web, size: 18),
                         ),
                         items: [
-                          ...settings.githubTokens.map(
-                            (t) => DropdownMenuItem(
-                              value: t.id,
-                              child: Text(
-                                t.displayLabel,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                          ...BlogFramework.presets.map(
+                            (f) => DropdownMenuItem(
+                              value: f.id,
+                              child: Text('${f.name} (${f.defaultPostsPath})'),
                             ),
+                          ),
+                          const DropdownMenuItem(
+                            value: 'custom',
+                            child: Text('自定义'),
                           ),
                         ],
                         onChanged: (v) {
                           if (v == null) return;
-                          final t = settings.githubTokens.firstWhere(
-                            (e) => e.id == v,
-                          );
                           setDlg(() {
-                            selectedTokenId = t.id;
-                            token.text = t.token;
-                            repoProvider = t.provider;
+                            frameworkId = v;
+                            if (v != 'custom') {
+                              final fw = BlogFramework.byId(v);
+                              if (fw != null) {
+                                posts.text = fw.defaultPostsPath;
+                                pages.text = fw.defaultPagesPath;
+                                postDatePrefix = fw.postDatePrefix;
+                              }
+                            }
                           });
                         },
                       ),
+                      const SizedBox(height: 12),
+                      // ── 发布时区选择 ──
+                      DropdownButtonFormField<int>(
+                        value: publishTimeZoneOffsetMinutes,
+                        decoration: const InputDecoration(
+                          labelText: '发布时区',
+                          helperText:
+                              'Front Matter 日期带该时区偏移，避免 Cloudflare(UTC) 构建日期错位',
+                          prefixIcon: Icon(Icons.schedule, size: 18),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 0,
+                            child: Text('UTC (UTC+0)'),
+                          ),
+                          DropdownMenuItem(
+                            value: 480,
+                            child: Text('北京 (UTC+8)'),
+                          ),
+                          DropdownMenuItem(
+                            value: 540,
+                            child: Text('东京 (UTC+9)'),
+                          ),
+                          DropdownMenuItem(
+                            value: 600,
+                            child: Text('悉尼 (UTC+10)'),
+                          ),
+                          DropdownMenuItem(
+                            value: -300,
+                            child: Text('纽约 (UTC-5)'),
+                          ),
+                          DropdownMenuItem(
+                            value: -480,
+                            child: Text('洛杉矶 (UTC-8)'),
+                          ),
+                          DropdownMenuItem(
+                            value: 330,
+                            child: Text('孟买 (UTC+5:30)'),
+                          ),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) {
+                            setDlg(() => publishTimeZoneOffsetMinutes = v);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: name,
+                        decoration: const InputDecoration(labelText: '显示名称'),
+                      ),
+                      TextField(
+                        controller: owner,
+                        decoration: const InputDecoration(labelText: 'Owner'),
+                      ),
+                      TextField(
+                        controller: repo,
+                        decoration: const InputDecoration(labelText: 'Repo'),
+                      ),
+                      TextField(
+                        controller: branch,
+                        decoration: const InputDecoration(labelText: 'Branch'),
+                      ),
+                      // ── 仓库平台选择 ──
+                      DropdownButtonFormField<GitProviderType>(
+                        key: ValueKey(repoProvider),
+                        initialValue: repoProvider,
+                        decoration: const InputDecoration(
+                          labelText: '仓库平台',
+                          helperText: '选择仓库托管平台，Token 需匹配该平台',
+                        ),
+                        items: [
+                          for (final p in GitProviderType.values)
+                            DropdownMenuItem(value: p, child: Text(p.label)),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) {
+                            setDlg(() => repoProvider = v);
+                          }
+                        },
+                      ),
+                      // ── 双目录配置 ──
+                      TextField(
+                        controller: posts,
+                        decoration: const InputDecoration(
+                          labelText: '博文目录 (posts)',
+                          helperText: '例如: source/_posts, content/posts',
+                        ),
+                      ),
+                      TextField(
+                        controller: pages,
+                        decoration: const InputDecoration(
+                          labelText: '页面目录 (pages)',
+                          helperText: '例如: source, content',
+                        ),
+                      ),
+                      // ── 文件名规则 ──
+                      CheckboxListTile(
+                        title: const Text('博文自动日期前缀'),
+                        subtitle: const Text(
+                          '2026-08-02-title.md (Jekyll/Hugo)',
+                        ),
+                        value: postDatePrefix,
+                        dense: true,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        onChanged: (v) =>
+                            setDlg(() => postDatePrefix = v ?? false),
+                      ),
+                      TextField(
+                        controller: site,
+                        decoration: const InputDecoration(labelText: '站点 URL'),
+                      ),
+                      if (settings.githubTokens.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          value:
+                              settings.githubTokens.any(
+                                (e) => e.id == selectedTokenId,
+                              )
+                              ? selectedTokenId
+                              : null,
+                          decoration: const InputDecoration(
+                            labelText: '选用已登录 Token',
+                            helperText: '可选择已保存令牌，或下方手动填写',
+                          ),
+                          items: [
+                            ...settings.githubTokens.map(
+                              (t) => DropdownMenuItem(
+                                value: t.id,
+                                child: Text(
+                                  t.displayLabel,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                          ],
+                          onChanged: (v) {
+                            if (v == null) return;
+                            final t = settings.githubTokens.firstWhere(
+                              (e) => e.id == v,
+                            );
+                            setDlg(() {
+                              selectedTokenId = t.id;
+                              token.text = t.token;
+                              repoProvider = t.provider;
+                            });
+                          },
+                        ),
+                      ],
+                      TextField(
+                        controller: token,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'GitHub Token',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: mirrorsCtrl,
+                        maxLines: 4,
+                        minLines: 2,
+                        decoration: const InputDecoration(
+                          labelText: '镜像仓库（可选）',
+                          helperText:
+                              '每行一个: owner/repo|branch|token|平台(github/gitlab/gitee/bitbucket)，发布时同步推送到该远程',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
                     ],
-                    TextField(
-                      controller: token,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'GitHub Token',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: mirrorsCtrl,
-                      maxLines: 4,
-                      minLines: 2,
-                      decoration: const InputDecoration(
-                        labelText: '镜像仓库（可选）',
-                        helperText:
-                            '每行一个: owner/repo|branch|token|平台(github/gitlab/gitee/bitbucket)，发布时同步推送到该远程',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('保存'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+      if (ok != true) return;
+
+      final tokenValue = token.text.trim();
+
+      // ── 框架变更弹窗询问 ──
+      bool updateTemplates = true;
+      if (existing != null && frameworkId != originalFrameworkId) {
+        updateTemplates =
+            await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('框架已变更'),
+                content: Text(
+                  '当前仓库框架从 $originalFrameworkId 变更为 $frameworkId，\n是否更新仓库默认文章/页面模板？',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('保持现有模板不变'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('更新默认模板'),
+                  ),
+                ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('保存'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-    if (ok != true) return;
-
-    final tokenValue = token.text.trim();
-
-    // ── 框架变更弹窗询问 ──
-    bool updateTemplates = true;
-    if (existing != null && frameworkId != originalFrameworkId) {
-      updateTemplates =
-          await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('框架已变更'),
-              content: Text(
-                '当前仓库框架从 $originalFrameworkId 变更为 $frameworkId，\n是否更新仓库默认文章/页面模板？',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('保持现有模板不变'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('更新默认模板'),
-                ),
-              ],
-            ),
-          ) ??
-          true;
-    }
-
-    // 自动绑定框架默认模板
-    String? defaultPostId = existing?.defaultPostTemplateId;
-    String? defaultPageId = existing?.defaultPageTemplateId;
-    if (existing == null || updateTemplates) {
-      defaultPostId = RepoConfig.defaultPostTemplateForFramework(frameworkId);
-      defaultPageId = RepoConfig.defaultPageTemplateForFramework(frameworkId);
-    }
-
-    // 解析镜像仓库行：owner/repo|branch|token
-    final mirrors = <RepoMirror>[];
-    for (final raw in mirrorsCtrl.text.split('\n')) {
-      final line = raw.trim();
-      if (line.isEmpty) continue;
-      final parts = line.split('|');
-      if (parts.isEmpty || !parts[0].contains('/')) continue;
-      final full = parts[0].trim();
-      final slash = full.indexOf('/');
-      if (slash <= 0 || slash == full.length - 1) continue;
-      mirrors.add(RepoMirror(
-        owner: full.substring(0, slash).trim(),
-        repo: full.substring(slash + 1).trim(),
-        branch: (parts.length > 1 ? parts[1].trim() : 'main').isEmpty
-            ? 'main'
-            : parts[1].trim(),
-        token: parts.length > 2 ? parts[2].trim() : '',
-        provider: GitProviderTypeX.fromKey(
-            parts.length > 3 ? parts[3].trim() : null),
-      ));
-    }
-
-    final cfg = RepoConfig(
-      id: existing?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      name: name.text.trim().isEmpty ? repo.text.trim() : name.text.trim(),
-      owner: owner.text.trim(),
-      repo: repo.text.trim(),
-      branch: branch.text.trim().isEmpty ? 'main' : branch.text.trim(),
-      postsPath: posts.text.trim().isEmpty
-          ? 'source/_posts'
-          : posts.text.trim(),
-      pagesPath: pages.text.trim().isEmpty ? 'source' : pages.text.trim(),
-      frameworkId: frameworkId,
-      postDatePrefix: postDatePrefix,
-      fileNameRule: FileNameRule(
-        postDatePrefix: postDatePrefix,
-        dateFormat: existing?.fileNameRule.dateFormat ?? 'yyyy-MM-dd',
-      ),
-      siteUrl: site.text.trim(),
-      token: tokenValue,
-      isDefault: existing?.isDefault ?? repos.isEmpty,
-      defaultPostTemplateId: defaultPostId,
-      defaultPageTemplateId: defaultPageId,
-      publishTimeZoneOffsetMinutes: publishTimeZoneOffsetMinutes,
-      mirrorRemotes: mirrors,
-      provider: repoProvider,
-    );
-    if (existing == null) {
-      repos.add(cfg);
-      if (settings.activeRepoId.isEmpty) {
-        settings = settings.copyWith(activeRepoId: cfg.id);
-        await _persistSettings();
+            ) ??
+            true;
       }
-    } else {
-      final i = repos.indexWhere((e) => e.id == existing.id);
-      if (i >= 0) repos[i] = cfg;
-    }
-    await _persistRepos();
 
-    if (tokenValue.isNotEmpty) {
-      final exists = settings.githubTokens.any((e) => e.token == tokenValue);
-      if (!exists) {
-        await _upsertGithubToken(
-          GithubTokenProfile(
-            id: 'gh_${DateTime.now().millisecondsSinceEpoch}',
-            name: '仓库 ${cfg.name}',
-            token: tokenValue,
-            provider: repoProvider,
+      // 自动绑定框架默认模板
+      String? defaultPostId = existing?.defaultPostTemplateId;
+      String? defaultPageId = existing?.defaultPageTemplateId;
+      if (existing == null || updateTemplates) {
+        defaultPostId = RepoConfig.defaultPostTemplateForFramework(frameworkId);
+        defaultPageId = RepoConfig.defaultPageTemplateForFramework(frameworkId);
+      }
+
+      // 解析镜像仓库行：owner/repo|branch|token
+      final mirrors = <RepoMirror>[];
+      for (final raw in mirrorsCtrl.text.split('\n')) {
+        final line = raw.trim();
+        if (line.isEmpty) continue;
+        final parts = line.split('|');
+        if (parts.isEmpty || !parts[0].contains('/')) continue;
+        final full = parts[0].trim();
+        final slash = full.indexOf('/');
+        if (slash <= 0 || slash == full.length - 1) continue;
+        mirrors.add(
+          RepoMirror(
+            owner: full.substring(0, slash).trim(),
+            repo: full.substring(slash + 1).trim(),
+            branch: (parts.length > 1 ? parts[1].trim() : 'main').isEmpty
+                ? 'main'
+                : parts[1].trim(),
+            token: parts.length > 2 ? parts[2].trim() : '',
+            provider: GitProviderTypeX.fromKey(
+              parts.length > 3 ? parts[3].trim() : null,
+            ),
           ),
-          makeActive: settings.githubTokens.isEmpty,
         );
+      }
+
+      final cfg = RepoConfig(
+        id: existing?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        name: name.text.trim().isEmpty ? repo.text.trim() : name.text.trim(),
+        owner: owner.text.trim(),
+        repo: repo.text.trim(),
+        branch: branch.text.trim().isEmpty ? 'main' : branch.text.trim(),
+        postsPath: posts.text.trim().isEmpty
+            ? 'source/_posts'
+            : posts.text.trim(),
+        pagesPath: pages.text.trim().isEmpty ? 'source' : pages.text.trim(),
+        frameworkId: frameworkId,
+        postDatePrefix: postDatePrefix,
+        fileNameRule: FileNameRule(
+          postDatePrefix: postDatePrefix,
+          dateFormat: existing?.fileNameRule.dateFormat ?? 'yyyy-MM-dd',
+        ),
+        siteUrl: site.text.trim(),
+        token: tokenValue,
+        isDefault: existing?.isDefault ?? repos.isEmpty,
+        defaultPostTemplateId: defaultPostId,
+        defaultPageTemplateId: defaultPageId,
+        publishTimeZoneOffsetMinutes: publishTimeZoneOffsetMinutes,
+        mirrorRemotes: mirrors,
+        provider: repoProvider,
+      );
+      if (existing == null) {
+        repos.add(cfg);
+        if (settings.activeRepoId.isEmpty) {
+          settings = settings.copyWith(activeRepoId: cfg.id);
+          await _persistSettings();
+        }
       } else {
-        final pickedTokenId = selectedTokenId;
-        if (pickedTokenId != null && pickedTokenId.isNotEmpty) {
-          await _activateGithubToken(pickedTokenId);
+        final i = repos.indexWhere((e) => e.id == existing.id);
+        if (i >= 0) repos[i] = cfg;
+      }
+      await _persistRepos();
+
+      if (tokenValue.isNotEmpty) {
+        final exists = settings.githubTokens.any((e) => e.token == tokenValue);
+        if (!exists) {
+          await _upsertGithubToken(
+            GithubTokenProfile(
+              id: 'gh_${DateTime.now().millisecondsSinceEpoch}',
+              name: '仓库 ${cfg.name}',
+              token: tokenValue,
+              provider: repoProvider,
+            ),
+            makeActive: settings.githubTokens.isEmpty,
+          );
+        } else {
+          final pickedTokenId = selectedTokenId;
+          if (pickedTokenId != null && pickedTokenId.isNotEmpty) {
+            await _activateGithubToken(pickedTokenId);
+          }
         }
       }
-    }
 
-    if (mounted) _applyState(() {});
+      if (mounted) _applyState(() {});
+    } finally {
+      name.dispose();
+      owner.dispose();
+      repo.dispose();
+      branch.dispose();
+      posts.dispose();
+      pages.dispose();
+      site.dispose();
+      token.dispose();
+      mirrorsCtrl.dispose();
+    }
   }
 
   Future<void> _showCommitActions(GitCommitItem c) async {
     final pathController = TextEditingController(
       text: activeRepo == null ? 'source/_posts/' : '${activeRepo!.postsPath}/',
     );
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('提交详情 / 回滚'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(c.message),
-            const SizedBox(height: 8),
-            Text(
-              '${c.sha}\n${c.author} · ${_fmt(c.date)}',
-              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: pathController,
-              decoration: const InputDecoration(
-                labelText: '要回滚的文件路径',
-                hintText: 'source/_posts/hello-world.md',
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('提交详情 / 回滚'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(c.message),
+              const SizedBox(height: 8),
+              Text(
+                '${c.sha}\n${c.author} · ${_fmt(c.date)}',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: pathController,
+                decoration: const InputDecoration(
+                  labelText: '要回滚的文件路径',
+                  hintText: 'source/_posts/hello-world.md',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('关闭'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await _doRollback(pathController.text.trim(), c.sha);
+              },
+              child: const Text('回滚该文件'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('关闭'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await _doRollback(pathController.text.trim(), c.sha);
-            },
-            child: const Text('回滚该文件'),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      pathController.dispose();
+    }
   }
 
   Future<void> _rollbackFile(String path) async {
@@ -892,5 +927,4 @@ extension EditorRepoExt on _RootShellState {
       _showToast('删除完成: $success 成功, $fail 失败');
     }
   }
-
 }

@@ -68,6 +68,55 @@ class _P2PSyncScreenState extends State<P2PSyncScreen> {
     super.dispose();
   }
 
+  Future<void> _showSyncTokenDialog() async {
+    final ctrl = TextEditingController(text: widget.p2pService.syncToken);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('设置同步密钥'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('局域网连接双方设置相同的密钥后，只有持有该密钥的设备才能连接并同步。留空则不需要密钥。'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: '同步密钥',
+                hintText: '留空表示无需认证',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (result == null || !mounted) return;
+    widget.p2pService.syncToken = result;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result.trim().isEmpty
+              ? '已关闭同步认证（无密钥）'
+              : '同步密钥已保存，仅持密钥设备可连接',
+        ),
+      ),
+    );
+  }
+
   Future<void> _toggleP2P() async {
     if (_isRunning) {
       await widget.p2pService.stop();
@@ -142,6 +191,12 @@ class _P2PSyncScreenState extends State<P2PSyncScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          // 共享密钥设置
+          IconButton(
+            icon: const Icon(Icons.key_outlined),
+            tooltip: '设置同步密钥',
+            onPressed: _showSyncTokenDialog,
+          ),
           // 服务开关
           Switch(
             value: _isRunning,

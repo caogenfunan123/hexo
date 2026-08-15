@@ -6,6 +6,7 @@ import '../models/repo_config.dart';
 import '../models/sync_settings.dart';
 import 'github_service.dart';
 import 'log_service.dart';
+import 'site_encryption_service.dart';
 import 'sync_service.dart';
 import 'webdav_service.dart';
 
@@ -680,20 +681,25 @@ class CloudSyncService {
   }
 
   // ============================================================
-  // 加密/解密（简单 XOR + Base64，防明文泄露）
+  // 加密/解密（AES-256-GCM + Base64）
   // ============================================================
 
+  /// AES-256-GCM 加密（含 128-bit 随机 salt/IV，防重放与已知明文攻击）
   String _encrypt(String plainText, String key) {
-    final keyBytes = utf8.encode(key);
-    final dataBytes = utf8.encode(plainText);
-    final result = <int>[];
-    for (var i = 0; i < dataBytes.length; i++) {
-      result.add(dataBytes[i] ^ keyBytes[i % keyBytes.length]);
-    }
-    return base64Encode(result);
+    return SiteEncryptionService.encrypt(plainText, key);
   }
 
+  /// 解密：优先 AES-256-GCM；若失败则回退旧版 XOR（兼容历史云端数据）
   String _decrypt(String encrypted, String key) {
+    try {
+      return SiteEncryptionService.decrypt(encrypted, key);
+    } catch (_) {
+      return _legacyXorDecrypt(encrypted, key);
+    }
+  }
+
+  /// 旧版 XOR 解密（仅用于读取历史数据，不再写入）
+  String _legacyXorDecrypt(String encrypted, String key) {
     final keyBytes = utf8.encode(key);
     final dataBytes = base64Decode(encrypted);
     final result = <int>[];

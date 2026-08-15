@@ -55,8 +55,11 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
     String? backfilled;
     try {
       if (repo.provider == GitProviderType.github) {
-        final run = await GitHubProvider()
-            .getActionsRun(repo.token, repo.owner, repo.repo);
+        final run = await GitHubProvider().getActionsRun(
+          repo.token,
+          repo.owner,
+          repo.repo,
+        );
         final status = run?['status']?.toString();
         final conclusion = run?['conclusion']?.toString();
         if (status == 'completed' && conclusion == 'success') {
@@ -93,7 +96,10 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        title: const Text('站点管理', style: TextStyle(fontWeight: FontWeight.w700)),
+        title: const Text(
+          '站点管理',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
         actions: [
           // 添加动态 CMS 站点
           TextButton.icon(
@@ -107,7 +113,8 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
             onPressed: _testing ? null : _batchTestConnections,
             icon: _testing
                 ? const SizedBox(
-                    width: 16, height: 16,
+                    width: 16,
+                    height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.wifi_find, size: 18),
@@ -129,8 +136,7 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
           // ── 静态博客站点 ──
           _buildSectionHeader('静态博客', Icons.folder_outlined, cs),
           const SizedBox(height: 6),
-          if (widget.repos.isEmpty)
-            _buildEmptyHint('暂无静态博客站点'),
+          if (widget.repos.isEmpty) _buildEmptyHint('暂无静态博客站点'),
           ...widget.repos.map((r) => _buildStaticSiteCard(r, cs)),
           const SizedBox(height: 20),
           // ── 动态 CMS 站点 ──
@@ -138,7 +144,9 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
           const SizedBox(height: 6),
           if (widget.siteManager.dynamicSites.isEmpty)
             _buildEmptyHint('暂无动态 CMS 站点'),
-          ...widget.siteManager.dynamicSites.map((s) => _buildDynamicSiteCard(s, cs)),
+          ...widget.siteManager.dynamicSites.map(
+            (s) => _buildDynamicSiteCard(s, cs),
+          ),
         ],
       ),
     );
@@ -149,12 +157,19 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
       children: [
         Icon(icon, size: 18, color: cs.primary),
         const SizedBox(width: 6),
-        Text(title, style: TextStyle(
-          fontSize: 15, fontWeight: FontWeight.w700, color: cs.onSurface,
-        )),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: cs.onSurface,
+          ),
+        ),
         const Spacer(),
-        Text('${widget.repos.length + widget.siteManager.dynamicSites.length} 个站点',
-            style: TextStyle(fontSize: 12, color: cs.outline)),
+        Text(
+          '${widget.repos.length + widget.siteManager.dynamicSites.length} 个站点',
+          style: TextStyle(fontSize: 12, color: cs.outline),
+        ),
       ],
     );
   }
@@ -163,7 +178,10 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 20),
       child: Center(
-        child: Text(text, style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+        child: Text(
+          text,
+          style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+        ),
       ),
     );
   }
@@ -181,12 +199,18 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         leading: _testIcon(testResult, cs),
-        title: Text(repo.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+        title: Text(
+          repo.name,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        ),
         subtitle: Text(
           [
             repo.fullName,
             if (repo.siteProjectName.isNotEmpty) '站点项目：${repo.siteProjectName}',
-            if (repo.siteUrl.isNotEmpty) repo.siteUrl else if (repo.deployHooks.isNotEmpty) '站点构建中，地址待回填',
+            if (repo.siteUrl.isNotEmpty)
+              repo.siteUrl
+            else if (repo.deployHooks.isNotEmpty)
+              '站点构建中，地址待回填',
           ].join('  ·  '),
           style: TextStyle(fontSize: 12, color: Colors.grey[600]),
         ),
@@ -194,14 +218,30 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (repo.provider == GitProviderType.github)
-              _actionButton(Icons.public, '切换可见性', () => _toggleVisibility(repo)),
+              _actionButton(
+                Icons.public,
+                '切换可见性',
+                () => _toggleVisibility(repo),
+              ),
             if (repo.siteProjectName.isNotEmpty || repo.deployHooks.isNotEmpty)
-              _actionButton(Icons.language, '绑定自定义域名', () => _bindCustomDomain(repo)),
+              _actionButton(
+                Icons.language,
+                '绑定自定义域名',
+                () => _bindCustomDomain(repo),
+              ),
             const SizedBox(width: 4),
-            _actionButton(Icons.edit_outlined, '编辑', () => _editStaticSite(repo)),
+            _actionButton(
+              Icons.edit_outlined,
+              '编辑',
+              () => _editStaticSite(repo),
+            ),
             const SizedBox(width: 4),
-            _actionButton(Icons.delete_outline, '删除', () => _deleteStaticSite(repo),
-                color: Colors.red),
+            _actionButton(
+              Icons.delete_outline,
+              '删除',
+              () => _deleteStaticSite(repo),
+              color: Colors.red,
+            ),
           ],
         ),
       ),
@@ -223,7 +263,10 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
         leading: _testIcon(testResult, cs),
         title: Row(
           children: [
-            Text(config.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+            Text(
+              config.name,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            ),
             const SizedBox(width: 6),
             _platformChip(config.type),
           ],
@@ -235,10 +278,18 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _actionButton(Icons.edit_outlined, '编辑', () => _editDynamicSite(config)),
+            _actionButton(
+              Icons.edit_outlined,
+              '编辑',
+              () => _editDynamicSite(config),
+            ),
             const SizedBox(width: 4),
-            _actionButton(Icons.delete_outline, '删除', () => _deleteDynamicSite(config),
-                color: Colors.red),
+            _actionButton(
+              Icons.delete_outline,
+              '删除',
+              () => _deleteDynamicSite(config),
+              color: Colors.red,
+            ),
           ],
         ),
       ),
@@ -260,11 +311,23 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
         borderRadius: BorderRadius.circular(4),
         border: Border.all(color: color.withOpacity(0.3)),
       ),
-      child: Text(label, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600)),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 
-  Widget _actionButton(IconData icon, String tooltip, VoidCallback? onTap, {Color? color}) {
+  Widget _actionButton(
+    IconData icon,
+    String tooltip,
+    VoidCallback? onTap, {
+    Color? color,
+  }) {
     return IconButton(
       icon: Icon(icon, size: 18, color: color ?? Colors.grey[600]),
       onPressed: onTap,
@@ -295,7 +358,10 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
     bool? current;
     try {
       final data = await GitHubProvider().request(
-        'GET', 'https://api.github.com/repos/${repo.owner}/${repo.repo}', repo.token);
+        'GET',
+        'https://api.github.com/repos/${repo.owner}/${repo.repo}',
+        repo.token,
+      );
       current = data is Map ? data['private'] == true : null;
     } catch (e) {
       _showToast('查询可见性失败：$e');
@@ -309,7 +375,9 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(target ? '切换为私有' : '切换为公开'),
-        content: Text('确认将仓库「${repo.name}」切换为${target ? '私有' : '公开'}？$freeNotice'),
+        content: Text(
+          '确认将仓库「${repo.name}」切换为${target ? '私有' : '公开'}？$freeNotice',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -324,8 +392,12 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
     );
     if (confirmed != true || !mounted) return;
     try {
-      await GitHubProvider()
-          .updateVisibility(repo.token, repo.owner, repo.repo, target);
+      await GitHubProvider().updateVisibility(
+        repo.token,
+        repo.owner,
+        repo.repo,
+        target,
+      );
       _showToast('已切换为${target ? '私有' : '公开'}');
     } catch (e) {
       _showToast('切换失败：$e');
@@ -334,62 +406,72 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
 
   // ── 绑定自定义域名 ──
   Future<void> _bindCustomDomain(RepoConfig repo) async {
-    final ctrl = TextEditingController(text: repo.siteUrl.isNotEmpty && !repo.siteUrl.startsWith('https://')
-        ? repo.siteUrl
-        : '');
-    final cname = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('绑定自定义域名'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'GitHub：先在 DNS 服务商添加 CNAME 记录指向 ${repo.repo}.${repo.owner}.github.io，再填写下方域名。\n'
-              'GitLab：在 GitLab Pages 设置中添加自定义域名。\n'
-              'Cloudflare：在 Cloudflare 控制台的 Pages 项目自定义域中配置。\n',
-              style: const TextStyle(fontSize: 12, color: Colors.black54),
-            ),
-            TextField(
-              controller: ctrl,
-              decoration: const InputDecoration(
-                labelText: '自定义域名',
-                hintText: 'blog.example.com',
+    final ctrl = TextEditingController(
+      text: repo.siteUrl.isNotEmpty && !repo.siteUrl.startsWith('https://')
+          ? repo.siteUrl
+          : '',
+    );
+    try {
+      final cname = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('绑定自定义域名'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'GitHub：先在 DNS 服务商添加 CNAME 记录指向 ${repo.repo}.${repo.owner}.github.io，再填写下方域名。\n'
+                'GitLab：在 GitLab Pages 设置中添加自定义域名。\n'
+                'Cloudflare：在 Cloudflare 控制台的 Pages 项目自定义域中配置。\n',
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
               ),
+              TextField(
+                controller: ctrl,
+                decoration: const InputDecoration(
+                  labelText: '自定义域名',
+                  hintText: 'blog.example.com',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('保存'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-    );
-    if (cname == null || cname.isEmpty || !mounted) return;
-    try {
-      if (repo.provider == GitProviderType.github) {
-        if (repo.token.isEmpty) {
-          _showToast('该站点未配置令牌，无法绑定域名');
-          return;
+      );
+      if (cname == null || cname.isEmpty || !mounted) return;
+      try {
+        if (repo.provider == GitProviderType.github) {
+          if (repo.token.isEmpty) {
+            _showToast('该站点未配置令牌，无法绑定域名');
+            return;
+          }
+          await GitHubProvider().setCustomDomain(
+            repo.token,
+            repo.owner,
+            repo.repo,
+            cname,
+          );
         }
-        await GitHubProvider()
-            .setCustomDomain(repo.token, repo.owner, repo.repo, cname);
+        // GitLab / Cloudflare：DNS 引导已在对话框展示，由用户在平台侧配置
+        final updated = repo.copyWith(siteUrl: cname);
+        final index = widget.repos.indexWhere((r) => r.id == repo.id);
+        if (index >= 0) widget.repos[index] = updated;
+        widget.onChanged();
+        setState(() {});
+        _showToast('已保存自定义域名，等待 DNS 生效后访问');
+      } catch (e) {
+        _showToast('绑定失败：$e');
       }
-      // GitLab / Cloudflare：DNS 引导已在对话框展示，由用户在平台侧配置
-      final updated = repo.copyWith(siteUrl: cname);
-      final index = widget.repos.indexWhere((r) => r.id == repo.id);
-      if (index >= 0) widget.repos[index] = updated;
-      widget.onChanged();
-      setState(() {});
-      _showToast('已保存自定义域名，等待 DNS 生效后访问');
-    } catch (e) {
-      _showToast('绑定失败：$e');
+    } finally {
+      ctrl.dispose();
     }
   }
 
@@ -406,16 +488,18 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
       builder: (ctx) => SimpleDialog(
         title: const Text('选择要配置统计的站点'),
         children: widget.repos
-            .map((r) => SimpleDialogOption(
-                  onPressed: () => Navigator.pop(ctx, r),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.language, size: 20),
-                      const SizedBox(width: 12),
-                      Expanded(child: Text('${r.name} (${r.fullName})')),
-                    ],
-                  ),
-                ))
+            .map(
+              (r) => SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, r),
+                child: Row(
+                  children: [
+                    const Icon(Icons.language, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text('${r.name} (${r.fullName})')),
+                  ],
+                ),
+              ),
+            )
             .toList(),
       ),
     );
@@ -426,91 +510,104 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
     final siteIdCtrl = TextEditingController();
     final gaIdCtrl = TextEditingController();
 
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          final isUmami = typeCtrl['type'] == 'umami';
-          return AlertDialog(
-            title: const Text('接入站点统计'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('选择统计服务', style: TextStyle(fontSize: 13)),
-                  const SizedBox(height: 8),
-                  SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: 'umami', label: Text('Umami')),
-                      ButtonSegment(value: 'ga', label: Text('Google Analytics')),
-                    ],
-                    selected: {typeCtrl['type']!},
-                    onSelectionChanged: (s) => setDialogState(() {
-                      typeCtrl['type'] = s.first;
-                    }),
-                  ),
-                  const SizedBox(height: 16),
-                  if (isUmami) ...[
-                    TextField(
-                      controller: urlCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Umami 服务地址',
-                        hintText: 'https://analytics.example.com',
-                        isDense: true,
-                      ),
-                    ),
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final isUmami = typeCtrl['type'] == 'umami';
+            return AlertDialog(
+              title: const Text('接入站点统计'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('选择统计服务', style: TextStyle(fontSize: 13)),
                     const SizedBox(height: 8),
-                    TextField(
-                      controller: siteIdCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Umami 站点 ID',
-                        hintText: 'umami 后台创建站点后获得的 id',
-                        isDense: true,
-                      ),
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(value: 'umami', label: Text('Umami')),
+                        ButtonSegment(
+                          value: 'ga',
+                          label: Text('Google Analytics'),
+                        ),
+                      ],
+                      selected: {typeCtrl['type']!},
+                      onSelectionChanged: (s) => setDialogState(() {
+                        typeCtrl['type'] = s.first;
+                      }),
                     ),
-                  ] else ...[
-                    TextField(
-                      controller: gaIdCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Google Analytics 测量 ID',
-                        hintText: 'G-XXXXXXXXXX',
-                        isDense: true,
+                    const SizedBox(height: 16),
+                    if (isUmami) ...[
+                      TextField(
+                        controller: urlCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Umami 服务地址',
+                          hintText: 'https://analytics.example.com',
+                          isDense: true,
+                        ),
                       ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: siteIdCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Umami 站点 ID',
+                          hintText: 'umami 后台创建站点后获得的 id',
+                          isDense: true,
+                        ),
+                      ),
+                    ] else ...[
+                      TextField(
+                        controller: gaIdCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Google Analytics 测量 ID',
+                          hintText: 'G-XXXXXXXXXX',
+                          isDense: true,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Text(
+                      '配置将写入仓库的 _config.yml 与主题 head，推送后触发重新部署。',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                     ),
                   ],
-                  const SizedBox(height: 12),
-                  Text(
-                    '配置将写入仓库的 _config.yml 与主题 head，推送后触发重新部署。',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                  ),
-                ],
+                ),
               ),
-            ),
-            actions: [
-              TextButton(
+              actions: [
+                TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('取消')),
-              FilledButton(
-                onPressed: () async {
-                  final script = isUmami
-                      ? '<script async src="${urlCtrl.text.trim()}/script.js" data-website-id="${siteIdCtrl.text.trim()}"></script>'
-                      : '<script async src="https://www.googletagmanager.com/gtag/js?id=${gaIdCtrl.text.trim()}"></script><script>window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag("js", new Date()); gtag("config", "${gaIdCtrl.text.trim()}");</script>';
-                  Navigator.pop(ctx);
-                  await _applyAnalytics(selectedRepo, isUmami, script);
-                },
-                child: const Text('保存并部署'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    final script = isUmami
+                        ? '<script async src="${urlCtrl.text.trim()}/script.js" data-website-id="${siteIdCtrl.text.trim()}"></script>'
+                        : '<script async src="https://www.googletagmanager.com/gtag/js?id=${gaIdCtrl.text.trim()}"></script><script>window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag("js", new Date()); gtag("config", "${gaIdCtrl.text.trim()}");</script>';
+                    Navigator.pop(ctx);
+                    await _applyAnalytics(selectedRepo, isUmami, script);
+                  },
+                  child: const Text('保存并部署'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } finally {
+      urlCtrl.dispose();
+      siteIdCtrl.dispose();
+      gaIdCtrl.dispose();
+    }
   }
 
   /// 写入 _config.yml analytics 段 + 主题 head 注入脚本
   Future<void> _applyAnalytics(
-      RepoConfig repo, bool isUmami, String script) async {
+    RepoConfig repo,
+    bool isUmami,
+    String script,
+  ) async {
     if (repo.token.isEmpty) {
       _showToast('该站点未配置令牌，无法写入统计配置');
       return;
@@ -523,17 +620,25 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
         final key = isUmami ? 'umami' : 'google_analytics';
         // 移除旧的 analytics 段再追加
         cc = cc.replaceAll(
-            RegExp(r'^analytics:\s*[\s\S]*?(?=^\S|\Z)', multiLine: true), '');
+          RegExp(r'^analytics:\s*[\s\S]*?(?=^\S|\Z)', multiLine: true),
+          '',
+        );
         cc = '$cc\nanalytics:\n  $key: true\n'.trimRight();
-        await _githubService.putRawFile(repo, '_config.yml', '$cc\n',
-            sha: configRaw['sha']);
+        await _githubService.putRawFile(
+          repo,
+          '_config.yml',
+          '$cc\n',
+          sha: configRaw['sha'],
+        );
       }
 
       // 2. 尝试注入主题 head（Hexo 主题常见路径）
       final injected = await _injectThemeHead(repo, script);
-      _showToast(injected
-          ? '统计配置已写入并注入主题，重新部署后生效'
-          : '统计配置已写入 _config.yml，主题需手动在 head 添加脚本');
+      _showToast(
+        injected
+            ? '统计配置已写入并注入主题，重新部署后生效'
+            : '统计配置已写入 _config.yml，主题需手动在 head 添加脚本',
+      );
     } catch (e) {
       _showToast('统计配置写入失败: $e');
     }
@@ -554,12 +659,15 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
       var content = raw['content']!;
       if (content.contains('analytics')) {
         content = content.replaceAll(
-            RegExp(r'<!-- analytics:start -->[\s\S]*?<!-- analytics:end -->'),
-            '<!-- analytics:start -->\n$script\n<!-- analytics:end -->');
+          RegExp(r'<!-- analytics:start -->[\s\S]*?<!-- analytics:end -->'),
+          '<!-- analytics:start -->\n$script\n<!-- analytics:end -->',
+        );
       } else {
         // 注入到 </head> 前
         content = content.replaceAll(
-            '</head>', '<!-- analytics:start -->\n$script\n<!-- analytics:end -->\n</head>');
+          '</head>',
+          '<!-- analytics:start -->\n$script\n<!-- analytics:end -->\n</head>',
+        );
       }
       await _githubService.putRawFile(repo, path, content, sha: raw['sha']);
       return true;
@@ -568,16 +676,19 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
   }
 
   // ── 编辑静态站点 ──
-  void _editStaticSite(RepoConfig repo) {    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => SiteEditorScreen(
-        repo: repo,
-        github: _githubService,
-        onSaved: () {
-          widget.onChanged();
-          setState(() {});
-        },
+  void _editStaticSite(RepoConfig repo) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SiteEditorScreen(
+          repo: repo,
+          github: _githubService,
+          onSaved: () {
+            widget.onChanged();
+            setState(() {});
+          },
+        ),
       ),
-    ));
+    );
   }
 
   // ── 删除静态站点 ──
@@ -595,31 +706,35 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
 
   // ── 编辑动态站点 ──
   void _editDynamicSite(BlogSiteConfig config) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => BlogSiteEditorScreen(
-        existingConfig: config,
-        appSettings: widget.siteManager.appSettings,
-        onSaved: (updated) async {
-          widget.siteManager.updateDynamicSite(updated);
-          widget.onChanged();
-          setState(() {});
-        },
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BlogSiteEditorScreen(
+          existingConfig: config,
+          appSettings: widget.siteManager.appSettings,
+          onSaved: (updated) async {
+            widget.siteManager.updateDynamicSite(updated);
+            widget.onChanged();
+            setState(() {});
+          },
+        ),
       ),
-    ));
+    );
   }
 
   // ── 添加动态站点 ──
   void _addDynamicSite() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => BlogSiteEditorScreen(
-        appSettings: widget.siteManager.appSettings,
-        onSaved: (updated) async {
-          widget.siteManager.dynamicSites.add(updated);
-          widget.onChanged();
-          setState(() {});
-        },
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BlogSiteEditorScreen(
+          appSettings: widget.siteManager.appSettings,
+          onSaved: (updated) async {
+            widget.siteManager.dynamicSites.add(updated);
+            widget.onChanged();
+            setState(() {});
+          },
+        ),
       ),
-    ));
+    );
   }
 
   // ── 删除动态站点 ──
@@ -673,7 +788,10 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
       try {
         final result = await adapter.testConnection();
         _testResults[site.id] = result.success;
-      } catch (e) { debugPrint('SiteMgmt: load sites failed: $e'); _testResults[site.id] = false; }
+      } catch (e) {
+        debugPrint('SiteMgmt: load sites failed: $e');
+        _testResults[site.id] = false;
+      }
     }
 
     // 静态站点：尝试读取仓库信息验证
@@ -685,7 +803,10 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
       try {
         await _githubService.testToken(repo);
         _testResults[repo.id] = true;
-      } catch (e) { debugPrint('SiteMgmt: save sites failed: $e'); _testResults[repo.id] = false; }
+      } catch (e) {
+        debugPrint('SiteMgmt: save sites failed: $e');
+        _testResults[repo.id] = false;
+      }
     }
 
     if (mounted) {
@@ -697,10 +818,12 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
 
   void _showToast(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg),
-      behavior: SnackBarBehavior.floating,
-      duration: const Duration(seconds: 2),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 }
