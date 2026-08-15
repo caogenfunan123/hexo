@@ -38,6 +38,7 @@ import 'core/ai/theme_migration_service.dart';
 import 'core/template_engine/template_resolver.dart';
 import 'core/task/agent_task_type.dart';
 import 'screens/agent_workbench_screen.dart';
+import 'screens/ai_article_chat_screen.dart';
 import 'screens/ai_model_manager_screen.dart';
 import 'screens/article_reader_screen.dart';
 import 'screens/blog_site_editor_screen.dart';
