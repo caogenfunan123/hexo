@@ -9386,13 +9386,12 @@ $body
       '',
     );
     // javascript: / data: 危险 URL（属性值形式）
-    result = result.replaceAll(
+    result = result.replaceAllMapped(
       RegExp(
         r'''\s+(href|src)\s*=\s*("[^"]*"|'[^']*')''',
         caseSensitive: false,
       ),
       (match) {
-        final attr = match.group(1) ?? '';
         final quote = match.group(2) ?? '';
         if (quote.isNotEmpty) {
           final inner = quote.length >= 2
@@ -9409,7 +9408,7 @@ $body
       },
     );
     // 无引号形式的危险 URL
-    result = result.replaceAll(
+    result = result.replaceAllMapped(
       RegExp(r'''\s+(href|src)\s*=\s*[^\s>]+''', caseSensitive: false),
       (match) {
         final rest = match.group(0)!;
