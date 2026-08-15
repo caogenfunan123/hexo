@@ -80,12 +80,21 @@ class SiteWizardService {
         ? await _getGitLabUsername(req.gitToken)
         : await _getGitHubOwner(req.gitToken);
 
+    // 首站点顶层仓库形态：仓库名强制为 <owner>.github.io / <owner>.gitlab.io。
+    // 仅模式一生效（模式二前缀自选，忽略 rootDomain）。
+    var repoName = req.repoName;
+    if (req.rootDomain && req.mode == WizardMode.one) {
+      repoName = req.gitProvider == GitProviderType.gitlab
+          ? '$owner.gitlab.io'
+          : '$owner.github.io';
+    }
+
     if (req.gitProvider == GitProviderType.gitlab) {
       final project = await _gitlab.createProject(
-          req.gitToken, req.repoName, req.repoPrivate);
+          req.gitToken, repoName, req.repoPrivate);
       final rawId = project['id'];
       final projectId =
-          rawId is num ? rawId.toInt().toString() : req.repoName;
+          rawId is num ? rawId.toInt().toString() : repoName;
       final defaultBranch =
           project['default_branch']?.toString() ?? 'main';
       await _gitlab.initDefaultBranch(req.gitToken, projectId, defaultBranch);
@@ -105,18 +114,19 @@ class SiteWizardService {
         gitToken: req.gitToken,
         cfApiToken: req.cfApiToken,
         cfAccountId: req.cfAccountId,
-        repoName: req.repoName,
+        repoName: repoName,
         repoOwner: owner,
         projectId: projectId,
         frameworkId: req.frameworkId,
         siteTitle: req.siteTitle,
+        rootDomain: req.rootDomain,
       );
     }
 
     // GitHub
     await _github.createRepository(
-        req.gitToken, req.repoName, req.repoPrivate);
-    await _github.initDefaultBranch(req.gitToken, owner, req.repoName);
+        req.gitToken, repoName, req.repoPrivate);
+    await _github.initDefaultBranch(req.gitToken, owner, repoName);
     final skeleton = _builder.build(
       req.mode,
       GitProviderType.github,
@@ -125,7 +135,7 @@ class SiteWizardService {
     );
     await _writeSkeleton(req, skeleton, owner: owner);
     if (req.mode == WizardMode.one) {
-      await _github.enablePages(req.gitToken, owner, req.repoName);
+      await _github.enablePages(req.gitToken, owner, repoName);
     }
     return SiteStepContext(
       mode: req.mode,
@@ -133,10 +143,11 @@ class SiteWizardService {
       gitToken: req.gitToken,
       cfApiToken: req.cfApiToken,
       cfAccountId: req.cfAccountId,
-      repoName: req.repoName,
+      repoName: repoName,
       repoOwner: owner,
       frameworkId: req.frameworkId,
       siteTitle: req.siteTitle,
+      rootDomain: req.rootDomain,
     );
   }
 
@@ -185,15 +196,17 @@ class SiteWizardService {
       return ('https://${ctx.repoName}.pages.dev', hook);
     }
     if (ctx.gitProvider == GitProviderType.gitlab) {
-      final (url, failed) = await _pollGitlabBuild(
-          ctx.gitToken, ctx.projectId, ctx.repoOwner, ctx.repoName);
+      final (url, failed) = await _pollGitlabBuild(ctx.gitToken, ctx.projectId,
+          ctx.repoOwner, ctx.repoName,
+          rootDomain: ctx.rootDomain);
       if (failed) {
         throw Exception('GitLab Pipeline 构建失败，请检查仓库 CI 配置');
       }
       return (url, '');
     }
-    final (url, failed) =
-        await _pollGithubBuild(ctx.gitToken, ctx.repoOwner, ctx.repoName);
+    final (url, failed) = await _pollGithubBuild(
+        ctx.gitToken, ctx.repoOwner, ctx.repoName,
+        rootDomain: ctx.rootDomain);
     if (failed) {
       throw Exception('GitHub Actions 构建失败，请检查仓库工作流配置');
     }
@@ -274,9 +287,11 @@ class SiteWizardService {
 
   Future<WizardResult> _runGitHubPages(WizardRequest req) async {
     final owner = await _getGitHubOwner(req.gitToken);
+    // 首站点顶层仓库形态：仓库名强制为 <owner>.github.io
+    final repoName = req.rootDomain ? '$owner.github.io' : req.repoName;
     var plan = RollbackPlan(
       repoOwner: owner,
-      repoName: req.repoName,
+      repoName: repoName,
       gitProvider: GitProviderType.github,
       gitToken: req.gitToken,
     );
@@ -284,11 +299,11 @@ class SiteWizardService {
     try {
       // 1. 建仓
       await _github.createRepository(
-          req.gitToken, req.repoName, req.repoPrivate);
+          req.gitToken, repoName, req.repoPrivate);
       plan = plan.copyWith(gitRepoCreated: true);
 
       // 2. 规整 main 分支
-      await _github.initDefaultBranch(req.gitToken, owner, req.repoName);
+      await _github.initDefaultBranch(req.gitToken, owner, repoName);
 
       // 3. 骨架 + CI 写入
       final skeleton = _builder.build(
@@ -300,7 +315,7 @@ class SiteWizardService {
       await _writeSkeleton(req, skeleton, owner: owner);
 
       // 4. 启用 Pages（source = GitHub Actions）
-      await _github.enablePages(req.gitToken, owner, req.repoName);
+      await _github.enablePages(req.gitToken, owner, repoName);
       plan = plan.copyWith(pagesEnabled: true);
 
       // 5. 欢迎文章
@@ -310,8 +325,9 @@ class SiteWizardService {
       }
 
       // 6. 轮询 Actions 构建
-      final (siteUrl, buildFailed) =
-          await _pollGithubBuild(req.gitToken, owner, req.repoName);
+      final (siteUrl, buildFailed) = await _pollGithubBuild(
+          req.gitToken, owner, repoName,
+          rootDomain: req.rootDomain);
       if (buildFailed) {
         // 构建失败：保留仓库与骨架（不回滚），抛明确信息供上层提示。
         // 复用 userInvestedInWeb 语义（=true 时 RollbackManager 跳过仓库删除）。
@@ -325,8 +341,9 @@ class SiteWizardService {
           owner: owner,
           siteUrl: siteUrl,
           deployHooks: const [],
+          repoName: repoName,
         ),
-        siteProjectName: req.repoName,
+        siteProjectName: repoName,
         siteUrl: siteUrl,
         welcomePostPath: welcomePath,
       );
@@ -347,9 +364,11 @@ class SiteWizardService {
 
   Future<WizardResult> _runGitLabPages(WizardRequest req) async {
     final username = await _getGitLabUsername(req.gitToken);
+    // 首站点顶层仓库形态：项目名强制为 <username>.gitlab.io
+    final repoName = req.rootDomain ? '$username.gitlab.io' : req.repoName;
     var plan = RollbackPlan(
       repoOwner: username,
-      repoName: req.repoName,
+      repoName: repoName,
       gitProvider: GitProviderType.gitlab,
       gitToken: req.gitToken,
     );
@@ -357,11 +376,11 @@ class SiteWizardService {
     try {
       // 1. 建项目
       final project = await _gitlab.createProject(
-          req.gitToken, req.repoName, req.repoPrivate);
+          req.gitToken, repoName, req.repoPrivate);
       plan = plan.copyWith(gitRepoCreated: true);
       final rawId = project['id'];
       final projectId =
-          rawId is num ? rawId.toInt().toString() : req.repoName;
+          rawId is num ? rawId.toInt().toString() : repoName;
       final defaultBranch =
           project['default_branch']?.toString() ?? 'main';
 
@@ -390,7 +409,8 @@ class SiteWizardService {
 
       // 6. 轮询 Pipeline 构建
       final (siteUrl, buildFailed) = await _pollGitlabBuild(
-          req.gitToken, projectId, username, req.repoName);
+          req.gitToken, projectId, username, repoName,
+          rootDomain: req.rootDomain);
       if (buildFailed) {
         // 构建失败：保留仓库（不回滚），抛明确信息
         plan = plan.copyWith(userInvestedInWeb: true);
@@ -403,8 +423,9 @@ class SiteWizardService {
           owner: username,
           siteUrl: siteUrl,
           deployHooks: const [],
+          repoName: repoName,
         ),
-        siteProjectName: req.repoName,
+        siteProjectName: repoName,
         siteUrl: siteUrl,
         welcomePostPath: welcomePath,
       );
@@ -570,19 +591,21 @@ class SiteWizardService {
     required String owner,
     required String siteUrl,
     required List<String> deployHooks,
+    String? repoName,
   }) {
     final framework = BlogFramework.byId(req.frameworkId);
+    final actualName = repoName ?? req.repoName;
     return RepoConfig(
-      id: 'repo_${req.repoName}',
-      name: req.siteTitle.isEmpty ? req.repoName : req.siteTitle,
+      id: 'repo_$actualName',
+      name: req.siteTitle.isEmpty ? actualName : req.siteTitle,
       owner: owner,
-      repo: req.repoName,
+      repo: actualName,
       branch: 'main',
       postsPath: framework?.defaultPostsPath ?? 'source/_posts',
       pagesPath: framework?.defaultPagesPath ?? 'source',
       frameworkId: req.frameworkId,
       siteUrl: siteUrl,
-      siteProjectName: req.repoName,
+      siteProjectName: actualName,
       deployHooks: deployHooks,
       token: req.gitToken,
       defaultPostTemplateId:
@@ -599,8 +622,10 @@ class SiteWizardService {
 
   /// 轮询 GitHub Actions run。返回 (url, failed)：
   /// url 为站点地址（成功）/空串（超时未完成）；failed 表示构建明确失败。
-  Future<(String, bool)> _pollGithubBuild(
-      String token, String owner, String name) async {
+  /// [rootDomain] 为 true 时站点位于顶层（<owner>.github.io 无路径后缀）。
+  Future<(String, bool)> _pollGithubBuild(String token, String owner,
+      String name,
+      {bool rootDomain = false}) async {
     final deadline = DateTime.now().add(buildPollTimeout);
     const interval = Duration(seconds: 10);
     while (DateTime.now().isBefore(deadline)) {
@@ -623,7 +648,8 @@ class SiteWizardService {
             continue;
           }
           if (conclusion == 'success') {
-            return ('https://$owner.github.io/$name/', false);
+            final base = 'https://$owner.github.io';
+            return (rootDomain ? '$base/' : '$base/$name/', false);
           }
           // 构建失败：区分于超时，failed=true
           debugPrint('GitHub Actions 构建失败: $conclusion');
@@ -637,8 +663,10 @@ class SiteWizardService {
   }
 
   /// 轮询 GitLab pipeline，返回 (url, failed)。
-  Future<(String, bool)> _pollGitlabBuild(
-      String token, String projectId, String username, String projectName) async {
+  /// [rootDomain] 为 true 时站点位于顶层（<username>.gitlab.io 无路径后缀）。
+  Future<(String, bool)> _pollGitlabBuild(String token, String projectId,
+      String username, String projectName,
+      {bool rootDomain = false}) async {
     final deadline = DateTime.now().add(buildPollTimeout);
     const interval = Duration(seconds: 10);
     while (DateTime.now().isBefore(deadline)) {
@@ -651,7 +679,8 @@ class SiteWizardService {
         if (pipeline == null) continue;
         final status = pipeline['status']?.toString() ?? '';
         if (status == 'success') {
-          return ('https://$username.gitlab.io/$projectName/', false);
+          final base = 'https://$username.gitlab.io';
+          return (rootDomain ? '$base/' : '$base/$projectName/', false);
         }
         if (status == 'canceled' || status == 'skipped') {
           // 旧 pipeline 被新提交取消，继续等待最新 pipeline

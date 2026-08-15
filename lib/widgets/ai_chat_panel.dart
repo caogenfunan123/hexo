@@ -71,6 +71,9 @@ class AiChatPanel extends StatefulWidget {
   /// 一键建站成功后的站点持久化回调（宿主注册令牌 + 站点入站点管理）
   final Future<void> Function(WizardResult)? onSiteCreated;
 
+  /// 建站持久化完成后刷新宿主站点列表（保存新站点后同步内存与 UI）
+  final Future<void> Function(List<RepoConfig> repos)? onSiteSaved;
+
   const AiChatPanel({
     super.key,
     required this.settings,
@@ -101,6 +104,7 @@ class AiChatPanel extends StatefulWidget {
     this.historyKey,
     this.onTemplatesChanged,
     this.onSiteCreated,
+    this.onSiteSaved,
   });
 
   @override
@@ -669,6 +673,7 @@ class AiChatPanelState extends State<AiChatPanel> {
     // 注入一键建站服务与站点持久化回调（供 create_site 工具使用）
     BuiltinTools.siteWizardService = SiteWizardService();
     BuiltinTools.onSiteCreated = widget.onSiteCreated;
+    BuiltinTools.onSiteSaved = widget.onSiteSaved;
 
     try {
       final stream = widget.dispatcher.dispatchStream(

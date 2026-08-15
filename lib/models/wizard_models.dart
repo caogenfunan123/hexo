@@ -24,6 +24,11 @@ class WizardRequest {
   final String frameworkId; // 博客框架ID
   final String siteTitle; // 站点标题
   final bool skipWelcomePost; // 是否跳过欢迎文章（默认 false）
+  /// 是否为账号首个站点（顶层仓库形态）。
+  /// true：GitHub 用 <owner>.github.io、GitLab 用 <owner>.gitlab.io，站点 URL 无路径后缀；
+  /// false：使用普通仓库 <repoName>，URL 形如 <owner>.github.io/<repoName>。
+  /// 仅模式一生效；模式二前缀本就可自选，忽略此字段。
+  final bool rootDomain;
 
   const WizardRequest({
     this.mode = WizardMode.one,
@@ -36,6 +41,7 @@ class WizardRequest {
     this.frameworkId = 'hexo',
     this.siteTitle = '',
     this.skipWelcomePost = false,
+    this.rootDomain = false,
   });
 
   WizardRequest copyWith({
@@ -49,6 +55,7 @@ class WizardRequest {
     String? frameworkId,
     String? siteTitle,
     bool? skipWelcomePost,
+    bool? rootDomain,
   }) {
     return WizardRequest(
       mode: mode ?? this.mode,
@@ -61,6 +68,7 @@ class WizardRequest {
       frameworkId: frameworkId ?? this.frameworkId,
       siteTitle: siteTitle ?? this.siteTitle,
       skipWelcomePost: skipWelcomePost ?? this.skipWelcomePost,
+      rootDomain: rootDomain ?? this.rootDomain,
     );
   }
 }
@@ -93,6 +101,8 @@ class SiteStepContext {
   final String projectId; // GitLab 项目数字 ID；GitHub 为空
   final String frameworkId;
   final String siteTitle;
+  /// 顶层仓库形态（首站点）：URL 无路径后缀
+  final bool rootDomain;
 
   const SiteStepContext({
     required this.mode,
@@ -105,6 +115,7 @@ class SiteStepContext {
     this.projectId = '',
     required this.frameworkId,
     this.siteTitle = '',
+    this.rootDomain = false,
   });
 }
 

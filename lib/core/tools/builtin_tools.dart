@@ -53,6 +53,9 @@ class BuiltinTools {
   /// 建站成功后的站点持久化回调（由入口设置：令牌注册 + 站点入站点管理 + 设置持久化）
   static Future<void> Function(WizardResult)? onSiteCreated;
 
+  /// 建站持久化完成后刷新宿主站点列表（由入口设置，保存新站点后同步内存与 UI）
+  static Future<void> Function(List<RepoConfig> repos)? onSiteSaved;
+
   /// 所有内置工具定义
   static List<ToolEntity> get all => [
         webSearch,
@@ -82,6 +85,7 @@ class BuiltinTools {
         triggerCfDeploy,
         rollbackSite,
         registerSite,
+        verifySite,
       ];
 
   // ── ① Web 搜索工具 ──
@@ -100,11 +104,20 @@ class BuiltinTools {
         required: true,
       ),
       ToolParam(
-        name: 'num',
-        type: 'number',
-        description: '返回结果数量，默认5条，最大10条',
+        name: 'site_title',
+        type: 'string',
+        description: '站点标题',
         required: false,
-        defaultValue: 5,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'root_domain',
+        type: 'boolean',
+        description: '是否为账号首个站点（顶层仓库形态，默认 false）。'
+            '为 true 时仓库名强制为 <owner>.github.io / <owner>.gitlab.io，站点 URL 无路径后缀。'
+            '仅模式一生效。',
+        required: false,
+        defaultValue: false,
       ),
     ],
     createdAt: DateTime(2026, 1, 1),
@@ -752,6 +765,16 @@ class BuiltinTools {
         required: false,
         defaultValue: false,
       ),
+      ToolParam(
+        name: 'root_domain',
+        type: 'boolean',
+        description: '是否为账号首个站点（顶层仓库形态，默认 false）。'
+            '为 true 时模式一将使用 <owner>.github.io / <owner>.gitlab.io 作为仓库名，'
+            '站点访问地址无路径后缀（如 https://username.github.io/ 而非 /my）。'
+            '仅模式一生效；模式二前缀本就可自选，忽略此字段。',
+        required: false,
+        defaultValue: false,
+      ),
     ],
     createdAt: DateTime(2026, 1, 1),
     updatedAt: DateTime(2026, 1, 1),
@@ -1230,6 +1253,45 @@ class BuiltinTools {
     updatedAt: DateTime(2026, 1, 1),
   );
 
+  /// 建站自检工具：HTTP 可达性 + 页面内容检查。
+  /// 建站 / register_site 完成后调用，确认站点对外可访问且内容正常。
+  /// 检查失败时返回失败项，AI 据此修改仓库内容后重新构建并再次自检。
+  static final ToolEntity verifySite = ToolEntity(
+    id: 'verify_site',
+    name: '站点自检',
+    description:
+        '建站完成后检查站点是否正常对外提供服务：请求站点 URL 确认 HTTP 可达（返回 200）、'
+        '页面非空白，并可校验页面标题 / 指定关键词是否出现。'
+        '在 create_site 或 register_site 成功之后调用；若检查失败，根据失败项修改仓库内容并重新构建后再次调用。'
+        '也适用于已发布站点的日常可用性检查。',
+    type: ToolType.builtin,
+    builtinHandler: 'verify_site',
+    parameters: const [
+      ToolParam(
+        name: 'url',
+        type: 'string',
+        description: '站点访问地址（如 https://owner.github.io/ 或 https://name.pages.dev）',
+        required: true,
+      ),
+      ToolParam(
+        name: 'expected_title',
+        type: 'string',
+        description: '期望在页面 <title> 中出现的站点标题（可选，用于校验标题渲染）',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'expected_content',
+        type: 'string',
+        description: '期望在页面正文中出现的关键词（可选，用于校验文章内容渲染）',
+        required: false,
+        defaultValue: '',
+      ),
+    ],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
+
   /// 远程 CMS 工具 ID 集合（用于路由判断）
   static const _remoteCmsToolIds = {
     'wp_create_post', 'wp_update_post', 'wp_delete_post',
@@ -1306,6 +1368,8 @@ class BuiltinTools {
         return _executeRollbackSite(request);
       case 'register_site':
         return _executeRegisterSite(request);
+      case 'verify_site':
+        return _executeVerifySite(request);
       default:
         return ToolCallResult(
           toolId: request.toolId,
@@ -3013,6 +3077,7 @@ class BuiltinTools {
       frameworkId: frameworkId,
       siteTitle: req.arguments['site_title']?.toString().trim() ?? '',
       skipWelcomePost: _argBool(req.arguments['skip_welcome_post'], fallback: false),
+      rootDomain: _argBool(req.arguments['root_domain'], fallback: false),
     );
 
     // 模式二校验 CF 凭据
@@ -3117,6 +3182,11 @@ class BuiltinTools {
 
   /// 从参数构建分步建站上下文。
   static SiteStepContext _stepContextFromArgs(Map<String, dynamic> args) {
+    final repoName = args['repo_name']?.toString().trim() ?? '';
+    final repoOwner = args['repo_owner']?.toString().trim() ?? '';
+    // 仓库名为 <owner>.github.io / <owner>.gitlab.io 时自动识别为顶层站点
+    final inferredRoot = repoName == '$repoOwner.github.io' ||
+        repoName == '$repoOwner.gitlab.io';
     return SiteStepContext(
       mode: args['mode']?.toString() == 'two' ? WizardMode.two : WizardMode.one,
       gitProvider: args['git_provider']?.toString() == 'gitlab'
@@ -3125,11 +3195,12 @@ class BuiltinTools {
       gitToken: args['git_token']?.toString().trim() ?? '',
       cfApiToken: args['cf_api_token']?.toString().trim() ?? '',
       cfAccountId: args['cf_account_id']?.toString().trim() ?? '',
-      repoName: args['repo_name']?.toString().trim() ?? '',
-      repoOwner: args['repo_owner']?.toString().trim() ?? '',
+      repoName: repoName,
+      repoOwner: repoOwner,
       projectId: args['project_id']?.toString().trim() ?? '',
       frameworkId: args['framework_id']?.toString().trim() ?? 'hexo',
       siteTitle: args['site_title']?.toString().trim() ?? '',
+      rootDomain: _argBool(args['root_domain'], fallback: inferredRoot),
     );
   }
 
@@ -3180,6 +3251,7 @@ class BuiltinTools {
       repoPrivate: repoPrivate,
       frameworkId: frameworkId,
       siteTitle: args['site_title']?.toString().trim() ?? '',
+      rootDomain: _argBool(args['root_domain'], fallback: false),
     );
 
     try {
@@ -3204,6 +3276,7 @@ class BuiltinTools {
           'repo_name': ctx.repoName,
           'framework_id': ctx.frameworkId,
           'site_title': ctx.siteTitle,
+          'root_domain': ctx.rootDomain,
           // 回滚计划所需的部分状态：仓库必已创建；模式一启用 Pages；
           // CF 项目由用户手工创建（模式二），此处始终为 false。
           'git_repo_created': true,
@@ -3503,6 +3576,130 @@ class BuiltinTools {
     }
   }
 
+  /// 执行站点自检：HTTP 可达性 + 页面内容校验。
+  /// 返回成功时列出通过项；失败时列出失败原因供 AI 修复后重试。
+  static Future<ToolCallResult> _executeVerifySite(ToolCallRequest req) async {
+    final url = req.arguments['url']?.toString().trim() ?? '';
+    final expectedTitle = req.arguments['expected_title']?.toString().trim() ?? '';
+    final expectedContent =
+        req.arguments['expected_content']?.toString().trim() ?? '';
+
+    if (url.isEmpty) {
+      return ToolCallResult(
+        toolId: 'verify_site',
+        content: '',
+        success: false,
+        error: '站点 URL 不能为空',
+      );
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null ||
+        !uri.hasScheme ||
+        (!uri.isScheme('http') && !uri.isScheme('https'))) {
+      return ToolCallResult(
+        toolId: 'verify_site',
+        content: '',
+        success: false,
+        error: '无效的站点 URL: $url',
+      );
+    }
+
+    try {
+      final client = HttpClient()
+        ..connectionTimeout = const Duration(seconds: 15);
+      try {
+        final request = await client.getUrl(uri);
+        request.headers.set('User-Agent',
+            'Mozilla/5.0 (compatible; HexoBlogManager/1.0 SiteCheck)');
+        request.headers
+            .set('Accept', 'text/html,application/xhtml+xml,text/plain');
+        final response =
+            await request.close().timeout(const Duration(seconds: 30));
+
+        final failures = <String>[];
+        final passes = <String>[];
+
+        // 1. HTTP 可达性
+        if (response.statusCode == 200) {
+          passes.add('HTTP 可达（状态码 200）');
+        } else if (response.statusCode >= 300 && response.statusCode < 400) {
+          failures.add('HTTP ${response.statusCode}（重定向），请确认最终地址正确');
+        } else {
+          failures.add('HTTP ${response.statusCode}（页面不可访问）');
+        }
+
+        final raw = await response
+            .transform(utf8.decoder)
+            .join()
+            .timeout(const Duration(seconds: 30));
+
+        // 2. 页面非空白
+        final cleaned = _cleanHtml(raw, 'text');
+        if (cleaned.trim().isEmpty) {
+          failures.add('页面内容为空，可能未生成静态文件或构建产物缺失');
+        } else {
+          passes.add('页面内容非空（${cleaned.trim().length} 字符）');
+        }
+
+        // 3. 标题校验
+        if (expectedTitle.isNotEmpty) {
+          final titleMatch = RegExp(
+                  r'<title[^>]*>(.*?)</title>',
+                  caseSensitive: false,
+                  dotAll: true)
+              .firstMatch(raw);
+          final title = titleMatch?.group(1)?.trim() ?? '';
+          if (title.contains(expectedTitle)) {
+            passes.add('页面标题包含期望标题「$expectedTitle」');
+          } else {
+            failures.add('页面标题「$title」未包含期望标题「$expectedTitle」');
+          }
+        }
+
+        // 4. 内容关键词校验
+        if (expectedContent.isNotEmpty) {
+          if (cleaned.contains(expectedContent)) {
+            passes.add('页面正文包含关键词「$expectedContent」');
+          } else {
+            failures.add('页面正文未包含关键词「$expectedContent」');
+          }
+        }
+
+        final report = StringBuffer()
+          ..writeln('站点自检完成: $url')
+          ..writeln('结果: ${failures.isEmpty ? "正常" : "存在问题"}');
+        if (passes.isNotEmpty) {
+          report.writeln('通过项:');
+          for (final p in passes) {
+            report.writeln('  - $p');
+          }
+        }
+        if (failures.isNotEmpty) {
+          report.writeln('失败项:');
+          for (final f in failures) {
+            report.writeln('  - $f');
+          }
+          report.writeln(
+              '请根据失败项修改仓库内容（如站点配置、主题、文章）并重新触发构建，构建完成后再次调用 verify_site 复查。');
+        }
+        return ToolCallResult(
+          toolId: 'verify_site',
+          content: report.toString(),
+          success: failures.isEmpty,
+        );
+      } finally {
+        client.close();
+      }
+    } catch (e) {
+      return ToolCallResult(
+        toolId: 'verify_site',
+        content: '',
+        success: false,
+        error: '站点自检失败: $e（站点可能尚未上线或域名解析未生效）',
+      );
+    }
+  }
+
   /// 建站结果持久化接入（宿主未提供 onSiteCreated 时的默认实现）：
   /// 1. 注册 Git 令牌到令牌管理（存在则跳过，Correctness 7）
   /// 2. 追加新站点到站点管理并保存（存在则跳过）
@@ -3513,7 +3710,17 @@ class BuiltinTools {
     if (settings == null) return;
 
     // 1. 站点注册（追加到 repos 并保存）。先落站点，避免设置已生效而站点未入库。
-    if (storageService != null) {
+    if (onSiteSaved != null) {
+      // 宿主刷新回调：追加站点到现有列表并由宿主统一落盘+刷新 UI
+      final repos = await storageService?.loadRepos() ?? const <RepoConfig>[];
+      final list = List<RepoConfig>.from(repos);
+      final exists =
+          list.any((r) => r.fullName == result.repoConfig.fullName);
+      if (!exists) {
+        list.add(result.repoConfig);
+      }
+      await onSiteSaved!(list);
+    } else if (storageService != null) {
       final repos = await storageService!.loadRepos();
       final exists =
           repos.any((r) => r.fullName == result.repoConfig.fullName);

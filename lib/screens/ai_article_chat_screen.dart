@@ -126,6 +126,7 @@ class _AiArticleChatScreenState extends State<AiArticleChatScreen> {
           gitHubService: widget.gitHubService,
           activeRepo: repo,
           storageService: widget.storageService,
+          onSiteSaved: widget.onFallbackReposChanged,
           initialMessage: widget.initialMessage ??
               (widget.isPage
                   ? '欢迎使用 AI 页面创作助手！\n\n我可以直接读取您的 GitHub 仓库，分析现有页面格式和主题布局，生成精准匹配的页面内容。\n\n你可以直接告诉我：\n'
