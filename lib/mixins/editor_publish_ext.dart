@@ -604,6 +604,14 @@ extension EditorPublishExt on _RootShellState {
             });
             _showStaticPublishResult(results);
           }
+          // siteUrl 回填：发布成功且站点地址为空时，重新查询平台构建状态（Correctness 15）
+          if (success) {
+            for (final repo in siteManager.staticRepos) {
+              if (repo.siteUrl.isEmpty && repo.siteProjectName.isNotEmpty) {
+                _backfillPublishSiteUrl(repo);
+              }
+            }
+          }
         },
       );
     } catch (e) {
@@ -617,6 +625,39 @@ extension EditorPublishExt on _RootShellState {
       }
     }
 
+  }
+
+  /// 发布成功后回填 siteUrl（Correctness 15）
+  Future<void> _backfillPublishSiteUrl(RepoConfig repo) async {
+    if (repo.token.isEmpty) return;
+    String? backfilled;
+    try {
+      if (repo.provider == GitProviderType.github) {
+        final run = await GitHubProvider()
+            .getActionsRun(repo.token, repo.owner, repo.name);
+        final status = run?['status']?.toString();
+        final conclusion = run?['conclusion']?.toString();
+        if (status == 'completed' && conclusion == 'success') {
+          backfilled = 'https://${repo.owner}.github.io/${repo.name}/';
+        }
+      } else if (repo.provider == GitProviderType.gitlab) {
+        final pipeline = await GitLabProvider().getPipeline(
+          repo.token,
+          Uri.encodeComponent('${repo.owner}/${repo.name}'),
+        );
+        if (pipeline?['status']?.toString() == 'success') {
+          backfilled = 'https://${repo.owner}.gitlab.io/${repo.name}/';
+        }
+      }
+    } catch (e) {
+      logService.add('siteUrl 回填失败', '${repo.fullName}: $e', success: false);
+      return;
+    }
+    if (backfilled == null) return;
+    final idx = repos.indexWhere((r) => r.id == repo.id);
+    if (idx < 0) return;
+    repos[idx] = repo.copyWith(siteUrl: backfilled);
+    await _updateRepos(List<RepoConfig>.from(repos));
   }
 
   /// 展示静态站点发布预览确认对话框

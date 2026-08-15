@@ -112,13 +112,26 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
     }
   }
 
+  static final RegExp _repoNameRe =
+      RegExp(r'^[a-z0-9][a-z0-9-_]{0,98}[a-z0-9]$|^[a-z0-9]$');
+
+  /// 仓库名校验：小写字母/数字/连字符/下划线，不以连字符首尾，1-100 字符
+  bool _validateRepoName(String name) {
+    if (name.isEmpty || name.length > 100) return false;
+    return _repoNameRe.hasMatch(name);
+  }
+
   bool get _formValid =>
-      _repoNameCtrl.text.trim().isNotEmpty &&
+      _validateRepoName(_repoNameCtrl.text.trim()) &&
       _siteTitleCtrl.text.trim().isNotEmpty;
 
   Future<void> _run() async {
-    if (!_formValid) {
-      _showError('请填写仓库名与站点标题');
+    if (!_validateRepoName(_repoNameCtrl.text.trim())) {
+      _showError('仓库名仅支持小写字母/数字/连字符/下划线，不以连字符首尾，长度 1-100');
+      return;
+    }
+    if (_siteTitleCtrl.text.trim().isEmpty) {
+      _showError('请填写站点标题');
       return;
     }
     setState(() {
@@ -450,10 +463,22 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
       children: [
         TextField(
           controller: _repoNameCtrl,
-          decoration: const InputDecoration(
+          onChanged: (_) => setState(() {}),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(
+              RegExp('[a-z0-9-_]'),
+            ),
+            LengthLimitingTextInputFormatter(100),
+          ],
+          decoration: InputDecoration(
             labelText: '仓库名（同时作为站点项目名）',
             hintText: 'my-blog',
-            prefixIcon: Icon(Icons.repo_outlined),
+            prefixIcon: const Icon(Icons.repo_outlined),
+            errorText: _repoNameCtrl.text.isEmpty
+                ? null
+                : (_validateRepoName(_repoNameCtrl.text.trim())
+                    ? null
+                    : '小写字母/数字/连字符/下划线，不以连字符首尾'),
           ),
         ),
         const SizedBox(height: 12),
@@ -591,6 +616,11 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
         FilledButton(
           onPressed: () => Navigator.of(context).pop(true),
           child: const Text('完成'),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('返回 AI 对话'),
         ),
       ],
     );

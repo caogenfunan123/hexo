@@ -73,6 +73,7 @@ import 'core/repository/blog_repository.dart';
 import 'core/repository/static_blog_repository.dart';
 import 'services/ai_service.dart';
 import 'services/github_service.dart';
+import 'services/git_providers.dart';
 import 'services/image_service.dart';
 import 'services/rss_service.dart';
 import 'services/session_service.dart';
