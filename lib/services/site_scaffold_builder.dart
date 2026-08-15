@@ -22,14 +22,29 @@ class SiteScaffoldBuilder {
 
   /// 生成完整骨架文件清单（不含欢迎文章）。
   /// [mode] 为 one 时附加对应平台的 CI 文件。
+  /// [siteBaseUrl] 站点根 URL（如 https://user.github.io/ 或 https://user.github.io/repo/）。
+  /// 内部据此解析出部署路径（/ 或 /repo/），写入各框架的 root / baseURL / base /
+  /// pathPrefix / basePath 字段。若缺失，子目录部署时页面可显示但导航与资源链接
+  /// 全部指向根路径而 404。
   List<SkeletonFile> build(
     WizardMode mode,
     GitProviderType provider, {
     required String frameworkId,
     required String siteTitle,
+    String siteBaseUrl = '',
   }) {
+    final parsed = siteBaseUrl.isEmpty ? null : Uri.tryParse(siteBaseUrl);
+    final baseUrl = siteBaseUrl.isEmpty ? 'http://example.com' : siteBaseUrl;
+    final basePath = (parsed != null && parsed.path.isNotEmpty)
+        ? parsed.path
+        : '/';
     final files = <SkeletonFile>[
-      ..._buildFrameworkFiles(frameworkId, siteTitle),
+      ..._buildFrameworkFiles(
+        frameworkId,
+        siteTitle,
+        siteBaseUrl: baseUrl,
+        siteBasePath: basePath,
+      ),
       ..._buildCommonFiles(),
     ];
     if (mode == WizardMode.one) {
@@ -60,26 +75,34 @@ class SiteScaffoldBuilder {
   // 框架骨架
   // ────────────────────────────────────────────────
 
-  List<SkeletonFile> _buildFrameworkFiles(String frameworkId, String siteTitle) {
+  List<SkeletonFile> _buildFrameworkFiles(
+    String frameworkId,
+    String siteTitle, {
+    String siteBasePath = '/',
+    String siteBaseUrl = '',
+  }) {
     switch (frameworkId) {
       case 'hexo':
-        return _buildHexo(siteTitle);
+        return _buildHexo(siteTitle,
+            siteBasePath: siteBasePath, siteBaseUrl: siteBaseUrl);
       case 'hugo':
-        return _buildHugo(siteTitle);
+        return _buildHugo(siteTitle, siteBaseUrl: siteBaseUrl);
       case 'jekyll':
-        return _buildJekyll(siteTitle);
+        return _buildJekyll(siteTitle,
+            siteBasePath: siteBasePath, siteBaseUrl: siteBaseUrl);
       case 'vuepress':
-        return _buildVuepress(siteTitle);
+        return _buildVuepress(siteTitle, siteBasePath: siteBasePath);
       case 'gatsby':
-        return _buildGatsby(siteTitle);
+        return _buildGatsby(siteTitle, siteBasePath: siteBasePath);
       case 'nextjs':
-        return _buildNextjs(siteTitle);
+        return _buildNextjs(siteTitle, siteBasePath: siteBasePath);
       case 'astro':
-        return _buildAstro(siteTitle);
+        return _buildAstro(siteTitle,
+            siteBasePath: siteBasePath, siteBaseUrl: siteBaseUrl);
       case 'pelican':
-        return _buildPelican(siteTitle);
+        return _buildPelican(siteTitle, siteBaseUrl: siteBaseUrl);
       case '11ty':
-        return _buildEleventy(siteTitle);
+        return _buildEleventy(siteTitle, siteBasePath: siteBasePath);
       default:
         return _buildCustom(siteTitle);
     }
@@ -94,7 +117,8 @@ class SiteScaffoldBuilder {
     ];
   }
 
-  List<SkeletonFile> _buildHexo(String siteTitle) {
+  List<SkeletonFile> _buildHexo(String siteTitle,
+      {String siteBasePath = '/', String siteBaseUrl = ''}) {
     return [
       SkeletonFile(
         path: '_config.yml',
@@ -106,9 +130,9 @@ description: ''
 language: zh-CN
 timezone: ''
 
-# URL
-url: http://example.com
-root: /
+# URL（root 必须匹配部署路径，否则子目录部署时导航/资源链接全部 404）
+url: ${_yaml(siteBaseUrl.isEmpty ? 'http://example.com' : siteBaseUrl)}
+root: ${_yaml(siteBasePath)}
 
 # 写作
 new_post_name: :title.md
@@ -188,12 +212,14 @@ tags:
     ];
   }
 
-  List<SkeletonFile> _buildHugo(String siteTitle) {
+  List<SkeletonFile> _buildHugo(String siteTitle, {String siteBaseUrl = ''}) {
+    final baseURL =
+        siteBaseUrl.isEmpty ? 'http://example.org/' : '$siteBaseUrl/';
     return [
       SkeletonFile(
         path: 'hugo.toml',
         content: '''
-baseURL = 'http://example.org/'
+baseURL = '${_yaml(baseURL)}'
 languageCode = 'zh-cn'
 title = '${_yaml(siteTitle.isEmpty ? '我的博客' : siteTitle)}'
 theme = 'ananke'
@@ -207,7 +233,7 @@ buildFuture = true
         path: 'config.toml',
         content: '''
 # Hugo 配置（hugo.toml 为主，此文件保留以便兼容）
-baseURL = 'http://example.org/'
+baseURL = '${_yaml(baseURL)}'
 title = '${_yaml(siteTitle.isEmpty ? '我的博客' : siteTitle)}'
 buildFuture = true
 ''',
@@ -232,7 +258,11 @@ draft: false
     ];
   }
 
-  List<SkeletonFile> _buildJekyll(String siteTitle) {
+  List<SkeletonFile> _buildJekyll(String siteTitle,
+      {String siteBasePath = '/', String siteBaseUrl = ''}) {
+    // Jekyll baseurl 不含尾部斜杠：/repo，顶层为 ''
+    final baseurl = siteBasePath == '/' ? '' : siteBasePath.replaceFirst(RegExp(r'/$'), '');
+    final url = siteBaseUrl.isEmpty ? '' : siteBaseUrl.replaceFirst(RegExp(r'/$'), '');
     return [
       SkeletonFile(
         path: '_config.yml',
@@ -240,8 +270,8 @@ draft: false
 # Jekyll 站点配置（一键建站生成）
 title: ${_yaml(siteTitle.isEmpty ? '我的博客' : siteTitle)}
 description: ''
-baseurl: ''
-url: ''
+baseurl: '${_yaml(baseurl)}'
+url: '${_yaml(url)}'
 
 # 构建
 markdown: kramdown
@@ -276,7 +306,9 @@ end
     ];
   }
 
-  List<SkeletonFile> _buildVuepress(String siteTitle) {
+  List<SkeletonFile> _buildVuepress(String siteTitle,
+      {String siteBasePath = '/'}) {
+    final base = siteBasePath == '/' ? '/' : siteBasePath;
     return [
       SkeletonFile(
         path: 'package.json',
@@ -300,8 +332,9 @@ end
 module.exports = {
   title: '${siteTitle.isEmpty ? '我的博客' : siteTitle}',
   description: '',
+  base: '${siteBasePath}',
   themeConfig: {
-    nav: [{ text: '首页', link: '/' }]
+    nav: [{ text: '首页', link: '${siteBasePath}' }]
   }
 }
 ''',
@@ -313,7 +346,8 @@ module.exports = {
     ];
   }
 
-  List<SkeletonFile> _buildGatsby(String siteTitle) {
+  List<SkeletonFile> _buildGatsby(String siteTitle,
+      {String siteBasePath = '/'}) {
     return [
       SkeletonFile(
         path: 'package.json',
@@ -343,6 +377,7 @@ module.exports = {
     title: '${siteTitle.isEmpty ? '我的博客' : siteTitle}',
     description: '',
   },
+  pathPrefix: '${siteBasePath == '/' ? '' : siteBasePath.replaceFirst(RegExp(r'/$'), '')}',
   plugins: [
     {
       resolve: 'gatsby-source-filesystem',
@@ -366,7 +401,8 @@ export default function Home() {
     ];
   }
 
-  List<SkeletonFile> _buildNextjs(String siteTitle) {
+  List<SkeletonFile> _buildNextjs(String siteTitle,
+      {String siteBasePath = '/'}) {
     return [
       SkeletonFile(
         path: 'package.json',
@@ -393,6 +429,7 @@ export default function Home() {
 const nextConfig = {
   output: 'export',
   trailingSlash: true,
+  basePath: '${siteBasePath == '/' ? '' : siteBasePath.replaceFirst(RegExp(r'/$'), '')}',
 }
 
 module.exports = nextConfig
@@ -413,7 +450,8 @@ export default function Home() {
     ];
   }
 
-  List<SkeletonFile> _buildAstro(String siteTitle) {
+  List<SkeletonFile> _buildAstro(String siteTitle,
+      {String siteBasePath = '/', String siteBaseUrl = ''}) {
     return [
       SkeletonFile(
         path: 'package.json',
@@ -437,7 +475,8 @@ export default function Home() {
 import { defineConfig } from 'astro/config';
 
 export default defineConfig({
-  site: 'https://example.com',
+  site: '${siteBaseUrl.isEmpty ? 'https://example.com' : siteBaseUrl}',
+  base: '${siteBasePath == '/' ? '/' : siteBasePath}',
 });
 ''',
       ),
@@ -459,17 +498,18 @@ export default defineConfig({
     ];
   }
 
-  List<SkeletonFile> _buildPelican(String siteTitle) {
+  List<SkeletonFile> _buildPelican(String siteTitle, {String siteBaseUrl = ''}) {
     return [
       SkeletonFile(
         path: 'pelicanconf.py',
         content: '''
 SITENAME = '${siteTitle.isEmpty ? '我的博客' : siteTitle}'
-SITEURL = 'https://example.com'
+SITEURL = '${siteBaseUrl.isEmpty ? 'https://example.com' : siteBaseUrl}'
 TIMEZONE = 'Asia/Shanghai'
 DEFAULT_LANG = 'zh'
 PATH = 'content'
 THEME = 'simple'
+RELATIVE_URLS = True
 ''',
       ),
       SkeletonFile(
@@ -477,7 +517,7 @@ THEME = 'simple'
         content: '''
 from pelicanconf import *
 
-SITEURL = 'https://example.com'
+SITEURL = '${siteBaseUrl.isEmpty ? 'https://example.com' : siteBaseUrl}'
 RELATIVE_URLS = False
 DELETE_OUTPUT_DIRECTORY = True
 ''',
@@ -493,7 +533,8 @@ DELETE_OUTPUT_DIRECTORY = True
     ];
   }
 
-  List<SkeletonFile> _buildEleventy(String siteTitle) {
+  List<SkeletonFile> _buildEleventy(String siteTitle,
+      {String siteBasePath = '/'}) {
     return [
       SkeletonFile(
         path: 'package.json',
@@ -519,7 +560,8 @@ module.exports = function (eleventyConfig) {
     dir: {
       input: 'src',
       output: '_site'
-    }
+    },
+    pathPrefix: '${siteBasePath == '/' ? '/' : siteBasePath}'
   }
 }
 ''',

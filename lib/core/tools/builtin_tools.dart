@@ -27,6 +27,10 @@ class BuiltinTools {
   static GitHubService? gitHubService;
   static RepoConfig? activeRepo;
 
+  /// 建站工具链最新建成的站点仓库（用于建站自愈：file_write 等写文件工具
+  /// 在 activeRepo 为空或用户指定 repo 参数时回退到此仓库）。
+  static RepoConfig? siteRepo;
+
   /// 应用设置引用（供 appDesign 工具读写）
   static AppSettings? appSettings;
   static Future<void> Function(AppSettings)? onSettingsChanged;
@@ -154,7 +158,8 @@ class BuiltinTools {
   static final ToolEntity fileRead = ToolEntity(
     id: 'file_read',
     name: '读取仓库文件',
-    description: '从GitHub仓库读取指定路径的文件内容。用于查看博客文章、页面、主题配置等文件。',
+    description: '从GitHub仓库读取指定路径的文件内容。用于查看博客文章、页面、主题配置等文件。'
+        '目标仓库缺省为当前打开仓库；建站后可用 repo 参数指定建站仓库（owner/仓库名），用于建站自愈诊断。',
     type: ToolType.builtin,
     builtinHandler: 'file_read',
     parameters: const [
@@ -163,6 +168,12 @@ class BuiltinTools {
         type: 'string',
         description: '文件在仓库中的路径，如 source/_posts/hello.md',
         required: true,
+      ),
+      ToolParam(
+        name: 'repo',
+        type: 'string',
+        description: '目标仓库，格式 owner/仓库名。缺省用当前打开仓库；建站后不传则用最新建站仓库',
+        required: false,
       ),
     ],
     createdAt: DateTime(2026, 1, 1),
@@ -173,7 +184,9 @@ class BuiltinTools {
   static final ToolEntity fileWrite = ToolEntity(
     id: 'file_write',
     name: '写入仓库文件',
-    description: '创建或更新GitHub仓库中的文件。用于保存新文章、修改页面、更新主题配置等。',
+    description: '创建或更新GitHub仓库中的文件。用于保存新文章、修改页面、更新主题配置等。'
+        '目标仓库缺省为当前打开仓库；建站后可用 repo 参数指定建站仓库（owner/仓库名），'
+        '用于建站自愈时修复站点配置。',
     type: ToolType.builtin,
     builtinHandler: 'file_write',
     parameters: const [
@@ -195,6 +208,12 @@ class BuiltinTools {
         description: 'Git提交信息，默认自动生成',
         required: false,
         defaultValue: 'AI generated content',
+      ),
+      ToolParam(
+        name: 'repo',
+        type: 'string',
+        description: '目标仓库，格式 owner/仓库名。缺省用当前打开仓库；建站后不传则用最新建站仓库',
+        required: false,
       ),
     ],
     createdAt: DateTime(2026, 1, 1),
@@ -1896,12 +1915,20 @@ class BuiltinTools {
       return ToolCallResult(
           toolId: 'file_read', content: '', success: false, error: pathErr);
     }
-    if (gitHubService == null || activeRepo == null) {
+    if (gitHubService == null) {
       return ToolCallResult(
           toolId: 'file_read', content: '', success: false, error: '未配置仓库连接');
     }
+    final target = await _resolveWriteTarget(req);
+    if (target == null) {
+      return ToolCallResult(
+          toolId: 'file_read',
+          content: '',
+          success: false,
+          error: '未指定目标仓库：可用 repo 参数传入 owner/仓库名，或先建站/打开仓库');
+    }
     try {
-      final result = await gitHubService!.getRawFile(activeRepo!, path);
+      final result = await gitHubService!.getRawFile(target, path);
       if (result == null) {
         return ToolCallResult(
             toolId: 'file_read',
@@ -1936,18 +1963,27 @@ class BuiltinTools {
           success: false,
           error: '路径和内容不能为空');
     }
-    if (gitHubService == null || activeRepo == null) {
+    if (gitHubService == null) {
       return ToolCallResult(
           toolId: 'file_write', content: '', success: false, error: '未配置仓库连接');
+    }
+    // 目标仓库解析：优先 repo 参数（owner/name），其次当前站点仓库，最后 activeRepo
+    final target = await _resolveWriteTarget(req);
+    if (target == null) {
+      return ToolCallResult(
+          toolId: 'file_write',
+          content: '',
+          success: false,
+          error: '未指定目标仓库：可用 repo 参数传入 owner/仓库名，或先建站/打开仓库');
     }
     try {
       // 先获取文件sha（如果存在）
       String? sha;
       try {
-        final existing = await gitHubService!.getRawFile(activeRepo!, path);
+        final existing = await gitHubService!.getRawFile(target, path);
         sha = existing?['sha']?.toString();
       } catch (_) {}
-      await gitHubService!.putRawFile(activeRepo!, path, content,
+      await gitHubService!.putRawFile(target, path, content,
           sha: sha, commitMessage: commitMsg);
       return ToolCallResult(
           toolId: 'file_write', content: '文件已成功写入: $path', success: true);
@@ -1955,6 +1991,35 @@ class BuiltinTools {
       return ToolCallResult(
           toolId: 'file_write', content: '', success: false, error: '写入失败: $e');
     }
+  }
+
+  /// 解析写文件目标仓库：repo 参数（owner/name）优先，其次 [siteRepo]，最后 [activeRepo]。
+  /// GitLab 项目也兼容（git_providers 适配层统一读写）。
+  static Future<RepoConfig?> _resolveWriteTarget(ToolCallRequest req) async {
+    final spec = req.arguments['repo']?.toString().trim() ?? '';
+    if (spec.isNotEmpty) {
+      final parts = spec.split('/');
+      if (parts.length == 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
+        final repo = RepoConfig(
+          id: 'repo_${parts.join('_')}',
+          name: parts[1],
+          owner: parts[0],
+          repo: parts[1],
+          branch: 'main',
+          postsPath: 'source/_posts',
+          pagesPath: 'source',
+          frameworkId: 'hexo',
+          siteUrl: '',
+          siteProjectName: parts[1],
+          deployHooks: const [],
+          token: siteRepo?.token ?? activeRepo?.token ?? '',
+          provider: siteRepo?.provider ?? activeRepo?.provider,
+        );
+        return repo;
+      }
+    }
+    if (siteRepo != null) return siteRepo;
+    return activeRepo;
   }
 
   /// 删除仓库文件
@@ -3099,7 +3164,9 @@ class BuiltinTools {
           toolId: 'create_site',
           content: '',
           success: false,
-          error: 'Git 令牌权限不足，缺少: ${missing.join("、")}。请重新生成令牌后再试。',
+          error: 'Git 令牌权限不足，缺少: ${missing.join("、")}。'
+              '自行修正后重试：若为免费账号私有仓库问题，把 repo_private 改为 false 重新调用 create_site；'
+              '若为 scope 缺失，需用户重新生成令牌并告知正确 scope。',
         );
       }
 
@@ -3128,6 +3195,8 @@ class BuiltinTools {
         ..writeln('平台: ${request.gitProvider.name}'
             '${mode == WizardMode.two ? ' + Cloudflare Pages' : ' + Pages'}')
         ..writeln('框架: $frameworkId');
+      // 注册为站点仓库，供后续 file_write 建站自愈使用
+      siteRepo = result.repoConfig;
       if (result.siteUrl.isNotEmpty) {
         report.writeln('站点访问地址: ${result.siteUrl}');
       } else {
@@ -3261,10 +3330,28 @@ class BuiltinTools {
           toolId: 'create_repo',
           content: '',
           success: false,
-          error: 'Git 令牌权限不足，缺少: ${missing.join("、")}。请重新生成令牌后再试。',
+          error: 'Git 令牌权限不足，缺少: ${missing.join("、")}。'
+              '自行修正后重试：若为免费账号私有仓库问题，把 repo_private 改为 false 重新调用 create_repo；'
+              '若为 scope 缺失，需用户重新生成令牌并告知正确 scope。',
         );
       }
       final ctx = await siteWizardService!.createRepo(request);
+      // 注册为站点仓库，供后续 file_write 等写文件工具建站自愈使用
+      siteRepo = RepoConfig(
+        id: 'repo_${ctx.repoOwner}_${ctx.repoName}',
+        name: ctx.siteTitle.isEmpty ? ctx.repoName : ctx.siteTitle,
+        owner: ctx.repoOwner,
+        repo: ctx.repoName,
+        branch: 'main',
+        postsPath: 'source/_posts',
+        pagesPath: 'source',
+        frameworkId: ctx.frameworkId,
+        siteUrl: '',
+        siteProjectName: ctx.repoName,
+        deployHooks: const [],
+        token: ctx.gitToken,
+        provider: ctx.gitProvider,
+      );
       return ToolCallResult(
         toolId: 'create_repo',
         content: jsonEncode({

@@ -103,6 +103,7 @@ class SiteWizardService {
         GitProviderType.gitlab,
         frameworkId: req.frameworkId,
         siteTitle: req.siteTitle,
+        siteBaseUrl: _computeSiteBaseUrl(req, owner),
       );
       await _writeSkeleton(req, skeleton, owner: owner);
       if (req.mode == WizardMode.one) {
@@ -132,6 +133,7 @@ class SiteWizardService {
       GitProviderType.github,
       frameworkId: req.frameworkId,
       siteTitle: req.siteTitle,
+      siteBaseUrl: _computeSiteBaseUrl(req, owner),
     );
     await _writeSkeleton(req, skeleton, owner: owner);
     if (req.mode == WizardMode.one) {
@@ -311,6 +313,7 @@ class SiteWizardService {
         GitProviderType.github,
         frameworkId: req.frameworkId,
         siteTitle: req.siteTitle,
+        siteBaseUrl: _computeSiteBaseUrl(req, owner),
       );
       await _writeSkeleton(req, skeleton, owner: owner);
 
@@ -394,6 +397,7 @@ class SiteWizardService {
         GitProviderType.gitlab,
         frameworkId: req.frameworkId,
         siteTitle: req.siteTitle,
+        siteBaseUrl: _computeSiteBaseUrl(req, username),
       );
       await _writeSkeleton(req, skeleton, owner: username);
 
@@ -470,6 +474,7 @@ class SiteWizardService {
         GitProviderType.github,
         frameworkId: req.frameworkId,
         siteTitle: req.siteTitle,
+        siteBaseUrl: _computeSiteBaseUrl(req, owner),
       );
       await _writeSkeleton(req, skeleton, owner: owner);
 
@@ -529,6 +534,21 @@ class SiteWizardService {
   // ────────────────────────────────────────────────
   // 骨架写入 / 欢迎文章
   // ────────────────────────────────────────────────
+
+  /// 计算站点根 URL（含部署路径），用于骨架 base 配置：
+  /// - 模式一顶层（rootDomain）：https://<owner>.github.io/ 或 https://<owner>.gitlab.io/
+  /// - 模式一子目录：https://<owner>.github.io/<repo>/ 或 https://<owner>.gitlab.io/<repo>/
+  /// - 模式二：https://<repo>.pages.dev/
+  String _computeSiteBaseUrl(WizardRequest req, String owner) {
+    if (req.mode == WizardMode.two) {
+      return 'https://${req.repoName}.pages.dev/';
+    }
+    final domain = req.gitProvider == GitProviderType.gitlab
+        ? 'https://$owner.gitlab.io'
+        : 'https://$owner.github.io';
+    if (req.rootDomain) return '$domain/';
+    return '$domain/${req.repoName}/';
+  }
 
   Future<void> _writeSkeleton(
     WizardRequest req,
