@@ -92,6 +92,13 @@ class _ThemeStoreScreenState extends State<ThemeStoreScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _officialWebCtrl?.dispose();
+    _officialWebCtrl = null;
+    super.dispose();
+  }
+
   List<ThemeStoreItem> get _filteredThemes =>
       ThemeStoreService.themesForFramework(_frameworkFilter);
 
@@ -467,9 +474,6 @@ class _ThemeStoreScreenState extends State<ThemeStoreScreen> {
                 _officialLoading = false;
                 _officialFailed = true;
               });
-            },
-            onDisposed: (controller) {
-              _officialWebCtrl = null;
             },
           ),
         ),
