@@ -6819,6 +6819,32 @@ class DesktopShellState extends State<DesktopShell>
     );
   }
 
+  /// AI 模板与博客框架入口：打开工作台的模板任务，并刷新模板列表
+  void _showAiTemplateChat() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AgentWorkbenchScreen(
+          settings: settings,
+          activeRepo: effectiveRepo,
+          repos: repos,
+          aiService: aiService,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          selfChecker: aiSelfChecker,
+          onSettingsChanged: _updateSettings,
+          gitHubService: github,
+          storageService: storage,
+          initialTaskType: AgentTaskType.template,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    final t = await storage.loadAllTemplates();
+    if (mounted) {
+      setState(() => templates = t);
+    }
+  }
+
   void _showThemeStore() {
     Navigator.of(context).push(
       MaterialPageRoute(
