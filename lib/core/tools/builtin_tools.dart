@@ -75,6 +75,12 @@ class BuiltinTools {
         gitClone,
         createDir,
         createSite,
+        createRepo,
+        writeWelcomePost,
+        pollSiteBuild,
+        triggerCfDeploy,
+        rollbackSite,
+        registerSite,
       ];
 
   // ── ① Web 搜索工具 ──
@@ -750,9 +756,465 @@ class BuiltinTools {
     updatedAt: DateTime(2026, 1, 1),
   );
 
+  // ── 分步建站工具：供 AI 断点续跑 ──
+
+  /// 建仓库步骤（分步建站第一步）：建仓库 + 初始化 main 分支 + 写入骨架与 CI。
+  /// 成功后返回 repoOwner / projectId 上下文，供后续步骤使用。
+  /// 若仓库名已存在会失败，请结合 rollback_site 清理或改用其他仓库名。
+  static final ToolEntity createRepo = ToolEntity(
+    id: 'create_repo',
+    name: '建仓库',
+    description:
+        '分步建站第一步：在 GitHub/GitLab 创建仓库、初始化 main 分支、写入所选框架的完整骨架与 CI 配置。'
+        '成功后返回 repo_owner / project_id / repo_name / framework_id 上下文，供 write_welcome_post、poll_site_build、rollback_site 继续使用。'
+        '仓库名已存在时失败（GitHub 上同名仓库无法重复创建），可调用 rollback_site 清理残留后换名重试。',
+    type: ToolType.builtin,
+    builtinHandler: 'create_repo',
+    riskLevel: 'high',
+    parameters: const [
+      ToolParam(
+        name: 'mode',
+        type: 'string',
+        description: '建站模式：one（GitHub/GitLab Pages）或 two（Cloudflare Pages）',
+        required: true,
+        defaultValue: 'one',
+      ),
+      ToolParam(
+        name: 'git_provider',
+        type: 'string',
+        description: 'Git 托管平台：github 或 gitlab',
+        required: true,
+        defaultValue: 'github',
+      ),
+      ToolParam(
+        name: 'git_token',
+        type: 'string',
+        description: 'Git 平台访问令牌',
+        required: true,
+      ),
+      ToolParam(
+        name: 'cf_api_token',
+        type: 'string',
+        description: 'Cloudflare API Token（模式二必填）',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'cf_account_id',
+        type: 'string',
+        description: 'Cloudflare 账号 ID（模式二必填）',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'repo_name',
+        type: 'string',
+        description: '仓库名（同时作为站点项目名），如 my-blog',
+        required: true,
+      ),
+      ToolParam(
+        name: 'repo_private',
+        type: 'boolean',
+        description: '仓库是否私有，默认 true。GitHub 免费账号私有仓库无法启用 Pages',
+        required: false,
+        defaultValue: true,
+      ),
+      ToolParam(
+        name: 'framework_id',
+        type: 'string',
+        description:
+            '博客框架：hexo / hugo / jekyll / vuepress / gatsby / nextjs / astro / pelican / 11ty',
+        required: true,
+        defaultValue: 'hexo',
+      ),
+      ToolParam(
+        name: 'site_title',
+        type: 'string',
+        description: '站点标题',
+        required: false,
+        defaultValue: '',
+      ),
+    ],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
+
+  /// 写欢迎文章步骤（分步建站第三步）：向已建仓库写入一篇欢迎文章。
+  /// 需先通过 create_repo 获得 repo_owner 上下文。
+  static final ToolEntity writeWelcomePost = ToolEntity(
+    id: 'write_welcome_post',
+    name: '写欢迎文章',
+    description:
+        '分步建站第三步：向已通过 create_repo 建好的仓库写入一篇欢迎文章。'
+        '需要提供 create_repo 返回的 repo_owner / repo_name / framework_id 上下文。'
+        '返回写入的远程路径。该步骤幂等，可安全重试。',
+    type: ToolType.builtin,
+    builtinHandler: 'write_welcome_post',
+    riskLevel: 'high',
+    parameters: const [
+      ToolParam(
+        name: 'mode',
+        type: 'string',
+        description: '建站模式：one 或 two',
+        required: true,
+        defaultValue: 'one',
+      ),
+      ToolParam(
+        name: 'git_provider',
+        type: 'string',
+        description: 'Git 托管平台：github 或 gitlab',
+        required: true,
+        defaultValue: 'github',
+      ),
+      ToolParam(
+        name: 'git_token',
+        type: 'string',
+        description: 'Git 平台访问令牌',
+        required: true,
+      ),
+      ToolParam(
+        name: 'cf_api_token',
+        type: 'string',
+        description: 'Cloudflare API Token（模式二衔接用）',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'cf_account_id',
+        type: 'string',
+        description: 'Cloudflare 账号 ID（模式二衔接用）',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'repo_name',
+        type: 'string',
+        description: '仓库名',
+        required: true,
+      ),
+      ToolParam(
+        name: 'repo_owner',
+        type: 'string',
+        description: '仓库所有者（create_repo 返回的 repo_owner）',
+        required: true,
+      ),
+      ToolParam(
+        name: 'project_id',
+        type: 'string',
+        description: 'GitLab 项目数字 ID（GitLab 时必填，来自 create_repo）',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'framework_id',
+        type: 'string',
+        description: '博客框架 ID',
+        required: true,
+        defaultValue: 'hexo',
+      ),
+      ToolParam(
+        name: 'site_title',
+        type: 'string',
+        description: '站点标题',
+        required: false,
+        defaultValue: '',
+      ),
+    ],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
+
+  /// 轮询构建步骤（分步建站第四步）：等待首次构建完成并返回站点 URL。
+  /// 模式一（GitHub/GitLab Pages）轮询 Actions/Pipeline；
+  /// 模式二（Cloudflare Pages）等待用户在控制台创建同名项目并拉取 Deploy Hook，
+  /// 随后调用 trigger_cf_deploy 触发部署。
+  static final ToolEntity pollSiteBuild = ToolEntity(
+    id: 'poll_site_build',
+    name: '轮询构建',
+    description:
+        '分步建站第四步：等待站点首次构建完成，返回站点访问 URL。'
+        '模式一（GitHub/GitLab Pages）轮询仓库内 CI 构建，构建成功即返回 URL，超时返回空串（站点保留，可稍后重试）。'
+        '模式二（Cloudflare Pages）等待用户在 Cloudflare 控制台创建同名 Pages 项目并返回 Deploy Hook，'
+        '拿到 hook 后再调用 trigger_cf_deploy 完成部署。'
+        '需要提供 create_repo 返回的 repo_owner / project_id / framework_id 上下文。',
+    type: ToolType.builtin,
+    builtinHandler: 'poll_site_build',
+    riskLevel: 'high',
+    parameters: const [
+      ToolParam(
+        name: 'mode',
+        type: 'string',
+        description: '建站模式：one 或 two',
+        required: true,
+        defaultValue: 'one',
+      ),
+      ToolParam(
+        name: 'git_provider',
+        type: 'string',
+        description: 'Git 托管平台：github 或 gitlab',
+        required: true,
+        defaultValue: 'github',
+      ),
+      ToolParam(
+        name: 'git_token',
+        type: 'string',
+        description: 'Git 平台访问令牌',
+        required: true,
+      ),
+      ToolParam(
+        name: 'cf_api_token',
+        type: 'string',
+        description: 'Cloudflare API Token（模式二必填）',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'cf_account_id',
+        type: 'string',
+        description: 'Cloudflare 账号 ID（模式二必填）',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'repo_name',
+        type: 'string',
+        description: '仓库名',
+        required: true,
+      ),
+      ToolParam(
+        name: 'repo_owner',
+        type: 'string',
+        description: '仓库所有者（create_repo 返回的 repo_owner）',
+        required: true,
+      ),
+      ToolParam(
+        name: 'project_id',
+        type: 'string',
+        description: 'GitLab 项目数字 ID（GitLab 时必填，来自 create_repo）',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'framework_id',
+        type: 'string',
+        description: '博客框架 ID',
+        required: true,
+        defaultValue: 'hexo',
+      ),
+      ToolParam(
+        name: 'site_title',
+        type: 'string',
+        description: '站点标题',
+        required: false,
+        defaultValue: '',
+      ),
+    ],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
+
+  /// 触发 Cloudflare 部署步骤（模式二收尾）：poll_site_build 返回 hook 后调用。
+  static final ToolEntity triggerCfDeploy = ToolEntity(
+    id: 'trigger_cf_deploy',
+    name: '触发 Cloudflare 部署',
+    description:
+        '分步建站收尾（仅模式二）：拿到 poll_site_build 返回的 deploy_hook 后触发 Cloudflare Pages 部署。'
+        '传入 poll_site_build 返回的 hook 值即可。',
+    type: ToolType.builtin,
+    builtinHandler: 'trigger_cf_deploy',
+    riskLevel: 'high',
+    parameters: const [
+      ToolParam(
+        name: 'hook',
+        type: 'string',
+        description: 'poll_site_build 返回的 Cloudflare Deploy Hook 地址',
+        required: true,
+      ),
+    ],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
+
+  /// 显式回滚步骤：清理分步建站已创建的远程资源（仓库 / Pages / CF 项目）。
+  /// 任一子步骤失败时，用 rollback_site 清理残留后重试对应步骤。
+  static final ToolEntity rollbackSite = ToolEntity(
+    id: 'rollback_site',
+    name: '回滚建站',
+    description:
+        '分步建站失败后清理已创建的远程资源（Git 仓库 / GitHub Pages / GitLab Pages / Cloudflare Pages 项目）。'
+        '提供 create_repo 返回的 repo_owner / repo_name / git_provider 上下文。'
+        '返回未能清理的资源列表（空数组表示全部清理成功）。',
+    type: ToolType.builtin,
+    builtinHandler: 'rollback_site',
+    riskLevel: 'high',
+    parameters: const [
+      ToolParam(
+        name: 'git_provider',
+        type: 'string',
+        description: 'Git 托管平台：github 或 gitlab',
+        required: true,
+        defaultValue: 'github',
+      ),
+      ToolParam(
+        name: 'git_token',
+        type: 'string',
+        description: 'Git 平台访问令牌',
+        required: true,
+      ),
+      ToolParam(
+        name: 'cf_api_token',
+        type: 'string',
+        description: 'Cloudflare API Token',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'cf_account_id',
+        type: 'string',
+        description: 'Cloudflare 账号 ID',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'repo_name',
+        type: 'string',
+        description: '仓库名',
+        required: true,
+      ),
+      ToolParam(
+        name: 'repo_owner',
+        type: 'string',
+        description: '仓库所有者（create_repo 返回的 repo_owner）',
+        required: true,
+      ),
+      ToolParam(
+        name: 'git_repo_created',
+        type: 'boolean',
+        description: 'Git 仓库是否已创建（create_repo 成功后为 true）',
+        required: false,
+        defaultValue: true,
+      ),
+      ToolParam(
+        name: 'pages_enabled',
+        type: 'boolean',
+        description: 'Pages 是否已启用',
+        required: false,
+        defaultValue: false,
+      ),
+      ToolParam(
+        name: 'cf_project_created',
+        type: 'boolean',
+        description: 'Cloudflare Pages 项目是否已创建',
+        required: false,
+        defaultValue: false,
+      ),
+      ToolParam(
+        name: 'cf_project_name',
+        type: 'string',
+        description: 'Cloudflare Pages 项目名（模式二已创建时）',
+        required: false,
+        defaultValue: '',
+      ),
+    ],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
+
+  /// 注册站点步骤：分步建站全部成功后，将新站点注册到站点管理
+  /// （登录令牌 + 站点入库 + 模式二保存 Cloudflare 凭据）。
+  static final ToolEntity registerSite = ToolEntity(
+    id: 'register_site',
+    name: '注册站点',
+    description:
+        '分步建站收尾：将已完成构建的站点注册到站点管理（自动保存登录令牌、站点信息与模式二 Cloudflare 凭据）。'
+        '在 create_repo → (write_welcome_post) → poll_site_build（+ trigger_cf_deploy）全部成功后调用。'
+        '需要提供 create_repo 返回的上下文与 poll_site_build 返回的 site_url / deploy_hook。'
+        '注册后该站点即可在站点管理中直接发布文章。',
+    type: ToolType.builtin,
+    builtinHandler: 'register_site',
+    riskLevel: 'high',
+    parameters: const [
+      ToolParam(
+        name: 'mode',
+        type: 'string',
+        description: '建站模式：one 或 two',
+        required: true,
+        defaultValue: 'one',
+      ),
+      ToolParam(
+        name: 'git_provider',
+        type: 'string',
+        description: 'Git 托管平台：github 或 gitlab',
+        required: true,
+        defaultValue: 'github',
+      ),
+      ToolParam(
+        name: 'git_token',
+        type: 'string',
+        description: 'Git 平台访问令牌',
+        required: true,
+      ),
+      ToolParam(
+        name: 'cf_api_token',
+        type: 'string',
+        description: 'Cloudflare API Token（模式二注册凭据用）',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'cf_account_id',
+        type: 'string',
+        description: 'Cloudflare 账号 ID（模式二注册凭据用）',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'repo_name',
+        type: 'string',
+        description: '仓库名（站点项目名）',
+        required: true,
+      ),
+      ToolParam(
+        name: 'repo_owner',
+        type: 'string',
+        description: '仓库所有者（create_repo 返回的 repo_owner）',
+        required: true,
+      ),
+      ToolParam(
+        name: 'framework_id',
+        type: 'string',
+        description: '博客框架 ID',
+        required: true,
+        defaultValue: 'hexo',
+      ),
+      ToolParam(
+        name: 'site_title',
+        type: 'string',
+        description: '站点标题',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'site_url',
+        type: 'string',
+        description: '站点访问地址（poll_site_build 返回的 site_url）',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'deploy_hook',
+        type: 'string',
+        description: 'Cloudflare Deploy Hook（模式二时 poll_site_build 返回）',
+        required: false,
+        defaultValue: '',
+      ),
+    ],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
+
   /// 远程 CMS 工具 ID 集合（用于路由判断）
   static const _remoteCmsToolIds = {
-    // WordPress
     'wp_create_post', 'wp_update_post', 'wp_delete_post',
     'wp_list_posts', 'wp_test_connection',
     // Ghost
@@ -815,6 +1277,18 @@ class BuiltinTools {
         return _executeCreateDir(request);
       case 'create_site':
         return _executeCreateSite(request);
+      case 'create_repo':
+        return _executeCreateRepo(request);
+      case 'write_welcome_post':
+        return _executeWriteWelcomePost(request);
+      case 'poll_site_build':
+        return _executePollSiteBuild(request);
+      case 'trigger_cf_deploy':
+        return _executeTriggerCfDeploy(request);
+      case 'rollback_site':
+        return _executeRollbackSite(request);
+      case 'register_site':
+        return _executeRegisterSite(request);
       default:
         return ToolCallResult(
           toolId: request.toolId,
@@ -2505,7 +2979,7 @@ class BuiltinTools {
     final repoName = req.arguments['repo_name']?.toString().trim() ?? '';
     final gitToken = req.arguments['git_token']?.toString().trim() ?? '';
     final frameworkId = req.arguments['framework_id']?.toString().trim() ?? 'hexo';
-    final repoPrivate = req.arguments['repo_private'] != 'false';
+    final repoPrivate = _argBool(req.arguments['repo_private'], fallback: true);
 
     if (repoName.isEmpty || gitToken.isEmpty) {
       return ToolCallResult(
@@ -2526,7 +3000,7 @@ class BuiltinTools {
       repoPrivate: repoPrivate,
       frameworkId: frameworkId,
       siteTitle: req.arguments['site_title']?.toString().trim() ?? '',
-      skipWelcomePost: req.arguments['skip_welcome_post'] == 'true',
+      skipWelcomePost: _argBool(req.arguments['skip_welcome_post'], fallback: false),
     );
 
     // 模式二校验 CF 凭据
@@ -2592,6 +3066,364 @@ class BuiltinTools {
     }
   }
 
+  /// 分步建站共享前置校验：未配置模型 / 建站服务未初始化时返回错误，否则返回 null。
+  static ToolCallResult? _siteStepGuard(String toolId) {
+    if (appSettings == null) {
+      return ToolCallResult(
+        toolId: toolId,
+        content: '',
+        success: false,
+        error: '应用设置未初始化',
+      );
+    }
+    if (appSettings!.effectiveAiApiKey.isEmpty ||
+        appSettings!.activeAiProfile == null) {
+      return ToolCallResult(
+        toolId: toolId,
+        content: '',
+        success: false,
+        error: '请先在 AI 设置中配置模型，再重试建站',
+      );
+    }
+    if (siteWizardService == null) {
+      return ToolCallResult(
+        toolId: toolId,
+        content: '',
+        success: false,
+        error: '建站服务未初始化',
+      );
+    }
+    return null;
+  }
+
+  /// 从参数构建分步建站上下文。
+  static SiteStepContext _stepContextFromArgs(Map<String, dynamic> args) {
+    return SiteStepContext(
+      mode: args['mode']?.toString() == 'two' ? WizardMode.two : WizardMode.one,
+      gitProvider: args['git_provider']?.toString() == 'gitlab'
+          ? GitProviderType.gitlab
+          : GitProviderType.github,
+      gitToken: args['git_token']?.toString().trim() ?? '',
+      cfApiToken: args['cf_api_token']?.toString().trim() ?? '',
+      cfAccountId: args['cf_account_id']?.toString().trim() ?? '',
+      repoName: args['repo_name']?.toString().trim() ?? '',
+      repoOwner: args['repo_owner']?.toString().trim() ?? '',
+      projectId: args['project_id']?.toString().trim() ?? '',
+      frameworkId: args['framework_id']?.toString().trim() ?? 'hexo',
+      siteTitle: args['site_title']?.toString().trim() ?? '',
+    );
+  }
+
+  /// 执行建仓库步骤。
+  static Future<ToolCallResult> _executeCreateRepo(ToolCallRequest req) async {
+    final guard = _siteStepGuard('create_repo');
+    if (guard != null) return guard;
+
+    final args = req.arguments;
+    final mode = args['mode']?.toString() == 'two'
+        ? WizardMode.two
+        : WizardMode.one;
+    final gitProvider = args['git_provider']?.toString() == 'gitlab'
+        ? GitProviderType.gitlab
+        : GitProviderType.github;
+    final gitToken = args['git_token']?.toString().trim() ?? '';
+    final repoName = args['repo_name']?.toString().trim() ?? '';
+    final frameworkId = args['framework_id']?.toString().trim() ?? 'hexo';
+    final repoPrivate = _argBool(args['repo_private'], fallback: true);
+
+    if (repoName.isEmpty || gitToken.isEmpty) {
+      return ToolCallResult(
+        toolId: 'create_repo',
+        content: '',
+        success: false,
+        error: '仓库名与 Git 令牌不能为空',
+      );
+    }
+
+    if (mode == WizardMode.two &&
+        ((args['cf_api_token']?.toString().trim().isEmpty ?? true) ||
+            (args['cf_account_id']?.toString().trim().isEmpty ?? true))) {
+      return ToolCallResult(
+        toolId: 'create_repo',
+        content: '',
+        success: false,
+        error: '模式二需要提供 Cloudflare API Token 与账号 ID',
+      );
+    }
+
+    final request = WizardRequest(
+      mode: mode,
+      gitProvider: gitProvider,
+      gitToken: gitToken,
+      cfApiToken: args['cf_api_token']?.toString().trim() ?? '',
+      cfAccountId: args['cf_account_id']?.toString().trim() ?? '',
+      repoName: repoName,
+      repoPrivate: repoPrivate,
+      frameworkId: frameworkId,
+      siteTitle: args['site_title']?.toString().trim() ?? '',
+    );
+
+    try {
+      final missing = await siteWizardService!.verifyScopes(request);
+      if (missing.isNotEmpty) {
+        return ToolCallResult(
+          toolId: 'create_repo',
+          content: '',
+          success: false,
+          error: 'Git 令牌权限不足，缺少: ${missing.join("、")}。请重新生成令牌后再试。',
+        );
+      }
+      final ctx = await siteWizardService!.createRepo(request);
+      return ToolCallResult(
+        toolId: 'create_repo',
+        content: jsonEncode({
+          'status': 'ok',
+          'mode': mode == WizardMode.two ? 'two' : 'one',
+          'git_provider': gitProvider.name,
+          'repo_owner': ctx.repoOwner,
+          'project_id': ctx.projectId,
+          'repo_name': ctx.repoName,
+          'framework_id': ctx.frameworkId,
+          'site_title': ctx.siteTitle,
+        }),
+        success: true,
+      );
+    } catch (e) {
+      return ToolCallResult(
+        toolId: 'create_repo',
+        content: '',
+        success: false,
+        error: '创建仓库失败: $e',
+      );
+    }
+  }
+
+  /// 执行写欢迎文章步骤。
+  static Future<ToolCallResult> _executeWriteWelcomePost(
+      ToolCallRequest req) async {
+    final guard = _siteStepGuard('write_welcome_post');
+    if (guard != null) return guard;
+
+    final args = req.arguments;
+    final ctx = _stepContextFromArgs(args);
+    if (ctx.repoName.isEmpty || ctx.gitToken.isEmpty || ctx.repoOwner.isEmpty) {
+      return ToolCallResult(
+        toolId: 'write_welcome_post',
+        content: '',
+        success: false,
+        error: '缺少必要上下文：请提供 create_repo 返回的 repo_name、repo_owner 与 git_token',
+      );
+    }
+
+    try {
+      final path = await siteWizardService!.writeWelcomePost(ctx);
+      return ToolCallResult(
+        toolId: 'write_welcome_post',
+        content: jsonEncode({'status': 'ok', 'welcome_post_path': path}),
+        success: true,
+      );
+    } catch (e) {
+      return ToolCallResult(
+        toolId: 'write_welcome_post',
+        content: '',
+        success: false,
+        error: '写入欢迎文章失败: $e',
+      );
+    }
+  }
+
+  /// 执行轮询构建步骤。
+  static Future<ToolCallResult> _executePollSiteBuild(
+      ToolCallRequest req) async {
+    final guard = _siteStepGuard('poll_site_build');
+    if (guard != null) return guard;
+
+    final args = req.arguments;
+    final ctx = _stepContextFromArgs(args);
+    if (ctx.repoName.isEmpty || ctx.gitToken.isEmpty || ctx.repoOwner.isEmpty) {
+      return ToolCallResult(
+        toolId: 'poll_site_build',
+        content: '',
+        success: false,
+        error: '缺少必要上下文：请提供 create_repo 返回的 repo_name、repo_owner 与 git_token',
+      );
+    }
+
+    try {
+      final (siteUrl, hook) = await siteWizardService!.waitForBuild(ctx);
+      return ToolCallResult(
+        toolId: 'poll_site_build',
+        content: jsonEncode({
+          'status': 'ok',
+          'site_url': siteUrl,
+          'deploy_hook': hook,
+        }),
+        success: true,
+      );
+    } catch (e) {
+      return ToolCallResult(
+        toolId: 'poll_site_build',
+        content: '',
+        success: false,
+        error: '轮询构建失败: $e',
+      );
+    }
+  }
+
+  /// 执行触发 Cloudflare 部署步骤（模式二收尾）。
+  static Future<ToolCallResult> _executeTriggerCfDeploy(
+      ToolCallRequest req) async {
+    final guard = _siteStepGuard('trigger_cf_deploy');
+    if (guard != null) return guard;
+
+    final hook = req.arguments['hook']?.toString().trim() ?? '';
+    if (hook.isEmpty) {
+      return ToolCallResult(
+        toolId: 'trigger_cf_deploy',
+        content: '',
+        success: false,
+        error: '缺少 deploy hook：请先调用 poll_site_build 获取',
+      );
+    }
+
+    try {
+      await siteWizardService!.triggerCfDeploy(hook);
+      return ToolCallResult(
+        toolId: 'trigger_cf_deploy',
+        content: jsonEncode({'status': 'ok', 'deployed': true}),
+        success: true,
+      );
+    } catch (e) {
+      return ToolCallResult(
+        toolId: 'trigger_cf_deploy',
+        content: '',
+        success: false,
+        error: '触发 Cloudflare 部署失败: $e',
+      );
+    }
+  }
+
+  /// 执行显式回滚步骤。
+  static Future<ToolCallResult> _executeRollbackSite(
+      ToolCallRequest req) async {
+    final args = req.arguments;
+    final gitProvider = args['git_provider']?.toString() == 'gitlab'
+        ? GitProviderType.gitlab
+        : GitProviderType.github;
+    final gitToken = args['git_token']?.toString().trim() ?? '';
+    final repoName = args['repo_name']?.toString().trim() ?? '';
+    final repoOwner = args['repo_owner']?.toString().trim() ?? '';
+    final cfApiToken = args['cf_api_token']?.toString().trim() ?? '';
+    final cfAccountId = args['cf_account_id']?.toString().trim() ?? '';
+
+    if (repoName.isEmpty || gitToken.isEmpty || repoOwner.isEmpty) {
+      return ToolCallResult(
+        toolId: 'rollback_site',
+        content: '',
+        success: false,
+        error: '缺少必要上下文：请提供 create_repo 返回的 repo_name、repo_owner 与 git_token',
+      );
+    }
+
+    final plan = RollbackPlan(
+      repoOwner: repoOwner,
+      repoName: repoName,
+      gitProvider: gitProvider,
+      gitToken: gitToken,
+      cfApiToken: cfApiToken,
+      cfAccountId: cfAccountId,
+      cfProjectName: args['cf_project_name']?.toString().trim() ?? '',
+      gitRepoCreated: _argBool(args['git_repo_created'], fallback: true),
+      pagesEnabled: _argBool(args['pages_enabled'], fallback: false),
+      cfProjectCreated: _argBool(args['cf_project_created'], fallback: false),
+    );
+
+    try {
+      final failures = await siteWizardService!.rollbackSite(plan);
+      return ToolCallResult(
+        toolId: 'rollback_site',
+        content: jsonEncode({
+          'status': failures.isEmpty ? 'ok' : 'partial',
+          'failures': failures,
+        }),
+        success: failures.isEmpty,
+      );
+    } catch (e) {
+      return ToolCallResult(
+        toolId: 'rollback_site',
+        content: '',
+        success: false,
+        error: '回滚失败: $e',
+      );
+    }
+  }
+
+  /// 执行注册站点步骤。
+  static Future<ToolCallResult> _executeRegisterSite(
+      ToolCallRequest req) async {
+    final guard = _siteStepGuard('register_site');
+    if (guard != null) return guard;
+
+    final args = req.arguments;
+    final ctx = _stepContextFromArgs(args);
+    if (ctx.repoName.isEmpty || ctx.gitToken.isEmpty || ctx.repoOwner.isEmpty) {
+      return ToolCallResult(
+        toolId: 'register_site',
+        content: '',
+        success: false,
+        error: '缺少必要上下文：请提供 create_repo 返回的 repo_name、repo_owner 与 git_token',
+      );
+    }
+
+    final siteUrl = args['site_url']?.toString().trim() ?? '';
+    final deployHook = args['deploy_hook']?.toString().trim() ?? '';
+
+    final result = siteWizardService!.finalize(
+      ctx,
+      siteUrl: siteUrl,
+      deployHooks: deployHook.isEmpty ? const [] : [deployHook],
+      welcomePostPath: '',
+    );
+
+    try {
+      if (onSiteCreated != null) {
+        await onSiteCreated!(result);
+      } else {
+        await _persistSiteResult(
+          WizardRequest(
+            mode: ctx.mode,
+            gitProvider: ctx.gitProvider,
+            gitToken: ctx.gitToken,
+            cfApiToken: ctx.cfApiToken,
+            cfAccountId: ctx.cfAccountId,
+            repoName: ctx.repoName,
+            frameworkId: ctx.frameworkId,
+            siteTitle: ctx.siteTitle,
+          ),
+          result,
+        );
+      }
+      final report = StringBuffer()
+        ..writeln('站点已注册到站点管理！')
+        ..writeln('仓库: ${result.repoConfig.fullName}');
+      if (result.siteUrl.isNotEmpty) {
+        report.writeln('站点访问地址: ${result.siteUrl}');
+      }
+      return ToolCallResult(
+        toolId: 'register_site',
+        content: report.toString(),
+        success: true,
+      );
+    } catch (e) {
+      return ToolCallResult(
+        toolId: 'register_site',
+        content: '',
+        success: false,
+        error: '注册站点失败: $e',
+      );
+    }
+  }
+
   /// 建站结果持久化接入（宿主未提供 onSiteCreated 时的默认实现）：
   /// 1. 注册 Git 令牌到令牌管理（存在则跳过，Correctness 7）
   /// 2. 追加新站点到站点管理并保存（存在则跳过）
@@ -2647,5 +3479,16 @@ class BuiltinTools {
       repos.add(result.repoConfig);
       await storageService!.saveRepos(repos);
     }
+  }
+
+  /// 兼容 bool / String 的参数布尔解析；无法解析时返回 [fallback]。
+  static bool _argBool(dynamic v, {required bool fallback}) {
+    if (v is bool) return v;
+    if (v is String) {
+      final s = v.toLowerCase();
+      if (s == 'true' || s == '1' || s == 'yes') return true;
+      if (s == 'false' || s == '0' || s == 'no') return false;
+    }
+    return fallback;
   }
 }

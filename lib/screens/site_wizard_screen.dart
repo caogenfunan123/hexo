@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/app_settings.dart';
 import '../models/git_provider.dart';
@@ -13,7 +14,7 @@ import '../services/rollback_manager.dart';
 
 /// 一键建站降级表单向导（AI 对话为主模式，此表单为显式降级路径）
 ///
-/// 分步：模式选择 → 账号连接 → 站点信息 → 确认/执行 → 完成
+/// 分步：模式选择 → 账号连接 → 站点信息 → 选择模板 → 确认/执行 → 完成
 class SiteWizardScreen extends StatefulWidget {
   final AppSettings settings;
   final List<RepoConfig> repos;
@@ -38,7 +39,6 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
   bool _isCancelConfirmed = false;
   WizardResult? _result;
   String? _error;
-  String? _cancelHint;
 
   // 模式
   WizardMode _mode = WizardMode.one;
@@ -121,10 +121,6 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
     return _repoNameRe.hasMatch(name);
   }
 
-  bool get _formValid =>
-      _validateRepoName(_repoNameCtrl.text.trim()) &&
-      _siteTitleCtrl.text.trim().isNotEmpty;
-
   Future<void> _run() async {
     if (!_validateRepoName(_repoNameCtrl.text.trim())) {
       _showError('仓库名仅支持小写字母/数字/连字符/下划线，不以连字符首尾，长度 1-100');
@@ -186,8 +182,8 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
   }
 
   Future<void> _handleCancel() async {
-    // 未创建任何资源时直接退出
-    if (_step < 3) {
+    // 未开始建站（尚未到确认/执行步）时直接退出
+    if (_step < 4) {
       Navigator.of(context).pop();
       return;
     }
@@ -247,24 +243,82 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
         gitToken: _gitTokenCtrl.text.trim(),
         cfApiToken: _cfTokenCtrl.text.trim(),
         cfAccountId: _cfAccountCtrl.text.trim(),
-        gitRepoCreated: _step >= 3,
+        gitRepoCreated: _step >= 4,
         userInvestedInWeb: false,
       );
       final failures = await RollbackManager().rollback(plan);
       if (!mounted) return;
+      if (failures.isNotEmpty) {
+        await _showRollbackFailures(failures);
+        return;
+      }
       setState(() {
         _running = false;
         _isCancelConfirmed = true;
-        _cancelHint = failures.isEmpty ? null : '部分资源清理失败：${failures.join('、')}';
       });
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _running = false;
-        _cancelHint = '清理失败：$e';
       });
+      await _showRollbackFailures(['清理异常：$e']);
     }
+  }
+
+  /// 回滚失败项展示：逐条列出失败原因，并提供打开仓库删除页的手动清理入口。
+  Future<void> _showRollbackFailures(List<String> failures) async {
+    final repoName = _repoNameCtrl.text.trim();
+    final canOpenRepo = repoName.isNotEmpty;
+    // 仓库删除页：GitLab 使用 project 删除页，GitHub 使用仓库设置页
+    final deleteUrl = canOpenRepo
+        ? (_gitProvider == GitProviderType.gitlab
+            ? 'https://gitlab.com/$repoName/-/edit'
+            : 'https://github.com/settings/repositories')
+        : null;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('部分资源清理失败'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final f in failures) ...[
+                Text('• $f', style: const TextStyle(fontSize: 13)),
+                const SizedBox(height: 4),
+              ],
+              if (canOpenRepo && deleteUrl != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  '可打开仓库管理页手动删除残留仓库「$repoName」：',
+                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+          if (deleteUrl != null)
+            FilledButton(
+              onPressed: () {
+                launchUrl(Uri.parse(deleteUrl),
+                    mode: LaunchMode.externalApplication);
+              },
+              child: const Text('打开删除页'),
+            ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    setState(() {
+      _running = false;
+    });
   }
 
   @override
@@ -293,24 +347,27 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
       _buildModeStep(),
       _buildAccountStep(),
       _buildInfoStep(),
+      _buildTemplateStep(),
       _buildConfirmStep(),
     ];
     return Stepper(
-      currentStep: _step.clamp(0, 3),
+      currentStep: _step.clamp(0, 4),
       onStepContinue: _step == 0
           ? () => setState(() => _step = 1)
           : _step == 1
               ? _verifyToken
               : _step == 2
                   ? () => setState(() => _step = 3)
-                  : _run,
+                  : _step == 3
+                      ? () => setState(() => _step = 4)
+                      : _run,
       onStepCancel: _handleCancel,
       controlsBuilder: (context, details) {
         return Row(
           children: [
             FilledButton(
               onPressed: _running ? null : details.onStepContinue,
-              child: Text(_step == 3 ? '开始建站' : '下一步'),
+              child: Text(_step == 4 ? '开始建站' : '下一步'),
             ),
             const SizedBox(width: 12),
             if (_step > 0)
@@ -341,10 +398,16 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
           content: steps[2],
         ),
         Step(
-          title: const Text('确认并建站'),
+          title: const Text('选择模板'),
           isActive: _step >= 3,
           state: _step == 3 ? StepState.editing : StepState.indexed,
           content: steps[3],
+        ),
+        Step(
+          title: const Text('确认并建站'),
+          isActive: _step >= 4,
+          state: _step == 4 ? StepState.editing : StepState.indexed,
+          content: steps[4],
         ),
       ],
     );
@@ -415,8 +478,8 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
                 ? 'GitHub Personal Access Token'
                 : 'GitLab Personal Access Token',
             hintText: _gitProvider == GitProviderType.github
-                ? '需含 repo + workflow scope'
-                : '需含 api scope',
+                ? 'github.com/settings/tokens 生成，勾选 repo+workflow'
+                : 'gitlab.com/-/user_settings/personal_access_tokens 生成，勾选 api',
             prefixIcon: const Icon(Icons.key_outlined),
           ),
         ),
@@ -491,16 +554,6 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        DropdownButtonFormField<String>(
-          initialValue: _frameworkId,
-          decoration: const InputDecoration(labelText: '博客框架'),
-          items: [
-            for (final id in FrameworkBuildMap.knownFrameworkIds)
-              DropdownMenuItem(value: id, child: Text(id)),
-          ],
-          onChanged: (v) => setState(() => _frameworkId = v ?? _frameworkId),
-        ),
-        const SizedBox(height: 12),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('仓库设为私有'),
@@ -516,6 +569,44 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
           value: !_skipWelcomePost,
           onChanged: (v) => setState(() => _skipWelcomePost = !v),
         ),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildTemplateStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '选择博客框架模板：',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'App 会按所选框架生成完整可构建骨架与 CI 配置，'
+          '并自动在目标平台启用 Pages。',
+          style: TextStyle(color: Colors.black54, fontSize: 13),
+        ),
+        const SizedBox(height: 12),
+        for (final id in FrameworkBuildMap.knownFrameworkIds) ...[
+          RadioListTile<String>(
+            dense: true,
+            title: Text(id),
+            subtitle: Text(
+              '构建: ${FrameworkBuildMap.forFramework(id).buildCommand}\n'
+              '产物: ${FrameworkBuildMap.forFramework(id).buildOutputDirectory}',
+              style: const TextStyle(fontSize: 12),
+            ),
+            value: id,
+            groupValue: _frameworkId,
+            onChanged: (v) => setState(() => _frameworkId = v ?? _frameworkId),
+          ),
+          const Divider(height: 1),
+        ],
         if (_error != null) ...[
           const SizedBox(height: 12),
           Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
@@ -558,9 +649,27 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
         if (_error != null) ...[
           const SizedBox(height: 12),
           Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+          if (_repoNameCtrl.text.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: _openRepoDeletePage,
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: const Text('打开仓库删除页，手动清理残留'),
+            ),
+          ],
         ],
       ],
     );
+  }
+
+  /// 打开当前仓库的删除管理页（GitHub 仓库设置 / GitLab 项目编辑页）。
+  void _openRepoDeletePage() {
+    final repo = _repoNameCtrl.text.trim();
+    if (repo.isEmpty) return;
+    final url = _gitProvider == GitProviderType.gitlab
+        ? 'https://gitlab.com/$repo/-/edit'
+        : 'https://github.com/settings/repositories';
+    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
   }
 
   Widget _kv(String k, String v) {

@@ -26,6 +26,8 @@ class AiArticleChatScreen extends StatefulWidget {
   final Future<void> Function(AppSettings) onSettingsChanged;
   final GitHubService? gitHubService;
   final StorageService? storageService;
+  final List<RepoConfig>? fallbackRepos; // 降级表单初始站点列表
+  final Future<void> Function(List<RepoConfig>)? onFallbackReposChanged;
 
   const AiArticleChatScreen({
     super.key,
@@ -41,6 +43,8 @@ class AiArticleChatScreen extends StatefulWidget {
     required this.onSettingsChanged,
     this.gitHubService,
     this.storageService,
+    this.fallbackRepos,
+    this.onFallbackReposChanged,
   });
 
   @override
@@ -71,9 +75,9 @@ class _AiArticleChatScreenState extends State<AiArticleChatScreen> {
                     MaterialPageRoute(
                       builder: (_) => SiteWizardScreen(
                         settings: widget.settings,
-                        repos: const [],
+                        repos: widget.fallbackRepos ?? const [],
                         onSettingsChanged: widget.onSettingsChanged,
-                        onReposChanged: (_) async {},
+                        onReposChanged: widget.onFallbackReposChanged ?? (_) async {},
                       ),
                     ),
                   );

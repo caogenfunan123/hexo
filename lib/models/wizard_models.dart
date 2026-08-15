@@ -80,6 +80,34 @@ class WizardResult {
   });
 }
 
+/// 分步建站上下文：保存「建仓库」步骤完成后的中间状态，
+/// 供后续步骤（写欢迎文章 / 轮询构建 / 回滚）断点续跑。
+class SiteStepContext {
+  final WizardMode mode;
+  final GitProviderType gitProvider;
+  final String gitToken;
+  final String cfApiToken; // 模式二衔接用
+  final String cfAccountId;
+  final String repoName;
+  final String repoOwner; // GitHub login / GitLab username
+  final String projectId; // GitLab 项目数字 ID；GitHub 为空
+  final String frameworkId;
+  final String siteTitle;
+
+  const SiteStepContext({
+    required this.mode,
+    required this.gitProvider,
+    required this.gitToken,
+    this.cfApiToken = '',
+    this.cfAccountId = '',
+    required this.repoName,
+    required this.repoOwner,
+    this.projectId = '',
+    required this.frameworkId,
+    this.siteTitle = '',
+  });
+}
+
 /// 回滚计划：记录已创建的远程资源，供失败/取消时逆序清理
 class RollbackPlan {
   final String repoOwner;

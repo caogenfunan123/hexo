@@ -634,19 +634,19 @@ extension EditorPublishExt on _RootShellState {
     try {
       if (repo.provider == GitProviderType.github) {
         final run = await GitHubProvider()
-            .getActionsRun(repo.token, repo.owner, repo.name);
+            .getActionsRun(repo.token, repo.owner, repo.repo);
         final status = run?['status']?.toString();
         final conclusion = run?['conclusion']?.toString();
         if (status == 'completed' && conclusion == 'success') {
-          backfilled = 'https://${repo.owner}.github.io/${repo.name}/';
+          backfilled = 'https://${repo.owner}.github.io/${repo.repo}/';
         }
       } else if (repo.provider == GitProviderType.gitlab) {
         final pipeline = await GitLabProvider().getPipeline(
           repo.token,
-          Uri.encodeComponent('${repo.owner}/${repo.name}'),
+          Uri.encodeComponent('${repo.owner}/${repo.repo}'),
         );
         if (pipeline?['status']?.toString() == 'success') {
-          backfilled = 'https://${repo.owner}.gitlab.io/${repo.name}/';
+          backfilled = 'https://${repo.owner}.gitlab.io/${repo.repo}/';
         }
       }
     } catch (e) {

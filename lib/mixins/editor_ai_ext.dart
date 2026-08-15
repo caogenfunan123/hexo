@@ -490,17 +490,28 @@ extension EditorAiExt on _RootShellState {
           gitHubService: github,
           storageService: storage,
           showWizardFallback: true,
+          fallbackRepos: repos,
+          onFallbackReposChanged: _updateRepos,
           initialMessage: '你是一键建站助手。用户想要创建一个新的静态博客站点。\n\n'
+              '若用户尚未配置 AI 模型，先引导其在 AI 设置中添加模型（填写 Base URL + API Key → 获取模型 → 保存），否则建站助手无法运行。\n\n'
               '请先向用户确认以下信息（信息不足时逐项追问，一次最多问 3 项）：\n'
               '1. 建站模式：模式一（GitHub Pages / GitLab Pages，仓库内 CI 自动构建）还是模式二（Cloudflare Pages）\n'
               '2. Git 托管平台：GitHub 或 GitLab\n'
-              '3. Git 访问令牌（GitHub PAT 需含 repo+workflow scope；GitLab PAT 需含 api scope）\n'
+              '3. Git 访问令牌。获取方式：GitHub 访问 https://github.com/settings/tokens 生成 PAT（需勾选 repo + workflow scope）；'
+              'GitLab 访问 https://gitlab.com/-/user_settings/personal_access_tokens 生成令牌（需勾选 api scope）\n'
               '4. 仓库名（同时作为站点项目名）\n'
               '5. 博客框架（hexo / hugo / jekyll / vuepress / gatsby / nextjs / astro / pelican / 11ty）\n'
               '6. 站点标题\n'
               '7. 仓库是否私有（默认私有；注意 GitHub 免费账号私有仓库无法启用 Pages）\n'
-              '8. 是否生成欢迎文章（默认生成）\n\n'
-              '用户确认全部信息后，调用 create_site 工具完成建站。若用户选择模式二，还需提供 Cloudflare API Token 与账号 ID。',
+              '8. 是否生成欢迎文章（默认生成）\n'
+              '若用户选择模式二（Cloudflare Pages），还需额外提供 Cloudflare API Token（需 pages:edit 权限，在 Cloudflare 控制台生成）与 Account ID。\n\n'
+              '用户确认全部信息后，调用 create_site 工具完成建站。'
+              '若 create_site 失败，可改用分步工具断点续跑自愈：先调用 create_repo 建仓库，'
+              '再调用 write_welcome_post 写欢迎文章（可选）、poll_site_build 轮询构建获取站点地址；'
+              '模式二用 poll_site_build 拿到 deploy_hook 后调用 trigger_cf_deploy 触发部署。'
+              '全部完成后调用 register_site 将站点注册到站点管理。'
+              '某一步失败可用 web_search 查平台文档、调整参数后重试该步骤，'
+              '残留资源用 rollback_site 清理。',
         ),
       ),
     );

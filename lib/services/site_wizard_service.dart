@@ -55,6 +55,169 @@ class SiteWizardService {
     }
   }
 
+  // ────────────────────────────────────────────────
+  // 分步建站：供 AI 细粒度工具断点续跑
+  // 步骤不自动回滚（失败交由调用方决定重试或显式 rollbackSite）
+  // ────────────────────────────────────────────────
+
+  /// 步骤 1：建仓库 + 初始化 main 分支 + 写入骨架与 CI。
+  /// 返回步骤上下文供后续步骤使用；失败抛异常（不自动回滚）。
+  Future<SiteStepContext> createRepo(WizardRequest req) async {
+    final owner = req.gitProvider == GitProviderType.gitlab
+        ? await _getGitLabUsername(req.gitToken)
+        : await _getGitHubOwner(req.gitToken);
+
+    if (req.gitProvider == GitProviderType.gitlab) {
+      final project = await _gitlab.createProject(
+          req.gitToken, req.repoName, req.repoPrivate);
+      final rawId = project['id'];
+      final projectId =
+          rawId is num ? rawId.toInt().toString() : req.repoName;
+      final defaultBranch =
+          project['default_branch']?.toString() ?? 'main';
+      await _gitlab.initDefaultBranch(req.gitToken, projectId, defaultBranch);
+      final skeleton = _builder.build(
+        req.mode,
+        GitProviderType.gitlab,
+        frameworkId: req.frameworkId,
+        siteTitle: req.siteTitle,
+      );
+      await _writeSkeleton(req, skeleton, owner: owner);
+      if (req.mode == WizardMode.one) {
+        await _gitlab.enablePages(req.gitToken, projectId);
+      }
+      return SiteStepContext(
+        mode: req.mode,
+        gitProvider: GitProviderType.gitlab,
+        gitToken: req.gitToken,
+        cfApiToken: req.cfApiToken,
+        cfAccountId: req.cfAccountId,
+        repoName: req.repoName,
+        repoOwner: owner,
+        projectId: projectId,
+        frameworkId: req.frameworkId,
+        siteTitle: req.siteTitle,
+      );
+    }
+
+    // GitHub
+    await _github.createRepository(
+        req.gitToken, req.repoName, req.repoPrivate);
+    await _github.initDefaultBranch(req.gitToken, owner, req.repoName);
+    final skeleton = _builder.build(
+      req.mode,
+      GitProviderType.github,
+      frameworkId: req.frameworkId,
+      siteTitle: req.siteTitle,
+    );
+    await _writeSkeleton(req, skeleton, owner: owner);
+    if (req.mode == WizardMode.one) {
+      await _github.enablePages(req.gitToken, owner, req.repoName);
+    }
+    return SiteStepContext(
+      mode: req.mode,
+      gitProvider: GitProviderType.github,
+      gitToken: req.gitToken,
+      cfApiToken: req.cfApiToken,
+      cfAccountId: req.cfAccountId,
+      repoName: req.repoName,
+      repoOwner: owner,
+      frameworkId: req.frameworkId,
+      siteTitle: req.siteTitle,
+    );
+  }
+
+  /// 步骤 2：启用 Pages（模式一）。幂等：对 GitHub/GitLab 均安全。
+  Future<void> enablePages(SiteStepContext ctx) async {
+    if (ctx.gitProvider == GitProviderType.gitlab) {
+      await _gitlab.enablePages(ctx.gitToken, ctx.projectId);
+    } else {
+      await _github.enablePages(
+          ctx.gitToken, ctx.repoOwner, ctx.repoName);
+    }
+  }
+
+  /// 步骤 3：写入欢迎文章。返回远程路径。
+  Future<String> writeWelcomePost(SiteStepContext ctx) async {
+    final req = WizardRequest(
+      mode: ctx.mode,
+      gitProvider: ctx.gitProvider,
+      gitToken: ctx.gitToken,
+      cfApiToken: ctx.cfApiToken,
+      cfAccountId: ctx.cfAccountId,
+      repoName: ctx.repoName,
+      frameworkId: ctx.frameworkId,
+      siteTitle: ctx.siteTitle,
+    );
+    return _writeWelcomePost(req, owner: ctx.repoOwner);
+  }
+
+  /// 步骤 4：等待首次构建完成，返回站点 URL（超时返回空串，站点保留待回填）。
+  /// 模式一：轮询 GitHub Actions / GitLab Pipeline；
+  /// 模式二：等待 Cloudflare 同名项目出现并拉取 Deploy Hook（返回 hook）。
+  /// 返回 (siteUrl, deployHook)；deployHook 模式二返回、模式一为空。
+  Future<(String, String)> waitForBuild(SiteStepContext ctx) async {
+    if (ctx.mode == WizardMode.two) {
+      final hook = await _cf.waitForProjectWithHook(
+        ctx.cfApiToken,
+        ctx.cfAccountId,
+        projectName: ctx.repoName,
+        maxAttempts: cfPollTimeout.inSeconds,
+        intervalMs: 1000,
+      );
+      return ('https://${ctx.repoName}.pages.dev', hook ?? '');
+    }
+    if (ctx.gitProvider == GitProviderType.gitlab) {
+      final url = await _pollGitlabBuild(
+          ctx.gitToken, ctx.projectId, ctx.repoOwner, ctx.repoName);
+      return (url, '');
+    }
+    final url =
+        await _pollGithubBuild(ctx.gitToken, ctx.repoOwner, ctx.repoName);
+    return (url, '');
+  }
+
+  /// 步骤 5：触发 Cloudflare 部署（模式二收尾）。
+  Future<void> triggerCfDeploy(String hook) async {
+    if (hook.isEmpty) return;
+    await _triggerHook(hook);
+  }
+
+  /// 步骤 6：组装最终站点结果。
+  WizardResult finalize(
+    SiteStepContext ctx, {
+    required String siteUrl,
+    required List<String> deployHooks,
+    required String welcomePostPath,
+  }) {
+    final req = WizardRequest(
+      mode: ctx.mode,
+      gitProvider: ctx.gitProvider,
+      gitToken: ctx.gitToken,
+      cfApiToken: ctx.cfApiToken,
+      cfAccountId: ctx.cfAccountId,
+      repoName: ctx.repoName,
+      frameworkId: ctx.frameworkId,
+      siteTitle: ctx.siteTitle,
+    );
+    return WizardResult(
+      repoConfig: _buildRepoConfig(
+        req,
+        owner: ctx.repoOwner,
+        siteUrl: siteUrl,
+        deployHooks: deployHooks,
+      ),
+      siteProjectName: ctx.repoName,
+      siteUrl: siteUrl,
+      welcomePostPath: welcomePostPath,
+    );
+  }
+
+  /// 显式回滚：清理分步建站已创建的远程资源，返回未清理成功的资源描述列表。
+  Future<List<String>> rollbackSite(RollbackPlan plan) {
+    return _rollback.rollback(plan);
+  }
+
   /// 校验令牌 scope（账号连接步预校验，早失败）。
   /// 返回缺失 scope 列表；为空表示通过。
   Future<List<String>> verifyScopes(WizardRequest req) async {

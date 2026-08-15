@@ -616,7 +616,7 @@ $steps
         with:
           node-version: 18
       - name: Install
-        run: npm ci
+        run: npm install
       - name: Build
         run: ${info.buildCommand}
 ''';
@@ -679,7 +679,7 @@ $_gitlabScript(info)
   String _gitlabScript(FrameworkBuildInfo info) {
     switch (info.buildType) {
       case 'node':
-        return '    - npm ci\n    - ${info.buildCommand}';
+        return '    - npm install\n    - ${info.buildCommand}';
       case 'jekyll':
         return '    - bundle install\n    - ${info.buildCommand}';
       case 'hugo':

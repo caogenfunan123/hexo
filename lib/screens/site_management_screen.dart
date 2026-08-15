@@ -56,20 +56,20 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
     try {
       if (repo.provider == GitProviderType.github) {
         final run = await GitHubProvider()
-            .getActionsRun(repo.token, repo.owner, repo.name);
+            .getActionsRun(repo.token, repo.owner, repo.repo);
         final status = run?['status']?.toString();
         final conclusion = run?['conclusion']?.toString();
         if (status == 'completed' && conclusion == 'success') {
-          backfilled = 'https://${repo.owner}.github.io/${repo.name}/';
+          backfilled = 'https://${repo.owner}.github.io/${repo.repo}/';
         }
       } else if (repo.provider == GitProviderType.gitlab) {
         final pipeline = await GitLabProvider().getPipeline(
           repo.token,
-          Uri.encodeComponent('${repo.owner}/${repo.name}'),
+          Uri.encodeComponent('${repo.owner}/${repo.repo}'),
         );
         final status = pipeline?['status']?.toString();
         if (status == 'success') {
-          backfilled = 'https://${repo.owner}.gitlab.io/${repo.name}/';
+          backfilled = 'https://${repo.owner}.gitlab.io/${repo.repo}/';
         }
       }
     } catch (e) {
@@ -288,7 +288,7 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
     bool? current;
     try {
       final data = await GitHubProvider().request(
-        'GET', 'https://api.github.com/repos/${repo.owner}/${repo.name}', repo.token);
+        'GET', 'https://api.github.com/repos/${repo.owner}/${repo.repo}', repo.token);
       current = data is Map ? data['private'] == true : null;
     } catch (e) {
       _showToast('查询可见性失败：$e');
@@ -318,7 +318,7 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
     if (confirmed != true || !mounted) return;
     try {
       await GitHubProvider()
-          .updateVisibility(repo.token, repo.owner, repo.name, target);
+          .updateVisibility(repo.token, repo.owner, repo.repo, target);
       _showToast('已切换为${target ? '私有' : '公开'}');
     } catch (e) {
       _showToast('切换失败：$e');
@@ -338,7 +338,7 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'GitHub：先在 DNS 服务商添加 CNAME 记录指向 ${repo.name}.${repo.owner}.github.io，再填写下方域名。\n'
+              'GitHub：先在 DNS 服务商添加 CNAME 记录指向 ${repo.repo}.${repo.owner}.github.io，再填写下方域名。\n'
               'GitLab：在 GitLab Pages 设置中添加自定义域名。\n'
               'Cloudflare：在 Cloudflare 控制台的 Pages 项目自定义域中配置。\n',
               style: const TextStyle(fontSize: 12, color: Colors.black54),
@@ -372,7 +372,7 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
           return;
         }
         await GitHubProvider()
-            .setCustomDomain(repo.token, repo.owner, repo.name, cname);
+            .setCustomDomain(repo.token, repo.owner, repo.repo, cname);
       }
       // GitLab / Cloudflare：DNS 引导已在对话框展示，由用户在平台侧配置
       final updated = repo.copyWith(siteUrl: cname);
