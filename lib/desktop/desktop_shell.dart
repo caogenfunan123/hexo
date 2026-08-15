@@ -58,6 +58,7 @@ import '../screens/site_editor_screen.dart';
 import '../screens/site_management_screen.dart';
 import '../screens/template_manager_screen.dart';
 import '../screens/theme_migration_screen.dart';
+import '../screens/theme_store_screen.dart';
 import '../screens/tool_library_screen.dart';
 import '../screens/log_screen.dart';
 import '../core/tools/skill_manager.dart';
@@ -5215,6 +5216,15 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     ));
   }
 
+  void _showThemeStore() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ThemeStoreScreen(
+        repos: repos,
+        onToast: _showToast,
+      ),
+    ));
+  }
+
   /// 一键建站入口（AI 对话主模式）。
   Future<void> _startAiSiteWizard() async {
     // 兼容两套模型配置体系：settings profile 或中转站模型（modelManager）任一可用即可。
@@ -7533,6 +7543,7 @@ $htmlContent
     onShowAiArticleChat: _showAiArticleChat,
     onShowAiPageChat: _showAiPageChat,
     onShowAiThemeChat: _showAiThemeChat,
+    onShowThemeStore: _showThemeStore,
     onShowAiAudit: _showAiAudit,
     onShowAiAppDesign: _showAiAppDesign,
     onShowAiModelManager: _showAiModelManager,

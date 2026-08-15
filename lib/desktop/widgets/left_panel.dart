@@ -238,6 +238,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                         ..._nav(id: 'ai_article', icon: Icons.article_outlined, label: 'AI 博文创作', onTap: widget.bus.onShowAiArticleChat),
                         ..._nav(id: 'ai_page', icon: Icons.web_outlined, label: 'AI 页面创作', onTap: widget.bus.onShowAiPageChat),
                         ..._nav(id: 'ai_theme', icon: Icons.palette_outlined, label: 'AI 主题开发', onTap: widget.bus.onShowAiThemeChat),
+                        ..._nav(id: 'theme_store', icon: Icons.store_outlined, label: '主题商店', onTap: widget.bus.onShowThemeStore),
                         ..._nav(id: 'ai_audit', icon: Icons.fact_check_outlined, label: 'AI 站点巡检', onTap: widget.bus.onShowAiAudit),
                         ..._nav(id: 'ai_app_design', icon: Icons.design_services_outlined, label: 'AI 应用 UI 设计', onTap: widget.bus.onShowAiAppDesign),
                         ..._nav(id: 'ai_model_manager', icon: Icons.psychology_outlined, label: 'AI 模型管理', onTap: widget.bus.onShowAiModelManager),
