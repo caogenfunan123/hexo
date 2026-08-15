@@ -36,6 +36,7 @@ import '../core/ai/ai_session_manager.dart';
 import '../core/ai/theme_migration_service.dart';
 import '../core/template_engine/template_resolver.dart';
 import '../screens/ai_article_chat_screen.dart';
+import '../core/task/agent_task_type.dart';
 import '../screens/agent_workbench_screen.dart';
 import '../screens/ai_audit_screen.dart';
 import '../screens/ai_app_design_screen.dart';
@@ -5198,30 +5199,33 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   void _showAiArticleChat() {
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AiArticleChatScreen(
+      builder: (_) => AgentWorkbenchScreen(
         settings: settings, activeRepo: effectiveRepo, aiService: aiService,
         modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
-        isPage: false, onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
+        onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
+        initialTaskType: AgentTaskType.article,
       ),
     ));
   }
 
   void _showAiPageChat() {
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AiArticleChatScreen(
+      builder: (_) => AgentWorkbenchScreen(
         settings: settings, activeRepo: effectiveRepo, aiService: aiService,
         modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
-        isPage: true, onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
+        onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
+        initialTaskType: AgentTaskType.page,
       ),
     ));
   }
 
   void _showAiThemeChat() {
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AiThemeChatScreen(
+      builder: (_) => AgentWorkbenchScreen(
         settings: settings, activeRepo: effectiveRepo, aiService: aiService,
         modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
         onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
+        initialTaskType: AgentTaskType.theme,
       ),
     ));
   }
@@ -5304,37 +5308,41 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
 
   void _showAiAudit() {
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AiAuditScreen(
+      builder: (_) => AgentWorkbenchScreen(
         settings: settings, activeRepo: effectiveRepo, aiService: aiService,
         modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
         onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
+        initialTaskType: AgentTaskType.audit,
       ),
     ));
   }
 
   void _showAiAppDesign() {
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AiAppDesignScreen(
+      builder: (_) => AgentWorkbenchScreen(
         settings: settings, activeRepo: effectiveRepo, aiService: aiService,
         modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
         onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
+        initialTaskType: AgentTaskType.appDesign,
       ),
     ));
   }
 
-  void _showAiTemplateChat() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AiTemplateChatScreen(
+  void _showAiTemplateChat() async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => AgentWorkbenchScreen(
         settings: settings, activeRepo: effectiveRepo, aiService: aiService,
         modelManager: aiModelManager, dispatcher: aiDispatcher, selfChecker: aiSelfChecker,
         onSettingsChanged: _updateSettings, gitHubService: github, storageService: storage,
-        onTemplatesChanged: (_) async {
-          if (!mounted) return;
-          final t = await storage.loadAllTemplates();
-          setState(() => templates = t);
-        },
+        initialTaskType: AgentTaskType.template,
       ),
     ));
+    // 工作台可能修改了模板，返回后刷新
+    if (!mounted) return;
+    final t = await storage.loadAllTemplates();
+    if (mounted) {
+      setState(() => templates = t);
+    }
   }
 
   void _showAiModelManager() {

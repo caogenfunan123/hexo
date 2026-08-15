@@ -34,6 +34,10 @@ class AgentWorkbenchScreen extends StatefulWidget {
   final GitHubService? gitHubService;
   final StorageService storageService;
 
+  /// 入口预设的任务类型：由场景入口（文章/页面/主题/巡检/应用设计）传入，
+  /// 打开工作台后自动选中对应任务类型，实现「场景屏被工作台接管」。
+  final AgentTaskType initialTaskType;
+
   const AgentWorkbenchScreen({
     super.key,
     required this.settings,
@@ -45,6 +49,7 @@ class AgentWorkbenchScreen extends StatefulWidget {
     required this.onSettingsChanged,
     this.gitHubService,
     required this.storageService,
+    this.initialTaskType = AgentTaskType.general,
   });
 
   @override
@@ -71,6 +76,7 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
   void initState() {
     super.initState();
     _taskRepo = TaskRepository(widget.storageService);
+    _taskType = widget.initialTaskType;
     _loadRecentTasks();
   }
 

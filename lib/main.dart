@@ -36,6 +36,7 @@ import 'core/ai/ai_self_checker.dart';
 import 'core/ai/ai_session_manager.dart';
 import 'core/ai/theme_migration_service.dart';
 import 'core/template_engine/template_resolver.dart';
+import 'core/task/agent_task_type.dart';
 import 'screens/ai_article_chat_screen.dart';
 import 'screens/ai_audit_screen.dart';
 import 'screens/agent_workbench_screen.dart';

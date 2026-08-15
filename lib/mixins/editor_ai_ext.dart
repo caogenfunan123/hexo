@@ -434,17 +434,17 @@ extension EditorAiExt on _RootShellState {
   void _showAiArticleChat() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AiArticleChatScreen(
+        builder: (_) => AgentWorkbenchScreen(
           settings: settings,
           activeRepo: effectiveRepo,
           aiService: aiService,
           modelManager: aiModelManager,
           dispatcher: aiDispatcher,
           selfChecker: aiSelfChecker,
-          isPage: false,
           onSettingsChanged: _updateSettings,
           gitHubService: github,
           storageService: storage,
+          initialTaskType: AgentTaskType.article,
         ),
       ),
     );
@@ -453,17 +453,17 @@ extension EditorAiExt on _RootShellState {
   void _showAiPageChat() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AiArticleChatScreen(
+        builder: (_) => AgentWorkbenchScreen(
           settings: settings,
           activeRepo: effectiveRepo,
           aiService: aiService,
           modelManager: aiModelManager,
           dispatcher: aiDispatcher,
           selfChecker: aiSelfChecker,
-          isPage: true,
           onSettingsChanged: _updateSettings,
           gitHubService: github,
           storageService: storage,
+          initialTaskType: AgentTaskType.page,
         ),
       ),
     );
@@ -518,7 +518,7 @@ extension EditorAiExt on _RootShellState {
   void _showAiThemeChat() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AiThemeChatScreen(
+        builder: (_) => AgentWorkbenchScreen(
           settings: settings,
           activeRepo: effectiveRepo,
           aiService: aiService,
@@ -528,6 +528,7 @@ extension EditorAiExt on _RootShellState {
           onSettingsChanged: _updateSettings,
           gitHubService: github,
           storageService: storage,
+          initialTaskType: AgentTaskType.theme,
         ),
       ),
     );
@@ -536,7 +537,7 @@ extension EditorAiExt on _RootShellState {
   void _showAiAudit() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AiAuditScreen(
+        builder: (_) => AgentWorkbenchScreen(
           settings: settings,
           activeRepo: effectiveRepo,
           aiService: aiService,
@@ -546,15 +547,16 @@ extension EditorAiExt on _RootShellState {
           onSettingsChanged: _updateSettings,
           gitHubService: github,
           storageService: storage,
+          initialTaskType: AgentTaskType.audit,
         ),
       ),
     );
   }
 
-  void _showAiTemplateChat() {
-    Navigator.of(context).push(
+  void _showAiTemplateChat() async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AiTemplateChatScreen(
+        builder: (_) => AgentWorkbenchScreen(
           settings: settings,
           activeRepo: effectiveRepo,
           aiService: aiService,
@@ -564,14 +566,15 @@ extension EditorAiExt on _RootShellState {
           onSettingsChanged: _updateSettings,
           gitHubService: github,
           storageService: storage,
-          onTemplatesChanged: (_) async {
-            if (!mounted) return;
-            final t = await storage.loadAllTemplates();
-            _applyState(() => templates = t);
-          },
+          initialTaskType: AgentTaskType.template,
         ),
       ),
     );
+    if (!mounted) return;
+    final t = await storage.loadAllTemplates();
+    if (mounted) {
+      _applyState(() => templates = t);
+    }
   }
 
 }
