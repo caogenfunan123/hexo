@@ -63,4 +63,26 @@ class AgentContext {
           : null,
     );
   }
+
+  /// 序列化为 JSON（供 AgentTask 持久化断点恢复）
+  Map<String, dynamic> toJson() => {
+        'taskType': taskType.key,
+        'blogFramework': blogFramework,
+        'postsPath': postsPath,
+        'pagesPath': pagesPath,
+        'themesPath': themesPath,
+        'targetFramework': targetFramework,
+      };
+
+  /// 从 JSON 恢复（仅反序列化非仓库字段；activeRepo 由工作台按 fullName 重建）
+  factory AgentContext.fromJson(Map<String, dynamic> j) {
+    return AgentContext(
+      taskType: AgentTaskType.fromKey(j['taskType']?.toString()),
+      blogFramework: j['blogFramework']?.toString(),
+      postsPath: j['postsPath']?.toString(),
+      pagesPath: j['pagesPath']?.toString(),
+      themesPath: j['themesPath']?.toString(),
+      targetFramework: j['targetFramework']?.toString(),
+    );
+  }
 }

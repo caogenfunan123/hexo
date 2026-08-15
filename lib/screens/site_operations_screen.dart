@@ -277,7 +277,7 @@ class _SiteOperationsScreenState extends State<SiteOperationsScreen> {
                     const SizedBox(width: 8),
                     TextButton.icon(
                       icon: const Icon(Icons.track_changes, size: 18),
-                      label: const Text('CI #${status!.ciRunId}'),
+                      label: Text('CI #${status!.ciRunId}'),
                       onPressed: () => _openUrl(
                           'https://github.com/${repo.fullName}/actions'),
                     ),

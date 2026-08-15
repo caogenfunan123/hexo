@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../services/storage_service.dart';
+import 'agent_context.dart';
 import 'agent_task_type.dart';
 
 /// 工具执行记录（工作台时间线）
@@ -85,6 +86,7 @@ class AgentTask {
   List<Map<String, dynamic>> messages; // 多轮对话（含工具记录）
   List<ToolExecRecord> toolRecords; // 工具执行时间线
   List<FileChange> fileChanges; // 文件变更追踪
+  AgentContext? context; // 场景上下文（框架/路径等），断点恢复时用于重建会话
   final DateTime createdAt;
   DateTime updatedAt;
   String status; // running / paused / done / failed
@@ -100,6 +102,7 @@ class AgentTask {
     List<Map<String, dynamic>>? messages,
     List<ToolExecRecord>? toolRecords,
     List<FileChange>? fileChanges,
+    this.context,
     DateTime? createdAt,
     DateTime? updatedAt,
     this.status = 'running',
@@ -119,6 +122,7 @@ class AgentTask {
     List<Map<String, dynamic>>? messages,
     List<ToolExecRecord>? toolRecords,
     List<FileChange>? fileChanges,
+    AgentContext? context,
     DateTime? updatedAt,
     String? status,
   }) {
@@ -133,6 +137,7 @@ class AgentTask {
       messages: messages ?? this.messages,
       toolRecords: toolRecords ?? this.toolRecords,
       fileChanges: fileChanges ?? this.fileChanges,
+      context: context ?? this.context,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
       status: status ?? this.status,
@@ -150,6 +155,7 @@ class AgentTask {
         'messages': messages,
         'toolRecords': toolRecords.map((e) => e.toJson()).toList(),
         'fileChanges': fileChanges.map((e) => e.toJson()).toList(),
+        'context': context?.toJson(),
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
         'status': status,
@@ -178,6 +184,9 @@ class AgentTask {
                 .map((e) => FileChange.fromJson(Map<String, dynamic>.from(e)))
                 .toList() ??
             [],
+        context: j['context'] is Map
+            ? AgentContext.fromJson(Map<String, dynamic>.from(j['context'] as Map))
+            : null,
         createdAt:
             DateTime.tryParse(j['createdAt']?.toString() ?? '') ??
                 DateTime.now(),

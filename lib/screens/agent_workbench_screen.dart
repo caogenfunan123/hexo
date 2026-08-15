@@ -8,6 +8,7 @@ import '../core/ai/ai_model_manager.dart';
 import '../core/ai/ai_request_dispatcher.dart';
 import '../core/ai/ai_self_checker.dart';
 import '../core/ai/ai_session_manager.dart';
+import '../core/task/agent_context.dart';
 import '../core/task/agent_task_type.dart';
 import '../core/task/task_model.dart';
 import '../core/tools/tool_entity.dart';
@@ -114,6 +115,10 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
       objective: objective,
       workspacePath: widget.activeRepo?.fullName,
       attachmentPaths: List.of(_attachments),
+      context: AgentContext.fromRepo(
+        repo: widget.activeRepo,
+        taskType: _taskType,
+      ),
     );
     setState(() => _task = task);
     _saveTask(task);
@@ -720,10 +725,14 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
   }
 
   Widget _buildChatArea(AgentTask task) {
-    final repo = widget.activeRepo;
-    final fw = repo?.frameworkId;
-    final taskType = task.taskType;
-    final themesPath = taskType == AgentTaskType.theme ? 'themes' : null;
+    // 优先使用任务持久化的场景上下文；老任务（无 context）从当前仓库重建
+    final context = task.context ??
+        AgentContext.fromRepo(
+          repo: widget.activeRepo,
+          taskType: task.taskType,
+        );
+    final repo = context.activeRepo ?? widget.activeRepo;
+    final starter = task.taskType.starterPrompt(context);
     return AiChatPanel(
       key: _chatKey,
       settings: widget.settings,
@@ -731,20 +740,18 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
       modelManager: widget.modelManager,
       dispatcher: widget.dispatcher,
       selfChecker: widget.selfChecker,
-      sessionType: taskType.sessionType,
-      blogFramework: fw,
-      postsPath: repo?.postsPath,
-      pagesPath: repo?.pagesPath,
-      themesPath: themesPath,
+      sessionType: task.taskType.sessionType,
+      blogFramework: context.blogFramework,
+      postsPath: context.postsPath,
+      pagesPath: context.pagesPath,
+      themesPath: context.themesPath,
       gitHubService: widget.gitHubService,
       activeRepo: repo,
       storageService: widget.storageService,
       historyKey: 'task_${task.id}',
-      initialMessage: '欢迎使用 Agent 任务工作台（${taskType.label}）！\n\n'
-          '${taskType.starterPrompt}\n'
-          '任务目标：${task.objective}\n'
+      initialMessage: '$starter\n\n任务目标：${task.objective}\n'
           '${task.attachmentPaths.isNotEmpty ? '已附加 ${task.attachmentPaths.length} 个文件。\n' : ''}'
-          '${repo != null ? '工作区：${repo.owner}/${repo.repo}（${fw ?? "未知框架"}）\n' : ''}'
+          '${repo != null ? '工作区：${repo.owner}/${repo.repo}（${repo.frameworkId ?? "未知框架"}）\n' : ''}'
           '请开始执行任务，可调用工具读取仓库、分析内容并产出结果。',
       onSettingsChanged: widget.onSettingsChanged,
       onToolsExecuted: _recordToolExecutions,
