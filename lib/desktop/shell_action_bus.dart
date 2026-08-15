@@ -49,6 +49,8 @@ class ShellActionBus {
   final VoidCallback onOpenLinkChecker;
   final VoidCallback onOpenBatchTools;
   final VoidCallback onOpenAiPromptTemplates;
+  final VoidCallback onShowContentStats;
+  final VoidCallback onShowBackupRestore;
 
   // ── 导航：AI ──
   final VoidCallback onShowAgentWorkbench;
@@ -115,6 +117,8 @@ class ShellActionBus {
     required this.onOpenLinkChecker,
     required this.onOpenBatchTools,
     required this.onOpenAiPromptTemplates,
+    required this.onShowContentStats,
+    required this.onShowBackupRestore,
     required this.onShowAgentWorkbench,
     required this.onShowAiArticleChat,
     required this.onShowAiPageChat,

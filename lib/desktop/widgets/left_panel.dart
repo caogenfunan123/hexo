@@ -228,6 +228,8 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                         ..._nav(id: 'image_bed', icon: Icons.photo_library_outlined, label: '图床管理', onTap: widget.bus.onOpenImageBedManager),
                         ..._nav(id: 'link_checker', icon: Icons.link_off, label: '链接检测', onTap: widget.bus.onOpenLinkChecker),
                         ..._nav(id: 'batch_tools', icon: Icons.build_circle, label: '批量工具箱', onTap: widget.bus.onOpenBatchTools),
+                        ..._nav(id: 'content_stats', icon: Icons.insights_outlined, label: '内容统计', onTap: widget.bus.onShowContentStats),
+                        ..._nav(id: 'backup_restore', icon: Icons.settings_backup_restore, label: '备份与恢复', onTap: widget.bus.onShowBackupRestore),
                         ..._nav(id: 'proxy_settings', icon: Icons.vpn_lock_outlined, label: '代理设置', onTap: widget.bus.onOpenProxySettings),
                       ],
                     ),

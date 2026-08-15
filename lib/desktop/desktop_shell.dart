@@ -85,6 +85,8 @@ import '../screens/image_bed_screen.dart';
 import '../screens/link_checker_screen.dart';
 import '../screens/batch_tools_screen.dart';
 import '../screens/ai_prompt_templates_screen.dart';
+import '../screens/content_stats_screen.dart';
+import '../screens/backup_restore_screen.dart';
 import '../screens/p2p_sync_screen.dart';
 import '../widgets/ai_chat_panel.dart';
 import 'widgets/ai_selection_edit_dialog.dart';
@@ -3848,6 +3850,22 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     ));
   }
 
+  void _openContentStats() {
+    _openTab('content_stats', '内容统计', Icons.insights_outlined,
+        ContentStatsScreen(drafts: drafts, repos: repos));
+  }
+
+  void _openBackupRestore() {
+    _openTab(
+        'backup_restore',
+        '备份与恢复',
+        Icons.settings_backup_restore,
+        BackupRestoreScreen(
+          rootProvider: () => storage.root,
+          onToast: _showToast,
+        ));
+  }
+
   void _openAiPromptTemplates() {
     showDialog(
       context: context,
@@ -7553,6 +7571,8 @@ $htmlContent
     onExportLogs: _exportLogs,
     onOpenLinkChecker: _openLinkChecker,
     onOpenBatchTools: _openBatchTools,
+    onShowContentStats: _openContentStats,
+    onShowBackupRestore: _openBackupRestore,
     onOpenAiPromptTemplates: _openAiPromptTemplates,
     onShowAgentWorkbench: _showAgentWorkbench,
     onShowAiArticleChat: _showAiArticleChat,
