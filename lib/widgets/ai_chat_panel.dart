@@ -57,6 +57,9 @@ class AiChatPanel extends StatefulWidget {
   final void Function(List<ParsedFileOp> files)? onFileOpsParsed;
   final void Function(List<ParsedFileOp> files)? onFilesWritten;
 
+  /// 附件入口回调：宿主在工作台对话页提供「添加附件」按钮（点击弹文件选择）
+  final VoidCallback? onAttach;
+
   /// 👇 文件执行能力：Git 服务 + 仓库配置
   final GitHubService? gitHubService;
   final RepoConfig? activeRepo;
@@ -98,6 +101,7 @@ class AiChatPanel extends StatefulWidget {
     this.onToolsExecuted,
     this.onFileOpsParsed,
     this.onFilesWritten,
+    this.onAttach,
     this.gitHubService,
     this.activeRepo,
     this.storageService,
@@ -1413,6 +1417,12 @@ class AiChatPanelState extends State<AiChatPanel> {
           const SizedBox(height: 6),
           Row(
             children: [
+              if (widget.onAttach != null)
+                IconButton(
+                  onPressed: widget.onAttach,
+                  icon: const Icon(Icons.attach_file),
+                  tooltip: '添加附件',
+                ),
               Expanded(
                 child: TextField(
                   controller: _chatCtrl,

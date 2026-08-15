@@ -65,8 +65,6 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
   // 当前任务
   AgentTask? _task;
   List<AgentTask> _recentTasks = [];
-  final TextEditingController _objectiveCtrl = TextEditingController();
-  final TextEditingController _titleCtrl = TextEditingController();
   AgentTaskType _taskType = AgentTaskType.general;
 
   // 附件列表
@@ -79,14 +77,25 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
     super.initState();
     _taskRepo = TaskRepository(widget.storageService);
     _taskType = widget.initialTaskType;
+    // 打开工作台即进入对话：直接创建空白任务，用户对话里描述需求
+    _task = _createBlankTask();
     _loadRecentTasks();
   }
 
-  @override
-  void dispose() {
-    _objectiveCtrl.dispose();
-    _titleCtrl.dispose();
-    super.dispose();
+  /// 创建空白任务（无前置表单，直接进入对话）
+  AgentTask _createBlankTask() {
+    return AgentTask(
+      id: 'task_${DateTime.now().millisecondsSinceEpoch}',
+      siteId: _siteId,
+      taskType: _taskType,
+      title: '',
+      objective: '',
+      workspacePath: widget.activeRepo?.fullName,
+      context: AgentContext.fromRepo(
+        repo: widget.activeRepo,
+        taskType: _taskType,
+      ),
+    );
   }
 
   Future<void> _loadRecentTasks() async {
@@ -95,34 +104,14 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
     setState(() => _recentTasks = tasks);
   }
 
-  /// 新建任务
+  /// 新建对话：重置为空白任务（无前置表单，直接在对话里描述需求）
   void _newTask() {
-    final objective = _objectiveCtrl.text.trim();
-    if (objective.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先填写任务目标')),
-      );
-      return;
-    }
-    final task = AgentTask(
-      id: 'task_${DateTime.now().millisecondsSinceEpoch}',
-      siteId: _siteId,
-      taskType: _taskType,
-      title: _titleCtrl.text.trim().isEmpty
-          ? objective.length > 20
-              ? '${objective.substring(0, 20)}...'
-              : objective
-          : _titleCtrl.text.trim(),
-      objective: objective,
-      workspacePath: widget.activeRepo?.fullName,
-      attachmentPaths: List.of(_attachments),
-      context: AgentContext.fromRepo(
-        repo: widget.activeRepo,
-        taskType: _taskType,
-      ),
-    );
-    setState(() => _task = task);
-    _saveTask(task);
+    _chatKey.currentState?.clearHistory();
+    setState(() {
+      _task = _createBlankTask();
+      _attachments.clear();
+    });
+    _saveTask(_task!);
   }
 
   /// 恢复任务
@@ -130,12 +119,95 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
     setState(() {
       _task = task;
       _taskType = task.taskType;
-      _titleCtrl.text = task.title;
-      _objectiveCtrl.text = task.objective;
       _attachments
         ..clear()
         ..addAll(task.attachmentPaths);
     });
+  }
+
+  /// 历史任务选择对话框（恢复指定任务）
+  Future<void> _showHistoryDialog() async {
+    final selected = await showDialog<AgentTask>(
+      context: context,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return Dialog(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480, maxHeight: 520),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.history, size: 20, color: cs.primary),
+                      const SizedBox(width: 8),
+                      const Text('历史任务',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: _recentTasks.isEmpty
+                      ? Center(
+                          child: Text('暂无历史任务',
+                              style: TextStyle(color: cs.outline)),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          itemCount: _recentTasks.length,
+                          itemBuilder: (ctx, i) {
+                            final t = _recentTasks[i];
+                            return ListTile(
+                              dense: true,
+                              leading: Icon(
+                                _statusColor(t.status) == Colors.green
+                                    ? Icons.check_circle
+                                    : Icons.history,
+                                color: _statusColor(t.status),
+                                size: 18,
+                              ),
+                              title: Text(
+                                t.title.isEmpty ? '未命名任务' : t.title,
+                                style: const TextStyle(fontSize: 13.5),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(
+                                '${t.taskType.label} · ${t.objective.isEmpty ? '无目标描述' : (t.objective.length > 40 ? t.objective.substring(0, 40) + '...' : t.objective)} · ${_statusLabel(t.status)}',
+                                style: const TextStyle(fontSize: 11.5),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              onTap: () => Navigator.pop(ctx, t),
+                            );
+                          },
+                        ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('关闭'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (selected != null) {
+      _resumeTask(selected);
+    }
   }
 
   /// 重建任务上下文：将持久化的仓库 fullName 还原为 RepoConfig
@@ -171,9 +243,6 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
   /// 保存任务（断点）
   Future<void> _saveTask(AgentTask task) async {
     final current = task.copyWith(
-      title: _titleCtrl.text.trim().isEmpty ? task.title : _titleCtrl.text.trim(),
-      objective:
-          _objectiveCtrl.text.trim().isEmpty ? task.objective : _objectiveCtrl.text.trim(),
       attachmentPaths: List<String>.from(_attachments),
       workspacePath: widget.activeRepo?.fullName ?? task.workspacePath,
       messages: List<Map<String, dynamic>>.from(widget.dispatcher.chatHistory),
@@ -444,133 +513,6 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
     );
   }
 
-  /// 新建/恢复任务面板
-  Widget _buildTaskSetup() {
-    final cs = Theme.of(context).colorScheme;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Agent 任务工作台',
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: cs.onSurface)),
-          const SizedBox(height: 4),
-          Text(
-            '给 AI 一个完整任务：附加文件、绑定工作区，实时查看工具执行与文件变更，支持多轮续跑与断点恢复。',
-            style: TextStyle(fontSize: 12.5, color: cs.outline),
-          ),
-          const SizedBox(height: 20),
-          Text('任务类型',
-              style: TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final t in AgentTaskType.values)
-                ChoiceChip(
-                  label: Text(t.label, style: const TextStyle(fontSize: 12)),
-                  selected: _taskType == t,
-                  visualDensity: VisualDensity.compact,
-                  onSelected: (_) => setState(() => _taskType = t),
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _titleCtrl,
-            decoration: const InputDecoration(
-              labelText: '任务标题（可选）',
-              border: OutlineInputBorder(),
-              hintText: '例如：为博客编写 SEO 优化文章',
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _objectiveCtrl,
-            minLines: 3,
-            maxLines: 5,
-            decoration: const InputDecoration(
-              labelText: '任务目标 *',
-              border: OutlineInputBorder(),
-              hintText: '描述你希望 AI 完成的任务，例如：\n分析我的 Hexo 仓库现有文章风格，围绕"Flutter 开发"写一篇 2000 字的文章并生成 frontmatter',
-            ),
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                icon: const Icon(Icons.attach_file, size: 16),
-                label: const Text('添加附件'),
-                onPressed: _pickAttachments,
-              ),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.rocket_launch_outlined, size: 16),
-                label: const Text('创建任务'),
-                onPressed: _newTask,
-              ),
-            ],
-          ),
-          if (_attachments.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            ..._attachments.map((p) => ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.insert_drive_file, size: 18),
-                  title: Text(p.split('/').last,
-                      style: const TextStyle(fontSize: 13)),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.close, size: 16),
-                    onPressed: () =>
-                        setState(() => _attachments.remove(p)),
-                  ),
-                )),
-          ],
-          const SizedBox(height: 20),
-          if (_recentTasks.isNotEmpty) ...[
-            Divider(color: cs.outlineVariant.withOpacity(0.4)),
-            const SizedBox(height: 8),
-            Text('历史任务',
-                style: TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.w600, color: cs.onSurface)),
-            const SizedBox(height: 8),
-            ..._recentTasks.take(10).map((t) => Card(
-                  margin: const EdgeInsets.only(bottom: 6),
-                  child: ListTile(
-                    dense: true,
-                    leading: Icon(_statusColor(t.status) == Colors.green
-                        ? Icons.check_circle
-                        : Icons.history,
-                        color: _statusColor(t.status),
-                        size: 18),
-                    title: Text(t.title,
-                        style: const TextStyle(fontSize: 13.5),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                    subtitle: Text(
-                      '${t.taskType.label} · ${t.objective.length > 40 ? t.objective.substring(0, 40) + '...' : t.objective} · ${_statusLabel(t.status)}',
-                      style: const TextStyle(fontSize: 11.5),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.play_arrow, size: 20),
-                      tooltip: '恢复任务',
-                      onPressed: () => _resumeTask(t),
-                    ),
-                  ),
-                )),
-          ],
-        ],
-      ),
-    );
-  }
-
   /// 工具执行时间线
   Widget _buildToolTimeline() {
     final task = _task;
@@ -680,19 +622,28 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final task = _task;
+    final task = _task ?? _createBlankTask();
     return DefaultTabController(
       length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Agent 工作台'),
           actions: [
-            if (task != null)
-              IconButton(
-                icon: const Icon(Icons.fact_check_outlined),
-                tooltip: '标记完成',
-                onPressed: () => _markTaskDone(task),
-              ),
+            IconButton(
+              icon: const Icon(Icons.history),
+              tooltip: '历史任务',
+              onPressed: _showHistoryDialog,
+            ),
+            IconButton(
+              icon: const Icon(Icons.add_comment_outlined),
+              tooltip: '新建对话',
+              onPressed: _newTask,
+            ),
+            IconButton(
+              icon: const Icon(Icons.fact_check_outlined),
+              tooltip: '标记完成',
+              onPressed: () => _markTaskDone(task),
+            ),
             IconButton(
               icon: const Icon(Icons.delete_outline),
               tooltip: '清空对话',
@@ -721,36 +672,32 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
               },
             ),
           ],
-          bottom: task == null
-              ? null
-              : const PreferredSize(
-                  preferredSize: Size.fromHeight(40),
-                  child: TabBar(
-                    indicatorSize: TabBarIndicatorSize.label,
-                    tabs: [
-                      Tab(text: '对话', icon: Icon(Icons.chat_bubble_outline, size: 18)),
-                      Tab(text: '工具', icon: Icon(Icons.handyman_outlined, size: 18)),
-                      Tab(text: '文件', icon: Icon(Icons.difference_outlined, size: 18)),
-                    ],
-                  ),
-                ),
+          bottom: const PreferredSize(
+            preferredSize: Size.fromHeight(40),
+            child: TabBar(
+              indicatorSize: TabBarIndicatorSize.label,
+              tabs: [
+                Tab(text: '对话', icon: Icon(Icons.chat_bubble_outline, size: 18)),
+                Tab(text: '工具', icon: Icon(Icons.handyman_outlined, size: 18)),
+                Tab(text: '文件', icon: Icon(Icons.difference_outlined, size: 18)),
+              ],
+            ),
+          ),
         ),
-        body: task == null
-            ? _buildTaskSetup()
-            : Column(
+        body: Column(
+          children: [
+            _buildTaskHeader(),
+            Expanded(
+              child: TabBarView(
                 children: [
-                  _buildTaskHeader(),
-                  Expanded(
-                    child: TabBarView(
-                      children: [
-                        _buildChatArea(task),
-                        _buildToolTimeline(),
-                        _buildFileChanges(),
-                      ],
-                    ),
-                  ),
+                  _buildChatArea(task),
+                  _buildToolTimeline(),
+                  _buildFileChanges(),
                 ],
               ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -761,6 +708,8 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
     final context = _restoreContext(task.context, task);
     final repo = context.activeRepo ?? widget.activeRepo;
     final starter = task.taskType.starterPrompt(context);
+    final objectiveLine =
+        task.objective.isEmpty ? '' : '任务目标：${task.objective}\n';
     return AiChatPanel(
       key: _chatKey,
       settings: widget.settings,
@@ -777,14 +726,15 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
       activeRepo: repo,
       storageService: widget.storageService,
       historyKey: 'task_${task.id}',
-      initialMessage: '$starter\n\n任务目标：${task.objective}\n'
+      initialMessage: '$starter\n\n$objectiveLine'
           '${task.attachmentPaths.isNotEmpty ? '已附加 ${task.attachmentPaths.length} 个文件。\n' : ''}'
           '${repo != null ? '工作区：${repo.owner}/${repo.repo}（${repo.frameworkId ?? "未知框架"}）\n' : ''}'
-          '请开始执行任务，可调用工具读取仓库、分析内容并产出结果。',
+          '请描述你的需求，我会调用工具读取仓库、分析内容并产出结果。',
       onSettingsChanged: widget.onSettingsChanged,
       onToolsExecuted: _recordToolExecutions,
       onFileOpsParsed: _recordParsedFileOps,
       onFilesWritten: _recordWrittenFiles,
+      onAttach: _pickAttachments,
     );
   }
 }
