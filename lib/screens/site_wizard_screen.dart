@@ -473,7 +473,7 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
           decoration: InputDecoration(
             labelText: '仓库名（同时作为站点项目名）',
             hintText: 'my-blog',
-            prefixIcon: const Icon(Icons.repo),
+            prefixIcon: const Icon(Icons.folder_outlined),
             errorText: _repoNameCtrl.text.isEmpty
                 ? null
                 : (_validateRepoName(_repoNameCtrl.text.trim())
