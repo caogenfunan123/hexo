@@ -55,7 +55,7 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen> {
       final bytes = await svc.exportAll();
 
       // 默认保存目录：文档目录
-      final Directory? docs;
+      Directory? docs;
       try {
         docs = await getApplicationDocumentsDirectory();
       } catch (_) {
@@ -81,15 +81,16 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen> {
         _toast('已取消导出');
         return;
       }
-      final f = File(savePath);
+      final path = savePath;
+      final f = File(path);
       await f.writeAsBytes(bytes, flush: true);
       if (mounted) {
         setState(() {
-          _lastExportPath = savePath;
+          _lastExportPath = path;
           _lastBytes = bytes.length;
         });
       }
-      _toast('备份已导出到 $savePath');
+      _toast('备份已导出到 $path');
     } catch (e) {
       _toast('导出失败: $e');
     } finally {

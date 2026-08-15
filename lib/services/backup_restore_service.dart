@@ -101,7 +101,12 @@ class BackupRestoreService {
         continue;
       }
       try {
-        final data = base64Decode(entry.value);
+        final value = entry.value;
+        if (value == null) {
+          errors.add('跳过空内容文件: $rel');
+          continue;
+        }
+        final data = base64Decode(value);
         final dest = File('${root.path}/$rel');
         if (!overwrite && await dest.exists()) {
           missing.add(rel);
