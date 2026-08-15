@@ -1090,9 +1090,10 @@ class BuiltinTools {
       ToolParam(
         name: 'git_repo_created',
         type: 'boolean',
-        description: 'Git 仓库是否已创建（create_repo 成功后为 true）',
+        description: 'Git 仓库是否由本次建站创建（取 create_repo 返回的 git_repo_created）。'
+            '未提供或不确定时必须为 false，避免误删用户已有仓库。',
         required: false,
-        defaultValue: true,
+        defaultValue: false,
       ),
       ToolParam(
         name: 'pages_enabled',
@@ -1207,6 +1208,21 @@ class BuiltinTools {
         description: 'Cloudflare Deploy Hook（模式二时 poll_site_build 返回）',
         required: false,
         defaultValue: '',
+      ),
+      ToolParam(
+        name: 'welcome_post_path',
+        type: 'string',
+        description: '欢迎文章路径（write_welcome_post 返回的 welcome_post_path，可选）',
+        required: false,
+        defaultValue: '',
+      ),
+      ToolParam(
+        name: 'deploy_confirmed',
+        type: 'boolean',
+        description: 'Cloudflare 部署是否已确认触发成功（模式二：trigger_cf_deploy 成功返回后才为 true）。'
+            '为 false 时站点将标记为部署待确认，不会误报为已完成。',
+        required: false,
+        defaultValue: false,
       ),
     ],
     createdAt: DateTime(2026, 1, 1),
@@ -2942,9 +2958,9 @@ class BuiltinTools {
   // 一键建站工具（AI 对话主模式）
   // ────────────────────────────────────────────────
 
-  /// 执行一键建站。AI 模型未配置时返回引导提示；建站成功触发站点持久化回调。
+  /// 执行一键建站。建站服务未初始化时拒绝执行；建站成功触发站点持久化回调。
   static Future<ToolCallResult> _executeCreateSite(ToolCallRequest req) async {
-    // AI 模型前置校验：未配置模型则拒绝执行并引导配置
+    // 应用设置前置校验
     if (appSettings == null) {
       return ToolCallResult(
         toolId: 'create_site',
@@ -2953,14 +2969,9 @@ class BuiltinTools {
         error: '应用设置未初始化',
       );
     }
-    if (appSettings!.effectiveAiApiKey.isEmpty || appSettings!.activeAiProfile == null) {
-      return ToolCallResult(
-        toolId: 'create_site',
-        content: '',
-        success: false,
-        error: '请先在 AI 设置中配置模型，再重试建站',
-      );
-    }
+    // 建站工具做 Git/CF HTTP 操作，不依赖 AI 模型配置。
+    // 对话能进入建站流程即说明模型可用（中转站模型在 modelManager，settings 不可见），
+    // 此处不再以 activeAiProfile 拒绝，避免与普通对话体系脱节。
     if (siteWizardService == null) {
       return ToolCallResult(
         toolId: 'create_site',
@@ -3028,11 +3039,20 @@ class BuiltinTools {
 
       final result = await siteWizardService!.run(request);
 
-      // 持久化接入：令牌注册 + 站点入站点管理 + 设置保存
-      if (onSiteCreated != null) {
-        await onSiteCreated!(result);
-      } else {
-        await _persistSiteResult(request, result);
+      // 持久化接入：令牌注册 + 站点入站点管理 + 设置保存。
+      // 持久化失败不影响建站结果（远程仓库已建成），单独捕获并提示，
+      // 避免误报"建站失败"导致用户重试撞同名仓库而卡死。
+      String? persistWarning;
+      try {
+        if (onSiteCreated != null) {
+          await onSiteCreated!(result);
+        } else {
+          await _persistSiteResult(request, result);
+        }
+      } catch (pe) {
+        persistWarning =
+            '站点已创建，但注册到站点管理失败（$pe）。请稍后在站点管理中手动添加该仓库。';
+        debugPrint('create_site 持久化失败: $pe');
       }
 
       final report = StringBuffer()
@@ -3051,6 +3071,9 @@ class BuiltinTools {
         report.writeln('欢迎文章: ${result.welcomePostPath}');
       }
       report.writeln('该站点已自动注册到站点管理，可直接通过发布功能发布文章。');
+      if (persistWarning != null) {
+        report.writeln('注意: $persistWarning');
+      }
       return ToolCallResult(
         toolId: 'create_site',
         content: report.toString(),
@@ -3066,7 +3089,11 @@ class BuiltinTools {
     }
   }
 
-  /// 分步建站共享前置校验：未配置模型 / 建站服务未初始化时返回错误，否则返回 null。
+  /// 分步建站共享前置校验：应用设置 / 建站服务未初始化时返回错误，否则返回 null。
+  ///
+  /// 不做 AI 模型配置校验：分步工具是纯 Git/CF HTTP 操作，且对话能运行即说明
+  /// 模型可用（中转站模型在 modelManager，settings 的 activeAiProfile 可能为空），
+  /// 以 activeAiProfile 拒绝会与普通对话体系脱节，误拦已配置模型的用户。
   static ToolCallResult? _siteStepGuard(String toolId) {
     if (appSettings == null) {
       return ToolCallResult(
@@ -3074,15 +3101,6 @@ class BuiltinTools {
         content: '',
         success: false,
         error: '应用设置未初始化',
-      );
-    }
-    if (appSettings!.effectiveAiApiKey.isEmpty ||
-        appSettings!.activeAiProfile == null) {
-      return ToolCallResult(
-        toolId: toolId,
-        content: '',
-        success: false,
-        error: '请先在 AI 设置中配置模型，再重试建站',
       );
     }
     if (siteWizardService == null) {
@@ -3185,13 +3203,25 @@ class BuiltinTools {
           'repo_name': ctx.repoName,
           'framework_id': ctx.frameworkId,
           'site_title': ctx.siteTitle,
+          // 回滚计划所需的部分状态：仓库必已创建；模式一启用 Pages；
+          // CF 项目由用户手工创建（模式二），此处始终为 false。
+          'git_repo_created': true,
+          'pages_enabled': mode == WizardMode.one,
+          'cf_project_created': false,
         }),
         success: true,
       );
     } catch (e) {
+      // 失败时仓库多半未创建（或已存在同名仓库），明确 git_repo_created=false，
+      // 防止模型以默认值 true 调 rollback_site 误删用户已有仓库。
       return ToolCallResult(
         toolId: 'create_repo',
-        content: '',
+        content: jsonEncode({
+          'status': 'error',
+          'git_repo_created': false,
+          'pages_enabled': false,
+          'cf_project_created': false,
+        }),
         success: false,
         error: '创建仓库失败: $e',
       );
@@ -3246,6 +3276,25 @@ class BuiltinTools {
         content: '',
         success: false,
         error: '缺少必要上下文：请提供 create_repo 返回的 repo_name、repo_owner 与 git_token',
+      );
+    }
+    // GitLab 轮询需要数字 project_id（create_repo 返回），缺失时给出明确提示
+    if (ctx.gitProvider == GitProviderType.gitlab && ctx.projectId.isEmpty) {
+      return ToolCallResult(
+        toolId: 'poll_site_build',
+        content: '',
+        success: false,
+        error: 'GitLab 模式轮询需要 create_repo 返回的 project_id，请携带后再试',
+      );
+    }
+    // 模式二轮询需要 CF 凭据
+    if (ctx.mode == WizardMode.two &&
+        (ctx.cfApiToken.isEmpty || ctx.cfAccountId.isEmpty)) {
+      return ToolCallResult(
+        toolId: 'poll_site_build',
+        content: '',
+        success: false,
+        error: '模式二轮询需要 Cloudflare API Token 与账号 ID，请携带后再试',
       );
     }
 
@@ -3306,6 +3355,15 @@ class BuiltinTools {
   /// 执行显式回滚步骤。
   static Future<ToolCallResult> _executeRollbackSite(
       ToolCallRequest req) async {
+    // 回滚是纯 HTTP 清理，不应被 AI 模型配置阻塞（模型不可用时用户仍可清理误建资源）
+    if (siteWizardService == null) {
+      return ToolCallResult(
+        toolId: 'rollback_site',
+        content: '',
+        success: false,
+        error: '建站服务未初始化',
+      );
+    }
     final args = req.arguments;
     final gitProvider = args['git_provider']?.toString() == 'gitlab'
         ? GitProviderType.gitlab
@@ -3325,6 +3383,19 @@ class BuiltinTools {
       );
     }
 
+    // 防误删：未显式声明 git_repo_created（create_repo 返回的标记）时拒绝执行。
+    // 仓库可能由本次建站前就已存在，默认删除会造成不可逆数据丢失。
+    final repoCreatedArg = args['git_repo_created'];
+    if (repoCreatedArg == null) {
+      return ToolCallResult(
+        toolId: 'rollback_site',
+        content: '',
+        success: false,
+        error: '缺少 git_repo_created 标记（create_repo 返回）。未确认仓库由本次建站创建时，'
+            '不应执行回滚删除，请先调用 create_repo 获取状态后再试。',
+      );
+    }
+
     final plan = RollbackPlan(
       repoOwner: repoOwner,
       repoName: repoName,
@@ -3333,7 +3404,7 @@ class BuiltinTools {
       cfApiToken: cfApiToken,
       cfAccountId: cfAccountId,
       cfProjectName: args['cf_project_name']?.toString().trim() ?? '',
-      gitRepoCreated: _argBool(args['git_repo_created'], fallback: true),
+      gitRepoCreated: _argBool(repoCreatedArg, fallback: false),
       pagesEnabled: _argBool(args['pages_enabled'], fallback: false),
       cfProjectCreated: _argBool(args['cf_project_created'], fallback: false),
     );
@@ -3377,15 +3448,17 @@ class BuiltinTools {
 
     final siteUrl = args['site_url']?.toString().trim() ?? '';
     final deployHook = args['deploy_hook']?.toString().trim() ?? '';
-
-    final result = siteWizardService!.finalize(
-      ctx,
-      siteUrl: siteUrl,
-      deployHooks: deployHook.isEmpty ? const [] : [deployHook],
-      welcomePostPath: '',
-    );
+    final welcomePostPath = args['welcome_post_path']?.toString().trim() ?? '';
+    final deployConfirmed = _argBool(args['deploy_confirmed'], fallback: false);
 
     try {
+      final result = siteWizardService!.finalize(
+        ctx,
+        siteUrl: siteUrl,
+        deployHooks: deployHook.isEmpty ? const [] : [deployHook],
+        welcomePostPath: welcomePostPath,
+      );
+
       if (onSiteCreated != null) {
         await onSiteCreated!(result);
       } else {
@@ -3408,6 +3481,11 @@ class BuiltinTools {
         ..writeln('仓库: ${result.repoConfig.fullName}');
       if (result.siteUrl.isNotEmpty) {
         report.writeln('站点访问地址: ${result.siteUrl}');
+      }
+      // 模式二未确认部署成功时如实提示，避免误报已上线
+      if (deployHook.isNotEmpty && !deployConfirmed) {
+        report.writeln('注意: 已保存 Deploy Hook，但尚未确认触发部署成功。'
+            '请调用 trigger_cf_deploy 确认，或稍后在控制台检查部署状态。');
       }
       return ToolCallResult(
         toolId: 'register_site',
@@ -3433,7 +3511,18 @@ class BuiltinTools {
     final settings = appSettings;
     if (settings == null) return;
 
-    // 1. 令牌注册
+    // 1. 站点注册（追加到 repos 并保存）。先落站点，避免设置已生效而站点未入库。
+    if (storageService != null) {
+      final repos = await storageService!.loadRepos();
+      final exists =
+          repos.any((r) => r.fullName == result.repoConfig.fullName);
+      if (!exists) {
+        repos.add(result.repoConfig);
+        await storageService!.saveRepos(repos);
+      }
+    }
+
+    // 2. 令牌注册
     var updated = settings;
     if (request.gitToken.isNotEmpty) {
       final profile = GithubTokenProfile(
@@ -3470,15 +3559,6 @@ class BuiltinTools {
       await onSettingsChanged!(updated);
     }
     appSettings = updated;
-
-    // 2. 站点注册（追加到 repos 并保存）
-    if (storageService == null) return;
-    final repos = await storageService!.loadRepos();
-    final exists = repos.any((r) => r.fullName == result.repoConfig.fullName);
-    if (!exists) {
-      repos.add(result.repoConfig);
-      await storageService!.saveRepos(repos);
-    }
   }
 
   /// 兼容 bool / String 的参数布尔解析；无法解析时返回 [fallback]。

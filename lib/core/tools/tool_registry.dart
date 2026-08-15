@@ -13,13 +13,21 @@ class ToolRegistry {
     _tools[tool.id] = tool;
   }
 
-  /// 注册自定义技能
+  /// 注册自定义技能。若与内置工具重名则拒绝，避免用户技能覆盖系统能力。
   void registerSkill(ToolEntity tool) {
+    final existing = _tools[tool.id];
+    if (existing != null && existing.type == ToolType.builtin) {
+      return;
+    }
     _tools[tool.id] = tool;
   }
 
-  /// 注册 MCP 工具
+  /// 注册 MCP 工具。若与内置工具重名则拒绝。
   void registerMcp(ToolEntity tool) {
+    final existing = _tools[tool.id];
+    if (existing != null && existing.type == ToolType.builtin) {
+      return;
+    }
     _tools[tool.id] = tool;
   }
 

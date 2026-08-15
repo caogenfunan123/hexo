@@ -1114,7 +1114,18 @@ class AiService {
     if (!hasSystemPrompt && systemPrompt.isNotEmpty) {
       allMessages.add({'role': 'system', 'content': systemPrompt});
     }
-    allMessages.addAll(messages);
+    // 归一化历史：Anthropic 产生的 content 为 blocks 数组，OpenAI Chat 要求字符串。
+    // 保留 tool_calls 键以维持多轮工具配对。
+    for (final m in messages) {
+      final role = m['role']?.toString();
+      if (role == 'system') {
+        allMessages.add(Map<String, dynamic>.from(m));
+        continue;
+      }
+      final normalized = Map<String, dynamic>.from(m);
+      normalized['content'] = _contentToText(m['content']);
+      allMessages.add(normalized);
+    }
 
     final body = <String, dynamic>{
       'model': p.model,
@@ -1420,9 +1431,22 @@ class AiService {
     }
     final reasoningText = thinkingBuf.isEmpty ? null : thinkingBuf.toString();
     final parsedUsage = usage == null ? null : UsageParser.fromAnthropic(usage!);
+    // 统一存储为 OpenAI 风格（带 tool_calls 键），dispatcher 据此将消息与
+    // 后续 tool 回执配对；content 保留原始 blocks 供 Anthropic 二次发送。
     final assistantMsg = <String, dynamic>{
       'role': 'assistant',
       if (contentBlocks.isNotEmpty) 'content': contentBlocks,
+      if (toolCalls.isNotEmpty)
+        'tool_calls': toolCalls
+            .map((tc) => {
+                  'id': tc.callId,
+                  'type': 'function',
+                  'function': {
+                    'name': tc.toolId,
+                    'arguments': jsonEncode(tc.arguments),
+                  },
+                })
+            .toList(),
     };
     final allMsgs = <Map<String, dynamic>>[...messages, assistantMsg];
 
@@ -1462,7 +1486,17 @@ class AiService {
     if (!hasSystemPrompt && systemPrompt.isNotEmpty) {
       allMessages.add({'role': 'system', 'content': systemPrompt});
     }
-    allMessages.addAll(messages);
+    // 归一化历史 content 为字符串（兼容 Anthropic 产生的 blocks 数组）
+    for (final m in messages) {
+      final role = m['role']?.toString();
+      if (role == 'system') {
+        allMessages.add(Map<String, dynamic>.from(m));
+        continue;
+      }
+      final normalized = Map<String, dynamic>.from(m);
+      normalized['content'] = _contentToText(m['content']);
+      allMessages.add(normalized);
+    }
 
     final body = <String, dynamic>{
       'model': p.model,

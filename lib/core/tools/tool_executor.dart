@@ -85,9 +85,11 @@ class ToolExecutor {
   Future<List<ToolCallResult>> executeAll(
     List<ToolCallRequest> requests, {
     Future<bool> Function(ToolCallRequest request)? confirmOverride,
+    bool Function()? isCancelled,
   }) async {
     final results = <ToolCallResult>[];
     for (final req in requests) {
+      if (isCancelled != null && isCancelled()) break;
       results.add(await execute(req, confirmOverride: confirmOverride));
     }
     return results;

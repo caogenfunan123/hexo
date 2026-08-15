@@ -235,6 +235,8 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
     });
     // 组装回滚计划（本表单不持有执行中的 RollbackPlan，提示资源保留交给站点管理）
     // 简化：表单场景尚未投入网页操作，触发 RollbackManager 逆序清理
+    // 注意：仓库创建发生在 _run 的 service.run 内部，失败时已由 service 自动回滚；
+    // 取消路径无法可靠确知仓库是否创建，故不置 gitRepoCreated，避免误删/误报
     try {
       final plan = RollbackPlan(
         repoOwner: '',
@@ -243,7 +245,7 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
         gitToken: _gitTokenCtrl.text.trim(),
         cfApiToken: _cfTokenCtrl.text.trim(),
         cfAccountId: _cfAccountCtrl.text.trim(),
-        gitRepoCreated: _step >= 4,
+        gitRepoCreated: false,
         userInvestedInWeb: false,
       );
       final failures = await RollbackManager().rollback(plan);

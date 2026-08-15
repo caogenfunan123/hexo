@@ -314,22 +314,34 @@ class GitHubProvider implements GitProviderAdapter {
 
   /// 启用 GitHub Pages（source = GitHub Actions，站点由仓库内 CI 构建）。
   Future<void> enablePages(String token, String owner, String name) async {
-    final data = await request(
-        'POST', 'https://api.github.com/repos/$owner/$name/pages', token,
-        body: {
-          'build_type': 'workflow',
-          'source': {'branch': 'main', 'path': '/'},
-        });
-    // 202 / 201 均视为成功；部分账号首次启用返回 201
-    if (data is! Map && data != null) throw Exception('启用 GitHub Pages 失败');
+    try {
+      final data = await request(
+          'POST', 'https://api.github.com/repos/$owner/$name/pages', token,
+          body: {
+            'build_type': 'workflow', // 与 source 互斥，勿同时传，否则 422
+          });
+      // 202 / 201 均视为成功；部分账号首次启用返回 201
+      if (data is! Map && data != null) {
+        throw Exception('启用 GitHub Pages 失败');
+      }
+    } catch (e) {
+      final msg = e.toString();
+      // 409：Pages 已启用（幂等成功）；其余错误上抛
+      if (msg.contains('HTTP 409')) {
+        debugPrint('GitHub Pages 已启用，忽略 409: $e');
+        return;
+      }
+      rethrow;
+    }
   }
 
-  /// 查询最近一次 workflow run。返回 run JSON；无任何 run 返回 null。
+  /// 查询指定分支最近一次 workflow run。返回 run JSON；无匹配 run 返回 null。
   Future<Map<String, dynamic>?> getActionsRun(
-      String token, String owner, String name) async {
+      String token, String owner, String name,
+      {String branch = 'main'}) async {
     final data = await request(
         'GET',
-        'https://api.github.com/repos/$owner/$name/actions/runs?per_page=1',
+        'https://api.github.com/repos/$owner/$name/actions/runs?branch=${Uri.encodeComponent(branch)}&per_page=1',
         token);
     if (data is! Map) return null;
     final runs = data['workflow_runs'];
@@ -346,15 +358,21 @@ class GitHubProvider implements GitProviderAdapter {
         'DELETE', 'https://api.github.com/repos/$owner/$name', token);
   }
 
-  /// 校验 token scope。返回 {scopes, missing, plan}：
+  /// 校验 token scope。返回 {scopes, missing, plan, scope_unknown}：
   /// scopes 为完整 scope 列表；missing 为缺少的必要 scope（repo/workflow）；
-  /// plan 为账号计划名（free / pro / team / enterprise）。
+  /// plan 为账号计划名（free / pro / team / enterprise）；
+  /// scope_unknown 为 true 表示无法读取 scope（fine-grained PAT 不返回 X-OAuth-Scopes 头），
+  /// 此时不判定缺失，由后续真实 API 调用验证权限。
   /// GitHub 免费账号私有仓库不能启用 Pages（Correctness 14）。
   Future<Map<String, dynamic>> verifyScopes(String token) async {
     final scopes = await _getGitHubScopes(token);
+    // fine-grained PAT 不返回 X-OAuth-Scopes 头，无法静态校验，放行由后续调用验证
+    final scopeUnknown = scopes.isEmpty;
     final missing = <String>[];
-    if (!scopes.contains('repo')) missing.add('repo');
-    if (!scopes.contains('workflow')) missing.add('workflow');
+    if (!scopeUnknown) {
+      if (!scopes.contains('repo')) missing.add('repo');
+      if (!scopes.contains('workflow')) missing.add('workflow');
+    }
 
     var plan = '';
     try {
@@ -365,7 +383,12 @@ class GitHubProvider implements GitProviderAdapter {
       }
     } catch (_) {}
 
-    return {'scopes': scopes, 'missing': missing, 'plan': plan};
+    return {
+      'scopes': scopes,
+      'missing': missing,
+      'plan': plan,
+      'scope_unknown': scopeUnknown,
+    };
   }
 
   /// 读取 GitHub /user 的 X-OAuth-Scopes 响应头（gitHttpRequest 不返回头，单独请求）。
@@ -636,13 +659,22 @@ class GitLabProvider implements GitProviderAdapter {
         });
   }
 
-  /// 启用 GitLab Pages（PUT /api/v4/projects/{id}/pages）。
+  /// 启用 GitLab Pages。
+  ///
+  /// gitlab.com 上 Pages 在首次成功部署后自动启用，此调用主要用于确保域名相关设置。
+  /// 使用 PATCH /projects/{id}/pages（PUT 已在 GitLab 17.0 起废弃）。
+  /// 若 Pages 尚未部署或端点不可用，静默忽略——不应阻塞建站流程。
   Future<void> enablePages(String token, String projectId) async {
-    await request(
-        'PUT',
-        'https://gitlab.com/api/v4/projects/$projectId/pages',
-        token,
-        body: {'force_https': true});
+    try {
+      await request(
+          'PATCH',
+          'https://gitlab.com/api/v4/projects/$projectId/pages',
+          token,
+          body: {'pages_https_only': true});
+    } catch (e) {
+      // GitLab Pages 首次部署后自动启用；此处失败不阻塞建站
+      debugPrint('GitLab enablePages 忽略失败: $e');
+    }
   }
 
   /// 查询最近一次 pipeline。返回 pipeline JSON；无任何 pipeline 返回 null。
@@ -667,12 +699,22 @@ class GitLabProvider implements GitProviderAdapter {
   /// 校验 token scope。返回 {scopes, missing}：
   /// scopes 为完整 scope 列表；missing 为缺少的必要 scope（api）。
   Future<Map<String, dynamic>> verifyScopes(String token) async {
-    final data = await request('GET', 'https://gitlab.com/api/v4/user', token);
+    // GitLab 的 PAT scope 只能从 /oauth/token/info 获取（/user 不返回 scopes）。
+    // 该端点要求 Bearer 认证。
+    final headers = <String, String>{
+      'Accept': 'application/json',
+      'User-Agent': 'HexoBlogManager',
+      'Authorization': 'Bearer $token',
+    };
+    final data = await gitHttpRequest(
+        'GET', 'https://gitlab.com/api/v4/oauth/token/info', headers);
     final scopes = <String>[];
     if (data is Map) {
       final raw = data['scopes'];
       if (raw is List) {
         scopes.addAll(raw.map((e) => e.toString()));
+      } else if (data['scope'] is String) {
+        scopes.addAll((data['scope'] as String).split(' '));
       }
     }
     final missing = <String>[];

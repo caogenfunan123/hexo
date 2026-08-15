@@ -60,6 +60,17 @@ class AiSettings {
           ? activeAiProfile!.model
           : aiModel;
 
+  /// 是否有可用的模型配置。
+  ///
+  /// 兼容两套体系：settings 内 profile / 全局密钥字段非空即视为已配置。
+  /// 注意：中转站模型（modelManager 的 ai_models.json）不在此判断范围内，
+  /// 因为 settings 层不可见该数据——对话本身能运行即代表模型可用，
+  /// 调用方不应仅凭本 getter 拒绝功能。
+  bool get hasModelConfig =>
+      effectiveAiApiKey.isNotEmpty ||
+      aiApiKey.isNotEmpty ||
+      aiProfiles.any((p) => p.apiKey.isNotEmpty);
+
   AiSettings copyWith({
     String? aiProvider,
     String? aiApiKey,

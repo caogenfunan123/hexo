@@ -470,12 +470,10 @@ extension EditorAiExt on _RootShellState {
   }
 
   /// 一键建站入口（AI 对话主模式）。
-  /// 校验 AI 模型已配置；未配置提示跳转 AI 设置，已配置打开 AI 对话并预置建站意图。
+  /// 打开 AI 对话并预置建站意图。模型可用性由对话面板自身管理
+  /// （中转站模型在 modelManager，settings 的 activeAiProfile 可能为空，
+  /// 此处不做强校验以免误拦已配置模型的用户）。
   void _startAiSiteWizard() {
-    if (settings.effectiveAiApiKey.isEmpty || settings.activeAiProfile == null) {
-      _showToast('请先在 AI 设置中配置模型，再使用一键建站');
-      return;
-    }
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AiArticleChatScreen(

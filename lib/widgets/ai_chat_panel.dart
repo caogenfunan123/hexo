@@ -490,7 +490,8 @@ class AiChatPanelState extends State<AiChatPanel> {
     }
   }
 
-  /// 保存完整对话上下文到本地文件（含工具调用上下文）
+  /// 保存完整对话上下文到本地文件（含工具调用上下文）。
+  /// 落盘前对工具参数中的敏感凭据（token/key/secret）脱敏，避免明文泄漏。
   Future<void> _saveHistory() async {
     final storage = widget.storageService;
     if (storage == null) return;
@@ -498,9 +499,52 @@ class AiChatPanelState extends State<AiChatPanel> {
       final root = (await storage.root).path;
       final file = File('$root/$_chatFileKey');
       final context = widget.dispatcher.chatHistory;
-      final json = jsonEncode({'context': context});
+      final sanitized = context.map(_sanitizeHistoryMessage).toList();
+      final json = jsonEncode({'context': sanitized});
       await file.writeAsString(json);
     } catch (e) { debugPrint('AiChat: stream close failed: $e'); }
+  }
+
+  /// 对单条历史消息中的敏感凭据字段做脱敏（保留结构供上下文恢复）。
+  Map<String, dynamic> _sanitizeHistoryMessage(Map<String, dynamic> msg) {
+    final out = Map<String, dynamic>.from(msg);
+    final calls = out['tool_calls'];
+    if (calls is List) {
+      out['tool_calls'] = calls.map((c) {
+        if (c is! Map) return c;
+        final cm = Map<String, dynamic>.from(c);
+        final fn = cm['function'];
+        if (fn is Map) {
+          final fm = Map<String, dynamic>.from(fn);
+          final rawArgs = fm['arguments'];
+          if (rawArgs is String && rawArgs.isNotEmpty) {
+            try {
+              final args = jsonDecode(rawArgs);
+              if (args is Map) {
+                final scrubbed = Map<String, dynamic>.from(args);
+                for (final key in scrubbed.keys.toList()) {
+                  if (_isSecretKey(key)) scrubbed[key] = '******';
+                }
+                fm['arguments'] = jsonEncode(scrubbed);
+              }
+            } catch (_) {}
+          }
+          cm['function'] = fm;
+        }
+        return cm;
+      }).toList();
+    }
+    return out;
+  }
+
+  bool _isSecretKey(String key) {
+    final k = key.toLowerCase();
+    return k.contains('token') ||
+        k.contains('api_key') ||
+        k.contains('apikey') ||
+        k.contains('secret') ||
+        k.contains('password') ||
+        k.contains('credential');
   }
 
   void _initSession() {
@@ -765,6 +809,8 @@ class AiChatPanelState extends State<AiChatPanel> {
     _streamSub?.cancel();
     _streamSub = null;
     widget.dispatcher.cancelCurrent();
+    // 通知建站长任务立即中止（构建轮询检查此标志），避免取消后后台静默建站
+    BuiltinTools.siteWizardService?.isCancelled = () => true;
     final idx = _streamingMsgIndex;
     if (idx != null && idx < _messages.length) {
       final hasContent = _streamBuffer.isNotEmpty;

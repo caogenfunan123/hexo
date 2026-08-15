@@ -48,6 +48,10 @@ class AiModelManager {
     return filtered;
   }
 
+  /// 是否有已启用的模型（供入口校验与 settings 体系联动判断）。
+  Future<bool> get hasEnabledModels async =>
+      (await getEnabled()).isNotEmpty;
+
   Future<void> addModel(AiModelEntity model) async {
     final all = await loadAll();
     // 去重：同 modelId + apiBase 只保留一份

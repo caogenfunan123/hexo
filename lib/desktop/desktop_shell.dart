@@ -3368,7 +3368,7 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
       onPersistSettings: _persistSettings,
       onShowToast: _showToast,
       onShowBlogSiteManager: _showBlogSiteManager,
-      onShowCreateSite: _startAiSiteWizard,
+      onShowCreateSite: () => _startAiSiteWizard(),
     ));
   }
 
@@ -5214,8 +5214,12 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   }
 
   /// 一键建站入口（AI 对话主模式）。
-  void _startAiSiteWizard() {
-    if (settings.effectiveAiApiKey.isEmpty || settings.activeAiProfile == null) {
+  Future<void> _startAiSiteWizard() async {
+    // 兼容两套模型配置体系：settings profile 或中转站模型（modelManager）任一可用即可。
+    // 中转站模型已配置但 settings.activeAiProfile 为空时不应拦截。
+    final hasModel = settings.ai.hasModelConfig ||
+        await aiModelManager.hasEnabledModels;
+    if (!hasModel) {
       _showToast('请先在 AI 设置中配置模型，再使用一键建站');
       return;
     }

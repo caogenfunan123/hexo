@@ -116,6 +116,7 @@ class CloudflarePagesProvider {
   ///
   /// 轮询 [maxAttempts] * [intervalMs] 仍未检测到项目时返回 null（不抛异常）。
   /// 检测到项目但 deploy_hooks 为空也返回 null（由调用方提示用户）。
+  /// Token 无效（401/403）时立即抛错，避免无谓等待。
   Future<String?> waitForProjectWithHook(
     String apiToken,
     String accountId, {
@@ -131,8 +132,13 @@ class CloudflarePagesProvider {
         final hook = parseDeployHookUrl(project);
         if (hook != null) return hook;
         // 项目存在但无 hook，继续等待（可能用户刚创建，hooks 尚未同步）
-      } catch (_) {
-        // 项目尚未创建，继续轮询
+      } catch (e) {
+        final msg = e.toString();
+        // 鉴权失败：无需继续轮询，直接上抛
+        if (msg.contains('HTTP 401') || msg.contains('HTTP 403')) {
+          rethrow;
+        }
+        // 项目尚未创建（404）或瞬时错误：继续轮询
       }
     }
     return null;

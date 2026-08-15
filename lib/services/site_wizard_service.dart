@@ -42,6 +42,12 @@ class SiteWizardService {
   final Duration buildPollTimeout;
   final Duration cfPollTimeout;
 
+  /// 取消回调：由宿主（AiChatPanel 取消按钮）设置。返回 true 表示用户已取消，
+  /// 长轮询（构建轮询 / 模式二衔接轮询）据此及时中止。
+  bool Function()? _isCancelled;
+  bool Function()? get isCancelled => _isCancelled;
+  set isCancelled(bool Function()? cb) => _isCancelled = cb;
+
   /// 执行建站。成功返回结果；失败抛异常（已触发回滚清理）。
   Future<WizardResult> run(WizardRequest req) async {
     switch (req.mode) {
@@ -53,6 +59,13 @@ class SiteWizardService {
       case WizardMode.two:
         return _runCloudflarePages(req);
     }
+  }
+
+  /// 是否因用户取消而中断。取消异常在构建/衔接轮询中抛出。
+  /// 判定同时参考异常消息与取消回调，避免取消后继续执行重操作。
+  bool _isCancelException(Object e) {
+    if (_isCancelled != null && _isCancelled!()) return true;
+    return e.toString().contains('操作已被用户取消');
   }
 
   // ────────────────────────────────────────────────
@@ -165,15 +178,25 @@ class SiteWizardService {
         maxAttempts: cfPollTimeout.inSeconds,
         intervalMs: 1000,
       );
-      return ('https://${ctx.repoName}.pages.dev', hook ?? '');
+      if (hook == null || hook.isEmpty) {
+        throw Exception(
+            '未检测到 Cloudflare Pages 项目，请确认已在控制台创建名为 ${ctx.repoName} 的项目');
+      }
+      return ('https://${ctx.repoName}.pages.dev', hook);
     }
     if (ctx.gitProvider == GitProviderType.gitlab) {
-      final url = await _pollGitlabBuild(
+      final (url, failed) = await _pollGitlabBuild(
           ctx.gitToken, ctx.projectId, ctx.repoOwner, ctx.repoName);
+      if (failed) {
+        throw Exception('GitLab Pipeline 构建失败，请检查仓库 CI 配置');
+      }
       return (url, '');
     }
-    final url =
+    final (url, failed) =
         await _pollGithubBuild(ctx.gitToken, ctx.repoOwner, ctx.repoName);
+    if (failed) {
+      throw Exception('GitHub Actions 构建失败，请检查仓库工作流配置');
+    }
     return (url, '');
   }
 
@@ -226,21 +249,22 @@ class SiteWizardService {
           ? await _gitlab.verifyScopes(req.gitToken)
           : await _github.verifyScopes(req.gitToken);
       final missing = result['missing'];
-      return missing is List
+      final list = missing is List
           ? missing.map((e) => e.toString()).toList()
-          : const <String>[];
+          : <String>[];
+      // GitHub 免费账号 + 私有仓库 + 模式一：无法启用 Pages，提前失败给明确提示
+      if (list.isEmpty &&
+          req.gitProvider == GitProviderType.github &&
+          req.repoPrivate &&
+          req.mode == WizardMode.one) {
+        final plan = result['plan']?.toString() ?? '';
+        if (plan == 'free') {
+          list.add('免费 GitHub 账号的私有仓库无法启用 Pages，请将仓库改为公开');
+        }
+      }
+      return list;
     } catch (e) {
       return ['账号校验失败: $e'];
-    }
-  }
-
-  /// 读取账号计划（GitHub 免费账号判定）。免费账号私有仓库不能启用 Pages。
-  Future<String> getGithubPlan(String token) async {
-    try {
-      final result = await _github.verifyScopes(token);
-      return result['plan']?.toString() ?? '';
-    } catch (_) {
-      return '';
     }
   }
 
@@ -286,7 +310,14 @@ class SiteWizardService {
       }
 
       // 6. 轮询 Actions 构建
-      final siteUrl = await _pollGithubBuild(req.gitToken, owner, req.repoName);
+      final (siteUrl, buildFailed) =
+          await _pollGithubBuild(req.gitToken, owner, req.repoName);
+      if (buildFailed) {
+        // 构建失败：保留仓库与骨架（不回滚），抛明确信息供上层提示。
+        // 复用 userInvestedInWeb 语义（=true 时 RollbackManager 跳过仓库删除）。
+        plan = plan.copyWith(userInvestedInWeb: true);
+        throw Exception('GitHub Actions 构建失败，仓库已创建并保留，请检查工作流配置后重试');
+      }
 
       return WizardResult(
         repoConfig: _buildRepoConfig(
@@ -300,7 +331,11 @@ class SiteWizardService {
         welcomePostPath: welcomePath,
       );
     } catch (e) {
-      debugPrint('GitHub 建站失败，触发回滚: $e');
+      debugPrint('GitHub 建站失败: $e');
+      // 用户取消：保留已建仓库，不执行回滚（用户可手动修复后继续）
+      if (_isCancelException(e)) {
+        plan = plan.copyWith(userInvestedInWeb: true);
+      }
       await _rollback.rollback(plan);
       rethrow;
     }
@@ -354,8 +389,13 @@ class SiteWizardService {
       }
 
       // 6. 轮询 Pipeline 构建
-      final siteUrl = await _pollGitlabBuild(
+      final (siteUrl, buildFailed) = await _pollGitlabBuild(
           req.gitToken, projectId, username, req.repoName);
+      if (buildFailed) {
+        // 构建失败：保留仓库（不回滚），抛明确信息
+        plan = plan.copyWith(userInvestedInWeb: true);
+        throw Exception('GitLab Pipeline 构建失败，仓库已创建并保留，请检查 CI 配置后重试');
+      }
 
       return WizardResult(
         repoConfig: _buildRepoConfig(
@@ -369,7 +409,11 @@ class SiteWizardService {
         welcomePostPath: welcomePath,
       );
     } catch (e) {
-      debugPrint('GitLab 建站失败，触发回滚: $e');
+      debugPrint('GitLab 建站失败: $e');
+      // 用户取消：保留已建仓库，不执行回滚
+      if (_isCancelException(e)) {
+        plan = plan.copyWith(userInvestedInWeb: true);
+      }
       await _rollback.rollback(plan);
       rethrow;
     }
@@ -420,7 +464,9 @@ class SiteWizardService {
       );
 
       if (hook == null) {
-        // 60s 未检测到项目：保留仓库，提示用户继续
+        // 60s 未检测到项目：用户已被引导去控制台操作，保留仓库。
+        // 先标记 userInvestedInWeb，catch 据此跳过仓库回滚。
+        plan = plan.copyWith(userInvestedInWeb: true);
         throw Exception(
             '未检测到 Cloudflare Pages 项目，请确认已在控制台创建名为 ${req.repoName} 的项目');
       }
@@ -451,8 +497,9 @@ class SiteWizardService {
       );
     } catch (e) {
       debugPrint('Cloudflare 建站失败: $e');
-      // 模式二已检测到项目后失败：保留仓库，仅清理可清理项
-      final cleanupPlan = plan.copyWith(userInvestedInWeb: plan.cfProjectCreated);
+      // 用户取消：保留仓库与 CF 项目，不执行回滚（用户可手动继续）
+      final keepRepo = _isCancelException(e) || plan.cfProjectCreated;
+      final cleanupPlan = plan.copyWith(userInvestedInWeb: keepRepo);
       await _rollback.rollback(cleanupPlan);
       rethrow;
     }
@@ -550,61 +597,81 @@ class SiteWizardService {
   // 构建轮询
   // ────────────────────────────────────────────────
 
-  /// 轮询 GitHub Actions run，返回站点 URL；超时返回空串（不抛异常，站点保留待回填）。
-  Future<String> _pollGithubBuild(
+  /// 轮询 GitHub Actions run。返回 (url, failed)：
+  /// url 为站点地址（成功）/空串（超时未完成）；failed 表示构建明确失败。
+  Future<(String, bool)> _pollGithubBuild(
       String token, String owner, String name) async {
     final deadline = DateTime.now().add(buildPollTimeout);
     const interval = Duration(seconds: 10);
     while (DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(interval);
+      // 用户取消：中止轮询，避免后台静默建站
+      if (_isCancelled != null && _isCancelled!()) {
+        throw Exception('操作已被用户取消');
+      }
       try {
         final run = await _github.getActionsRun(token, owner, name);
         if (run == null) continue;
         final status = run['status']?.toString() ?? '';
         if (status == 'completed') {
           final conclusion = run['conclusion']?.toString() ?? '';
-          if (conclusion == 'success') {
-            return 'https://$owner.github.io/$name/';
+          // 骨架 commit 触发 R1，欢迎文章 commit 触发 R2 并取消 R1。
+          // 轮询期间可能先看到被取消的 R1，跳过继续等最新 run。
+          if (conclusion == 'cancelled' ||
+              conclusion == 'skipped' ||
+              conclusion == 'action_required') {
+            continue;
           }
-          // 构建失败：保留站点，返回空 siteUrl 待回填
+          if (conclusion == 'success') {
+            return ('https://$owner.github.io/$name/', false);
+          }
+          // 构建失败：区分于超时，failed=true
           debugPrint('GitHub Actions 构建失败: $conclusion');
-          return '';
+          return ('', true);
         }
       } catch (e) {
         debugPrint('GitHub Actions 轮询异常: $e');
       }
     }
-    return '';
+    return ('', false);
   }
 
-  /// 轮询 GitLab pipeline，返回站点 URL；超时返回空串。
-  Future<String> _pollGitlabBuild(
+  /// 轮询 GitLab pipeline，返回 (url, failed)。
+  Future<(String, bool)> _pollGitlabBuild(
       String token, String projectId, String username, String projectName) async {
     final deadline = DateTime.now().add(buildPollTimeout);
     const interval = Duration(seconds: 10);
     while (DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(interval);
+      if (_isCancelled != null && _isCancelled!()) {
+        throw Exception('操作已被用户取消');
+      }
       try {
         final pipeline = await _gitlab.getPipeline(token, projectId);
         if (pipeline == null) continue;
         final status = pipeline['status']?.toString() ?? '';
         if (status == 'success') {
-          return 'https://$username.gitlab.io/$projectName/';
+          return ('https://$username.gitlab.io/$projectName/', false);
         }
-        if (status == 'failed' || status == 'canceled') {
+        if (status == 'canceled' || status == 'skipped') {
+          // 旧 pipeline 被新提交取消，继续等待最新 pipeline
+          continue;
+        }
+        if (status == 'failed') {
           debugPrint('GitLab Pipeline 构建失败: $status');
-          return '';
+          return ('', true);
         }
       } catch (e) {
         debugPrint('GitLab Pipeline 轮询异常: $e');
       }
     }
-    return '';
+    return ('', false);
   }
 
   Future<void> _triggerHook(String hook) async {
-    // 复用既有部署钩子触发逻辑
-    await GitHubService.triggerCloudflareDeploy(hook);
+    // 复用既有部署钩子触发逻辑；失败视为部署未触发，上抛避免假成功
+    final ok = await GitHubService.triggerCloudflareDeploy(hook);
+    if (!ok) throw Exception('触发 Cloudflare 部署失败（Deploy Hook 无效或不可达）');
   }
 
   // ────────────────────────────────────────────────

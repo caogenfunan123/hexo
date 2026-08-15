@@ -281,10 +281,6 @@ class AiRequestDispatcher {
             return;
           }
           final assistantMsg = response.allMessages.last;
-          if (assistantMsg['role'] == 'assistant' &&
-              assistantMsg['tool_calls'] != null) {
-            _chatHistory.add(Map<String, dynamic>.from(assistantMsg));
-          }
 
           if (response.reasoningContent != null &&
               response.reasoningContent!.isNotEmpty &&
@@ -315,6 +311,7 @@ class AiRequestDispatcher {
           final results = await toolExecutor.executeAll(
             response.toolCalls!,
             confirmOverride: (request) => _confirmTool(request),
+            isCancelled: () => _cancelled || _isStale(generation),
           );
           if (_isStale(generation)) return;
           onToolsExecuted?.call(response.toolCalls!, results);
@@ -322,6 +319,13 @@ class AiRequestDispatcher {
           if (_cancelled || _isStale(generation)) {
             if (!controller.isClosed) await controller.close();
             return;
+          }
+
+          // 工具执行成功后才将 assistant 消息与 tool 回执成对入史，
+          // 避免取消/失败时留下残缺 tool_calls 污染历史（_sanitizeHistory 兜底）。
+          if (assistantMsg['role'] == 'assistant' &&
+              assistantMsg['tool_calls'] != null) {
+            _chatHistory.add(Map<String, dynamic>.from(assistantMsg));
           }
 
           final toolResults = ToolExecutor.formatToolResultsForAi(
@@ -463,8 +467,20 @@ class AiRequestDispatcher {
     final tool = ToolRegistry().get(request.toolId);
     if (tool == null || tool.riskLevel != 'high') return true;
     if (onToolConfirm == null) return true;
+    // 敏感参数（token / key / secret 等）脱敏，避免在确认框明文展示凭据
     final argSummary = request.arguments.entries
-        .map((e) => '${e.key}: ${e.value}')
+        .map((e) {
+          final key = e.key.toLowerCase();
+          final isSecret = key.contains('token') ||
+              key.contains('key') ||
+              key.contains('secret') ||
+              key.contains('password') ||
+              key.contains('credential');
+          final value = e.value.toString();
+          final shown =
+              isSecret && value.isNotEmpty ? '******' : value;
+          return '${e.key}: $shown';
+        })
         .join('\n');
     return onToolConfirm!(request, tool.name, argSummary);
   }
@@ -795,125 +811,6 @@ class AiRequestDispatcher {
     return buf.toString();
   }
 
-  /// 带工具调用的分发（支持 Function Calling）
-  /// 返回完整的 AI 回复文本（自动处理工具调用循环）
-  Future<String> dispatchWithTools({
-    required AppSettings settings,
-    required String userMessage,
-    AiModelEntity? preferredModel,
-    double temperature = 0.7,
-    int maxToolRounds = 5,
-    void Function(String toolName, String status)? onToolStatus,
-  }) async {
-    addUserMessage(userMessage);
-
-    AiProfile? profile;
-    if (preferredModel != null) {
-      profile = _profileFromModel(preferredModel);
-    }
-
-    final toolRegistry = ToolRegistry();
-    final toolExecutor = ToolExecutor();
-    final tools = toolRegistry.enabledTools.isNotEmpty
-        ? toolRegistry.toOpenAiTools()
-        : null;
-
-    // 构建消息列表（使用 Map<String, dynamic> 以支持 tool_calls）
-    ensureHistoryConsistent();
-    final messages = <Map<String, dynamic>>[
-      {'role': 'system', 'content': _systemPrompt},
-      ..._chatHistory.map((m) => Map<String, dynamic>.from(m)),
-    ];
-
-    var remainingRounds = maxToolRounds;
-    var toolRound = 0;
-    bool lastRoundHadTools = false;
-    final fullContent = StringBuffer();
-
-    while (remainingRounds > 0) {
-      remainingRounds--;
-
-      final response = await _aiService.completeWithTools(
-        settings: settings,
-        systemPrompt: _systemPrompt,
-        messages: messages,
-        profile: profile,
-        tools: tools,
-        temperature: temperature,
-        toolRound: toolRound,
-      );
-      toolRound++;
-      await _recordUsage(profile, response);
-
-      // 如果有工具调用
-      if (response.hasToolCalls) {
-        lastRoundHadTools = true;
-        for (final tc in response.toolCalls!) {
-          onToolStatus?.call(tc.toolId, '执行中...');
-        }
-
-        // 添加到对话历史，确保上下文不丢失
-        final assistantMsg =
-            response.allMessages.isNotEmpty ? response.allMessages.last : null;
-        if (assistantMsg != null &&
-            assistantMsg['role'] == 'assistant' &&
-            assistantMsg['tool_calls'] != null) {
-          _chatHistory.add(Map<String, dynamic>.from(assistantMsg));
-        }
-
-        // 执行工具
-        final results = await toolExecutor.executeAll(
-          response.toolCalls!,
-          confirmOverride: (request) => _confirmTool(request),
-        );
-        onToolsExecuted?.call(response.toolCalls!, results);
-
-        // 格式化工具结果
-        final toolResults = ToolExecutor.formatToolResultsForAi(
-          response.toolCalls!,
-          results,
-        );
-
-        // 工具结果也加入对话历史
-        for (final tr in toolResults) {
-          _chatHistory.add(Map<String, dynamic>.from(tr));
-        }
-
-        for (var i = 0;
-            i < results.length && i < response.toolCalls!.length;
-            i++) {
-          final r = results[i];
-          onToolStatus?.call(
-            r.toolId,
-            r.success ? '完成' : '失败: ${r.error}',
-          );
-        }
-
-        // 更新消息列表
-        messages.clear();
-        messages.addAll(response.allMessages);
-        messages.addAll(toolResults);
-
-        continue;
-      }
-
-      // 没有工具调用，返回纯文本
-      if (response.content != null && response.content!.isNotEmpty) {
-        fullContent.write(response.content);
-      }
-      break;
-    }
-
-    final result = fullContent.toString();
-    if (result.isNotEmpty) {
-      addAssistantMessage(result);
-    } else if (remainingRounds <= 0 && lastRoundHadTools) {
-      const notice = '已达到最大工具轮次，对话被终止。请减少复杂操作或稍后重试。';
-      addAssistantMessage(notice);
-      return notice;
-    }
-    return result;
-  }
 }
 
 class DispatchResult {
