@@ -2013,7 +2013,9 @@ class BuiltinTools {
           siteProjectName: parts[1],
           deployHooks: const [],
           token: siteRepo?.token ?? activeRepo?.token ?? '',
-          provider: siteRepo?.provider ?? activeRepo?.provider,
+          provider: siteRepo?.provider ??
+              activeRepo?.provider ??
+              GitProviderType.github,
         );
         return repo;
       }
