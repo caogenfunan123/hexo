@@ -26,6 +26,17 @@ class DraftsScreen extends StatefulWidget {
 
 class _DraftsScreenState extends State<DraftsScreen> {
   String? _selectedSiteId; // null = 全部
+  String _searchQuery = '';
+  String? _selectedTag; // null = 全部标签
+
+  /// 全部标签（跨站点去重）
+  List<String> get _allTags {
+    final set = <String>{};
+    for (final a in widget.drafts) {
+      set.addAll(a.tags);
+    }
+    return set.toList()..sort();
+  }
 
   /// 获取站点名称
   String _siteName(String siteId) {
@@ -57,10 +68,24 @@ class _DraftsScreenState extends State<DraftsScreen> {
     return options;
   }
 
-  /// 按站点过滤后的草稿列表
+  /// 按站点 + 标签 + 搜索词过滤后的草稿列表
   List<Article> get _filteredDrafts {
-    if (_selectedSiteId == null) return widget.drafts;
-    return widget.drafts.where((a) => a.repoId == _selectedSiteId).toList();
+    final siteDrafts = _selectedSiteId == null
+        ? widget.drafts
+        : widget.drafts.where((a) => a.repoId == _selectedSiteId).toList();
+    var result = siteDrafts;
+    if (_selectedTag != null) {
+      result = result.where((a) => a.tags.contains(_selectedTag)).toList();
+    }
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      result = result.where((a) {
+        return a.title.toLowerCase().contains(q) ||
+            a.content.toLowerCase().contains(q) ||
+            a.tags.any((t) => t.toLowerCase().contains(q));
+      }).toList();
+    }
+    return result;
   }
 
   @override
@@ -96,6 +121,43 @@ class _DraftsScreenState extends State<DraftsScreen> {
             ],
           ),
         ),
+        const Divider(height: 1),
+        // ── 搜索框 ──
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: TextField(
+            onChanged: (v) => setState(() => _searchQuery = v),
+            decoration: InputDecoration(
+              hintText: '搜索标题、正文或标签…',
+              prefixIcon: const Icon(Icons.search, size: 18),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () => setState(() => _searchQuery = ''),
+                    )
+                  : null,
+              isDense: true,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ),
+        // ── 标签筛选 ──
+        if (_allTags.isNotEmpty)
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              children: [
+                _tagChip(null, '全部'),
+                for (final t in _allTags) _tagChip(t, t),
+              ],
+            ),
+          ),
         const Divider(height: 1),
         // ── 草稿列表 ──
         Expanded(
@@ -195,6 +257,19 @@ class _DraftsScreenState extends State<DraftsScreen> {
                 ),
         ),
       ],
+    );
+  }
+
+  Widget _tagChip(String? tag, String label) {
+    final selected = _selectedTag == tag;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: ChoiceChip(
+        label: Text(label, style: const TextStyle(fontSize: 12)),
+        selected: selected,
+        visualDensity: VisualDensity.compact,
+        onSelected: (_) => setState(() => _selectedTag = tag),
+      ),
     );
   }
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../services/storage_service.dart';
+import 'agent_task_type.dart';
 
 /// 工具执行记录（工作台时间线）
 class ToolExecRecord {
@@ -76,6 +77,7 @@ class FileChange {
 class AgentTask {
   final String id;
   final String siteId;
+  AgentTaskType taskType;
   String title;
   String objective;
   List<String> attachmentPaths; // 工作区相对路径
@@ -92,6 +94,7 @@ class AgentTask {
     required this.siteId,
     required this.title,
     required this.objective,
+    this.taskType = AgentTaskType.general,
     List<String>? attachmentPaths,
     this.workspacePath,
     List<Map<String, dynamic>>? messages,
@@ -108,6 +111,7 @@ class AgentTask {
         updatedAt = updatedAt ?? DateTime.now();
 
   AgentTask copyWith({
+    AgentTaskType? taskType,
     String? title,
     String? objective,
     List<String>? attachmentPaths,
@@ -121,6 +125,7 @@ class AgentTask {
     return AgentTask(
       id: id,
       siteId: siteId,
+      taskType: taskType ?? this.taskType,
       title: title ?? this.title,
       objective: objective ?? this.objective,
       attachmentPaths: attachmentPaths ?? this.attachmentPaths,
@@ -137,6 +142,7 @@ class AgentTask {
   Map<String, dynamic> toJson() => {
         'id': id,
         'siteId': siteId,
+        'taskType': taskType.key,
         'title': title,
         'objective': objective,
         'attachmentPaths': attachmentPaths,
@@ -152,6 +158,7 @@ class AgentTask {
   factory AgentTask.fromJson(Map<String, dynamic> j) => AgentTask(
         id: j['id']?.toString() ?? '',
         siteId: j['siteId']?.toString() ?? '',
+        taskType: AgentTaskType.fromKey(j['taskType']?.toString()),
         title: j['title']?.toString() ?? '',
         objective: j['objective']?.toString() ?? '',
         attachmentPaths: (j['attachmentPaths'] as List?)?.cast<String>() ?? [],

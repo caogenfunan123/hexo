@@ -51,6 +51,7 @@ class ShellActionBus {
   final VoidCallback onOpenAiPromptTemplates;
 
   // ── 导航：AI ──
+  final VoidCallback onShowAgentWorkbench;
   final VoidCallback onShowAiArticleChat;
   final VoidCallback onShowAiPageChat;
   final VoidCallback onShowAiThemeChat;
@@ -63,6 +64,7 @@ class ShellActionBus {
   // ── 导航：站点 ──
   final VoidCallback onShowBlogSiteManager;
   final VoidCallback onShowSiteEditor;
+  final VoidCallback onShowSiteOperations;
   final ValueChanged<RepoConfig>? onSiteChange;
 
   // ── 布局 ──
@@ -113,6 +115,7 @@ class ShellActionBus {
     required this.onOpenLinkChecker,
     required this.onOpenBatchTools,
     required this.onOpenAiPromptTemplates,
+    required this.onShowAgentWorkbench,
     required this.onShowAiArticleChat,
     required this.onShowAiPageChat,
     required this.onShowAiThemeChat,
@@ -123,6 +126,7 @@ class ShellActionBus {
     required this.onShowToolLibrary,
     required this.onShowBlogSiteManager,
     required this.onShowSiteEditor,
+    required this.onShowSiteOperations,
     this.onSiteChange,
     // 布局
     required this.onToggleLeftPanel,

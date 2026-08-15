@@ -187,6 +187,12 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                           onTap: widget.bus.onShowSiteEditor,
                           isSubtle: true,
                         ),
+                        _navItem(
+                          icon: Icons.monitor_heart_outlined,
+                          label: '运维与监控',
+                          onTap: widget.bus.onShowSiteOperations,
+                          isSubtle: true,
+                        ),
                       ],
                     ),
                     _buildSection(
@@ -235,6 +241,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                       collapsed: _collapsedSections.contains('ai'),
                       onToggle: () => _toggleSection('ai'),
                       children: [
+                        ..._nav(id: 'agent_workbench', icon: Icons.assistant_direction_outlined, label: 'Agent 工作台', onTap: widget.bus.onShowAgentWorkbench),
                         ..._nav(id: 'ai_article', icon: Icons.article_outlined, label: 'AI 博文创作', onTap: widget.bus.onShowAiArticleChat),
                         ..._nav(id: 'ai_page', icon: Icons.web_outlined, label: 'AI 页面创作', onTap: widget.bus.onShowAiPageChat),
                         ..._nav(id: 'ai_theme', icon: Icons.palette_outlined, label: 'AI 主题开发', onTap: widget.bus.onShowAiThemeChat),

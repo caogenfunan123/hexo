@@ -114,6 +114,13 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
             label: Text(_testing ? '测试中...' : '批量测试'),
           ),
           const SizedBox(width: 8),
+          // 统计接入引导
+          TextButton.icon(
+            onPressed: _openAnalyticsGuide,
+            icon: const Icon(Icons.query_stats, size: 18),
+            label: const Text('统计接入'),
+          ),
+          const SizedBox(width: 8),
         ],
       ),
       body: ListView(
@@ -386,9 +393,182 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
     }
   }
 
+  // ── 统计接入引导 ──
+
+  /// 弹窗：选择仓库并配置统计（Umami / GA），注入 _config.yml 与主题 head
+  Future<void> _openAnalyticsGuide() async {
+    if (widget.repos.isEmpty) {
+      _showToast('暂无建站仓库，请先添加站点');
+      return;
+    }
+    final selectedRepo = await showDialog<RepoConfig>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('选择要配置统计的站点'),
+        children: widget.repos
+            .map((r) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(ctx, r),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.language, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text('${r.name} (${r.fullName})')),
+                    ],
+                  ),
+                ))
+            .toList(),
+      ),
+    );
+    if (selectedRepo == null || !mounted) return;
+
+    final typeCtrl = <String, String>{'type': 'umami'};
+    final urlCtrl = TextEditingController();
+    final siteIdCtrl = TextEditingController();
+    final gaIdCtrl = TextEditingController();
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final isUmami = typeCtrl['type'] == 'umami';
+          return AlertDialog(
+            title: const Text('接入站点统计'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('选择统计服务', style: TextStyle(fontSize: 13)),
+                  const SizedBox(height: 8),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'umami', label: Text('Umami')),
+                      ButtonSegment(value: 'ga', label: Text('Google Analytics')),
+                    ],
+                    selected: {typeCtrl['type']!},
+                    onSelectionChanged: (s) => setDialogState(() {
+                      typeCtrl['type'] = s.first;
+                    }),
+                  ),
+                  const SizedBox(height: 16),
+                  if (isUmami) ...[
+                    TextField(
+                      controller: urlCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Umami 服务地址',
+                        hintText: 'https://analytics.example.com',
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: siteIdCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Umami 站点 ID',
+                        hintText: 'umami 后台创建站点后获得的 id',
+                        isDense: true,
+                      ),
+                    ),
+                  ] else ...[
+                    TextField(
+                      controller: gaIdCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Google Analytics 测量 ID',
+                        hintText: 'G-XXXXXXXXXX',
+                        isDense: true,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Text(
+                    '配置将写入仓库的 _config.yml 与主题 head，推送后触发重新部署。',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('取消')),
+              FilledButton(
+                onPressed: () async {
+                  final script = isUmami
+                      ? '<script async src="${urlCtrl.text.trim()}/script.js" data-website-id="${siteIdCtrl.text.trim()}"></script>'
+                      : '<script async src="https://www.googletagmanager.com/gtag/js?id=${gaIdCtrl.text.trim()}"></script><script>window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag("js", new Date()); gtag("config", "${gaIdCtrl.text.trim()}");</script>';
+                  Navigator.pop(ctx);
+                  await _applyAnalytics(selectedRepo, isUmami, script);
+                },
+                child: const Text('保存并部署'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// 写入 _config.yml analytics 段 + 主题 head 注入脚本
+  Future<void> _applyAnalytics(
+      RepoConfig repo, bool isUmami, String script) async {
+    if (repo.token.isEmpty) {
+      _showToast('该站点未配置令牌，无法写入统计配置');
+      return;
+    }
+    try {
+      // 1. 更新 _config.yml 的 analytics 段
+      final configRaw = await _githubService.getRawFile(repo, '_config.yml');
+      if (configRaw != null) {
+        String cc = configRaw['content']!;
+        final key = isUmami ? 'umami' : 'google_analytics';
+        // 移除旧的 analytics 段再追加
+        cc = cc.replaceAll(
+            RegExp(r'^analytics:\s*[\s\S]*?(?=^\S|\Z)', multiLine: true), '');
+        cc = '$cc\nanalytics:\n  $key: true\n'.trimRight();
+        await _githubService.putRawFile(repo, '_config.yml', '$cc\n',
+            sha: configRaw['sha']);
+      }
+
+      // 2. 尝试注入主题 head（Hexo 主题常见路径）
+      final injected = await _injectThemeHead(repo, script);
+      _showToast(injected
+          ? '统计配置已写入并注入主题，重新部署后生效'
+          : '统计配置已写入 _config.yml，主题需手动在 head 添加脚本');
+    } catch (e) {
+      _showToast('统计配置写入失败: $e');
+    }
+  }
+
+  /// 尝试在主题 head 模板注入统计脚本；返回是否注入成功
+  Future<bool> _injectThemeHead(RepoConfig repo, String script) async {
+    // 探测常见 head 模板路径
+    const candidates = [
+      'themes/A4/layout/_partial/head.ejs',
+      'themes/A4/layout/head.ejs',
+      'themes/A4/layout/_partial/header.ejs',
+      'themes/A4/source/head.html',
+    ];
+    for (final path in candidates) {
+      final raw = await _githubService.getRawFile(repo, path);
+      if (raw == null) continue;
+      var content = raw['content']!;
+      if (content.contains('analytics')) {
+        content = content.replaceAll(
+            RegExp(r'<!-- analytics:start -->[\s\S]*?<!-- analytics:end -->'),
+            '<!-- analytics:start -->\n$script\n<!-- analytics:end -->');
+      } else {
+        // 注入到 </head> 前
+        content = content.replaceAll(
+            '</head>', '<!-- analytics:start -->\n$script\n<!-- analytics:end -->\n</head>');
+      }
+      await _githubService.putRawFile(repo, path, content, sha: raw['sha']);
+      return true;
+    }
+    return false;
+  }
+
   // ── 编辑静态站点 ──
-  void _editStaticSite(RepoConfig repo) {
-    Navigator.of(context).push(MaterialPageRoute(
+  void _editStaticSite(RepoConfig repo) {    Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => SiteEditorScreen(
         repo: repo,
         github: _githubService,

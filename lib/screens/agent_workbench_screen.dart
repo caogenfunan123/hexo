@@ -8,6 +8,7 @@ import '../core/ai/ai_model_manager.dart';
 import '../core/ai/ai_request_dispatcher.dart';
 import '../core/ai/ai_self_checker.dart';
 import '../core/ai/ai_session_manager.dart';
+import '../core/task/agent_task_type.dart';
 import '../core/task/task_model.dart';
 import '../core/tools/tool_entity.dart';
 import '../models/app_settings.dart';
@@ -59,6 +60,7 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
   List<AgentTask> _recentTasks = [];
   final TextEditingController _objectiveCtrl = TextEditingController();
   final TextEditingController _titleCtrl = TextEditingController();
+  AgentTaskType _taskType = AgentTaskType.general;
 
   // 附件列表
   final List<String> _attachments = [];
@@ -97,6 +99,7 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
     final task = AgentTask(
       id: 'task_${DateTime.now().millisecondsSinceEpoch}',
       siteId: _siteId,
+      taskType: _taskType,
       title: _titleCtrl.text.trim().isEmpty
           ? objective.length > 20
               ? '${objective.substring(0, 20)}...'
@@ -114,6 +117,7 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
   void _resumeTask(AgentTask task) {
     setState(() {
       _task = task;
+      _taskType = task.taskType;
       _titleCtrl.text = task.title;
       _objectiveCtrl.text = task.objective;
       _attachments
@@ -321,6 +325,11 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
             spacing: 8,
             runSpacing: 6,
             children: [
+              if (task != null)
+                _chip(
+                  icon: Icons.category_outlined,
+                  label: '类型: ${task.taskType.label}',
+                ),
               _chip(
                 icon: Icons.link,
                 label: repo == null
@@ -412,6 +421,24 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
             style: TextStyle(fontSize: 12.5, color: cs.outline),
           ),
           const SizedBox(height: 20),
+          Text('任务类型',
+              style: TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final t in AgentTaskType.values)
+                ChoiceChip(
+                  label: Text(t.label, style: const TextStyle(fontSize: 12)),
+                  selected: _taskType == t,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) => setState(() => _taskType = t),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
           TextField(
             controller: _titleCtrl,
             decoration: const InputDecoration(
@@ -484,7 +511,7 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
                     subtitle: Text(
-                      '${t.objective.length > 40 ? t.objective.substring(0, 40) + '...' : t.objective} · ${_statusLabel(t.status)}',
+                      '${t.taskType.label} · ${t.objective.length > 40 ? t.objective.substring(0, 40) + '...' : t.objective} · ${_statusLabel(t.status)}',
                       style: const TextStyle(fontSize: 11.5),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -689,6 +716,8 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
   Widget _buildChatArea(AgentTask task) {
     final repo = widget.activeRepo;
     final fw = repo?.frameworkId;
+    final taskType = task.taskType;
+    final themesPath = taskType == AgentTaskType.theme ? 'themes' : null;
     return AiChatPanel(
       key: _chatKey,
       settings: widget.settings,
@@ -696,15 +725,17 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
       modelManager: widget.modelManager,
       dispatcher: widget.dispatcher,
       selfChecker: widget.selfChecker,
-      sessionType: AiSessionType.article,
+      sessionType: taskType.sessionType,
       blogFramework: fw,
       postsPath: repo?.postsPath,
       pagesPath: repo?.pagesPath,
+      themesPath: themesPath,
       gitHubService: widget.gitHubService,
       activeRepo: repo,
       storageService: widget.storageService,
       historyKey: 'task_${task.id}',
-      initialMessage: '欢迎使用 Agent 任务工作台！\n\n'
+      initialMessage: '欢迎使用 Agent 任务工作台（${taskType.label}）！\n\n'
+          '${taskType.starterPrompt}\n'
           '任务目标：${task.objective}\n'
           '${task.attachmentPaths.isNotEmpty ? '已附加 ${task.attachmentPaths.length} 个文件。\n' : ''}'
           '${repo != null ? '工作区：${repo.owner}/${repo.repo}（${fw ?? "未知框架"}）\n' : ''}'

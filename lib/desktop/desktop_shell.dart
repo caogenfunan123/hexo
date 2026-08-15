@@ -56,6 +56,7 @@ import '../screens/preview_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/site_editor_screen.dart';
 import '../screens/site_management_screen.dart';
+import '../screens/site_operations_screen.dart';
 import '../screens/template_manager_screen.dart';
 import '../screens/theme_migration_screen.dart';
 import '../screens/theme_store_screen.dart';
@@ -5094,6 +5095,15 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
     ));
   }
 
+  void _showSiteOperations() {
+    Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => SiteOperationsScreen(
+        repos: repos,
+        onToast: _showToast,
+      ),
+    ));
+  }
+
   Future<void> _showWebDavDialog() async {
     final c = TextEditingController(text: settings.webdavUrl);
     final u = TextEditingController(text: settings.webdavUsername);
@@ -7540,6 +7550,7 @@ $htmlContent
     onOpenLinkChecker: _openLinkChecker,
     onOpenBatchTools: _openBatchTools,
     onOpenAiPromptTemplates: _openAiPromptTemplates,
+    onShowAgentWorkbench: _showAgentWorkbench,
     onShowAiArticleChat: _showAiArticleChat,
     onShowAiPageChat: _showAiPageChat,
     onShowAiThemeChat: _showAiThemeChat,
@@ -7550,6 +7561,7 @@ $htmlContent
     onShowToolLibrary: _showToolLibrary,
     onShowBlogSiteManager: _showBlogSiteManager,
     onShowSiteEditor: _showSiteEditor,
+    onShowSiteOperations: _showSiteOperations,
     onSiteChange: _switchSite,
     // 布局
     onToggleLeftPanel: _toggleLeftPanel,
