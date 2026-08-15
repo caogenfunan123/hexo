@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../models/repo_config.dart';
 import '../models/theme_store_item.dart';
@@ -6,7 +9,9 @@ import '../services/theme_store_service.dart';
 
 /// 主题商店：浏览内置精选主题并一键安装到建站仓库
 ///
-/// 机械安装流程统一（下载 → 解压 → writeBatch → 改 config → 触发 CI），
+/// 两个入口：
+/// - 「精选安装」：内置精选主题一键安装（下载 → 解压 → writeBatch → 改 config → 触发 CI）
+/// - 「Hexo 官方主题」：内嵌浏览器浏览 hexo.io/themes 官方主题列表
 /// 深度定制请使用「AI 主题开发」对话。
 class ThemeStoreScreen extends StatefulWidget {
   final List<RepoConfig> repos;
@@ -31,6 +36,53 @@ class _ThemeStoreScreenState extends State<ThemeStoreScreen> {
   double _installProgress = 0.0;
   final Map<String, ThemeInstallResult> _results = {};
 
+  // Hexo 官方主题抓取
+  InAppWebViewController? _officialWebCtrl;
+  bool _officialLoading = true;
+  bool _officialParsed = false;
+  bool _officialFailed = false;
+  List<ThemeStoreItem> _officialThemes = [];
+  String _officialQuery = '';
+
+  /// Hexo 官方主题列表页
+  static const String officialThemesUrl = 'https://hexo.io/themes/';
+
+  /// 注入页面抓取脚本：遍历 .plugin 卡片提取主题元数据并回传 Flutter
+  ///
+  /// 定位依赖官方页面的 DOM 结构（plugin / plugin-name / plugin-desc /
+  /// plugin-tag / plugin-screenshot-img），改版时可据此调整选择器。
+  static const String _injectScrapeScript = r'''
+(function () {
+  const out = [];
+  const cards = document.querySelectorAll('.plugin');
+  for (const li of cards) {
+    const nameEl = li.querySelector('.plugin-name');
+    if (!nameEl) continue;
+    const href = (nameEl.getAttribute('href') || '').trim();
+    const m = href.match(/github\.com\/([^\/]+)\/([^\/?#]+)/);
+    if (!m) continue;
+    const name = (nameEl.textContent || '').trim();
+    const img = li.querySelector('.plugin-screenshot-img');
+    let shot = null;
+    if (img) {
+      shot = img.getAttribute('data-src') || img.getAttribute('src');
+      if (shot && shot.startsWith('/')) shot = location.origin + shot;
+    }
+    out.push({
+      owner: m[1],
+      repo: m[2],
+      name: name,
+      desc: (li.querySelector('.plugin-desc') || {}).textContent || '',
+      tags: Array.from(li.querySelectorAll('.plugin-tag')).map(function (t) {
+        return (t.textContent || '').trim();
+      }),
+      screenshot: shot,
+    });
+  }
+  window.flutter_inappwebview.callHandler('themeScrape', JSON.stringify(out));
+  return String(out.length);
+})();
+''';
   @override
   void initState() {
     super.initState();
@@ -93,6 +145,133 @@ class _ThemeStoreScreenState extends State<ThemeStoreScreen> {
     );
   }
 
+  // ── Hexo 官方主题抓取 ──
+
+  /// 从抓取到的卡片数据构建 ThemeStoreItem 列表
+  List<ThemeStoreItem> _buildOfficialThemes(String json) {
+    final decoded = jsonDecode(json);
+    if (decoded is! List) return const [];
+    final items = <ThemeStoreItem>[];
+    for (final raw in decoded) {
+      if (raw is! Map) continue;
+      final owner = (raw['owner'] ?? '').toString();
+      final repo = (raw['repo'] ?? '').toString();
+      final name = (raw['name'] ?? '').toString();
+      if (owner.isEmpty || repo.isEmpty || name.isEmpty) continue;
+      final desc = (raw['desc'] ?? '').toString().trim();
+      final tags = raw['tags'];
+      final tagText = tags is List
+          ? tags.map((t) => t.toString()).where((t) => t.isNotEmpty).take(4).join(' · ')
+          : '';
+      final screenshot = (raw['screenshot'] ?? '').toString();
+      items.add(
+        ThemeStoreItem(
+          id: 'hexo-${owner}-$repo',
+          name: name,
+          description: desc.isEmpty
+              ? (tagText.isEmpty ? 'Hexo 社区主题' : tagText)
+              : desc,
+          author: owner,
+          frameworkId: 'hexo',
+          repoOwner: owner,
+          repoName: repo,
+          defaultBranch: 'master',
+          screenshotUrl: screenshot.isEmpty ? null : screenshot,
+        ),
+      );
+    }
+    return items;
+  }
+
+  /// 页面加载完成后注入抓取脚本并注册 JS handler
+  void _setupOfficialScrape(InAppWebViewController controller) {
+    controller.addJavaScriptHandler(
+      handlerName: 'themeScrape',
+      callback: (args) {
+        if (args.isEmpty) return null;
+        final json = args.first?.toString() ?? '';
+        if (json.isEmpty) return null;
+        List<ThemeStoreItem> items;
+        try {
+          items = _buildOfficialThemes(json);
+        } catch (e) {
+          debugPrint('ThemeStore: 解析官方主题 JSON 失败: $e');
+          if (mounted) {
+            setState(() {
+              _officialLoading = false;
+              _officialFailed = true;
+            });
+          }
+          return null;
+        }
+        if (!mounted) return null;
+        setState(() {
+          _officialThemes = items;
+          _officialParsed = true;
+          _officialLoading = false;
+        });
+        if (items.isEmpty) {
+          _toast('未抓取到主题数据，已回退浏览模式');
+        }
+        return null;
+      },
+    );
+  }
+
+  /// 触发抓取（在 onLoadStop / 手动重试时调用）
+  Future<void> _scrapeOfficialThemes() async {
+    final ctrl = _officialWebCtrl;
+    if (ctrl == null) return;
+    try {
+      await ctrl.evaluateJavascript(source: _injectScrapeScript);
+      // 等待 JS handler 回传；若脚本执行但未触发 handler，则进入回退
+      if (!mounted) return;
+      _startParseTimeout();
+    } catch (e) {
+      debugPrint('ThemeStore: 注入抓取脚本失败: $e');
+      if (mounted) {
+        setState(() {
+          _officialLoading = false;
+          _officialFailed = true;
+        });
+      }
+    }
+  }
+
+  void _startParseTimeout() {
+    Future.delayed(const Duration(seconds: 6), () {
+      if (!mounted) return;
+      if (_officialParsed || _officialFailed) return;
+      setState(() {
+        _officialLoading = false;
+        _officialFailed = true;
+      });
+    });
+  }
+
+  void _retryOfficialScrape() {
+    setState(() {
+      _officialLoading = true;
+      _officialParsed = false;
+      _officialFailed = false;
+      _officialThemes = [];
+    });
+    // 重建 loading 态 webview，onLoadStop 会自动重新注入抓取脚本
+    _officialWebCtrl?.dispose();
+    _officialWebCtrl = null;
+  }
+
+  /// 官方主题搜索过滤
+  List<ThemeStoreItem> get _filteredOfficial {
+    final q = _officialQuery.trim().toLowerCase();
+    if (q.isEmpty) return _officialThemes;
+    return _officialThemes.where((t) {
+      return t.name.toLowerCase().contains(q) ||
+          t.description.toLowerCase().contains(q) ||
+          t.author.toLowerCase().contains(q);
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -104,106 +283,279 @@ class _ThemeStoreScreenState extends State<ThemeStoreScreen> {
       'astro': 'Astro',
     };
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('主题商店'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.palette_outlined),
-            tooltip: '需要深度定制？用 AI 主题开发',
-            onPressed: _toast != null
-                ? () => _toast('深度定制请使用「AI 主题开发」对话')
-                : null,
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('主题商店'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.palette_outlined),
+              tooltip: '需要深度定制？用 AI 主题开发',
+              onPressed: _toast != null
+                  ? () => _toast('深度定制请使用「AI 主题开发」对话')
+                  : null,
+            ),
+          ],
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: '精选安装', icon: Icon(Icons.install_desktop, size: 18)),
+              Tab(text: '官方主题', icon: Icon(Icons.language, size: 18)),
+            ],
           ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // 仓库选择 + 框架筛选
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        ),
+        body: TabBarView(
+          children: [
+            // Tab 1：精选安装
+            Column(
               children: [
-                if (widget.repos.isNotEmpty)
-                  DropdownButtonFormField<String>(
-                    value: _repoId,
-                    decoration: const InputDecoration(
-                      labelText: '目标站点仓库',
-                      prefixIcon: Icon(Icons.storage_outlined),
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                    ),
-                    items: widget.repos
-                        .map((r) => DropdownMenuItem(
-                              value: r.id,
-                              child: Text('${r.name} (${r.fullName})'),
-                            ))
-                        .toList(),
-                    onChanged: (v) => setState(() {
-                      _repoId = v;
-                      final r = widget.repos.where((x) => x.id == v).firstOrNull;
-                      _frameworkFilter = r?.frameworkId ?? _frameworkFilter;
-                    }),
-                  )
-                else
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: cs.errorContainer.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '尚未配置站点仓库，请先到「站点管理」创建并同步仓库',
-                      style: TextStyle(color: cs.onErrorContainer),
-                    ),
-                  ),
-                const SizedBox(height: 12),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
+                // 仓库选择 + 框架筛选
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      ChoiceChip(
-                        label: const Text('全部'),
-                        selected: _frameworkFilter == null,
-                        onSelected: (_) =>
-                            setState(() => _frameworkFilter = null),
-                      ),
-                      for (final fw in ['hexo', 'hugo', 'jekyll', 'astro'])
-                        Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: ChoiceChip(
-                            label: Text(frameworkNames[fw] ?? fw),
-                            selected: _frameworkFilter == fw,
-                            onSelected: (_) =>
-                                setState(() => _frameworkFilter = fw),
+                      if (widget.repos.isNotEmpty)
+                        DropdownButtonFormField<String>(
+                          value: _repoId,
+                          decoration: const InputDecoration(
+                            labelText: '目标站点仓库',
+                            prefixIcon: Icon(Icons.storage_outlined),
+                            isDense: true,
+                            border: OutlineInputBorder(),
+                          ),
+                          items: widget.repos
+                              .map((r) => DropdownMenuItem(
+                                    value: r.id,
+                                    child: Text('${r.name} (${r.fullName})'),
+                                  ))
+                              .toList(),
+                          onChanged: (v) => setState(() {
+                            _repoId = v;
+                            final r = widget.repos
+                                .where((x) => x.id == v)
+                                .firstOrNull;
+                            _frameworkFilter =
+                                r?.frameworkId ?? _frameworkFilter;
+                          }),
+                        )
+                      else
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: cs.errorContainer.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '尚未配置站点仓库，请先到「站点管理」创建并同步仓库',
+                            style: TextStyle(color: cs.onErrorContainer),
                           ),
                         ),
+                      const SizedBox(height: 12),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            ChoiceChip(
+                              label: const Text('全部'),
+                              selected: _frameworkFilter == null,
+                              onSelected: (_) =>
+                                  setState(() => _frameworkFilter = null),
+                            ),
+                            for (final fw in ['hexo', 'hugo', 'jekyll', 'astro'])
+                              Padding(
+                                padding: const EdgeInsets.only(left: 8),
+                                child: ChoiceChip(
+                                  label: Text(frameworkNames[fw] ?? fw),
+                                  selected: _frameworkFilter == fw,
+                                  onSelected: (_) =>
+                                      setState(() => _frameworkFilter = fw),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
+                const SizedBox(height: 4),
+                const Divider(height: 1),
+                // 主题列表
+                Expanded(
+                  child: themes.isEmpty
+                      ? Center(
+                          child: Text('暂无可安装的主题',
+                              style: TextStyle(
+                                  color: cs.onSurface.withOpacity(0.6))),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                          itemCount: themes.length,
+                          itemBuilder: (context, i) =>
+                              _buildThemeCard(cs, themes[i]),
+                        ),
+                ),
               ],
             ),
-          ),
-          const SizedBox(height: 4),
-          const Divider(height: 1),
-          // 主题列表
-          Expanded(
-            child: themes.isEmpty
-                ? Center(
-                    child: Text('暂无可安装的主题',
-                        style: TextStyle(color: cs.onSurface.withOpacity(0.6))),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                    itemCount: themes.length,
-                    itemBuilder: (context, i) =>
-                        _buildThemeCard(cs, themes[i]),
-                  ),
-          ),
-        ],
+            // Tab 2：Hexo 官方主题
+            _buildOfficialTab(cs),
+          ],
+        ),
       ),
+    );
+  }
+
+  /// Hexo 官方主题 Tab：抓取成功渲染本地卡片流，失败回退只读 webview
+  Widget _buildOfficialTab(ColorScheme cs) {
+    if (_officialLoading) {
+      return _buildOfficialLoading(cs);
+    }
+    if (_officialFailed) {
+      return _buildOfficialWebFallback(cs);
+    }
+    if (_officialParsed) {
+      return _buildOfficialList(cs);
+    }
+    // 初始态（webview 尚未加载完成）
+    return _buildOfficialLoading(cs);
+  }
+
+  Widget _buildOfficialLoading(ColorScheme cs) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Row(
+            children: [
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '正在从 hexo.io/themes 加载官方主题列表...',
+                  style: TextStyle(color: cs.onSurface.withOpacity(0.7)),
+                ),
+              ),
+              TextButton(
+                onPressed: _retryOfficialScrape,
+                child: const Text('重试'),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: InAppWebView(
+            initialUrlRequest: URLRequest(url: WebUri(officialThemesUrl)),
+            initialSettings: InAppWebViewSettings(
+              javaScriptEnabled: true,
+              domStorageEnabled: true,
+              supportZoom: false,
+            ),
+            onWebViewCreated: (controller) {
+              _officialWebCtrl = controller;
+              _setupOfficialScrape(controller);
+            },
+            onLoadStop: (controller, url) => _scrapeOfficialThemes(),
+            onReceivedError: (controller, request, error) {
+              if (!mounted) return;
+              setState(() {
+                _officialLoading = false;
+                _officialFailed = true;
+              });
+            },
+            onDisposed: (controller) {
+              _officialWebCtrl = null;
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOfficialList(ColorScheme cs) {
+    final items = _filteredOfficial;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+          child: TextField(
+            onChanged: (v) => setState(() => _officialQuery = v),
+            decoration: InputDecoration(
+              hintText: '搜索官方主题（${_officialThemes.length} 个）...',
+              prefixIcon: const Icon(Icons.search, size: 20),
+              isDense: true,
+              border: const OutlineInputBorder(),
+              suffixIcon: _officialQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () => setState(() => _officialQuery = ''),
+                    )
+                  : null,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Divider(height: 1),
+        Expanded(
+          child: items.isEmpty
+              ? Center(
+                  child: Text('未找到匹配的主题',
+                      style: TextStyle(color: cs.onSurface.withOpacity(0.6))),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  itemCount: items.length,
+                  itemBuilder: (context, i) =>
+                      _buildThemeCard(cs, items[i]),
+                ),
+        ),
+      ],
+    );
+  }
+
+  /// 抓取失败兜底：只读浏览官方列表页
+  Widget _buildOfficialWebFallback(ColorScheme cs) {
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          color: cs.errorContainer.withOpacity(0.3),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, size: 16, color: cs.onErrorContainer),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '自动抓取失败，已切换为浏览模式',
+                  style: TextStyle(color: cs.onErrorContainer),
+                ),
+              ),
+              TextButton(
+                onPressed: _retryOfficialScrape,
+                child: const Text('重试'),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: InAppWebView(
+            initialUrlRequest: URLRequest(url: WebUri(officialThemesUrl)),
+            initialSettings: InAppWebViewSettings(
+              javaScriptEnabled: true,
+              domStorageEnabled: true,
+              supportZoom: false,
+            ),
+            onWebViewCreated: (controller) => _officialWebCtrl = controller,
+            onReceivedError: (controller, request, error) {},
+          ),
+        ),
+      ],
     );
   }
 
