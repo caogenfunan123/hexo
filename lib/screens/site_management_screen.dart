@@ -337,11 +337,11 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               'GitHub：先在 DNS 服务商添加 CNAME 记录指向 ${repo.name}.${repo.owner}.github.io，再填写下方域名。\n'
               'GitLab：在 GitLab Pages 设置中添加自定义域名。\n'
               'Cloudflare：在 Cloudflare 控制台的 Pages 项目自定义域中配置。\n',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
+              style: const TextStyle(fontSize: 12, color: Colors.black54),
             ),
             TextField(
               controller: ctrl,

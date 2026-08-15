@@ -473,7 +473,7 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
           decoration: InputDecoration(
             labelText: '仓库名（同时作为站点项目名）',
             hintText: 'my-blog',
-            prefixIcon: const Icon(Icons.repo_outlined),
+            prefixIcon: const Icon(Icons.repo),
             errorText: _repoNameCtrl.text.isEmpty
                 ? null
                 : (_validateRepoName(_repoNameCtrl.text.trim())
@@ -589,7 +589,7 @@ class _SiteWizardScreenState extends State<SiteWizardScreen> {
           child: Text('建站完成', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
         ),
         const SizedBox(height: 24),
-        _kv('仓库', r.repoConfig.repoName),
+        _kv('仓库', r.repoConfig.repo),
         _kv('站点项目', r.siteProjectName),
         _kv('站点地址', r.siteUrl.isEmpty ? '构建中（稍后回填）' : r.siteUrl),
         if (r.welcomePostPath.isNotEmpty) _kv('欢迎文章', r.welcomePostPath),
