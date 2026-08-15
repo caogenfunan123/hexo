@@ -3826,6 +3826,8 @@ class DesktopShellState extends State<DesktopShell> with WidgetsBindingObserver 
   void _openBatchTools() {
     _openTab('batch_tools', '批量工具箱', Icons.build_circle, BatchToolsScreen(
       articles: drafts,
+      github: github,
+      repos: repos,
       onArticlesUpdated: (updated) {
         setState(() {
           drafts = updated;

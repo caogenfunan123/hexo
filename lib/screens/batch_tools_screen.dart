@@ -1,14 +1,23 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import '../models/article.dart';
+import '../models/article_type.dart';
+import '../models/git_provider.dart';
+import '../models/repo_config.dart';
+import '../services/github_service.dart';
 
 class BatchToolsScreen extends StatefulWidget {
   final List<Article> articles;
   final Function(List<Article> updatedArticles) onArticlesUpdated;
+  final GitHubService? github;
+  final List<RepoConfig> repos;
 
   const BatchToolsScreen({
     super.key,
     required this.articles,
     required this.onArticlesUpdated,
+    this.github,
+    this.repos = const [],
   });
 
   @override
@@ -37,6 +46,10 @@ class _BatchToolsScreenState extends State<BatchToolsScreen>
   bool _formatCodeBlocks = true;
   final Set<String> _fmtSelectedArticleIds = {};
 
+  // Publish-to-site state
+  String? _pubRepoId;
+  final Set<String> _pubSelectedArticleIds = {};
+
   // Undo snapshots
   List<Article>? _fmUndoSnapshot;
   List<Article>? _imgUndoSnapshot;
@@ -51,7 +64,7 @@ class _BatchToolsScreenState extends State<BatchToolsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _articles = List<Article>.from(widget.articles);
     for (final field in _fmFields) {
       _fieldControllers[field] = TextEditingController();
@@ -88,7 +101,9 @@ class _BatchToolsScreenState extends State<BatchToolsScreen>
           ? _fmSelectedArticleIds
           : tab == 'img'
               ? _imgSelectedArticleIds
-              : _fmtSelectedArticleIds;
+              : tab == 'fmt'
+                  ? _fmtSelectedArticleIds
+                  : _pubSelectedArticleIds;
       if (select) {
         selectedSet.addAll(ids);
       } else {
@@ -611,6 +626,7 @@ class _BatchToolsScreenState extends State<BatchToolsScreen>
             Tab(text: 'FrontMatter'),
             Tab(text: '图片路径'),
             Tab(text: '格式化'),
+            Tab(text: '发布到站点'),
           ],
         ),
       ),
@@ -622,6 +638,7 @@ class _BatchToolsScreenState extends State<BatchToolsScreen>
               _buildFrontMatterTab(cs),
               _buildImagePathTab(cs),
               _buildFormatTab(cs),
+              _buildPublishTab(cs),
             ],
           ),
           if (_isProcessing)
@@ -1023,5 +1040,211 @@ class _BatchToolsScreenState extends State<BatchToolsScreen>
         ),
       ],
     );
+  }
+
+  // ─── Tab 4: Publish to Site ─────────────────────────────────────────────
+
+  Widget _buildPublishTab(ColorScheme cs) {
+    final repos = widget.repos;
+    final filtered = _articles.where((a) => a.isDraft).toList();
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Row(
+          children: [
+            Icon(Icons.rocket_launch_outlined, color: cs.primary),
+            const SizedBox(width: 8),
+            Text('批量发布到建站仓库', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: cs.primary)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '将选中的草稿一次性提交到站点仓库，触发一次 CI 构建，全部文章同时上线',
+          style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.6)),
+        ),
+        const SizedBox(height: 16),
+
+        if (repos.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Column(
+              children: [
+                Icon(Icons.storage_outlined, color: cs.onSurface.withOpacity(0.3), size: 40),
+                const SizedBox(height: 8),
+                Text('暂无站点仓库', style: TextStyle(color: cs.onSurface.withOpacity(0.6))),
+                const SizedBox(height: 4),
+                Text('请先在「站点管理」中配置仓库', style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.4))),
+              ],
+            ),
+          )
+        else ...[
+          Text('目标仓库', style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface)),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: _pubRepoId ?? (repos.isNotEmpty ? repos.first.id : null),
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            items: repos.map((r) => DropdownMenuItem(
+              value: r.id,
+              child: Text('${r.name} (${r.fullName})'),
+            )).toList(),
+            onChanged: (v) => setState(() => _pubRepoId = v),
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // Article selection
+        Row(
+          children: [
+            Text('草稿列表 (${filtered.length})', style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface)),
+            const Spacer(),
+            TextButton.icon(
+              icon: const Icon(Icons.select_all, size: 18),
+              label: const Text('全选'),
+              onPressed: filtered.isEmpty ? null : () => _toggleSelectAll('pub', select: true),
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.deselect, size: 18),
+              label: const Text('取消全选'),
+              onPressed: filtered.isEmpty ? null : () => _toggleSelectAll('pub', select: false),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        if (filtered.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Text('没有草稿可发布', style: TextStyle(color: cs.onSurface.withOpacity(0.6))),
+            ),
+          )
+        else
+          ...filtered.map((article) => CheckboxListTile(
+                dense: true,
+                value: _pubSelectedArticleIds.contains(article.id),
+                title: Text(
+                  article.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14),
+                ),
+                subtitle: Text(
+                  article.schedulePublishAt == null
+                      ? '未设置定时'
+                      : '定时 ${_fmtTime(article.schedulePublishAt!)}',
+                  style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.5)),
+                ),
+                onChanged: (v) {
+                  setState(() {
+                    if (v == true) {
+                      _pubSelectedArticleIds.add(article.id);
+                    } else {
+                      _pubSelectedArticleIds.remove(article.id);
+                    }
+                  });
+                },
+              )),
+        const SizedBox(height: 16),
+
+        FilledButton.icon(
+          icon: const Icon(Icons.cloud_upload_outlined),
+          label: Text('发布选中的 ${_pubSelectedArticleIds.length} 篇文章'),
+          onPressed: (repos.isEmpty || _pubSelectedArticleIds.isEmpty)
+              ? null
+              : _publishSelected,
+        ),
+        const SizedBox(height: 8),
+        if (widget.github == null)
+          Text(
+            '当前未接入发布服务，请在主界面打开批量工具',
+            style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.5)),
+          ),
+      ],
+    );
+  }
+
+  String _fmtTime(DateTime t) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
+  }
+
+  /// 批量发布：一次 Git Data commit 上传全部选中草稿，触发一次 CI 构建
+  Future<void> _publishSelected() async {
+    final github = widget.github;
+    if (github == null) {
+      _showSnackBar('未接入发布服务');
+      return;
+    }
+    final repo = widget.repos.where((r) => r.id == _pubRepoId).firstOrNull;
+    if (repo == null || repo.token.isEmpty) {
+      _showSnackBar('请先选择已配置 Token 的站点仓库');
+      return;
+    }
+    final selected =
+        _articles.where((a) => _pubSelectedArticleIds.contains(a.id)).toList();
+    if (selected.isEmpty) {
+      _showSnackBar('请先选择要发布的草稿');
+      return;
+    }
+
+    setState(() {
+      _isProcessing = true;
+      _progress = 0;
+      _progressTotal = selected.length;
+    });
+
+    try {
+      if (repo.provider == GitProviderType.github) {
+        // GitHub：一次 Git Data commit 批量上传，触发一次 CI
+        final files = <({String path, List<int> bytes})>[];
+        for (final a in selected) {
+          final isPage = a.articleType == ArticleType.page;
+          final basePath = isPage
+              ? repo.pagesPath.replaceAll(RegExp(r'/+$'), '')
+              : repo.postsPath.replaceAll(RegExp(r'/+$'), '');
+          final fileName = a.fileNameForRepo(repo);
+          final path = a.remotePath ?? '$basePath/$fileName';
+          final md = a.toMarkdownWithFrontMatterForRepo(repo);
+          files.add((path: path, bytes: utf8.encode(md)));
+        }
+        await github.uploadBatchViaGitData(
+          token: repo.token,
+          owner: repo.owner,
+          repo: repo.repo,
+          branch: repo.branch,
+          files: files,
+          message: 'docs: batch publish ${selected.length} articles',
+        );
+      } else {
+        // 非 GitHub：逐篇写入
+        for (var i = 0; i < selected.length; i++) {
+          await github.upsertArticle(repo, selected[i]);
+          setState(() => _progress = (i + 1) / selected.length);
+        }
+      }
+
+      // 更新本地状态为已发布
+      final publishedIds = selected.map((a) => a.id).toSet();
+      final updated = _articles.map((a) {
+        if (publishedIds.contains(a.id)) {
+          return a.copyWith(isDraft: false, published: true, repoId: repo.id);
+        }
+        return a;
+      }).toList();
+      setState(() {
+        _articles = updated;
+        _pubSelectedArticleIds.clear();
+        _progress = 1;
+      });
+      widget.onArticlesUpdated(updated);
+      _showSnackBar('批量发布完成：${selected.length} 篇文章已提交到 ${repo.fullName}，CI 构建中');
+    } catch (e) {
+      _showSnackBar('批量发布失败: $e');
+    } finally {
+      setState(() => _isProcessing = false);
+    }
   }
 }
