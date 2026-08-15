@@ -189,6 +189,88 @@ class _EditorScreenState extends State<EditorScreen> {
 
 
 
+  /// 发布选项：立即发布 / 定时发布（写入未来 date，Hexo/Hugo 原生 future posts 展示）
+  Future<void> _showPublishOptions() async {
+    final repo = _resolvedRepo;
+    if (repo == null || repo.token.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先配置仓库与 GitHub Token')),
+      );
+      return;
+    }
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.bolt),
+              title: const Text('立即发布'),
+              subtitle: const Text('上传后站点立即展示'),
+              onTap: () => Navigator.pop(context, 'now'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.schedule),
+              title: const Text('定时发布'),
+              subtitle: Text(
+                _article.schedulePublishAt == null
+                    ? '设置未来日期，到点自动展示'
+                    : '当前已设置: ${_formatSchedule(_article.schedulePublishAt!)}（点击修改）',
+              ),
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: _article.schedulePublishAt ?? DateTime.now().add(const Duration(days: 1)),
+                  firstDate: DateTime.now(),
+                  lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+                );
+                if (picked != null) {
+                  final withTime = await showTimePicker(
+                    context: context,
+                    initialTime: TimeOfDay.fromDateTime(
+                        _article.schedulePublishAt ?? DateTime.now().add(const Duration(hours: 1))),
+                  );
+                  if (withTime != null) {
+                    final t = DateTime(picked.year, picked.month, picked.day,
+                        withTime.hour, withTime.minute);
+                    if (mounted) {
+                      setState(() => _article = _article.copyWith(schedulePublishAt: t));
+                    }
+                    if (mounted) {
+                      Navigator.pop(context, 'schedule');
+                    }
+                  }
+                }
+              },
+            ),
+            if (_article.schedulePublishAt != null)
+              ListTile(
+                leading: const Icon(Icons.clear),
+                title: const Text('清除定时，改为立即发布'),
+                onTap: () {
+                  if (mounted) {
+                    setState(() => _article = _article.copyWith(schedulePublishAt: null));
+                  }
+                  Navigator.pop(context, 'now');
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+    if (action == 'now') {
+      await _publish();
+    } else if (action == 'schedule') {
+      await _publish();
+    }
+  }
+
+  String _formatSchedule(DateTime t) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
+  }
+
   Future<void> _publish() async {
     final repo = _resolvedRepo;
     if (repo == null || repo.token.isEmpty) {
@@ -785,8 +867,8 @@ class _EditorScreenState extends State<EditorScreen> {
               icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
             ),
           IconButton(
-            tooltip: '发布到 GitHub',
-            onPressed: _busy ? null : _publish,
+            tooltip: '发布',
+            onPressed: _busy ? null : _showPublishOptions,
             icon: const Icon(Icons.cloud_upload_outlined),
           ),
         ],

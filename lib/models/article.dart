@@ -23,6 +23,10 @@ class Article {
   /// 卷宗分类（如 卷1 / 卷2），简易模式首页按此分组；null 归「未分类」
   final String? volume;
 
+  /// 定时发布时间（未来日期）：设置后 front matter date 使用该时间，
+  /// 触发 Hexo/Hugo 原生 future posts 机制定时展示。null 表示立即发布。
+  final DateTime? schedulePublishAt;
+
   const Article({
     required this.id,
     required this.title,
@@ -40,6 +44,7 @@ class Article {
     this.articleType = ArticleType.post,
     this.templateId,
     this.volume,
+    this.schedulePublishAt,
   });
 
   /// copyWith 哨兵值：区分"未传递"与"传 null"的标记
@@ -63,6 +68,7 @@ class Article {
     ArticleType? articleType,
     Object? templateId = _undefined,
     Object? volume = _undefined,
+    Object? schedulePublishAt = _undefined,
   }) {
     return Article(
       id: id ?? this.id,
@@ -81,6 +87,9 @@ class Article {
       articleType: articleType ?? this.articleType,
       templateId: identical(templateId, _undefined) ? this.templateId : templateId as String?,
       volume: identical(volume, _undefined) ? this.volume : volume as String?,
+      schedulePublishAt: identical(schedulePublishAt, _undefined)
+          ? this.schedulePublishAt
+          : schedulePublishAt as DateTime?,
     );
   }
 
@@ -101,6 +110,7 @@ class Article {
         'articleType': articleType.value,
         'templateId': templateId,
         'volume': volume,
+        'schedulePublishAt': schedulePublishAt?.toIso8601String(),
       };
 
   factory Article.fromJson(Map<String, dynamic> j) => Article(
@@ -121,6 +131,8 @@ class Article {
         articleType: ArticleType.fromJson(j['articleType']),
         templateId: j['templateId']?.toString(),
         volume: j['volume']?.toString(),
+        schedulePublishAt:
+            DateTime.tryParse(j['schedulePublishAt']?.toString() ?? ''),
       );
 
   /// 用指定框架预设生成 FrontMatter + 正文
@@ -134,10 +146,11 @@ class Article {
       }
     }
 
-    // 未来日期保护：如果 createdAt 在未来，使用当前日期
-    // 避免因时区差异导致 Cloudflare 构建时文章被判定为"未来文章"而不显示
+    // 定时发布：保留 schedulePublishAt 的未来日期，触发 Hexo/Hugo future posts 机制。
+    // 否则走未来日期保护：如果 createdAt 在未来，使用当前日期，
+    // 避免因时区差异导致 Cloudflare 构建时文章被判定为"未来文章"而不显示。
     final now = DateTime.now();
-    final effectiveDate = createdAt.isAfter(now) ? now : createdAt;
+    final effectiveDate = schedulePublishAt ?? (createdAt.isAfter(now) ? now : createdAt);
 
     // 按发布时区转换墙钟时间（默认北京时间 +08:00）
     // Cloudflare Pages 构建机为 UTC，必须把设备本地时间映射到目标时区并带偏移，
@@ -273,9 +286,9 @@ class Article {
   /// 的字段结构，日期 / 标签等动态值的格式一律跟随目标框架。
   String _applyCustomTemplate(TemplateItem template,
       {String? repoFrameworkId, int? timezoneOffsetMinutes}) {
-    // 未来日期保护
+    // 定时发布保留未来日期；否则未来日期保护
     final now = DateTime.now();
-    final effectiveDate = createdAt.isAfter(now) ? now : createdAt;
+    final effectiveDate = schedulePublishAt ?? (createdAt.isAfter(now) ? now : createdAt);
 
     // 按发布时区转换墙钟时间（默认北京时间 +08:00）
     final offset = timezoneOffsetMinutes ?? 480;
