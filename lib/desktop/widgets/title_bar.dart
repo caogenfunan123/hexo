@@ -44,7 +44,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
         child: Row(
           children: [
             // 汉堡菜单
-            _titleBarButton(
+            _titleBarButton(context,
               icon: Icons.menu,
               tooltip: '菜单 (Ctrl+L)',
               onTap: bus.onToggleLeftPanel,
@@ -78,43 +78,43 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
 
             // 快捷操作按钮
             if (bus.onOpenFile != null)
-              _titleBarButton(
+              _titleBarButton(context,
                 icon: Icons.folder_open,
                 tooltip: '打开文件 (Ctrl+O)',
                 onTap: bus.onOpenFile!,
                 cs: cs,
               ),
-            _titleBarButton(
+            _titleBarButton(context,
               icon: Icons.add,
               tooltip: '新建文章 (Ctrl+N)',
               onTap: bus.onNewArticle,
               cs: cs,
             ),
-            _titleBarButton(
+            _titleBarButton(context,
               icon: Icons.sync,
               tooltip: '同步 (Ctrl+S)',
               onTap: bus.onSync,
               cs: cs,
             ),
-            _titleBarButton(
+            _titleBarButton(context,
               icon: Icons.send,
               tooltip: '一键发布 (Ctrl+P)',
               onTap: bus.onPublish,
               cs: cs,
             ),
-            _titleBarButton(
+            _titleBarButton(context,
               icon: Icons.auto_awesome,
               tooltip: 'AI 助手',
               onTap: onAi,
               cs: cs,
             ),
-            _titleBarButton(
+            _titleBarButton(context,
               icon: Icons.vertical_split,
               tooltip: '右侧面板',
               onTap: bus.onToggleRightDrawer,
               cs: cs,
             ),
-            _titleBarButton(
+            _titleBarButton(context,
               icon: isDark ? Icons.light_mode : Icons.dark_mode_outlined,
               tooltip: '切换主题',
               onTap: bus.onThemeToggle,
@@ -131,15 +131,15 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
             const SizedBox(width: 2),
 
             // 窗口控件
-            _windowButton(
+            _windowButton(context,
               icon: Icons.minimize,
               onTap: () => windowManager.minimize(),
             ),
-            _windowButton(
+            _windowButton(context,
               icon: Icons.crop_square,
               onTap: () => windowManager.maximize(),
             ),
-            _windowButton(
+            _windowButton(context,
               icon: Icons.close,
               onTap: () => windowManager.close(),
               isClose: true,
@@ -150,7 +150,8 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 
-  Widget _titleBarButton({
+  Widget _titleBarButton(
+    BuildContext context, {
     required IconData icon,
     required String tooltip,
     required VoidCallback onTap,
@@ -177,7 +178,8 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 
-  Widget _windowButton({
+  Widget _windowButton(
+    BuildContext context, {
     required IconData icon,
     required VoidCallback onTap,
     bool isClose = false,

@@ -55,21 +55,21 @@ class DesktopStatusBar extends StatelessWidget {
           const SizedBox(width: 8),
 
           // 工作模式切换
-          _modeButton(
+          _modeButton(context,
             label: '工作台',
             icon: Icons.space_dashboard,
             active: workMode == WorkMode.workspace,
             onTap: () => onModeChange(WorkMode.workspace),
             cs: cs,
           ),
-          _modeButton(
+          _modeButton(context,
             label: '专注',
             icon: Icons.visibility,
             active: workMode == WorkMode.focus,
             onTap: () => onModeChange(WorkMode.focus),
             cs: cs,
           ),
-          _modeButton(
+          _modeButton(context,
             label: '源码',
             icon: Icons.code,
             active: workMode == WorkMode.source,
@@ -81,7 +81,7 @@ class DesktopStatusBar extends StatelessWidget {
 
           // 编辑器状态信息
           if (editorStatus != null)
-            _statusLabel(
+            _statusLabel(context,
               editorStatus!,
               isDark: isDark,
             ),
@@ -89,7 +89,7 @@ class DesktopStatusBar extends StatelessWidget {
           // 光标位置
           if (cursorPosition != null) ...[
             const SizedBox(width: 12),
-            _statusLabel(
+            _statusLabel(context,
               '行 ${cursorPosition!.$1} 列 ${cursorPosition!.$2}',
               isDark: isDark,
             ),
@@ -97,19 +97,19 @@ class DesktopStatusBar extends StatelessWidget {
 
           // 行数
           const SizedBox(width: 12),
-          _statusLabel(
+          _statusLabel(context,
             '$lineCount 行',
             isDark: isDark,
           ),
 
           // 字数统计
           const SizedBox(width: 12),
-          _statusLabel(
+          _statusLabel(context,
             '$wordCount 词',
             isDark: isDark,
           ),
           const SizedBox(width: 8),
-          _statusLabel(
+          _statusLabel(context,
             '$charCount 字',
             isDark: isDark,
           ),
@@ -117,7 +117,7 @@ class DesktopStatusBar extends StatelessWidget {
           // 阅读时间
           if (readTime.isNotEmpty) ...[
             const SizedBox(width: 12),
-            _statusLabel(
+            _statusLabel(context,
               readTime,
               icon: Icons.timer_outlined,
               isDark: isDark,
@@ -133,7 +133,7 @@ class DesktopStatusBar extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 1.5),
             )
           else
-            _statusLabel(
+            _statusLabel(context,
               siteName.isNotEmpty ? siteName : '未连接',
               icon: Icons.cloud_outlined,
               isDark: isDark,
@@ -185,7 +185,8 @@ class DesktopStatusBar extends StatelessWidget {
     );
   }
 
-  Widget _modeButton({
+  Widget _modeButton(
+    BuildContext context, {
     required String label,
     required IconData icon,
     required bool active,
@@ -221,11 +222,11 @@ class DesktopStatusBar extends StatelessWidget {
   }
 
   Widget _statusLabel(
+    BuildContext context,
     String text, {
     IconData? icon,
     bool isDark = false,
   }) {
-    final theme = Theme.of(context).brightness == Brightness.dark;
     final useDark = isDark;
     return Row(
       mainAxisSize: MainAxisSize.min,
