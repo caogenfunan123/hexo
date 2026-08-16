@@ -81,16 +81,18 @@ extension EditorRemoteExt on _RootShellState {
     try {
       await storage.root;
       if (!mounted) return;
-      await Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (_) => LocalFileZoneScreen(
+await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) {
+          final repo = activeRepo;
+          return LocalFileZoneScreen(
             storage: storage,
             github: github,
-            activeRepo:
-                activeRepo == null ? null : _resolvedRepoFor(activeRepo),
-          ),
-        ),
-      );
+            activeRepo: repo == null ? null : _resolvedRepoFor(repo),
+          );
+        },
+      ),
+    );
     } catch (e) {
       if (mounted) _showToast('打开本地文件区失败: $e');
     }
