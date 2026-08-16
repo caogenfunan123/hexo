@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -160,12 +161,75 @@ class ThemeStoreService {
     );
   }
 
-  Future<List<int>> _download(String url) async {
+  Future<List<int>> _download(String url, {bool allow404 = false}) async {
     final resp = await http.get(Uri.parse(url)).timeout(_downloadTimeout);
+    if (resp.statusCode == 404 && allow404) {
+      return const [];
+    }
     if (resp.statusCode != 200) {
       throw Exception('下载主题包失败 (HTTP ${resp.statusCode})');
     }
     return resp.bodyBytes;
+  }
+
+  /// 下载主题包并解压到本地临时目录，返回解压后的顶层目录路径
+  ///
+  /// 供「AI 迁移安装」使用：拿到源码后由 AI 分析并适配目标框架。
+  Future<String> downloadAndExtractToTemp(ThemeStoreItem item) async {
+    var bytes = await _download(item.tarballUrl, allow404: true);
+    var archive = _extractTarGz(bytes);
+
+    // 默认分支不可用时回退探测 main（官方主题常默认 master，但不少仓库是 main）
+    if ((bytes.isEmpty || archive.files.isEmpty) &&
+        item.defaultBranch != 'main') {
+      try {
+        final mainUrl =
+            'https://codeload.github.com/${item.repoOwner}/'
+            '${item.repoName}/tar.gz/refs/heads/main';
+        bytes = await _download(mainUrl, allow404: true);
+        archive = _extractTarGz(bytes);
+      } catch (e) {
+        debugPrint('ThemeStore: main 分支回退失败: $e');
+      }
+    }
+
+    if (bytes.isEmpty) {
+      throw Exception('主题包下载失败：默认分支与 main 均不可用');
+    }
+
+    final root = _findRootDir(archive);
+    if (root == null) {
+      throw Exception('主题包结构异常：未找到顶层目录');
+    }
+    final tempDir =
+        '${Directory.systemTemp.path}/theme_store_${DateTime.now().millisecondsSinceEpoch}';
+    final dest = Directory(tempDir);
+    if (await dest.exists()) {
+      await dest.delete(recursive: true);
+    }
+    await dest.create(recursive: true);
+    final base = Directory('$tempDir/$root');
+    if (!await base.exists()) {
+      await base.create(recursive: true);
+    }
+    var wrote = 0;
+    for (final f in archive.files) {
+      if (!f.isFile) continue;
+      final rel = _stripRoot(f.name, root);
+      if (rel == null || rel.isEmpty) continue;
+      final out = File('$tempDir/$root/$rel');
+      try {
+        await out.parent.create(recursive: true);
+        await out.writeAsBytes(f.content as List<int>, flush: true);
+        wrote++;
+      } catch (_) {
+        // 跳过无法写入的文件
+      }
+    }
+    if (wrote == 0) {
+      throw Exception('主题包为空，无法安装');
+    }
+    return '$tempDir/$root';
   }
 
   /// GZip + Tar 解压

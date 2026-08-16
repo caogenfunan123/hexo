@@ -31,6 +31,9 @@ class ThemeMigrationScreen extends StatefulWidget {
   final StorageService? storageService;
   final VersionSnapshotService? snapshotService;
 
+  /// 覆盖默认欢迎语（主题商店安装完成后携带上下文进入）
+  final String? initialMessage;
+
   const ThemeMigrationScreen({
     super.key,
     required this.settings,
@@ -45,6 +48,7 @@ class ThemeMigrationScreen extends StatefulWidget {
     required this.onSettingsChanged,
     this.storageService,
     this.snapshotService,
+    this.initialMessage,
   });
 
   @override
@@ -82,27 +86,29 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
 
     if (url.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请输入主题源码地址')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请输入主题源码地址')));
       }
       return;
     }
     if (themeName.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请输入目标主题名称')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请输入目标主题名称')));
       }
       return;
     }
 
-    final repo = widget.activeRepo ?? (widget.repos.isNotEmpty ? widget.repos.first : null);
+    final repo =
+        widget.activeRepo ??
+        (widget.repos.isNotEmpty ? widget.repos.first : null);
     if (repo == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请先配置目标仓库')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请先配置目标仓库')));
       }
       return;
     }
@@ -113,11 +119,16 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
       _showInputForm = false;
     });
 
-    final fwName = BlogFramework.byId(repo.frameworkId)?.name ?? repo.frameworkId;
-    _chatKey.currentState?.addMessage('user', '拉取这个地址的主题 $url\n将它改造适配我当前仓库：$fwName\n主题文件夹命名 $themeName');
+    final fwName =
+        BlogFramework.byId(repo.frameworkId)?.name ?? repo.frameworkId;
+    _chatKey.currentState?.addMessage(
+      'user',
+      '拉取这个地址的主题 $url\n将它改造适配我当前仓库：$fwName\n主题文件夹命名 $themeName',
+    );
 
     try {
-      final tempDir = '${Directory.systemTemp.path}/hexo_theme_migrate_${DateTime.now().millisecondsSinceEpoch}';
+      final tempDir =
+          '${Directory.systemTemp.path}/hexo_theme_migrate_${DateTime.now().millisecondsSinceEpoch}';
       _tempDir = tempDir;
 
       if (url.startsWith('http')) {
@@ -127,8 +138,12 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
       if (!mounted) return;
       setState(() => _status = '正在分析主题结构...');
 
-      final dirStructure = await widget.migrationService.readDirectoryStructure(tempDir);
-      final sourceFiles = await widget.migrationService.readAllTextFiles(tempDir);
+      final dirStructure = await widget.migrationService.readDirectoryStructure(
+        tempDir,
+      );
+      final sourceFiles = await widget.migrationService.readAllTextFiles(
+        tempDir,
+      );
 
       final sourceCode = StringBuffer();
       sourceCode.writeln('=== 目录结构 ===');
@@ -150,13 +165,14 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
       if (!mounted) return;
       setState(() => _status = '分析完成：源框架 ${_analysis!.sourceFrameworkName}');
 
-      _chatKey.currentState?.addMessage('assistant',
+      _chatKey.currentState?.addMessage(
+        'assistant',
         '✅ 主题源码分析完成\n'
-        '• 源框架：${_analysis!.sourceFrameworkName}\n'
-        '• 模板语法：${_analysis!.templateSyntax}\n'
-        '• 配置格式：${_analysis!.configFormat}\n'
-        '• 关键文件：${_analysis!.keyFiles.take(10).join(', ')}\n\n'
-        '正在开始跨框架迁移转换...',
+            '• 源框架：${_analysis!.sourceFrameworkName}\n'
+            '• 模板语法：${_analysis!.templateSyntax}\n'
+            '• 配置格式：${_analysis!.configFormat}\n'
+            '• 关键文件：${_analysis!.keyFiles.take(10).join(', ')}\n\n'
+            '正在开始跨框架迁移转换...',
       );
 
       if (!mounted) return;
@@ -198,12 +214,13 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
       if (!mounted) return;
       setState(() => _status = '迁移完成！共 ${_migrationResult!.files.length} 个文件');
 
-      _chatKey.currentState?.addMessage('assistant',
+      _chatKey.currentState?.addMessage(
+        'assistant',
         '✅ 主题迁移完成！\n\n'
-        '生成文件 ${_migrationResult!.files.length} 个（已全选）：\n'
-        '${_migrationResult!.files.map((f) => '• ${f.path}').join('\n')}\n\n'
-        '点击右上角 📋 按钮预览文件差异并选择性迁移，\n'
-        '或继续对话微调后写入。',
+            '生成文件 ${_migrationResult!.files.length} 个（已全选）：\n'
+            '${_migrationResult!.files.map((f) => '• ${f.path}').join('\n')}\n\n'
+            '点击右上角 📋 按钮预览文件差异并选择性迁移，\n'
+            '或继续对话微调后写入。',
       );
 
       if (_selfCheckEnabled) {
@@ -216,9 +233,15 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
           blogFramework: repo.frameworkId,
         );
         if (checkResult.hasError) {
-          _chatKey.currentState?.addMessage('assistant', '⚠️ 自检发现问题：\n${checkResult.issues.join('\n')}');
+          _chatKey.currentState?.addMessage(
+            'assistant',
+            '⚠️ 自检发现问题：\n${checkResult.issues.join('\n')}',
+          );
         } else {
-          _chatKey.currentState?.addMessage('assistant', '✅ ${checkResult.message}');
+          _chatKey.currentState?.addMessage(
+            'assistant',
+            '✅ ${checkResult.message}',
+          );
         }
       }
     } catch (e) {
@@ -249,10 +272,17 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
             builder: (ctx, scrollCtrl) => Column(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: cs.surface,
-                    border: Border(bottom: BorderSide(color: cs.outlineVariant.withOpacity(0.3))),
+                    border: Border(
+                      bottom: BorderSide(
+                        color: cs.outlineVariant.withOpacity(0.3),
+                      ),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -261,7 +291,10 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
                       Expanded(
                         child: Text(
                           '文件差异预览 ($selectedCount/${files.length})',
-                          style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface,
+                          ),
                         ),
                       ),
                       TextButton(
@@ -270,12 +303,16 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
                             if (selectedCount == files.length) {
                               _selectedFilePaths.clear();
                             } else {
-                              _selectedFilePaths = files.map((f) => f.path).toSet();
+                              _selectedFilePaths = files
+                                  .map((f) => f.path)
+                                  .toSet();
                             }
                           });
                           setState(() {});
                         },
-                        child: Text(selectedCount == files.length ? '取消全选' : '全选'),
+                        child: Text(
+                          selectedCount == files.length ? '取消全选' : '全选',
+                        ),
                       ),
                       IconButton(
                         icon: const Icon(Icons.close),
@@ -297,11 +334,18 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
                         children: [
                           InkWell(
                             onTap: () {
-                              setSheet(() => _previewFileIndex = _previewFileIndex == i ? null : i);
+                              setSheet(
+                                () => _previewFileIndex = _previewFileIndex == i
+                                    ? null
+                                    : i,
+                              );
                               setState(() {});
                             },
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 6,
+                              ),
                               child: Row(
                                 children: [
                                   Checkbox(
@@ -318,40 +362,81 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
                                     },
                                   ),
                                   const SizedBox(width: 4),
-                                  Icon(_fileIcon(file.path), size: 18, color: cs.primary),
+                                  Icon(
+                                    _fileIcon(file.path),
+                                    size: 18,
+                                    color: cs.primary,
+                                  ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Text(file.path, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: isSelected ? cs.onSurface : cs.outline), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                        Text('${file.language} · ${file.content.length} 字符', style: TextStyle(fontSize: 11, color: cs.outline)),
+                                        Text(
+                                          file.path,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                            color: isSelected
+                                                ? cs.onSurface
+                                                : cs.outline,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        Text(
+                                          '${file.language} · ${file.content.length} 字符',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: cs.outline,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ),
-                                  Icon(isPreview ? Icons.expand_less : Icons.expand_more, size: 20, color: cs.outline),
+                                  Icon(
+                                    isPreview
+                                        ? Icons.expand_less
+                                        : Icons.expand_more,
+                                    size: 20,
+                                    color: cs.outline,
+                                  ),
                                 ],
                               ),
                             ),
                           ),
                           if (isPreview)
                             Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 4,
+                              ),
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
                                 color: cs.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: cs.outlineVariant.withOpacity(0.3)),
+                                border: Border.all(
+                                  color: cs.outlineVariant.withOpacity(0.3),
+                                ),
                               ),
                               constraints: const BoxConstraints(maxHeight: 300),
                               child: SingleChildScrollView(
                                 child: SelectableText(
                                   file.content,
-                                  style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: cs.onSurface, height: 1.5),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontFamily: 'monospace',
+                                    color: cs.onSurface,
+                                    height: 1.5,
+                                  ),
                                 ),
                               ),
                             ),
-                          Divider(height: 1, color: cs.outlineVariant.withOpacity(0.2)),
+                          Divider(
+                            height: 1,
+                            color: cs.outlineVariant.withOpacity(0.2),
+                          ),
                         ],
                       );
                     },
@@ -368,12 +453,29 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
   IconData _fileIcon(String path) {
     final ext = path.split('.').last.toLowerCase();
     switch (ext) {
-      case 'ejs': case 'html': case 'njk': case 'liquid': return Icons.code;
-      case 'css': case 'scss': case 'less': return Icons.palette_outlined;
-      case 'js': case 'ts': case 'jsx': case 'tsx': return Icons.javascript;
-      case 'yml': case 'yaml': case 'toml': case 'json': return Icons.settings;
-      case 'md': return Icons.article_outlined;
-      default: return Icons.insert_drive_file_outlined;
+      case 'ejs':
+      case 'html':
+      case 'njk':
+      case 'liquid':
+        return Icons.code;
+      case 'css':
+      case 'scss':
+      case 'less':
+        return Icons.palette_outlined;
+      case 'js':
+      case 'ts':
+      case 'jsx':
+      case 'tsx':
+        return Icons.javascript;
+      case 'yml':
+      case 'yaml':
+      case 'toml':
+      case 'json':
+        return Icons.settings;
+      case 'md':
+        return Icons.article_outlined;
+      default:
+        return Icons.insert_drive_file_outlined;
     }
   }
 
@@ -386,9 +488,9 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
 
     if (selectedFiles.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('没有选中任何文件')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('没有选中任何文件')));
       }
       return;
     }
@@ -403,8 +505,14 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
           '⚠️ 请确保已推送仓库最新代码，建议先创建 Git 快照备份。',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确认写入')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认写入'),
+          ),
         ],
       ),
     );
@@ -417,12 +525,11 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
     });
 
     try {
-      final repo = widget.activeRepo ??
-            (widget.repos.isNotEmpty ? widget.repos.first : null);
+      final repo =
+          widget.activeRepo ??
+          (widget.repos.isNotEmpty ? widget.repos.first : null);
       if (repo == null) {
-        _chatKey.currentState?.addMessage('assistant',
-          '❌ 未找到可用仓库，请先在设置中配置仓库。',
-        );
+        _chatKey.currentState?.addMessage('assistant', '❌ 未找到可用仓库，请先在设置中配置仓库。');
         return;
       }
       for (final file in selectedFiles) {
@@ -430,13 +537,15 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
           repo,
           file.path,
           file.content,
-          commitMessage: 'theme: migrate ${_migrationResult!.themeName} - ${file.path}',
+          commitMessage:
+              'theme: migrate ${_migrationResult!.themeName} - ${file.path}',
         );
       }
 
-      _chatKey.currentState?.addMessage('assistant',
+      _chatKey.currentState?.addMessage(
+        'assistant',
         '✅ 已写入 ${selectedFiles.length} 个文件到 themes/${_migrationResult!.themeName}/\n\n'
-        '请推送仓库并在远端构建测试。如有异常，可使用「回滚主题快照」指令恢复。',
+            '请推送仓库并在远端构建测试。如有异常，可使用「回滚主题快照」指令恢复。',
       );
 
       if (mounted) {
@@ -456,7 +565,9 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
       try {
         final dir = Directory(_tempDir!);
         if (dir.existsSync()) dir.deleteSync(recursive: true);
-      } catch (e) { debugPrint('ThemeMigration: write files failed: $e'); }
+      } catch (e) {
+        debugPrint('ThemeMigration: write files failed: $e');
+      }
       _tempDir = null;
     }
   }
@@ -464,172 +575,228 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final repo = widget.activeRepo ?? (widget.repos.isNotEmpty ? widget.repos.first : null);
+    final repo =
+        widget.activeRepo ??
+        (widget.repos.isNotEmpty ? widget.repos.first : null);
     final fw = repo != null ? BlogFramework.byId(repo.frameworkId) : null;
 
     return PopScope(
       canPop: true,
       child: Scaffold(
-      appBar: AppBar(
-        title: const Text('AI 主题迁移'),
-        actions: [
-          IconButton(
-            icon: Icon(
-              _selfCheckEnabled ? Icons.verified : Icons.verified_outlined,
-              color: _selfCheckEnabled ? cs.primary : cs.outline,
-            ),
-            tooltip: '自动自检: ${_selfCheckEnabled ? "开" : "关"}',
-            onPressed: () => setState(() => _selfCheckEnabled = !_selfCheckEnabled),
-          ),
-          if (_migrationResult != null)
+        appBar: AppBar(
+          title: const Text('AI 主题迁移'),
+          actions: [
             IconButton(
-              icon: const Icon(Icons.difference_outlined),
-              tooltip: '文件差异预览',
-              onPressed: _busy ? null : _showDiffPreview,
-            ),
-          if (_migrationResult != null)
-            IconButton(
-              icon: const Icon(Icons.save_outlined),
-              tooltip: '写入主题文件',
-              onPressed: _busy ? null : _writeFiles,
-            ),
-        ],
-      ),
-      body: AiChatPanel(
-        key: _chatKey,
-        settings: widget.settings,
-        aiService: widget.aiService,
-        modelManager: widget.modelManager,
-        dispatcher: widget.dispatcher,
-        selfChecker: widget.selfChecker,
-        sessionType: AiSessionType.themeMigration,
-        blogFramework: repo?.frameworkId,
-        targetFramework: fw?.name,
-        themesPath: 'themes',
-        gitHubService: widget.githubService,
-        activeRepo: repo,
-        storageService: widget.storageService,
-        initialMessage: '欢迎使用 AI 主题跨框架迁移助手！\n\n'
-            '你可以直接输入主题 Git 地址开始迁移，例如：\n'
-            '「拉取 https://github.com/xxx/theme 转换到 Hexo，命名为 my-theme」\n\n'
-            '⚠️ 请遵守主题开源协议，仅迁移拥有合法开源许可的源码。',
-        onSettingsChanged: widget.onSettingsChanged,
-        headerBuilder: (ctx, chatState) {
-          if (!_showInputForm) return [];
-          return [
-            Container(
-              padding: const EdgeInsets.all(12),
-              color: cs.surfaceContainerLow,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.warning_amber, size: 16, color: Colors.amber),
-                      const SizedBox(width: 6),
-                      const Expanded(
-                        child: Text(
-                          '请遵守主题开源协议，仅迁移拥有合法开源许可的源码，严禁商用侵权。',
-                          style: TextStyle(fontSize: 11, color: Color(0xFFB45309)),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  if (fw != null)
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: cs.primaryContainer.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.info_outline, size: 14, color: cs.primary),
-                          const SizedBox(width: 6),
-                          Text('目标框架: ${fw.name} | 主题目录: themes/', style: TextStyle(fontSize: 12, color: cs.onPrimaryContainer)),
-                        ],
-                      ),
-                    ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: TextField(
-                          controller: _urlCtrl,
-                          decoration: const InputDecoration(
-                            labelText: '源码地址',
-                            hintText: 'Git URL 或 ZIP 链接',
-                            prefixIcon: Icon(Icons.link, size: 18),
-                            border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                            isDense: true,
-                          ),
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        flex: 2,
-                        child: TextField(
-                          controller: _themeNameCtrl,
-                          decoration: const InputDecoration(
-                            labelText: '主题名称',
-                            hintText: 'my-theme',
-                            prefixIcon: Icon(Icons.folder_outlined, size: 18),
-                            border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                            isDense: true,
-                          ),
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: _busy ? null : () => _startMigration(),
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        ),
-                        child: _busy
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : const Text('迁移'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: [
-                      _quickChip('只转换布局模板，不改CSS'),
-                      _quickChip('转换后移除评论模块'),
-                      _quickChip('分析这个主题的语法差异'),
-                      _quickChip('回滚主题快照'),
-                    ],
-                  ),
-                ],
+              icon: Icon(
+                _selfCheckEnabled ? Icons.verified : Icons.verified_outlined,
+                color: _selfCheckEnabled ? cs.primary : cs.outline,
               ),
+              tooltip: '自动自检: ${_selfCheckEnabled ? "开" : "关"}',
+              onPressed: () =>
+                  setState(() => _selfCheckEnabled = !_selfCheckEnabled),
             ),
-            if (_busy)
-              LinearProgressIndicator(minHeight: 2, color: cs.primary),
-            if (_status != null)
+            if (_migrationResult != null)
+              IconButton(
+                icon: const Icon(Icons.difference_outlined),
+                tooltip: '文件差异预览',
+                onPressed: _busy ? null : _showDiffPreview,
+              ),
+            if (_migrationResult != null)
+              IconButton(
+                icon: const Icon(Icons.save_outlined),
+                tooltip: '写入主题文件',
+                onPressed: _busy ? null : _writeFiles,
+              ),
+          ],
+        ),
+        body: AiChatPanel(
+          key: _chatKey,
+          settings: widget.settings,
+          aiService: widget.aiService,
+          modelManager: widget.modelManager,
+          dispatcher: widget.dispatcher,
+          selfChecker: widget.selfChecker,
+          sessionType: AiSessionType.themeMigration,
+          blogFramework: repo?.frameworkId,
+          targetFramework: fw?.name,
+          themesPath: 'themes',
+          gitHubService: widget.githubService,
+          activeRepo: repo,
+          storageService: widget.storageService,
+          initialMessage:
+              widget.initialMessage ??
+              '欢迎使用 AI 主题跨框架迁移助手！\n\n'
+                  '你可以直接输入主题 Git 地址开始迁移，例如：\n'
+                  '「拉取 https://github.com/xxx/theme 转换到 Hexo，命名为 my-theme」\n\n'
+                  '⚠️ 请遵守主题开源协议，仅迁移拥有合法开源许可的源码。',
+          onSettingsChanged: widget.onSettingsChanged,
+          headerBuilder: (ctx, chatState) {
+            if (!_showInputForm) return [];
+            return [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                color: cs.primaryContainer.withOpacity(0.5),
-                child: Row(
+                padding: const EdgeInsets.all(12),
+                color: cs.surfaceContainerLow,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (_busy) ...[
-                      SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: cs.primary)),
-                      const SizedBox(width: 8),
-                    ],
-                    Expanded(child: Text(_status!, style: TextStyle(fontSize: 12, color: cs.onPrimaryContainer))),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.warning_amber,
+                          size: 16,
+                          color: Colors.amber,
+                        ),
+                        const SizedBox(width: 6),
+                        const Expanded(
+                          child: Text(
+                            '请遵守主题开源协议，仅迁移拥有合法开源许可的源码，严禁商用侵权。',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFFB45309),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (fw != null)
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: cs.primaryContainer.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 14,
+                              color: cs.primary,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '目标框架: ${fw.name} | 主题目录: themes/',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: cs.onPrimaryContainer,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: TextField(
+                            controller: _urlCtrl,
+                            decoration: const InputDecoration(
+                              labelText: '源码地址',
+                              hintText: 'Git URL 或 ZIP 链接',
+                              prefixIcon: Icon(Icons.link, size: 18),
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              isDense: true,
+                            ),
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: _themeNameCtrl,
+                            decoration: const InputDecoration(
+                              labelText: '主题名称',
+                              hintText: 'my-theme',
+                              prefixIcon: Icon(Icons.folder_outlined, size: 18),
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              isDense: true,
+                            ),
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: _busy ? null : () => _startMigration(),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                          ),
+                          child: _busy
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('迁移'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        _quickChip('只转换布局模板，不改CSS'),
+                        _quickChip('转换后移除评论模块'),
+                        _quickChip('分析这个主题的语法差异'),
+                        _quickChip('回滚主题快照'),
+                      ],
+                    ),
                   ],
                 ),
               ),
-          ];
-        },
-      ),
+              if (_busy)
+                LinearProgressIndicator(minHeight: 2, color: cs.primary),
+              if (_status != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 6,
+                  ),
+                  color: cs.primaryContainer.withOpacity(0.5),
+                  child: Row(
+                    children: [
+                      if (_busy) ...[
+                        SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: cs.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Expanded(
+                        child: Text(
+                          _status!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onPrimaryContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ];
+          },
+        ),
       ),
     );
   }

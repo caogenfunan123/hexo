@@ -518,6 +518,16 @@ extension EditorAiExt on _RootShellState {
         builder: (_) => ThemeStoreScreen(
           repos: repos,
           onToast: _showToast,
+          aiService: aiService,
+          githubService: github,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          migrationService: themeMigrationService,
+          selfChecker: aiSelfChecker,
+          settings: settings,
+          storageService: storage,
+          snapshotService: _snapshotService,
+          onSettingsChanged: _updateSettings,
         ),
       ),
     );

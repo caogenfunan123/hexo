@@ -6848,7 +6848,20 @@ class DesktopShellState extends State<DesktopShell>
   void _showThemeStore() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ThemeStoreScreen(repos: repos, onToast: _showToast),
+        builder: (_) => ThemeStoreScreen(
+          repos: repos,
+          onToast: _showToast,
+          aiService: aiService,
+          githubService: github,
+          modelManager: aiModelManager,
+          dispatcher: aiDispatcher,
+          migrationService: themeMigrationService,
+          selfChecker: aiSelfChecker,
+          settings: settings,
+          storageService: storage,
+          snapshotService: versionSnapshotService,
+          onSettingsChanged: _updateSettings,
+        ),
       ),
     );
   }

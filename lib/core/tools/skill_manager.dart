@@ -5,6 +5,7 @@ import 'tool_entity.dart';
 import 'tool_registry.dart';
 import 'builtin_tools.dart';
 import 'remote_cms_tools.dart';
+import 'preset_skills.dart';
 
 /// 技能管理器：管理用户自定义技能（Skill）的 CRUD 和持久化
 class SkillManager {
@@ -25,6 +26,25 @@ class SkillManager {
     _registry.registerAll(RemoteCmsTools.all);
     // 加载自定义技能
     await _loadSkills();
+    // 预置技能（首次启动写入，已存在则跳过；用户删除后再次启动会自动恢复，
+    // 如需彻底移除可在技能管理器中关闭该技能）
+    await _seedPresetSkills();
+  }
+
+  /// 预置技能：将应用内置技能集写入技能库（缺失的补写，不覆盖用户修改）
+  Future<void> _seedPresetSkills() async {
+    if (_storageDir == null) return;
+    final existingIds = _skills.map((s) => s.id).toSet();
+    var changed = false;
+    for (final preset in PresetSkills.all) {
+      if (existingIds.contains(preset.id)) continue;
+      _skills.add(preset);
+      _registry.registerSkill(preset);
+      changed = true;
+    }
+    if (changed) {
+      await _saveSkills();
+    }
   }
 
   /// 获取所有工具（内置 + 自定义）
@@ -79,7 +99,8 @@ class SkillManager {
   }
 
   /// 更新技能
-  Future<ToolEntity?> updateSkill(String id, {
+  Future<ToolEntity?> updateSkill(
+    String id, {
     String? name,
     String? description,
     String? content,
@@ -157,7 +178,8 @@ class SkillManager {
   }
 
   /// 更新 MCP 工具
-  Future<ToolEntity?> updateMcpTool(String id, {
+  Future<ToolEntity?> updateMcpTool(
+    String id, {
     String? name,
     String? description,
     String? endpoint,
@@ -240,9 +262,9 @@ class SkillManager {
     try {
       final file = File('${_storageDir!.path}/skills.json');
       await file.writeAsString(
-        const JsonEncoder.withIndent('  ').convert(
-          _skills.map((s) => s.toJson()).toList(),
-        ),
+        const JsonEncoder.withIndent(
+          '  ',
+        ).convert(_skills.map((s) => s.toJson()).toList()),
       );
     } catch (_) {}
   }
@@ -253,9 +275,9 @@ class SkillManager {
       final mcpTools = _registry.getByType(ToolType.mcp);
       final file = File('${_storageDir!.path}/mcp_tools.json');
       await file.writeAsString(
-        const JsonEncoder.withIndent('  ').convert(
-          mcpTools.map((t) => t.toJson()).toList(),
-        ),
+        const JsonEncoder.withIndent(
+          '  ',
+        ).convert(mcpTools.map((t) => t.toJson()).toList()),
       );
     } catch (_) {}
   }
