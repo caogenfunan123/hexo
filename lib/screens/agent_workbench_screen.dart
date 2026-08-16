@@ -71,6 +71,12 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
   // 附件列表
   final List<String> _attachments = [];
 
+  // 任务头信息区是否展开（默认折叠为一行摘要，可点开展示全部明细）
+  bool _headerExpanded = false;
+
+  /// 工具执行直接监听注销函数（多监听注册制，工作台记录不依赖面板转发）
+  void Function()? _unsubscribeTools;
+
   String get _siteId => widget.settings.effectiveActiveSiteId;
 
   @override
@@ -81,6 +87,15 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
     // 打开工作台即进入对话：直接创建空白任务，用户对话里描述需求
     _task = _createBlankTask();
     _loadRecentTasks();
+    _unsubscribeTools =
+        widget.dispatcher.addToolsExecutedListener(_recordToolExecutions);
+  }
+
+  @override
+  void dispose() {
+    _unsubscribeTools?.call();
+    _unsubscribeTools = null;
+    super.dispose();
   }
 
   /// 创建空白任务（无前置表单，直接进入对话）
@@ -357,12 +372,15 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
     return '${normalized.substring(0, max)}...';
   }
 
-  /// 选择附件（复制到任务附件目录）
+  /// 选择附件（真上传到本地站点根目录，作为站点真实文件，AI 可直接读写）
   Future<void> _pickAttachments() async {
     final result = await FilePicker.platform.pickFiles(allowMultiple: true);
     if (result == null || result.files.isEmpty) return;
     final root = (await widget.storageService.root).path;
-    final attachmentsDir = Directory('$root/sites/$_siteId/tasks/attachments');
+    // 上传到站点根目录（sites/$siteId/attachments），作为站点真实文件，
+    // 不再是 tasks 内部影子副本；AI 工作区可通过站点数据目录读取。
+    final siteDir = Directory('$root/sites/$_siteId');
+    final attachmentsDir = Directory('$root/sites/$_siteId/attachments');
     if (!await attachmentsDir.exists()) {
       await attachmentsDir.create(recursive: true);
     }
@@ -376,28 +394,48 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
         paths.add(dest);
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('附件复制失败: ${f.name}: $e')),
+          SnackBar(content: Text('附件上传失败: ${f.name}: $e')),
         );
       }
     }
     if (!mounted) return;
     setState(() => _attachments.addAll(paths));
+    // 上传后立即持久化任务，保证站点文件与任务附件清单一致
+    final current = _task;
+    if (current != null) {
+      _saveTask(current.copyWith(attachmentPaths: List<String>.from(_attachments)));
+    }
+    // 注入附件说明到当前对话，AI 立即可见新增附件
+    if (paths.isNotEmpty) {
+      _chatKey.currentState?.injectSystemContext(_buildAttachmentNote());
+    }
   }
 
-  /// 构建任务头
+  /// 构建任务头（信息区默认可折叠，点项目标行/展开按钮切换明细）
   Widget _buildTaskHeader() {
     final task = _task;
     final repo = widget.activeRepo;
+    final cs = Theme.of(context).colorScheme;
+    final attachments =
+        task?.attachmentPaths.length ?? _attachments.length;
+    final toolCount = task?.toolRecords.length ?? 0;
+    final fileCount = task?.fileChanges.length ?? 0;
+    final summary = StringBuffer();
+    if (task != null) summary
+      ..write('类型 ${task.taskType.label}')
+      ..write(' · ${repo == null ? '未绑定工作区' : '工作区 ${repo.owner}/${repo.repo}'}')
+      ..write(' · 附件 $attachments')
+      ..write(' · 工具 $toolCount 次')
+      ..write(' · 文件变更 $fileCount');
     return Container(
       padding: const EdgeInsets.all(12),
-      color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+      color: cs.surfaceContainerHighest.withOpacity(0.5),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.assignment_outlined,
-                  size: 18, color: Theme.of(context).colorScheme.primary),
+              Icon(Icons.assignment_outlined, size: 18, color: cs.primary),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -421,49 +459,102 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
                         fontSize: 11, color: _statusColor(task.status)),
                   ),
                 ),
+              // 折叠开关：切换信息区明细展示
+              GestureDetector(
+                onTap: () => setState(() => _headerExpanded = !_headerExpanded),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Icon(
+                    _headerExpanded
+                        ? Icons.expand_less
+                        : Icons.expand_more,
+                    size: 20,
+                    color: cs.outline,
+                  ),
+                ),
+              ),
             ],
           ),
           if (task != null && task.objective.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(
               task.objective,
-              style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.outline),
+              style: TextStyle(fontSize: 12.5, color: cs.outline),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
           ],
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              if (task != null)
-                _chip(
-                  icon: Icons.category_outlined,
-                  label: '类型: ${task.taskType.label}',
+          if (!_headerExpanded)
+            // 折叠态：一行摘要，点击展开查看明细
+            InkWell(
+              onTap: () => setState(() => _headerExpanded = true),
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 14, color: cs.outline),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        summary.toString(),
+                        style: TextStyle(fontSize: 12.5, color: cs.outline),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
-              _chip(
-                icon: Icons.link,
-                label: repo == null
-                    ? '未绑定工作区'
-                    : '工作区: ${repo.owner}/${repo.repo}',
               ),
-              _chip(
-                icon: Icons.attach_file,
-                label: '附件 ${task?.attachmentPaths.length ?? _attachments.length}',
-              ),
-              if (task != null)
-                _chip(
-                  icon: Icons.history,
-                  label: '工具 ${task.toolRecords.length} 次',
+            )
+          else
+            // 展开态：完整明细 chips + 附件/工作区详情
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    if (task != null)
+                      _chip(
+                        icon: Icons.category_outlined,
+                        label: '类型: ${task.taskType.label}',
+                      ),
+                    _chip(
+                      icon: Icons.link,
+                      label: repo == null
+                          ? '未绑定工作区'
+                          : '工作区: ${repo.owner}/${repo.repo}',
+                    ),
+                    _chip(
+                      icon: Icons.attach_file,
+                      label: '附件 $attachments',
+                    ),
+                    if (task != null)
+                      _chip(
+                        icon: Icons.history,
+                        label: '工具 $toolCount 次',
+                      ),
+                    if (task != null)
+                      _chip(
+                        icon: Icons.difference,
+                        label: '文件变更 $fileCount',
+                      ),
+                  ],
                 ),
-              if (task != null)
-                _chip(
-                  icon: Icons.difference,
-                  label: '文件变更 ${task.fileChanges.length}',
-                ),
-            ],
-          ),
+                if (_attachments.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '已暂存附件：${_attachments.join('、')}',
+                    style: TextStyle(fontSize: 11.5, color: cs.outline),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
         ],
       ),
     );
@@ -711,6 +802,8 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
     final starter = task.taskType.starterPrompt(context);
     final objectiveLine =
         task.objective.isEmpty ? '' : '任务目标：${task.objective}\n';
+    // 附件内容注入（真上传后让 AI 可直接读取附件内容与路径）
+    final attachmentNote = _buildAttachmentNote();
     return AiChatPanel(
       key: _chatKey,
       settings: widget.settings,
@@ -728,14 +821,45 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
       storageService: widget.storageService,
       historyKey: 'task_${task.id}',
       initialMessage: '$starter\n\n$objectiveLine'
-          '${task.attachmentPaths.isNotEmpty ? '已附加 ${task.attachmentPaths.length} 个文件。\n' : ''}'
-          '${repo != null ? '工作区：${repo.owner}/${repo.repo}（${repo.frameworkId ?? "未知框架"}）\n' : ''}'
+          '$attachmentNote'
+          '${repo != null ? '\n工作区：${repo.owner}/${repo.repo}（${repo.frameworkId ?? "未知框架"}）' : ''}\n'
           '请描述你的需求，我会调用工具读取仓库、分析内容并产出结果。',
-      onSettingsChanged: widget.onSettingsChanged,
       onToolsExecuted: _recordToolExecutions,
       onFileOpsParsed: _recordParsedFileOps,
       onFilesWritten: _recordWrittenFiles,
       onAttach: _pickAttachments,
+      onSettingsChanged: widget.onSettingsChanged,
     );
+  }
+
+  /// 生成附件说明：包含本地站点文件区路径 + 文本附件内容摘要（截断），
+  /// 使 AI 在"真上传到本地站点"后能直接基于附件内容工作。
+  String _buildAttachmentNote() {
+    if (_attachments.isEmpty) return '';
+    final buf = StringBuffer('已附加 ${_attachments.length} 个文件（存储于本地站点文件区）。\n');
+    for (final path in _attachments) {
+      try {
+        final f = File(path);
+        if (!f.existsSync()) {
+          buf.writeln('- $path（文件缺失）');
+          continue;
+        }
+        final size = f.lengthSync();
+        const maxPreview = 4000;
+        final small = size <= maxPreview;
+        var content = small ? f.readAsStringSync() : '';
+        buf.writeln('- 路径: $path : $size 字节${small ? '' : '（过大，仅给路径）'}');
+        if (small && content.isNotEmpty) {
+          final lines = content.trim().split('\n');
+          final preview = lines.take(12).join('\n');
+          final suffix = lines.length > 12 ? '\n...' : '';
+          buf.writeln('  内容摘要:\n  '
+              '${preview.replaceAll('\n', '\n  ')}${suffix}');
+        }
+      } catch (e) {
+        buf.writeln('- $path（读取失败: $e）');
+      }
+    }
+    return buf.toString();
   }
 }

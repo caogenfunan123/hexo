@@ -159,10 +159,14 @@ class AiChatPanelState extends State<AiChatPanel> {
   /// 模型切换事件（提示条）
   SwitchEvent? _lastSwitchEvent;
 
+  /// 工具执行监听注销函数（注册制，dispose/更换 dispatcher 时清理）
+  void Function()? _unsubscribeToolsExecuted;
+
   /// 当前实际使用的模型（自动择优时可能切换）
   AiModelEntity? _activeModel;
 
-  /// 技能选择：选中的技能 ID 集合。null/空 = 全部启用（保持向后兼容）
+  /// 技能选择：选中的技能 ID 集合。null = 全部启用（保持向后兼容）；
+  /// 空集 = 明确不使用任何技能（能选"不选"并生效）。
   Set<String>? _selectedSkillIds;
 
   /// 思考块手动折叠覆盖（按 reasoning 内容）：用户手动点击后的状态
@@ -204,7 +208,8 @@ class AiChatPanelState extends State<AiChatPanel> {
     final dispatcherChanged = oldWidget.dispatcher != widget.dispatcher;
     if (dispatcherChanged) {
       oldWidget.dispatcher.onModelSwitched = null;
-      oldWidget.dispatcher.onToolsExecuted = null;
+      _unsubscribeToolsExecuted?.call();
+      _unsubscribeToolsExecuted = null;
       oldWidget.dispatcher.onToolConfirm = null;
       _bindDispatcherCallbacks();
     }
@@ -225,7 +230,22 @@ class AiChatPanelState extends State<AiChatPanel> {
       });
       _addSystemMessage('🔄 ${event.reason}\n已自动切换至「${event.toModel}」继续处理');
     };
-    widget.dispatcher.onToolsExecuted = (requests, results) {
+    // 高风险工具执行前确认（对标 MonkeyCode ask_user_question）。
+    // 由设置 aiConfirmHighRiskTools 控制：默认关闭 = AI 全权，直接执行
+    widget.dispatcher.onToolConfirm = widget.settings.ai.aiConfirmHighRiskTools
+        ? (request, toolName, argSummary) => _confirmToolExecution(
+              request,
+              toolName,
+              argSummary,
+            )
+        : null;
+    // 工具执行监听采用注册制，避免共享 dispatcher 时单回调被覆盖；
+    // 注销函数在 didUpdateWidget(dispatcher 变更)/dispose 时清理。
+    _unsubscribeToolsExecuted?.call();
+    _unsubscribeToolsExecuted = widget.dispatcher.addToolsExecutedListener((
+      requests,
+      results,
+    ) {
       if (mounted) {
         setState(() {
           for (var i = 0; i < requests.length; i++) {
@@ -239,16 +259,7 @@ class AiChatPanelState extends State<AiChatPanel> {
         });
       }
       widget.onToolsExecuted?.call(requests, results);
-    };
-    // 高风险工具执行前确认（对标 MonkeyCode ask_user_question）。
-    // 由设置 aiConfirmHighRiskTools 控制：默认关闭 = AI 全权，直接执行
-    widget.dispatcher.onToolConfirm = widget.settings.ai.aiConfirmHighRiskTools
-        ? (request, toolName, argSummary) => _confirmToolExecution(
-              request,
-              toolName,
-              argSummary,
-            )
-        : null;
+    });
   }
 
   /// MCP 指令执行高风险工具时复用同一确认框
@@ -596,6 +607,15 @@ class AiChatPanelState extends State<AiChatPanel> {
 
   void _addSystemMessage(String text) {
     setState(() => _messages.add(ChatMessage(role: 'system', content: text)));
+    _saveHistory();
+    _scrollToBottom();
+  }
+
+  /// 注入一条系统上下文消息（如附件说明），进入 UI 与模型可见历史。
+  void injectSystemContext(String text) {
+    if (text.trim().isEmpty) return;
+    widget.dispatcher.addSystemContext(text.trim());
+    setState(() => _messages.add(ChatMessage(role: 'system', content: text.trim())));
     _saveHistory();
     _scrollToBottom();
   }
@@ -1133,7 +1153,8 @@ class AiChatPanelState extends State<AiChatPanel> {
   @override
   void dispose() {
     widget.dispatcher.onModelSwitched = null;
-    widget.dispatcher.onToolsExecuted = null;
+    _unsubscribeToolsExecuted?.call();
+    _unsubscribeToolsExecuted = null;
     widget.dispatcher.onToolConfirm = null;
     _streamSub?.cancel();
     _chatCtrl.dispose();
@@ -1457,9 +1478,17 @@ class AiChatPanelState extends State<AiChatPanel> {
 
     final selected = _selectedSkillIds;
     final selectedCount = selected?.length ?? skills.length;
-    final allSelected = selected == null || selected.isEmpty;
-    final label =
-        allSelected ? '技能：全部' : '技能：$selectedCount/${skills.length}';
+    // null = 全部；空集 = 不使用任何技能
+    final bool allSelected = selected == null;
+    final bool noneSelected = selected != null && selected.isEmpty;
+    final String label;
+    if (allSelected) {
+      label = '技能：全部';
+    } else if (noneSelected) {
+      label = '技能：无';
+    } else {
+      label = '技能：$selectedCount/${skills.length}';
+    }
     return SizedBox(
       width: double.infinity,
       child: Align(
@@ -1592,7 +1621,8 @@ class AiChatPanelState extends State<AiChatPanel> {
 
     if (result == null || !mounted) return;
     setState(() {
-      _selectedSkillIds = result.isEmpty ? null : result;
+      // 保留空集的"不使用任何技能"语义，不再把空集还原成 null（全部）
+      _selectedSkillIds = result;
     });
   }
 

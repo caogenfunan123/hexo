@@ -63,6 +63,29 @@ class AiRequestDispatcher {
   void Function(List<ToolCallRequest> requests, List<ToolCallResult> results)?
       onToolsExecuted;
 
+  /// 附加工具执行监听器集合：多个面板/持久化记录者可同时注册，
+  /// 避免共享同一 dispatcher 实例时单一回调字段被后绑定的面板覆盖。
+  final List<void Function(
+      List<ToolCallRequest> requests, List<ToolCallResult> results)>
+      _toolsExecutedListeners = [];
+
+  /// 注册工具执行监听器，返回注销函数
+  void Function() addToolsExecutedListener(
+      void Function(
+              List<ToolCallRequest> requests, List<ToolCallResult> results)
+          listener) {
+    _toolsExecutedListeners.add(listener);
+    return () => _toolsExecutedListeners.remove(listener);
+  }
+
+  void _notifyToolsExecuted(
+      List<ToolCallRequest> requests, List<ToolCallResult> results) {
+    onToolsExecuted?.call(requests, results);
+    for (final l in List.of(_toolsExecutedListeners)) {
+      l(requests, results);
+    }
+  }
+
   /// 高风险工具确认回调：返回 true 允许执行，false 拒绝。
   /// 传入工具名与参数摘要，UI 弹确认框。为 null 时高风险工具自动执行。
   Future<bool> Function(
@@ -110,6 +133,12 @@ class AiRequestDispatcher {
 
   void addAssistantMessage(String content) {
     _chatHistory.add({'role': 'assistant', 'content': content});
+  }
+
+  /// 追加一条 system 上下文消息（如附件内容说明），进入模型可见历史。
+  void addSystemContext(String content) {
+    if (content.trim().isEmpty) return;
+    _chatHistory.add({'role': 'system', 'content': content.trim()});
   }
 
   void clearHistory() {
@@ -444,12 +473,12 @@ $prev
       final List<ToolEntity> exposedTools = [];
 
       for (final t in registry.enabledTools) {
-        // 自定义技能按 enabledSkillIds 过滤
-        if (t.type == ToolType.skill &&
-            skillIds != null &&
-            skillIds.isNotEmpty &&
-            !skillIds.contains(t.id)) {
-          continue;
+        // 自定义技能按 enabledSkillIds 过滤：
+        // null = 全部启用；空集 = 明确不使用任何技能
+        if (t.type == ToolType.skill && skillIds != null) {
+          if (skillIds.isEmpty || !skillIds.contains(t.id)) {
+            continue;
+          }
         }
         exposedTools.add(t);
       }
@@ -567,7 +596,7 @@ $prev
             isCancelled: () => _cancelled || _isStale(generation),
           );
           if (_isStale(generation)) return;
-          onToolsExecuted?.call(response.toolCalls!, results);
+          _notifyToolsExecuted(response.toolCalls!, results);
 
           if (_cancelled || _isStale(generation)) {
             if (!controller.isClosed) await controller.close();
