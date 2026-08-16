@@ -61,3 +61,15 @@ Entries discovered by the Agent during task execution should follow this format:
     1. 简易模式接线：`lib/desktop/feature_entries.dart`（AppMode/ModeVisibilityFilter/FeatureEntry 注册表）已实现，但 desktop_shell.dart 与 editor_ui_ext.dart 未搜到消费注册表的接线点，疑似未真正接入 left_panel 渲染与移动端 drawer 过滤
     2. 一键建站向导端到端未验证：`site_scaffold_builder.dart`(803 行)/`site_wizard_service.dart`(743 行)/`cloudflare_pages_provider.dart`/`framework_build_map.dart`/`wizard_models.dart` 代码齐全且 CI 编译通过，但 tasklist 全 `[ ]`，从未实测 GitHub 建 repo → CI Pages → Cloudflare deploy hook 全链路
     3. Agent 工作台思考模式空壳：operit spec 记录 `thinkingEnabled` 是未接线预留字段，agent_workbench_screen.dart 未搜到 reasoning/thinking 处理，疑似 deepseek-reasoner 仍被当普通模型调用，推理过程不渲染
+
+[Project Knowledge Summary]
+- Date: 2026-08-16
+- Context: Discovered by Agent while studying open-source AI agent projects (MonkeyCode/Operit/Operit2) for features to reuse in hexo app's AI chat flow
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - Operit (github.com/AAswordman/Operit) 与 Operit2（Rust core + Flutter app）是 Android/跨平台 AI Agent，其上下文压缩、工具格式化、聊天 UI 设计可直接借鉴，参考源码在 /tmp/opencode/Operit、/tmp/opencode/Operit2
+  - 上下文 LLM 摘要（AIMessageManager.rs / .kt）：增量摘要——只在历史中插一条 sender="summary" 消息，之后每次只总结"上次摘要之后"的消息；双触发（token 占比 >= 阈值 或 摘要后用户消息数 >= 16）；新摘要携带旧摘要融合；四段式固定格式【核心任务状态】【互动情节与设定】【对话历程与概要】【关键信息与上下文】，要求自包含可重建上下文
+  - 工具结果格式化（ConversationMarkupManager）：多条结果累加超 64KB 停止追加；不同类型工具（终端/目录/文件）用专用展示格式，不给模型暴露 __type JSON 元数据
+  - 工具权限（ToolExecutionManager checkToolPermission）：模型可用 deny_tool 标记声明"已授权"绕过确认，比按工具名判断更灵活
+  - 工具结果/参数展示 UI：结果摘要 200 字 + 点击弹窗看全文 + 复制；大参数按字节数显示"N B"；read 类工具按名归组折叠"工具调用 (N)"；流式中自动展开、结束后折叠；thinking 默认折叠最新展开
+  - MonkeyCode (github.com/chaitin/MonkeyCode) 核心 Agent 在私有 submodule OhMyAgent 拿不到，前端 task-stream-client.ts 有指数退避重连+chunk去重可参考；backend pkg/llm/client.go 是 OpenAI Chat/Responses/Anthropic 三协议适配（我们 ai_provider.dart 已对标 Provider/InterfaceType）

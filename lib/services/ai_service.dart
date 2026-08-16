@@ -723,6 +723,22 @@ class AiService {
     }
   }
 
+  /// 将历史中的增量摘要消息（is_summary 标记的 system 消息）合并进 system，
+  /// Anthropic 协议不允许 system 消息出现在 messages 里，需单独放入 body.system。
+  String _mergeSummaryIntoSystem(
+    String systemPrompt,
+    List<Map<String, dynamic>> messages,
+  ) {
+    final summary = messages
+        .where((m) =>
+            m['role'] == 'system' && m['is_summary'] == true)
+        .map((m) => m['content']?.toString() ?? '')
+        .where((s) => s.isNotEmpty)
+        .join('\n\n');
+    if (summary.isEmpty) return systemPrompt;
+    return '$systemPrompt\n\n[对话摘要]\n$summary';
+  }
+
   /// 将 OpenAI 风格历史转换为 Anthropic 消息格式
   List<Map<String, dynamic>> _toAnthropicMessages(
     List<Map<String, dynamic>> messages,
@@ -883,7 +899,7 @@ class AiService {
       'model': p.model,
       'max_tokens': 4096,
       'temperature': temperature,
-      'system': systemPrompt,
+      'system': _mergeSummaryIntoSystem(systemPrompt, messages),
       'messages': _toAnthropicMessages(messages),
     };
     if (p.thinkingEnabled) {
@@ -1119,7 +1135,10 @@ class AiService {
     for (final m in messages) {
       final role = m['role']?.toString();
       if (role == 'system') {
-        allMessages.add(Map<String, dynamic>.from(m));
+        // 剥离 is_summary 内部标记，避免未知字段被严格校验的服务端拒绝
+        allMessages.add(
+          Map<String, dynamic>.from(m)..remove('is_summary'),
+        );
         continue;
       }
       final normalized = Map<String, dynamic>.from(m);
@@ -1296,7 +1315,7 @@ class AiService {
       'model': p.model,
       'max_tokens': 4096,
       'temperature': temperature,
-      'system': systemPrompt,
+      'system': _mergeSummaryIntoSystem(systemPrompt, messages),
       'messages': _toAnthropicMessages(messages),
       'stream': true,
     };
@@ -1490,7 +1509,10 @@ class AiService {
     for (final m in messages) {
       final role = m['role']?.toString();
       if (role == 'system') {
-        allMessages.add(Map<String, dynamic>.from(m));
+        // 剥离 is_summary 内部标记，避免未知字段被严格校验的服务端拒绝
+        allMessages.add(
+          Map<String, dynamic>.from(m)..remove('is_summary'),
+        );
         continue;
       }
       final normalized = Map<String, dynamic>.from(m);

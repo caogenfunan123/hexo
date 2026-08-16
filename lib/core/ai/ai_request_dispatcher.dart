@@ -45,6 +45,15 @@ class AiRequestDispatcher {
   /// 请求代际：每次新请求（含取消）自增，旧异步任务据此识别自己已被取代而静默退出
   int _requestGeneration = 0;
 
+  /// 上下文增量摘要（移植 Operit AIMessageManager）：
+  /// - 触发阈值：上下文字符占比 >= [_kSummaryRatioThreshold]，
+  ///   或上次摘要之后用户消息数 >= [_kSummaryUserMessageThreshold]。
+  /// - 摘要只覆盖上次摘要之后的新对话，继承旧摘要生成新摘要，
+  ///   发送视图用摘要替换其之前的原始历史，根治长会话失忆。
+  static const bool _kSummaryEnabled = true;
+  static const double _kSummaryRatioThreshold = 0.7;
+  static const int _kSummaryUserMessageThreshold = 16;
+
   /// 模型切换事件回调（UI 展示提示条）
   void Function(SwitchEvent event)? onModelSwitched;
 
@@ -96,6 +105,177 @@ class AiRequestDispatcher {
 
   void clearHistory() {
     _chatHistory.clear();
+  }
+
+  bool _isSummaryMsg(Map<String, dynamic> m) => m['is_summary'] == true;
+
+  /// 最后一次摘要消息的下标，无则 null
+  int? _lastSummaryIndex() {
+    for (var i = _chatHistory.length - 1; i >= 0; i--) {
+      if (_isSummaryMsg(_chatHistory[i])) return i;
+    }
+    return null;
+  }
+
+  /// 是否应生成增量摘要（仿 Operit shouldGenerateSummary）：
+  /// 字符占比达到阈值（接近滑动窗口上限，摘要可提前压缩防失忆），
+  /// 或上次摘要之后用户消息达到数量阈值。
+  bool _shouldGenerateSummary(AppSettings settings) {
+    if (!_kSummaryEnabled) return false;
+    if (settings.ai.aiMaxContextChars <= 0) return false;
+    final lastIdx = _lastSummaryIndex();
+    final relevant = lastIdx == null
+        ? _chatHistory
+        : _chatHistory.sublist(lastIdx + 1);
+    if (relevant.isEmpty) return false;
+    var chars = 0;
+    var userCount = 0;
+    for (final m in relevant) {
+      final role = m['role']?.toString();
+      if (role == 'user') {
+        userCount++;
+        chars += _messageChars(m);
+      } else if (role == 'assistant') {
+        chars += _messageChars(m);
+      }
+    }
+    if (chars / settings.ai.aiMaxContextChars >= _kSummaryRatioThreshold) {
+      return true;
+    }
+    if (userCount >= _kSummaryUserMessageThreshold) return true;
+    return false;
+  }
+
+  /// 生成增量摘要：只取上次摘要之后的 user/ai 消息，继承旧摘要生成新摘要。
+  /// 失败或空结果返回 null（调用方静默降级，不影响主流程）。
+  Future<String?> _summarizeConversation(
+    AppSettings settings,
+    AiProfile? profile,
+  ) async {
+    final lastIdx = _lastSummaryIndex();
+    final previous = lastIdx == null
+        ? null
+        : (_chatHistory[lastIdx]['content'] as String?)?.trim();
+    final relevant = lastIdx == null
+        ? _chatHistory
+        : _chatHistory.sublist(lastIdx + 1);
+    final entries = <String>[];
+    var seq = 1;
+    for (final m in relevant) {
+      final role = m['role']?.toString();
+      if (role != 'user' && role != 'assistant') continue;
+      var content = m['content']?.toString() ?? '';
+      if (role == 'assistant' && content.isEmpty) {
+        // 纯工具调用轮：content 常为空，附上工具名留痕
+        final tc = m['tool_calls'];
+        if (tc is List && tc.isNotEmpty) {
+          final names = tc
+              .whereType<Map>()
+              .map((e) => e['function']?['name']?.toString() ?? '')
+              .where((s) => s.isNotEmpty)
+              .join(', ');
+          if (names.isNotEmpty) content = '[调用工具: $names]';
+        }
+      }
+      final cleaned = content.trim();
+      if (cleaned.isEmpty) continue;
+      entries.add('#$seq: $cleaned');
+      seq++;
+    }
+    if (entries.isEmpty) return null;
+
+    final result = await _aiService
+        .complete(
+          settings: settings,
+          systemPrompt: _buildSummarySystemPrompt(previous),
+          userPrompt: entries.join('\n\n'),
+          profile: profile,
+          temperature: 0.3,
+        )
+        .timeout(const Duration(seconds: 90));
+    final text = result.trim();
+    if (text.isEmpty) return null;
+    return text;
+  }
+
+  /// 摘要系统提示词（四段式固定格式，移植 Operit FunctionalPrompts.SUMMARY_PROMPT）。
+  /// 若存在旧摘要，追加继承指令，让新摘要与其融合。
+  String _buildSummarySystemPrompt(String? previousSummary) {
+    var prompt = '''
+你是负责生成对话摘要的AI助手。你的任务是根据"上一次的摘要"（如果提供）和"最近的对话内容"，生成一份全新的、独立的、全面的摘要。这份新摘要将完全取代之前的摘要，成为后续对话的唯一历史参考。
+
+**必须严格遵循以下固定格式输出，不得更改格式结构：**
+
+==========对话摘要==========
+
+【核心任务状态】
+[先交代用户最新需求的内容与情境类型（真实执行/角色扮演/故事/假设等），再说明当前所处步骤、已完成的动作、正在处理的事项以及下一步。]
+[明确任务状态（已完成/进行中/等待中），列出未完成的依赖或所需信息；如在等待用户输入，说明原因与所需材料。]
+[显式覆盖信息搜集、任务执行、代码编写或其他关键环节的状态，哪怕某环节尚未启动也要说明原因。]
+[最后补充最近一次任务的进度拆解：哪些已完成、哪些进行中、哪些待处理。]
+
+【互动情节与设定】
+[如存在虚构或场景设定，概述名称、角色身份、背景约束及其来源，避免把剧情当成现实。]
+[用1-2段概括近期关键互动：谁提出了什么、目的为何、采用何种表达方式、对任务或剧情的影响，以及仍需确认的事项。]
+[若用户给出剧本/业务/策略等非技术内容，提炼要点并说明它们如何指导后续输出。]
+
+【对话历程与概要】
+[用不少于3段描述整体演进，每段包含"行动+目的+结果"，可涵盖技术、业务、剧情或策略等不同主题，需特别点名信息搜集、任务执行、代码编写等阶段的衔接；如涉及具体代码，可引用关键片段以辅助说明。]
+[突出转折、已解决的问题和形成的共识，引用必要的路径、命令、场景节点或原话，确保读者能看懂上下文和因果关系。]
+
+【关键信息与上下文】
+- [信息点1：用户需求、限制、背景或引用的文件/接口/角色等，说明其具体内容及作用。]
+- [信息点2：技术或剧本结构中的关键元素（函数、配置、日志、人物动机等）及其意义。]
+- [信息点3：问题或创意的探索路径、验证结果与当前状态。]
+- [信息点4：影响后续决策的因素，如优先级、情绪基调、角色约束、外部依赖、时间节点。]
+- [信息点5+：补充其他必要细节，覆盖现实与虚构信息。每条至少两句：先述事实，再讲影响或后续计划。]
+
+============================
+
+**格式要求：**
+1. 必须使用上述固定格式，包括分隔线、标题标识符【】、列表符号等，不得更改。
+2. 标题"对话摘要"必须放在第一行，前后用等号分隔。
+3. 每个部分必须使用【】标识符作为标题，标题后换行。
+4. "核心任务状态"、"互动情节与设定"、"对话历程与概要"使用段落形式；方括号只为示例，实际输出不需保留。
+5. "关键信息与上下文"使用列表格式，每个信息点以"- "开头。
+6. 结尾使用等号分隔线。
+
+**内容要求：**
+1. 语言风格：专业、清晰、客观。
+2. 内容长度：不要限制字数，根据对话内容的复杂程度和重要性，自行决定合适的长度。可以写得详细一些，确保重要信息不丢失。宁可内容多一点，也不要因为过度精简导致关键信息丢失或失真。每个部分都要具备充分篇幅，绝不能以一句话敷衍。
+3. 信息完整性：优先保证信息的完整性和准确性，技术与非技术内容都需提供必要证据或引用。
+4. 内容还原：摘要既要说明"过程如何推进"，也要写清"实际产出/讨论内容是什么"，必要时引用结果文本、结论、代码片段或参数，确保在没有原始对话的情况下依然能完全还原信息本身。
+5. 目标：生成的摘要必须是自包含的。即使AI完全忘记了之前的对话，仅凭这份摘要也能够准确理解历史背景、当前状态、具体进度和下一步行动。
+6. 时序重点：请先聚焦于最新一段对话（约占输入的最后30%），明确最新指令、问题和进展，再回顾更早的内容。若新消息与旧内容冲突或更新，应以最新对话为准，并解释差异。
+''';
+    final prev = previousSummary;
+    if (prev != null && prev.isNotEmpty) {
+      prompt += '''
+
+上一次的摘要（用于继承上下文）：
+$prev
+请将以上摘要中的关键信息，与本次新的对话内容相融合，生成一份全新的、更完整的摘要。
+''';
+    }
+    return prompt;
+  }
+
+  /// 写入新摘要：移除旧摘要及摘要之前的全部原始历史（其信息已由新摘要
+  /// 承载），只保留摘要之后的完整历史，供下次增量摘要继续使用。
+  /// 由此 [_chatHistory] 始终紧凑，_shouldGenerateSummary 的字符占比
+  /// 只统计摘要之后的新增内容，避免每次请求重复触发。
+  void _upsertSummary(String text) {
+    final lastIdx = _lastSummaryIndex();
+    final rest = lastIdx == null
+        ? const <Map<String, dynamic>>[]
+        : List<Map<String, dynamic>>.from(_chatHistory.sublist(lastIdx + 1));
+    _chatHistory.clear();
+    _chatHistory.add({
+      'role': 'system',
+      'content': text,
+      'is_summary': true,
+    });
+    _chatHistory.addAll(rest);
   }
 
   /// 分发 AI 请求（非流式 HTTP POST，通过 Stream<StreamChunk> 兼容旧接口）
@@ -227,6 +407,20 @@ class AiRequestDispatcher {
             useBearer: ai.activeAiProfile?.useBearer ?? true,
           );
         }
+      }
+
+      // 上下文增量摘要：触发时先异步生成摘要并写入历史，再构建发送视图。
+      // 摘要失败静默降级（继续走对称滑动窗口），不阻塞主流程。
+      if (_shouldGenerateSummary(settings)) {
+        try {
+          final summary = await _summarizeConversation(settings, profile);
+          if (summary != null) {
+            _upsertSummary(summary);
+          }
+        } catch (_) {
+          // 摘要生成失败：忽略，主流程继续
+        }
+        if (_isStale(generation)) return;
       }
 
       final messages = _buildContextMessages(settings.ai.aiMaxContextChars);
@@ -602,11 +796,24 @@ class AiRequestDispatcher {
   /// "带 tool_calls 无回执"或"孤立 tool"的残缺消息，触发服务端 400。
   /// 因此累积后必须再次走 [_sanitizeHistory] 清洗，保证对偶完整。
   /// 该压缩只影响本次发送视图，不破坏 [_chatHistory] 的完整继承。
+  ///
+  /// 增量摘要替换：若存在摘要消息，其之前的原始历史由摘要承载，不再
+  /// 发送；发送视图变为 [system, 摘要, 摘要之后的完整历史]（再进行上述
+  /// 对称压缩兜底），从根本上避免长会话因丢中段而失忆。
   List<Map<String, dynamic>> _buildContextMessages(int maxChars) {
-    if (maxChars <= 0 || _chatHistory.isEmpty) {
+    // 摘要替换视图：有摘要时丢弃摘要之前的原始历史
+    var history = _chatHistory;
+    final summaryIdx = _lastSummaryIndex();
+    if (summaryIdx != null && summaryIdx > 0) {
+      history = [
+        _chatHistory[summaryIdx],
+        ..._chatHistory.sublist(summaryIdx + 1),
+      ];
+    }
+    if (maxChars <= 0 || history.isEmpty) {
       return [
         {'role': 'system', 'content': _systemPrompt},
-        ..._chatHistory,
+        ...history,
       ];
     }
 
@@ -620,13 +827,13 @@ class AiRequestDispatcher {
 
     // 未超限时原样返回，避免打乱历史顺序
     var totalChars = 0;
-    for (final m in _chatHistory) {
+    for (final m in history) {
       totalChars += _messageChars(m);
     }
     if (totalChars <= budget) {
       return [
         {'role': 'system', 'content': _systemPrompt},
-        ..._chatHistory,
+        ...history,
       ];
     }
 
@@ -638,8 +845,8 @@ class AiRequestDispatcher {
     final anchors = <Map<String, dynamic>>[];
     final anchorIdx = <int>{};
     var usedAnchor = 0;
-    for (var i = 0; i < _chatHistory.length; i++) {
-      final m = _chatHistory[i];
+    for (var i = 0; i < history.length; i++) {
+      final m = history[i];
       if (m['role'] == 'tool') continue;
       if (m['tool_calls'] is List && (m['tool_calls'] as List).isNotEmpty) {
         continue;
@@ -655,9 +862,9 @@ class AiRequestDispatcher {
     // 2) 最近窗口：从后往前累积完整轮次（含工具对偶），跳过锚点已覆盖的
     final tail = <Map<String, dynamic>>[];
     var usedTail = 0;
-    for (var i = _chatHistory.length - 1; i >= 0; i--) {
+    for (var i = history.length - 1; i >= 0; i--) {
       if (anchorIdx.contains(i)) continue;
-      final m = _chatHistory[i];
+      final m = history[i];
       final len = _messageChars(m);
       if (usedTail + len > tailBudget && tail.isNotEmpty) break;
       tail.insert(0, m);
@@ -668,7 +875,7 @@ class AiRequestDispatcher {
     // 3) 清洗窗口残缺 tool_calls/tool 对偶，防止服务端 400
     final cleanedTail = _sanitizeHistory(tail);
 
-    final dropped = _chatHistory.length - anchors.length - tail.length;
+    final dropped = history.length - anchors.length - tail.length;
     final messages = <Map<String, dynamic>>[
       {'role': 'system', 'content': _systemPrompt},
     ];
