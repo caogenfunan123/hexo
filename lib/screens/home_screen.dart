@@ -7,6 +7,7 @@ library;
 
 import 'package:flutter/material.dart';
 import '../models/article.dart';
+import '../theme/app_color.dart';
 import '../desktop/feature_entries.dart';
 import '../services/writing_stats_service.dart';
 import '../widgets/article_action_menu.dart';
@@ -113,7 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
-                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  color: AppColor.textPrimary(context),
                 ),
               ),
               const SizedBox(width: 10),
@@ -121,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 '共 $total 篇文章',
                 style: TextStyle(
                   fontSize: 12,
-                  color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF),
+                  color: AppColor.textMuted(context),
                 ),
               ),
               const Spacer(),
@@ -172,7 +173,7 @@ class _HomeScreenState extends State<HomeScreen> {
               label,
               style: TextStyle(
                 fontSize: 10.5,
-                color: isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF64748B),
+                color: AppColor.textMuted(context),
               ),
             ),
           ],
@@ -204,14 +205,14 @@ class _HomeScreenState extends State<HomeScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.folder_open_outlined,
-              size: 44, color: isDark ? Colors.white.withOpacity(0.2) : const Color(0xFFD1D5DB)),
+              size: 44, color: AppColor.borderStrong(context)),
           const SizedBox(height: 12),
           Text(
             '还没有文章',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: isDark ? Colors.white.withOpacity(0.6) : const Color(0xFF6B7280),
+              color: AppColor.textSecondary(context),
             ),
           ),
           const SizedBox(height: 4),
@@ -219,7 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
             '点击「新建文稿」开始写作',
             style: TextStyle(
               fontSize: 12,
-              color: isDark ? Colors.white.withOpacity(0.35) : const Color(0xFF9CA3AF),
+              color: AppColor.iconMuted(context),
             ),
           ),
         ],
@@ -240,14 +241,14 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Row(
               children: [
                 Icon(Icons.menu_book_outlined,
-                    size: 14, color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
+                    size: 14, color: AppColor.textMuted(context)),
                 const SizedBox(width: 6),
                 Text(
                   vol,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    color: isDark ? Colors.white.withOpacity(0.85) : const Color(0xFF374151),
+                    color: AppColor.textSecondary(context),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -345,7 +346,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           preview.length > 60 ? '${preview.substring(0, 60)}…' : preview,
                           style: TextStyle(
                             fontSize: 11,
-                            color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF),
+                            color: AppColor.textMuted(context),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
