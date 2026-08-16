@@ -14,6 +14,7 @@ import '../services/webdav_service.dart';
 import '../l10n/app_localizations.dart';
 import '../models/ui_settings.dart';
 import '../desktop/feature_entries.dart';
+import 'local_file_zone_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final AppSettings settings;
@@ -175,39 +176,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// 判断是否为 Android 应用私有沙盒路径
-  bool _isAppPrivatePath(String path) {
-    final p = path.toLowerCase();
-    return p.contains('/android/data/') ||
-        p.startsWith('/android/data') ||
-        p.contains('/android/obb/') ||
-        p.startsWith('/android/obb');
-  }
-
-  /// 打开当前存储根目录（原生文件管理器）；私有目录时提示无法打开
+  /// 打开本地文件区（应用内浏览/暂存，替代原生文件管理器）
   Future<void> _openStorageFolderInSettings() async {
-    final l10n = AppLocalizations.ofContext(context);
     final dir = await widget.storage.root;
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
-    if (_isAppPrivatePath(dir.path)) {
-      widget.onShowToast(l10n.translate('global_storage_private_hint'));
-      return;
-    }
-    try {
-      const channel = MethodChannel('hexo/native');
-      final ok = await channel.invokeMethod<bool>('openFolder', {
-        'path': dir.path,
-      });
-      if (ok != true) {
-        widget.onShowToast(
-          l10n.translate('open_folder_failed', params: {'path': dir.path}),
-        );
-      }
-    } catch (e) {
-      widget.onShowToast('打开文件夹失败: $e');
-    }
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => LocalFileZoneScreen(
+          storage: widget.storage,
+          github: widget.github,
+          activeRepo: widget.repos.isNotEmpty ? widget.repos.first : null,
+        ),
+      ),
+    );
   }
 
   /// 重置为默认存储根目录

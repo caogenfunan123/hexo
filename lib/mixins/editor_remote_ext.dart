@@ -73,39 +73,26 @@ extension EditorRemoteExt on _RootShellState {
     }
   }
 
-  /// 打开全局存储根目录（原生文件管理器）
+  /// 打开本地文件区（应用内浏览/暂存，替代原生文件管理器）
+  ///
+  /// 原生 openFolder 在 Android 私有沙盒与 iOS/桌面无 channel 时必报错，
+  /// 统一改为应用内本地文件区：浏览根目录、编辑暂存、仓库下载/上传。
   Future<void> _openStorageFolder() async {
     try {
-      final dir = await storage.root;
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-      // Android 11+ 沙盒：应用私有目录无法由系统文件管理器打开
-      if (isAndroidPrivatePath(dir.path)) {
-        if (mounted) {
-          _showToast('该目录为应用私有目录，系统无法直接打开，请在应用内浏览');
-        }
-        return;
-      }
-      const channel = MethodChannel('hexo/native');
-      final ok = await channel.invokeMethod<bool>('openFolder', {
-        'path': dir.path,
-      });
-      if (ok != true) {
-        if (mounted) _showToast('无法打开文件夹: ${dir.path}');
-      }
+      await storage.root;
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => LocalFileZoneScreen(
+            storage: storage,
+            github: github,
+            activeRepo: _resolvedRepoFor(activeRepo),
+          ),
+        ),
+      );
     } catch (e) {
-      if (mounted) _showToast('打开文件夹失败: $e');
+      if (mounted) _showToast('打开本地文件区失败: $e');
     }
-  }
-
-  /// 是否为 Android 应用私有沙盒路径（/Android/data、/Android/obb）
-  static bool isAndroidPrivatePath(String path) {
-    final p = path.toLowerCase();
-    return p.contains('/android/data/') ||
-        p.startsWith('/android/data') ||
-        p.contains('/android/obb/') ||
-        p.startsWith('/android/obb');
   }
 
   /// 导出正文为 PNG 长图（Markdown 渲染后截图保存到 文章长图/）
