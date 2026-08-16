@@ -32,6 +32,8 @@ const Set<String> _coreToolIds = {
   // 技能管理
   'list_skills',
   'create_skill',
+  // MCP 服务器接入
+  'mcp_add_server',
   // 应用配置
   'read_app_config',
   'update_app_config',
@@ -57,6 +59,7 @@ const Map<String, String> _builtinDomain = {
   'update_skill': '技能管理',
   'delete_skill': '技能管理',
   'list_skills': '技能管理',
+  'mcp_add_server': 'MCP 接入',
   'read_app_config': '应用配置',
   'update_app_config': '应用配置',
   'create_site': '建站部署',
@@ -76,6 +79,7 @@ const List<String> _domainOrder = [
   '文章模板',
   '版本与回滚',
   '技能管理',
+  'MCP 接入',
   '应用配置',
   '建站部署',
   '自定义技能',

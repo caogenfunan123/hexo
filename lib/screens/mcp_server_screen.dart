@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/tools/mcp_server.dart';
+import '../core/tools/mcp_transport.dart';
 import '../core/tools/tool_registry.dart';
 import '../services/storage_service.dart';
 
@@ -81,8 +82,25 @@ class _McpServerScreenState extends State<McpServerScreen> {
           ? server.headers.entries.map((e) => '${e.key}: ${e.value}').join('\n')
           : '',
     );
+    final commandCtrl = TextEditingController(text: server?.command ?? '');
+    final argsCtrl = TextEditingController(
+      text: server != null && server.args.isNotEmpty
+          ? server.args.join(' ')
+          : '',
+    );
+    final cwdCtrl = TextEditingController(text: server?.cwd ?? '');
+    final envCtrl = TextEditingController(
+      text: server != null && server.env.isNotEmpty
+          ? server.env.entries.map((e) => '${e.key}: ${e.value}').join('\n')
+          : '',
+    );
     final enableSwitch = server?.enabled ?? true;
     var enabled = enableSwitch;
+    var transport = server?.transport ?? McpTransport.http;
+    final showStdio = McpTransportClient.stdioSupported;
+    if (!showStdio && transport == McpTransport.stdio) {
+      transport = McpTransport.http;
+    }
 
     try {
       showDialog(
@@ -110,6 +128,70 @@ class _McpServerScreenState extends State<McpServerScreen> {
                     ),
                     keyboardType: TextInputType.url,
                   ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<McpTransport>(
+                    initialValue: transport,
+                    decoration: const InputDecoration(
+                      labelText: '传输类型',
+                      helperText: 'http=一次请求一次POST，sse=POST+SSE流，stdio=本地进程',
+                    ),
+                    items: [
+                      const DropdownMenuItem(
+                        value: McpTransport.http,
+                        child: Text('HTTP (POST JSON-RPC)'),
+                      ),
+                      const DropdownMenuItem(
+                        value: McpTransport.sse,
+                        child: Text('SSE (POST + 流式响应)'),
+                      ),
+                      if (showStdio)
+                        const DropdownMenuItem(
+                          value: McpTransport.stdio,
+                          child: Text('stdio (本地子进程，仅桌面端)'),
+                        ),
+                    ],
+                    onChanged: (v) =>
+                        setDialogState(() => transport = v ?? transport),
+                  ),
+                  if (transport == McpTransport.stdio) ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: commandCtrl,
+                      decoration: const InputDecoration(
+                        labelText: '启动命令',
+                        hintText: 'npx -y @modelcontextprotocol/server-xxx',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: argsCtrl,
+                      decoration: const InputDecoration(
+                        labelText: '启动参数（空格分隔）',
+                        hintText: '--port 8080',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: cwdCtrl,
+                      decoration: const InputDecoration(
+                        labelText: '工作目录（可选）',
+                        hintText: '/path/to/working/dir',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: envCtrl,
+                      decoration: const InputDecoration(
+                        labelText: '环境变量（每行一个 Key: Value）',
+                        hintText: 'MY_ENV: value',
+                      ),
+                      maxLines: 2,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   TextField(
                     controller: headersCtrl,
@@ -143,6 +225,10 @@ class _McpServerScreenState extends State<McpServerScreen> {
                   final name = nameCtrl.text.trim();
                   final url = urlCtrl.text.trim();
                   if (name.isEmpty || url.isEmpty) return;
+                  if (transport == McpTransport.stdio &&
+                      commandCtrl.text.trim().isEmpty) {
+                    return;
+                  }
                   final headers = <String, String>{};
                   for (final line in headersCtrl.text.split('\n')) {
                     final idx = line.indexOf(':');
@@ -152,6 +238,20 @@ class _McpServerScreenState extends State<McpServerScreen> {
                           .trim();
                     }
                   }
+                  final env = <String, String>{};
+                  for (final line in envCtrl.text.split('\n')) {
+                    final idx = line.indexOf(':');
+                    if (idx > 0) {
+                      env[line.substring(0, idx).trim()] = line
+                          .substring(idx + 1)
+                          .trim();
+                    }
+                  }
+                  final args = argsCtrl.text
+                      .trim()
+                      .split(RegExp(r'\s+'))
+                      .where((a) => a.isNotEmpty)
+                      .toList();
                   final newServer = McpServer(
                     id:
                         server?.id ??
@@ -160,6 +260,15 @@ class _McpServerScreenState extends State<McpServerScreen> {
                     url: url,
                     headers: headers,
                     enabled: enabled,
+                    transport: transport,
+                    command: transport == McpTransport.stdio
+                        ? commandCtrl.text.trim()
+                        : '',
+                    args: transport == McpTransport.stdio ? args : const [],
+                    cwd: transport == McpTransport.stdio && cwdCtrl.text.trim().isNotEmpty
+                        ? cwdCtrl.text.trim()
+                        : null,
+                    env: transport == McpTransport.stdio ? env : const {},
                   );
                   await _manager!.addServer(newServer);
                   if (ctx.mounted) Navigator.pop(ctx);
@@ -175,6 +284,10 @@ class _McpServerScreenState extends State<McpServerScreen> {
       nameCtrl.dispose();
       urlCtrl.dispose();
       headersCtrl.dispose();
+      commandCtrl.dispose();
+      argsCtrl.dispose();
+      cwdCtrl.dispose();
+      envCtrl.dispose();
     }
   }
 

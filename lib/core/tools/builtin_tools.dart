@@ -15,6 +15,8 @@ import '../../models/repo_config.dart';
 import '../../models/wizard_models.dart';
 import '../../services/site_wizard_service.dart';
 import '../ai/token_vault.dart';
+import 'mcp_server.dart';
+import 'mcp_transport.dart';
 import 'remote_cms_tools.dart';
 import 'skill_manager.dart';
 import 'tool_entity.dart';
@@ -92,6 +94,7 @@ class BuiltinTools {
         rollbackSite,
         registerSite,
         verifySite,
+        mcpAddServer,
       ];
 
   // ── ① Web 搜索工具 ──
@@ -453,6 +456,65 @@ class BuiltinTools {
     ],
     createdAt: DateTime(2026, 1, 1),
     updatedAt: DateTime(2026, 1, 1),
+  );
+
+  // ── ⑪b MCP 服务器接入 ──
+  static final ToolEntity mcpAddServer = ToolEntity(
+    id: 'mcp_add_server',
+    name: '添加 MCP 服务器',
+    description:
+        '添加一个 MCP 外部服务器，并自动拉取注册其工具供 AI 后续调用。支持三种传输：'
+        'http（JSON-RPC POST）、sse（POST+SSE 流）、stdio（本地子进程，仅桌面端）。'
+        '添加成功后该服务器暴露的工具会立即可用。',
+    type: ToolType.builtin,
+    builtinHandler: 'mcp_add_server',
+    parameters: const [
+      ToolParam(
+          name: 'name',
+          type: 'string',
+          description: '服务器名称',
+          required: true),
+      ToolParam(
+          name: 'url',
+          type: 'string',
+          description: '服务器端点（http/sse 传输必填，stdio 可留空）',
+          required: false),
+      ToolParam(
+          name: 'transport',
+          type: 'string',
+          description: '传输类型：http / sse / stdio，默认 http',
+          required: false,
+          defaultValue: 'http'),
+      ToolParam(
+          name: 'headers',
+          type: 'string',
+          description:
+              '认证头 JSON 对象，如 {"Authorization":"Bearer xxx"}',
+          required: false),
+      ToolParam(
+          name: 'command',
+          type: 'string',
+          description: 'stdio 启动命令（如 npx -y @modelcontextprotocol/server-xxx）',
+          required: false),
+      ToolParam(
+          name: 'args',
+          type: 'string',
+          description: 'stdio 启动参数（JSON 数组，如 ["--port","8080"]）',
+          required: false),
+      ToolParam(
+          name: 'cwd',
+          type: 'string',
+          description: 'stdio 工作目录（可选）',
+          required: false),
+      ToolParam(
+          name: 'env',
+          type: 'string',
+          description: 'stdio 环境变量 JSON 对象（可选）',
+          required: false),
+    ],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+    riskLevel: 'high',
   );
 
   // ── ⑫ 更新技能 ──
@@ -1420,6 +1482,8 @@ class BuiltinTools {
         return _executeRegisterSite(request);
       case 'verify_site':
         return _executeVerifySite(request);
+      case 'mcp_add_server':
+        return _executeMcpAddServer(request);
       default:
         return ToolCallResult(
           toolId: request.toolId,
@@ -2459,6 +2523,128 @@ class BuiltinTools {
         content: '',
         success: false,
         error: '技能创建失败: $e',
+      );
+    }
+  }
+
+  // ── MCP 服务器接入 ──
+  static Future<ToolCallResult> _executeMcpAddServer(ToolCallRequest req) async {
+    if (storageService == null) {
+      return ToolCallResult(
+        toolId: 'mcp_add_server',
+        content: '',
+        success: false,
+        error: '存储服务未初始化',
+      );
+    }
+
+    final name = req.arguments['name']?.toString() ?? '';
+    final url = req.arguments['url']?.toString() ?? '';
+    final transport =
+        McpTransport.fromString(req.arguments['transport']?.toString());
+    final command = req.arguments['command']?.toString() ?? '';
+    final cwd = req.arguments['cwd']?.toString();
+
+    if (name.isEmpty) {
+      return ToolCallResult(
+        toolId: 'mcp_add_server',
+        content: '',
+        success: false,
+        error: '服务器名称不能为空',
+      );
+    }
+    if (transport != McpTransport.stdio && url.isEmpty) {
+      return ToolCallResult(
+        toolId: 'mcp_add_server',
+        content: '',
+        success: false,
+        error: 'http/sse 传输必须提供 url',
+      );
+    }
+    if (transport == McpTransport.stdio && command.isEmpty) {
+      return ToolCallResult(
+        toolId: 'mcp_add_server',
+        content: '',
+        success: false,
+        error: 'stdio 传输必须提供 command',
+      );
+    }
+
+    Map<String, String> headers = const {};
+    Map<String, String> env = const {};
+    List<String> args = const [];
+    try {
+      final headersJson = req.arguments['headers']?.toString();
+      if (headersJson != null && headersJson.isNotEmpty) {
+        final h = jsonDecode(headersJson);
+        if (h is Map) {
+          headers = h
+              .map((k, v) => MapEntry(k.toString(), v.toString()));
+        }
+      }
+      final envJson = req.arguments['env']?.toString();
+      if (envJson != null && envJson.isNotEmpty) {
+        final e = jsonDecode(envJson);
+        if (e is Map) {
+          env = e.map((k, v) => MapEntry(k.toString(), v.toString()));
+        }
+      }
+      final argsJson = req.arguments['args']?.toString();
+      if (argsJson != null && argsJson.isNotEmpty) {
+        final a = jsonDecode(argsJson);
+        if (a is List) {
+          args = a.map((e) => e.toString()).toList();
+        }
+      }
+    } catch (e) {
+      return ToolCallResult(
+        toolId: 'mcp_add_server',
+        content: '',
+        success: false,
+        error: 'headers/args/env 参数格式错误（需为 JSON）: $e',
+      );
+    }
+
+    try {
+      final root = await storageService!.root;
+      final manager = McpServerManager(root: root, registry: ToolRegistry());
+      await manager.load();
+      final server = McpServer(
+        id: 'mcp_${DateTime.now().millisecondsSinceEpoch}',
+        name: name,
+        url: url,
+        headers: headers,
+        transport: transport,
+        command: command,
+        args: args,
+        cwd: cwd,
+        env: env,
+        enabled: true,
+      );
+      await manager.addServer(server);
+      final errors = await manager.syncAllTools();
+      final syncErr = errors[name];
+      return ToolCallResult(
+        toolId: 'mcp_add_server',
+        content: syncErr == null
+            ? 'MCP 服务器添加成功并已同步工具\n\n'
+                '名称: ${server.name}\n'
+                '传输: ${server.transport}\n'
+                '端点: ${server.url.isNotEmpty ? server.url : '(stdio)'}\n'
+                '请用 list_tools 查看可用的远端工具。'
+            : 'MCP 服务器已保存，但工具同步失败\n\n'
+                '名称: ${server.name}\n'
+                '传输: ${server.transport}\n'
+                '错误: $syncErr\n'
+                '服务器已持久化，可在「MCP 服务器管理」页面重新同步。',
+        success: true,
+      );
+    } catch (e) {
+      return ToolCallResult(
+        toolId: 'mcp_add_server',
+        content: '',
+        success: false,
+        error: 'MCP 服务器添加失败: $e',
       );
     }
   }

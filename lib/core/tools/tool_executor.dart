@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'builtin_tools.dart';
+import 'mcp_transport.dart';
 import 'tool_entity.dart';
 import 'tool_registry.dart';
 
@@ -117,7 +117,7 @@ class ToolExecutor {
     );
   }
 
-  /// 执行 MCP 工具
+  /// 执行 MCP 工具（按传输类型经连接池调用，共享握手/进程）
   Future<ToolCallResult> _executeMcp(
       ToolEntity mcpTool, ToolCallRequest request) async {
     if (mcpTool.endpoint == null || mcpTool.endpoint!.isEmpty) {
@@ -129,100 +129,72 @@ class ToolExecutor {
       );
     }
 
-    // rawDefinition 中若记录了远端工具名与认证头，使用远端名调用
+    // 从 rawDefinition 还原远端工具名与完整传输配置
     var remoteName = mcpTool.id;
-    final headers = <String, String>{};
+    final configJson = <String, dynamic>{
+      'transport': 'http',
+      'url': mcpTool.endpoint!,
+      'headers': <String, String>{},
+      'command': '',
+      'args': <String>[],
+      'cwd': null,
+      'env': <String, String>{},
+    };
     if (mcpTool.rawDefinition != null && mcpTool.rawDefinition!.isNotEmpty) {
       try {
         final raw = jsonDecode(mcpTool.rawDefinition!) as Map<String, dynamic>;
         remoteName = raw['remote_name']?.toString() ?? remoteName;
-        final h = raw['headers'];
-        if (h is Map) {
-          h.forEach((k, v) => headers[k.toString()] = v.toString());
-        }
+        configJson['transport'] = raw['transport'] ?? 'http';
+        configJson['url'] = raw['server_url'] ?? mcpTool.endpoint!;
+        configJson['headers'] = raw['headers'] ?? const <String, String>{};
+        configJson['command'] = raw['command'] ?? '';
+        configJson['args'] = raw['args'] ?? const <String>[];
+        configJson['cwd'] = raw['cwd'];
+        configJson['env'] = raw['env'] ?? const <String, String>{};
       } catch (_) {}
     }
+    final config = McpTransportConfig.fromJson(configJson);
 
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 15);
+    final client = McpClientPool.instance.clientFor(config.url, config)
+      ..setTimeout(const Duration(seconds: 30));
     try {
-      final uri = Uri.parse(mcpTool.endpoint!);
-      final httpReq = await client.postUrl(uri);
-      httpReq.headers.set('Content-Type', 'application/json');
-      httpReq.headers.set('Accept', 'application/json');
-      headers.forEach((k, v) => httpReq.headers.set(k, v));
-
-      final body = jsonEncode({
-        'jsonrpc': '2.0',
-        'method': 'tools/call',
-        'params': {
-          'name': remoteName,
-          'arguments': request.arguments,
-        },
-        'id': DateTime.now().millisecondsSinceEpoch,
+      final result = await client.call('tools/call', {
+        'name': remoteName,
+        'arguments': request.arguments,
       });
-      httpReq.write(body);
-
-      final response =
-          await httpReq.close().timeout(const Duration(seconds: 30));
-      final text = await response
-          .transform(utf8.decoder)
-          .join()
-          .timeout(const Duration(seconds: 30));
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final data = jsonDecode(text) as Map<String, dynamic>;
-        final jsonrpcError = data['error'];
-        if (jsonrpcError != null) {
-          return ToolCallResult(
-            toolId: mcpTool.id,
-            content: '',
-            success: false,
-            error: 'MCP 调用失败: $jsonrpcError',
-          );
+      // 解析 MCP 标准结构化内容数组
+      String resultText;
+      if (result['content'] is List) {
+        final parts = (result['content'] as List)
+            .whereType<Map>()
+            .map((c) {
+              final ct = c['type']?.toString() ?? 'text';
+              if (ct == 'image') return '[图片]';
+              if (ct == 'resource') return c['text']?.toString() ?? '[资源]';
+              return c['text']?.toString() ?? '';
+            })
+            .where((s) => s.isNotEmpty)
+            .join('\n');
+        final isError = (result['isError'] == true);
+        if (parts.isEmpty && result['structuredContent'] != null) {
+          resultText = jsonEncode(result['structuredContent']);
+        } else {
+          resultText = parts;
         }
-        final result = data['result'];
-        // 解析 MCP 标准结构化内容数组
-        String resultText;
-        if (result is Map && result['content'] is List) {
-          final parts = (result['content'] as List)
-              .whereType<Map>()
-              .map((c) {
-                final ct = c['type']?.toString() ?? 'text';
-                if (ct == 'image') return '[图片]';
-                if (ct == 'resource') return c['text']?.toString() ?? '[资源]';
-                return c['text']?.toString() ?? '';
-              })
-              .where((s) => s.isNotEmpty)
-              .join('\n');
-          final isError = (result['isError'] == true);
-          if (parts.isEmpty && result['structuredContent'] != null) {
-            resultText = jsonEncode(result['structuredContent']);
-          } else {
-            resultText = parts;
-          }
-          if (resultText.isEmpty) resultText = jsonEncode(result);
-          return ToolCallResult(
-            toolId: mcpTool.id,
-            content: resultText,
-            success: !isError,
-            error: isError ? 'MCP 工具返回错误' : null,
-          );
-        }
-        resultText = result?.toString() ?? text;
+        if (resultText.isEmpty) resultText = jsonEncode(result);
         return ToolCallResult(
           toolId: mcpTool.id,
           content: resultText,
-          success: true,
-        );
-      } else {
-        return ToolCallResult(
-          toolId: mcpTool.id,
-          content: '',
-          success: false,
-          error: 'MCP HTTP ${response.statusCode}',
+          success: !isError,
+          error: isError ? 'MCP 工具返回错误' : null,
         );
       }
+      resultText = result.toString();
+      return ToolCallResult(
+        toolId: mcpTool.id,
+        content: resultText,
+        success: true,
+      );
     } catch (e) {
       return ToolCallResult(
         toolId: mcpTool.id,
@@ -230,8 +202,6 @@ class ToolExecutor {
         success: false,
         error: 'MCP 调用失败: $e',
       );
-    } finally {
-      client.close(force: true);
     }
   }
 
