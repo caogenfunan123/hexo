@@ -437,8 +437,8 @@ $prev
         if (_isStale(generation)) return;
       }
 
-      // 全量工具暴露：开局直接把所有启用工具（内置/技能/MCP）交给模型，
-      // 避免"按需注入"让模型反复 list_tools 探测却不执行任务。
+      // 分层工具暴露：核心层直接进 tools 数组（可直接调用），
+      // 扩展层仅在能力地图文本提示，模型用 list_tools 拉取后再注入。
       final registry = ToolRegistry();
       final skillIds = enabledSkillIds;
       final List<ToolEntity> exposedTools = [];
@@ -455,15 +455,28 @@ $prev
       }
 
       // 会话注入边界：audit 只读会话等禁止注入写工具（用白名单兜底）
-      final toolList = filterToolsForSession(exposedTools, sessionType);
+      final filtered = filterToolsForSession(exposedTools, sessionType);
+
+      // 分层：核心工具直接暴露，扩展工具进能力地图文本。
+      // 注入的扩展工具（模型已 list_tools 拉取）也直接暴露，无需再探测。
+      final injected = injectedToolIds ?? const <String>{};
+      final filteredIds = filtered.map((t) => t.id).toSet();
+      final layers = buildToolLayers(filtered);
+      final core = <ToolEntity>[...layers.coreTools];
+      for (final id in injected) {
+        final t = registry.get(id);
+        if (t == null || !filteredIds.contains(id)) continue;
+        if (core.any((e) => e.id == id)) continue;
+        core.add(t);
+      }
 
       // 注入工具能力地图：让模型开局掌握全局工具，选型更有针对性
-      _toolCatalogSuffix = buildToolCatalogPrompt(toolList);
+      _toolCatalogSuffix = layers.catalogPrompt;
 
       final messages = _buildContextMessages(settings.ai.aiMaxContextChars);
 
-      final tools = !disableTools && toolList.isNotEmpty
-          ? toolList.map((t) => t.toOpenAiFunction()).toList()
+      final tools = !disableTools && core.isNotEmpty
+          ? core.map((t) => t.toOpenAiFunction()).toList()
           : null;
 
       final stopwatch = Stopwatch()..start();
