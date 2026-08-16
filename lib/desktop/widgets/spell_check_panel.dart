@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../../theme/app_color.dart';
 import '../../services/spell_check_service.dart' as spell_svc;
 
 /// 拼写检查结果面板
@@ -41,7 +42,7 @@ class SpellCheckPanel extends StatelessWidget {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280),
+                color: AppColor.icon(context),
               ),
             ),
             const SizedBox(height: 4),
@@ -68,7 +69,7 @@ class SpellCheckPanel extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             border: Border(
-              bottom: BorderSide(color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA)),
+              bottom: BorderSide(color: AppColor.border(context)),
             ),
           ),
           child: Row(
@@ -162,7 +163,7 @@ class _SpellCheckItem extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.03) : const Color(0xFFF9FAFB),
+        color: AppColor.surfaceHover(context),
         borderRadius: BorderRadius.circular(8),
       ),
       child: InkWell(
@@ -198,7 +199,7 @@ class _SpellCheckItem extends StatelessWidget {
                     '行 ${result.line}',
                     style: TextStyle(
                       fontSize: 10,
-                      color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF),
+                      color: AppColor.textMuted(context),
                     ),
                   ),
                 ],

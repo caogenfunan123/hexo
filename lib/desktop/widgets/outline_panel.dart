@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../theme/app_color.dart';
 
 /// 大纲条目
 class OutlineEntry {
@@ -71,14 +72,14 @@ class _OutlinePanelState extends State<OutlinePanel> {
             Icon(
               Icons.list_alt,
               size: 32,
-              color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+              color: AppColor.borderStrong(context),
             ),
             const SizedBox(height: 8),
             Text(
               '暂无标题',
               style: TextStyle(
                 fontSize: 12,
-                color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF),
+                color: AppColor.iconMuted(context),
               ),
             ),
             const SizedBox(height: 4),
@@ -86,7 +87,7 @@ class _OutlinePanelState extends State<OutlinePanel> {
               '使用 # 标题语法自动生成大纲',
               style: TextStyle(
                 fontSize: 10,
-                color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+                color: AppColor.borderStrong(context),
               ),
             ),
           ],

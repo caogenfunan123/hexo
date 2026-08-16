@@ -93,6 +93,7 @@ import '../widgets/ai_chat_panel.dart';
 import 'widgets/ai_selection_edit_dialog.dart';
 
 // ── 新功能集成（桌面版） ──
+import '../theme/app_color.dart';
 import '../widgets/typewriter_scroll.dart';
 import '../widgets/orientation_guard.dart';
 import '../services/site_isolation_service.dart';
@@ -2490,7 +2491,7 @@ class DesktopShellState extends State<DesktopShell>
               : Colors.black.withOpacity(0.05),
         ),
       ),
-      color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
+      color: AppColor.surfaceBase(context),
       margin: EdgeInsets.zero,
       child: Padding(
         padding: padding ?? const EdgeInsets.all(12),
@@ -2515,7 +2516,7 @@ class DesktopShellState extends State<DesktopShell>
         decoration: BoxDecoration(
           color: active
               ? cs.primary.withOpacity(0.08)
-              : (isDark ? const Color(0xFF1E1E2E) : Colors.white),
+              : (AppColor.surfaceBase(context)),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: active
@@ -8503,10 +8504,10 @@ class DesktopShellState extends State<DesktopShell>
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFF6F8FA),
+        color: AppColor.surfaceBase(context),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey.shade300,
+          color: AppColor.borderStrong(context),
         ),
       ),
       child: Column(
@@ -10207,7 +10208,7 @@ $htmlContent
     return Container(
       height: 36,
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF252536) : const Color(0xFFFAFAFC),
+        color: AppColor.surfaceRaised(context),
         border: Border(
           bottom: BorderSide(
             color: isDark
@@ -10276,13 +10277,11 @@ $htmlContent
             tooltip: '导出',
             offset: const Offset(0, 36),
             enabled: !_editor.editorBusy,
-            color: isDark ? const Color(0xFF252536) : null,
+            color: AppColor.surfaceOverlay(context),
             icon: Icon(
               Icons.file_download_outlined,
               size: 16,
-              color: isDark
-                  ? Colors.white.withOpacity(0.5)
-                  : const Color(0xFF6B7280),
+              color: AppColor.icon(context),
             ),
             itemBuilder: (_) => [
               PopupMenuItem(
@@ -10291,7 +10290,7 @@ $htmlContent
                   '导出 HTML',
                   style: TextStyle(
                     fontSize: 13,
-                    color: isDark ? Colors.white.withOpacity(0.8) : null,
+                    color: AppColor.textSecondary(context),
                   ),
                 ),
               ),
@@ -10301,7 +10300,7 @@ $htmlContent
                   '导出 PDF',
                   style: TextStyle(
                     fontSize: 13,
-                    color: isDark ? Colors.white.withOpacity(0.8) : null,
+                    color: AppColor.textSecondary(context),
                   ),
                 ),
               ),
@@ -10311,7 +10310,7 @@ $htmlContent
                   '导出 Markdown',
                   style: TextStyle(
                     fontSize: 13,
-                    color: isDark ? Colors.white.withOpacity(0.8) : null,
+                    color: AppColor.textSecondary(context),
                   ),
                 ),
               ),
@@ -10386,7 +10385,7 @@ $htmlContent
     final isDark = Theme.of(context).brightness == Brightness.dark;
     // 对标 MarkText 专注模式：两侧纯黑遮罩 + 内容居中 + 当前行高亮
     return Container(
-      color: isDark ? const Color(0xFF0D0D1A) : const Color(0xFFF0F0F0),
+      color: AppColor.surfaceBase(context),
       child: Stack(
         children: [
           // 主编辑区
@@ -10400,7 +10399,7 @@ $htmlContent
                     Expanded(
                       flex: 3,
                       child: Container(
-                        color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+                        color: AppColor.surfaceBase(context),
                         child: SingleChildScrollView(
                           controller: _focusScrollCtrl,
                           padding: const EdgeInsets.symmetric(
@@ -10692,7 +10691,7 @@ $htmlContent
     }
 
     return Container(
-      color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+      color: AppColor.surfaceBase(context),
       child: Column(
         children: [
           // 源码模式标题栏
@@ -10700,7 +10699,7 @@ $htmlContent
             height: 32,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF252536) : const Color(0xFFFAFAFC),
+              color: AppColor.surfaceRaised(context),
               border: Border(
                 bottom: BorderSide(
                   color: isDark
@@ -10809,7 +10808,7 @@ $htmlContent
             height: 24,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF252536) : const Color(0xFFFAFAFC),
+              color: AppColor.surfaceRaised(context),
               border: Border(
                 top: BorderSide(
                   color: isDark
@@ -10876,9 +10875,7 @@ $htmlContent
             child: Icon(
               icon,
               size: 15,
-              color: isDark
-                  ? Colors.white.withOpacity(0.5)
-                  : const Color(0xFF6B7280),
+              color: AppColor.icon(context),
             ),
           ),
         ),
@@ -10935,7 +10932,7 @@ $htmlContent
         child: Container(
           width: 28,
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFF5F5F7),
+            color: AppColor.surfaceBase(context),
             border: Border(
               right: BorderSide(
                 color: isDark

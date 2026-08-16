@@ -72,7 +72,7 @@ Widget _plainCodeBlock(String code, bool isDark, {String? label}) {
       color: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFF6F8FA),
       borderRadius: BorderRadius.circular(8),
       border: Border.all(
-        color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E7EB),
+        color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey.shade300,
       ),
     ),
     child: Column(
@@ -84,7 +84,9 @@ Widget _plainCodeBlock(String code, bool isDark, {String? label}) {
             decoration: BoxDecoration(
               border: Border(
                 bottom: BorderSide(
-                  color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E7EB),
+                  color: isDark
+                      ? Colors.white.withOpacity(0.1)
+                      : Colors.grey.shade300,
                 ),
               ),
             ),
@@ -94,7 +96,9 @@ Widget _plainCodeBlock(String code, bool isDark, {String? label}) {
                 fontSize: 10,
                 fontFamily: 'monospace',
                 fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF),
+                color: isDark
+                    ? Colors.white.withOpacity(0.3)
+                    : const Color(0xFF9CA3AF),
               ),
             ),
           ),
@@ -108,7 +112,9 @@ Widget _plainCodeBlock(String code, bool isDark, {String? label}) {
                 fontFamily: _codeFont,
                 fontSize: 13.5,
                 height: 1.5,
-                color: isDark ? Colors.white.withOpacity(0.85) : const Color(0xFF374151),
+                color: isDark
+                    ? Colors.white.withOpacity(0.85)
+                    : const Color(0xFF374151),
               ),
             ),
           ),

@@ -5,6 +5,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import '../../models/repo_config.dart';
+import '../../theme/app_color.dart';
 import '../shell_action_bus.dart';
 
 class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
@@ -35,15 +36,9 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
       child: Container(
         height: 44,
         decoration: BoxDecoration(
-          color: isDark
-              ? const Color(0xFF252536)
-              : const Color(0xFFFAFAFC),
+          color: AppColor.surfaceRaised(context),
           border: Border(
-            bottom: BorderSide(
-              color: isDark
-                  ? Colors.white.withOpacity(0.06)
-                  : const Color(0xFFE5E5EA),
-            ),
+            bottom: BorderSide(color: AppColor.border(context)),
           ),
         ),
         child: Row(
@@ -54,7 +49,6 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
               tooltip: '菜单 (Ctrl+L)',
               onTap: bus.onToggleLeftPanel,
               cs: cs,
-              isDark: isDark,
             ),
             const SizedBox(width: 4),
 
@@ -64,25 +58,21 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
-                color: isDark
-                    ? Colors.white.withOpacity(0.7)
-                    : const Color(0xFF6B7280),
+                color: AppColor.textSecondary(context),
                 letterSpacing: 0.3,
               ),
             ),
             const SizedBox(width: 16),
 
             // 站点下拉
-            _siteDropdown(context, cs, isDark),
+            _siteDropdown(context, cs),
             const Spacer(),
 
             // 分隔线
             Container(
               width: 1,
               height: 20,
-              color: isDark
-                  ? Colors.white.withOpacity(0.06)
-                  : const Color(0xFFE5E5EA),
+              color: AppColor.border(context),
             ),
             const SizedBox(width: 4),
 
@@ -93,49 +83,42 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
                 tooltip: '打开文件 (Ctrl+O)',
                 onTap: bus.onOpenFile!,
                 cs: cs,
-                isDark: isDark,
               ),
             _titleBarButton(
               icon: Icons.add,
               tooltip: '新建文章 (Ctrl+N)',
               onTap: bus.onNewArticle,
               cs: cs,
-              isDark: isDark,
             ),
             _titleBarButton(
               icon: Icons.sync,
               tooltip: '同步 (Ctrl+S)',
               onTap: bus.onSync,
               cs: cs,
-              isDark: isDark,
             ),
             _titleBarButton(
               icon: Icons.send,
               tooltip: '一键发布 (Ctrl+P)',
               onTap: bus.onPublish,
               cs: cs,
-              isDark: isDark,
             ),
             _titleBarButton(
               icon: Icons.auto_awesome,
               tooltip: 'AI 助手',
               onTap: onAi,
               cs: cs,
-              isDark: isDark,
             ),
             _titleBarButton(
               icon: Icons.vertical_split,
               tooltip: '右侧面板',
               onTap: bus.onToggleRightDrawer,
               cs: cs,
-              isDark: isDark,
             ),
             _titleBarButton(
               icon: isDark ? Icons.light_mode : Icons.dark_mode_outlined,
               tooltip: '切换主题',
               onTap: bus.onThemeToggle,
               cs: cs,
-              isDark: isDark,
             ),
 
             // 窗口控件分隔
@@ -143,9 +126,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
             Container(
               width: 1,
               height: 20,
-              color: isDark
-                  ? Colors.white.withOpacity(0.06)
-                  : const Color(0xFFE5E5EA),
+              color: AppColor.border(context),
             ),
             const SizedBox(width: 2),
 
@@ -153,18 +134,15 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
             _windowButton(
               icon: Icons.minimize,
               onTap: () => windowManager.minimize(),
-              isDark: isDark,
             ),
             _windowButton(
               icon: Icons.crop_square,
               onTap: () => windowManager.maximize(),
-              isDark: isDark,
             ),
             _windowButton(
               icon: Icons.close,
               onTap: () => windowManager.close(),
               isClose: true,
-              isDark: isDark,
             ),
           ],
         ),
@@ -177,7 +155,6 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
     required String tooltip,
     required VoidCallback onTap,
     required ColorScheme cs,
-    required bool isDark,
   }) {
     return Tooltip(
       message: tooltip,
@@ -192,9 +169,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
             child: Icon(
               icon,
               size: 17,
-              color: isDark
-                  ? Colors.white.withOpacity(0.55)
-                  : const Color(0xFF6B7280),
+              color: AppColor.icon(context),
             ),
           ),
         ),
@@ -206,7 +181,6 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
     required IconData icon,
     required VoidCallback onTap,
     bool isClose = false,
-    required bool isDark,
   }) {
     return Material(
       color: Colors.transparent,
@@ -219,27 +193,21 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
           child: Icon(
             icon,
             size: 15,
-            color: isClose
-                ? Colors.redAccent
-                : (isDark
-                    ? Colors.white.withOpacity(0.55)
-                    : const Color(0xFF6B7280)),
+            color: isClose ? Colors.redAccent : AppColor.icon(context),
           ),
         ),
       ),
     );
   }
 
-  Widget _siteDropdown(BuildContext context, ColorScheme cs, bool isDark) {
+  Widget _siteDropdown(BuildContext context, ColorScheme cs) {
     if (repos.isEmpty || bus.onSiteChange == null) {
       return Container(
         height: 30,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(7),
-          color: isDark
-              ? Colors.white.withOpacity(0.05)
-              : const Color(0xFFF3F4F6),
+          color: AppColor.surfaceHover(context),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -247,27 +215,21 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
             Icon(
               Icons.language,
               size: 14,
-              color: isDark
-                  ? Colors.white.withOpacity(0.5)
-                  : const Color(0xFF9CA3AF),
+              color: AppColor.iconMuted(context),
             ),
             const SizedBox(width: 6),
             Text(
               siteName,
               style: TextStyle(
                 fontSize: 12,
-                color: isDark
-                    ? Colors.white.withOpacity(0.7)
-                    : const Color(0xFF4B5563),
+                color: AppColor.textSecondary(context),
               ),
             ),
             const SizedBox(width: 4),
             Icon(
               Icons.arrow_drop_down,
               size: 16,
-              color: isDark
-                  ? Colors.white.withOpacity(0.3)
-                  : const Color(0xFF9CA3AF),
+              color: AppColor.iconMuted(context),
             ),
           ],
         ),
@@ -276,15 +238,15 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
     return PopupMenuButton<RepoConfig>(
       offset: const Offset(0, 34),
       constraints: const BoxConstraints(maxWidth: 240),
-      color: isDark ? const Color(0xFF2D2D3F) : null,
+      color: Theme.of(context).brightness == Brightness.dark
+          ? AppColor.surfaceOverlay(context)
+          : null,
       child: Container(
         height: 30,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(7),
-          color: isDark
-              ? Colors.white.withOpacity(0.05)
-              : const Color(0xFFF3F4F6),
+          color: AppColor.surfaceHover(context),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -292,27 +254,21 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
             Icon(
               Icons.language,
               size: 14,
-              color: isDark
-                  ? Colors.white.withOpacity(0.5)
-                  : const Color(0xFF9CA3AF),
+              color: AppColor.iconMuted(context),
             ),
             const SizedBox(width: 6),
             Text(
               siteName,
               style: TextStyle(
                 fontSize: 12,
-                color: isDark
-                    ? Colors.white.withOpacity(0.7)
-                    : const Color(0xFF4B5563),
+                color: AppColor.textSecondary(context),
               ),
             ),
             const SizedBox(width: 4),
             Icon(
               Icons.arrow_drop_down,
               size: 16,
-              color: isDark
-                  ? Colors.white.withOpacity(0.3)
-                  : const Color(0xFF9CA3AF),
+              color: AppColor.iconMuted(context),
             ),
           ],
         ),

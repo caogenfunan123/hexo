@@ -5,6 +5,7 @@ library;
 import 'package:flutter/material.dart';
 import '../../controllers/layout_controller.dart' show RightDrawerTab;
 import '../../services/storage_service.dart' show SnippetItem;
+import '../../theme/app_color.dart';
 import 'snippet_panel.dart';
 export '../../controllers/layout_controller.dart' show RightDrawerTab;
 
@@ -48,52 +49,47 @@ class DesktopRightDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       width: 280,
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFFAFAFC),
+        color: AppColor.surfaceRaised(context),
         border: Border(
           left: BorderSide(
-            color: isDark
-                ? Colors.white.withOpacity(0.06)
-                : const Color(0xFFE5E5EA),
+            color: AppColor.border(context),
           ),
         ),
       ),
       child: Column(
         children: [
           // 顶部标签栏
-          _buildTabBar(cs, isDark),
+          _buildTabBar(context, cs),
           // 内容区
           Expanded(
-            child: _buildContent(context, isDark),
+            child: _buildContent(context),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTabBar(ColorScheme cs, bool isDark) {
+  Widget _buildTabBar(BuildContext context, ColorScheme cs) {
     return Container(
       height: 40,
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: isDark
-                ? Colors.white.withOpacity(0.06)
-                : const Color(0xFFE5E5EA),
+            color: AppColor.border(context),
           ),
         ),
       ),
       child: Row(
         children: [
-          _tabButton(RightDrawerTab.outline, Icons.list_alt, '大纲', cs, isDark),
-          _tabButton(RightDrawerTab.frontMatter, Icons.tune, '属性', cs, isDark),
-          _tabButton(RightDrawerTab.snippets, Icons.content_paste, '片段', cs, isDark),
-          _tabButton(RightDrawerTab.aiChat, Icons.auto_awesome, 'AI', cs, isDark),
-          _tabButton(RightDrawerTab.syncLog, Icons.sync, '日志', cs, isDark),
+          _tabButton(context, RightDrawerTab.outline, Icons.list_alt, '大纲', cs),
+          _tabButton(context, RightDrawerTab.frontMatter, Icons.tune, '属性', cs),
+          _tabButton(context, RightDrawerTab.snippets, Icons.content_paste, '片段', cs),
+          _tabButton(context, RightDrawerTab.aiChat, Icons.auto_awesome, 'AI', cs),
+          _tabButton(context, RightDrawerTab.syncLog, Icons.sync, '日志', cs),
           const Spacer(),
           GestureDetector(
             onTap: onClose,
@@ -102,9 +98,7 @@ class DesktopRightDrawer extends StatelessWidget {
               child: Icon(
                 Icons.close,
                 size: 15,
-                color: isDark
-                    ? Colors.white.withOpacity(0.4)
-                    : const Color(0xFF9CA3AF),
+                color: AppColor.textMuted(context),
               ),
             ),
           ),
@@ -113,7 +107,7 @@ class DesktopRightDrawer extends StatelessWidget {
     );
   }
 
-  Widget _tabButton(RightDrawerTab tab, IconData icon, String label, ColorScheme cs, bool isDark) {
+  Widget _tabButton(BuildContext context, RightDrawerTab tab, IconData icon, String label, ColorScheme cs) {
     final isActive = activeTab == tab;
     return GestureDetector(
       onTap: () => onTabChange(tab),
@@ -124,7 +118,7 @@ class DesktopRightDrawer extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           decoration: BoxDecoration(
             color: isActive
-                ? (isDark ? Colors.white.withOpacity(0.08) : cs.primary.withOpacity(0.08))
+                ? cs.primary.withOpacity(0.08)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(5),
           ),
@@ -136,7 +130,7 @@ class DesktopRightDrawer extends StatelessWidget {
                 size: 14,
                 color: isActive
                     ? cs.primary
-                    : (isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
+                    : (AppColor.textMuted(context)),
               ),
               const SizedBox(width: 4),
               Text(
@@ -146,7 +140,7 @@ class DesktopRightDrawer extends StatelessWidget {
                   fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
                   color: isActive
                       ? cs.primary
-                      : (isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280)),
+                      : (AppColor.icon(context)),
                 ),
               ),
             ],
@@ -156,22 +150,22 @@ class DesktopRightDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildContent(BuildContext context, bool isDark) {
+  Widget _buildContent(BuildContext context) {
     switch (activeTab) {
       case RightDrawerTab.outline:
-        return _buildOutline(context, isDark);
+        return _buildOutline(context);
       case RightDrawerTab.frontMatter:
-        return _buildFrontMatter(context, isDark);
+        return _buildFrontMatter(context);
       case RightDrawerTab.snippets:
-        return _buildSnippets(context, isDark);
+        return _buildSnippets(context);
       case RightDrawerTab.aiChat:
-        return _buildAiChat(context, isDark);
+        return _buildAiChat(context);
       case RightDrawerTab.syncLog:
-        return _buildSyncLog(context, isDark);
+        return _buildSyncLog(context);
     }
   }
 
-  Widget _buildOutline(BuildContext context, bool isDark) {
+  Widget _buildOutline(BuildContext context) {
     if (outlineItems.isEmpty) {
       return Center(
         child: Column(
@@ -180,14 +174,14 @@ class DesktopRightDrawer extends StatelessWidget {
             Icon(
               Icons.list_alt,
               size: 36,
-              color: isDark ? Colors.white.withOpacity(0.1) : const Color(0xFFE5E7EB),
+              color: AppColor.border(context),
             ),
             const SizedBox(height: 8),
             Text(
               '暂无大纲',
               style: TextStyle(
                 fontSize: 13,
-                color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF),
+                color: AppColor.iconMuted(context),
               ),
             ),
             const SizedBox(height: 4),
@@ -195,7 +189,7 @@ class DesktopRightDrawer extends StatelessWidget {
               '在文章中使用标题即可生成大纲',
               style: TextStyle(
                 fontSize: 11,
-                color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+                color: AppColor.borderStrong(context),
               ),
             ),
           ],
@@ -222,9 +216,7 @@ class DesktopRightDrawer extends StatelessWidget {
                     Icon(
                       item.level == 1 ? Icons.title : Icons.subdirectory_arrow_right,
                       size: 12,
-                      color: isDark
-                          ? Colors.white.withOpacity(0.3)
-                          : const Color(0xFF9CA3AF),
+                      color: AppColor.iconMuted(context),
                     ),
                     const SizedBox(width: 6),
                     Expanded(
@@ -233,9 +225,7 @@ class DesktopRightDrawer extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 12 + (3 - item.level).clamp(0, 2).toDouble(),
                           fontWeight: item.level == 1 ? FontWeight.w600 : FontWeight.w400,
-                          color: isDark
-                              ? Colors.white.withOpacity(0.8)
-                              : const Color(0xFF374151),
+                          color: AppColor.textSecondary(context),
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -250,27 +240,27 @@ class DesktopRightDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildFrontMatter(BuildContext context, bool isDark) {
+  Widget _buildFrontMatter(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _fmField(context, '标题', titleCtrl, isDark: isDark),
+          _fmField(context, '标题', titleCtrl),
           const SizedBox(height: 10),
-          _fmField(context, '标签', tagsCtrl, hint: '逗号分隔', isDark: isDark),
+          _fmField(context, '标签', tagsCtrl, hint: '逗号分隔'),
           const SizedBox(height: 10),
-          _fmField(context, '分类', categoriesCtrl, hint: '逗号分隔', isDark: isDark),
+          _fmField(context, '分类', categoriesCtrl, hint: '逗号分隔'),
           const SizedBox(height: 10),
-          _fmField(context, '封面图', coverCtrl, hint: '图片 URL', isDark: isDark),
+          _fmField(context, '封面图', coverCtrl, hint: '图片 URL'),
           const SizedBox(height: 10),
-          _fmField(context, '日期', dateCtrl, hint: 'YYYY-MM-DD', isDark: isDark),
+          _fmField(context, '日期', dateCtrl, hint: 'YYYY-MM-DD'),
         ],
       ),
     );
   }
 
-  Widget _fmField(BuildContext context, String label, TextEditingController? ctrl, {String? hint, bool isDark = false}) {
+  Widget _fmField(BuildContext context, String label, TextEditingController? ctrl, {String? hint}) {
     final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -280,9 +270,7 @@ class DesktopRightDrawer extends StatelessWidget {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
-            color: isDark
-                ? Colors.white.withOpacity(0.4)
-                : const Color(0xFF6B7280),
+            color: AppColor.icon(context),
           ),
         ),
         const SizedBox(height: 4),
@@ -290,34 +278,28 @@ class DesktopRightDrawer extends StatelessWidget {
           controller: ctrl,
           style: TextStyle(
             fontSize: 13,
-            color: isDark ? Colors.white.withOpacity(0.85) : const Color(0xFF374151),
+            color: AppColor.textPrimary(context),
           ),
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: TextStyle(
               fontSize: 13,
-              color: isDark ? Colors.white.withOpacity(0.2) : const Color(0xFFD1D5DB),
+              color: AppColor.borderStrong(context),
             ),
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             filled: true,
-            fillColor: isDark
-                ? Colors.white.withOpacity(0.04)
-                : const Color(0xFFF9FAFB),
+            fillColor: AppColor.surfaceHover(context),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(6),
               borderSide: BorderSide(
-                color: isDark
-                    ? Colors.white.withOpacity(0.08)
-                    : const Color(0xFFE5E7EB),
+                color: AppColor.border(context),
               ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(6),
               borderSide: BorderSide(
-                color: isDark
-                    ? Colors.white.withOpacity(0.08)
-                    : const Color(0xFFE5E7EB),
+                color: AppColor.border(context),
               ),
             ),
             focusedBorder: OutlineInputBorder(
@@ -332,7 +314,7 @@ class DesktopRightDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildSnippets(BuildContext context, bool isDark) {
+  Widget _buildSnippets(BuildContext context) {
     if (snippets == null || snippets!.isEmpty) {
       return Center(
         child: Column(
@@ -341,14 +323,14 @@ class DesktopRightDrawer extends StatelessWidget {
             Icon(
               Icons.content_paste_off,
               size: 36,
-              color: isDark ? Colors.white.withOpacity(0.1) : const Color(0xFFE5E7EB),
+              color: AppColor.border(context),
             ),
             const SizedBox(height: 8),
             Text(
               '暂无片段',
               style: TextStyle(
                 fontSize: 13,
-                color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF),
+                color: AppColor.iconMuted(context),
               ),
             ),
             const SizedBox(height: 4),
@@ -356,7 +338,7 @@ class DesktopRightDrawer extends StatelessWidget {
               '点击 + 添加常用 Markdown 片段',
               style: TextStyle(
                 fontSize: 11,
-                color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+                color: AppColor.borderStrong(context),
               ),
             ),
           ],
@@ -368,11 +350,11 @@ class DesktopRightDrawer extends StatelessWidget {
       onInsert: (content) => onSnippetInsert?.call(content),
       onDelete: onSnippetDelete,
       onAddNew: onSnippetAdd,
-      isDark: isDark,
+      isDark: Theme.of(context).brightness == Brightness.dark,
     );
   }
 
-  Widget _buildAiChat(BuildContext context, bool isDark) {
+  Widget _buildAiChat(BuildContext context) {
     if (aiChatPanel != null) return aiChatPanel!;
     return Center(
       child: Column(
@@ -381,9 +363,7 @@ class DesktopRightDrawer extends StatelessWidget {
           Icon(
             Icons.auto_awesome,
             size: 40,
-            color: isDark
-                ? Colors.white.withOpacity(0.1)
-                : const Color(0xFFE5E7EB),
+            color: AppColor.border(context),
           ),
           const SizedBox(height: 12),
           Text(
@@ -391,9 +371,7 @@ class DesktopRightDrawer extends StatelessWidget {
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: isDark
-                  ? Colors.white.withOpacity(0.4)
-                  : const Color(0xFF9CA3AF),
+              color: AppColor.textMuted(context),
             ),
           ),
           const SizedBox(height: 4),
@@ -401,9 +379,7 @@ class DesktopRightDrawer extends StatelessWidget {
             '选择文章后可使用 AI 辅助写作',
             style: TextStyle(
               fontSize: 12,
-              color: isDark
-                  ? Colors.white.withOpacity(0.25)
-                  : const Color(0xFFD1D5DB),
+              color: AppColor.borderStrong(context),
             ),
           ),
         ],
@@ -411,7 +387,7 @@ class DesktopRightDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildSyncLog(BuildContext context, bool isDark) {
+  Widget _buildSyncLog(BuildContext context) {
     if (syncLogs.isEmpty) {
       return Center(
         child: Column(
@@ -420,18 +396,14 @@ class DesktopRightDrawer extends StatelessWidget {
             Icon(
               Icons.sync,
               size: 36,
-              color: isDark
-                  ? Colors.white.withOpacity(0.1)
-                  : const Color(0xFFE5E7EB),
+              color: AppColor.border(context),
             ),
             const SizedBox(height: 8),
             Text(
               '暂无同步日志',
               style: TextStyle(
                 fontSize: 13,
-                color: isDark
-                    ? Colors.white.withOpacity(0.3)
-                    : const Color(0xFF9CA3AF),
+                color: AppColor.textMuted(context),
               ),
             ),
           ],
@@ -448,9 +420,7 @@ class DesktopRightDrawer extends StatelessWidget {
           style: TextStyle(
             fontSize: 11,
             fontFamily: 'monospace',
-            color: isDark
-                ? Colors.white.withOpacity(0.5)
-                : const Color(0xFF6B7280),
+            color: AppColor.icon(context),
           ),
         ),
       ),

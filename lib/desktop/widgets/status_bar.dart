@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../theme/app_color.dart';
 import 'work_mode.dart';
 
 class DesktopStatusBar extends StatelessWidget {
@@ -41,21 +42,15 @@ class DesktopStatusBar extends StatelessWidget {
     return Container(
       height: 28,
       decoration: BoxDecoration(
-        color: isDark
-            ? const Color(0xFF252536)
-            : const Color(0xFFFAFAFC),
+        color: AppColor.surfaceRaised(context),
         border: Border(
-          top: BorderSide(
-            color: isDark
-                ? Colors.white.withOpacity(0.06)
-                : const Color(0xFFE5E5EA),
-          ),
+          top: BorderSide(color: AppColor.border(context)),
         ),
       ),
       child: Row(
         children: [
           // 保存状态指示器
-          _buildSaveIndicator(isDark, cs),
+          _buildSaveIndicator(context, cs),
 
           const SizedBox(width: 8),
 
@@ -66,7 +61,6 @@ class DesktopStatusBar extends StatelessWidget {
             active: workMode == WorkMode.workspace,
             onTap: () => onModeChange(WorkMode.workspace),
             cs: cs,
-            isDark: isDark,
           ),
           _modeButton(
             label: '专注',
@@ -74,7 +68,6 @@ class DesktopStatusBar extends StatelessWidget {
             active: workMode == WorkMode.focus,
             onTap: () => onModeChange(WorkMode.focus),
             cs: cs,
-            isDark: isDark,
           ),
           _modeButton(
             label: '源码',
@@ -82,7 +75,6 @@ class DesktopStatusBar extends StatelessWidget {
             active: workMode == WorkMode.source,
             onTap: () => onModeChange(WorkMode.source),
             cs: cs,
-            isDark: isDark,
           ),
 
           const Spacer(),
@@ -153,7 +145,8 @@ class DesktopStatusBar extends StatelessWidget {
   }
 
   /// 自动保存指示器圆点
-  Widget _buildSaveIndicator(bool isDark, ColorScheme cs) {
+  Widget _buildSaveIndicator(BuildContext context, ColorScheme cs) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10),
       child: Row(
@@ -198,7 +191,6 @@ class DesktopStatusBar extends StatelessWidget {
     required bool active,
     required VoidCallback onTap,
     required ColorScheme cs,
-    required bool isDark,
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -211,9 +203,7 @@ class DesktopStatusBar extends StatelessWidget {
             Icon(
               icon,
               size: 11,
-              color: active
-                  ? cs.primary
-                  : (isDark ? Colors.white.withOpacity(0.35) : const Color(0xFF9CA3AF)),
+              color: active ? cs.primary : AppColor.iconMuted(context),
             ),
             const SizedBox(width: 4),
             Text(
@@ -221,9 +211,7 @@ class DesktopStatusBar extends StatelessWidget {
               style: TextStyle(
                 fontSize: 10.5,
                 fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                color: active
-                    ? cs.primary
-                    : (isDark ? Colors.white.withOpacity(0.35) : const Color(0xFF9CA3AF)),
+                color: active ? cs.primary : AppColor.iconMuted(context),
               ),
             ),
           ],
@@ -237,6 +225,8 @@ class DesktopStatusBar extends StatelessWidget {
     IconData? icon,
     bool isDark = false,
   }) {
+    final theme = Theme.of(context).brightness == Brightness.dark;
+    final useDark = isDark;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -244,7 +234,7 @@ class DesktopStatusBar extends StatelessWidget {
           Icon(
             icon,
             size: 10,
-            color: isDark
+            color: useDark
                 ? Colors.white.withOpacity(0.25)
                 : const Color(0xFFD1D5DB),
           ),
@@ -254,9 +244,9 @@ class DesktopStatusBar extends StatelessWidget {
           text,
           style: TextStyle(
             fontSize: 10,
-            color: isDark
+            color: useDark
                 ? Colors.white.withOpacity(0.25)
-                : const Color(0xFF9CA3AF),
+                : AppColor.textMuted(context),
           ),
         ),
       ],

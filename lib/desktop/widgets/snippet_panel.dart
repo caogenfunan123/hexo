@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../../theme/app_color.dart';
 import '../../services/storage_service.dart';
 
 /// 片段素材面板
@@ -90,15 +91,15 @@ class _SnippetPanelState extends State<SnippetPanel> {
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
           child: TextField(
             controller: _searchCtrl,
-            style: TextStyle(fontSize: 12, color: isDark ? Colors.white.withOpacity(0.85) : const Color(0xFF374151)),
+            style: TextStyle(fontSize: 12, color: AppColor.textSecondary(context)),
             decoration: InputDecoration(
               hintText: '搜索片段...',
-              hintStyle: TextStyle(fontSize: 12, color: isDark ? Colors.white.withOpacity(0.2) : const Color(0xFFD1D5DB)),
+              hintStyle: TextStyle(fontSize: 12, color: AppColor.borderStrong(context)),
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              prefixIcon: Icon(Icons.search, size: 16, color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF)),
+              prefixIcon: Icon(Icons.search, size: 16, color: AppColor.textMuted(context)),
               filled: true,
-              fillColor: isDark ? Colors.white.withOpacity(0.04) : const Color(0xFFF9FAFB),
+              fillColor: AppColor.surfaceHover(context),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: BorderSide.none,
@@ -128,7 +129,7 @@ class _SnippetPanelState extends State<SnippetPanel> {
                   decoration: BoxDecoration(
                     color: active
                         ? cs.primary.withOpacity(isDark ? 0.25 : 0.12)
-                        : (isDark ? Colors.white.withOpacity(0.04) : const Color(0xFFF3F4F6)),
+                        : (AppColor.surfaceHover(context)),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -138,7 +139,7 @@ class _SnippetPanelState extends State<SnippetPanel> {
                       fontWeight: active ? FontWeight.w600 : FontWeight.w400,
                       color: active
                           ? cs.primary
-                          : (isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280)),
+                          : (AppColor.icon(context)),
                     ),
                   ),
                 ),
@@ -156,16 +157,16 @@ class _SnippetPanelState extends State<SnippetPanel> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.content_paste_off, size: 32, color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB)),
+                      Icon(Icons.content_paste_off, size: 32, color: AppColor.borderStrong(context)),
                       const SizedBox(height: 8),
                       Text(
                         widget.snippets.isEmpty ? '暂无片段' : '无匹配结果',
-                        style: TextStyle(fontSize: 12, color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF)),
+                        style: TextStyle(fontSize: 12, color: AppColor.textMuted(context)),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         widget.snippets.isEmpty ? '点击 + 添加常用片段' : '尝试其他搜索词',
-                        style: TextStyle(fontSize: 10, color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB)),
+                        style: TextStyle(fontSize: 10, color: AppColor.borderStrong(context)),
                       ),
                     ],
                   ),
@@ -192,7 +193,7 @@ class _SnippetPanelState extends State<SnippetPanel> {
           Container(
             decoration: BoxDecoration(
               border: Border(
-                top: BorderSide(color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA)),
+                top: BorderSide(color: AppColor.border(context)),
               ),
             ),
             child: InkWell(
@@ -202,11 +203,11 @@ class _SnippetPanelState extends State<SnippetPanel> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.add, size: 16, color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
+                    Icon(Icons.add, size: 16, color: AppColor.textMuted(context)),
                     const SizedBox(width: 4),
                     Text(
                       '添加新片段',
-                      style: TextStyle(fontSize: 12, color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
+                      style: TextStyle(fontSize: 12, color: AppColor.textMuted(context)),
                     ),
                   ],
                 ),
@@ -241,7 +242,7 @@ class _SnippetCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.03) : const Color(0xFFF9FAFB),
+        color: AppColor.surfaceHover(context),
         borderRadius: BorderRadius.circular(8),
       ),
       child: InkWell(
@@ -260,7 +261,7 @@ class _SnippetCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white.withOpacity(0.85) : const Color(0xFF374151),
+                        color: AppColor.textSecondary(context),
                       ),
                     ),
                   ),
@@ -279,7 +280,7 @@ class _SnippetCard extends StatelessWidget {
                     const SizedBox(width: 4),
                     GestureDetector(
                       onTap: onDelete,
-                      child: Icon(Icons.close, size: 14, color: isDark ? Colors.white.withOpacity(0.2) : const Color(0xFFD1D5DB)),
+                      child: Icon(Icons.close, size: 14, color: AppColor.borderStrong(context)),
                     ),
                   ],
                 ],
@@ -293,7 +294,7 @@ class _SnippetCard extends StatelessWidget {
                   fontSize: 11,
                   fontFamily: 'monospace',
                   height: 1.4,
-                  color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF),
+                  color: AppColor.textMuted(context),
                 ),
               ),
             ],

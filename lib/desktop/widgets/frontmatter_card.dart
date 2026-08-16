@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../../theme/app_color.dart';
 
 /// 解析后的 Front-matter 字段
 class FrontMatterData {
@@ -243,10 +244,10 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: isDark ? Colors.white.withOpacity(0.03) : const Color(0xFFF9FAFB),
+            color: AppColor.surfaceHover(context),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E7EB),
+              color: AppColor.border(context),
             ),
           ),
           child: Row(
@@ -271,7 +272,7 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E2430) : const Color(0xFFF8FAFC),
+        color: AppColor.surfaceBase(context),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDark
@@ -291,7 +292,7 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
                 border: _expanded
                     ? Border(
                         bottom: BorderSide(
-                          color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E7EB),
+                          color: AppColor.border(context),
                         ),
                       )
                     : null,
@@ -313,7 +314,7 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.white.withOpacity(0.8) : const Color(0xFF374151),
+                      color: AppColor.textSecondary(context),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -321,14 +322,14 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
                     'YAML 元数据',
                     style: TextStyle(
                       fontSize: 10,
-                      color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF),
+                      color: AppColor.textMuted(context),
                     ),
                   ),
                   const Spacer(),
                   Icon(
                     _expanded ? Icons.expand_less : Icons.expand_more,
                     size: 16,
-                    color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF),
+                    color: AppColor.textMuted(context),
                   ),
                 ],
               ),
@@ -438,14 +439,14 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
       children: [
         Row(
           children: [
-            Icon(icon, size: 11, color: isDark ? Colors.white.withOpacity(0.35) : const Color(0xFF9CA3AF)),
+            Icon(icon, size: 11, color: AppColor.iconMuted(context)),
             const SizedBox(width: 4),
             Text(
               label,
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w500,
-                color: isDark ? Colors.white.withOpacity(0.35) : const Color(0xFF9CA3AF),
+                color: AppColor.iconMuted(context),
               ),
             ),
             if (suffix != null) ...[const Spacer(), suffix],
@@ -466,7 +467,7 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
             hintText: hint,
             hintStyle: TextStyle(
               fontSize: 12,
-              color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+              color: AppColor.borderStrong(context),
             ),
             contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             filled: true,
@@ -474,13 +475,13 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(6),
               borderSide: BorderSide(
-                color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E7EB),
+                color: AppColor.border(context),
               ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(6),
               borderSide: BorderSide(
-                color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E7EB),
+                color: AppColor.border(context),
               ),
             ),
             focusedBorder: OutlineInputBorder(

@@ -5,6 +5,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../../theme/app_color.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'code_highlight.dart';
 
@@ -123,10 +124,10 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
       height: 32,
       padding: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFF5F5F7),
+        color: AppColor.surfaceBase(context),
         border: Border(
           bottom: BorderSide(
-            color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA),
+            color: AppColor.border(context),
           ),
         ),
       ),
@@ -208,7 +209,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
               size: 13,
               color: active
                   ? cs.primary
-                  : (isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
+                  : (AppColor.textMuted(context)),
             ),
             const SizedBox(width: 4),
             Text(
@@ -218,7 +219,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
                 fontWeight: active ? FontWeight.w600 : FontWeight.w400,
                 color: active
                     ? cs.primary
-                    : (isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
+                    : (AppColor.textMuted(context)),
               ),
             ),
           ],
@@ -273,12 +274,12 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
                   fontFamily: widget.fontFamily,
                   height: widget.lineHeight,
                   fontSize: widget.fontSize,
-                  color: isDark ? Colors.white.withOpacity(0.9) : const Color(0xFF374151),
+                  color: AppColor.textPrimary(context),
                 ),
                 decoration: InputDecoration(
                   hintText: '支持 Markdown 语法写作...',
                   hintStyle: TextStyle(
-                    color: isDark ? Colors.white.withOpacity(0.2) : const Color(0xFFD1D5DB),
+                    color: AppColor.borderStrong(context),
                     fontSize: widget.fontSize,
                   ),
                   border: InputBorder.none,
@@ -300,7 +301,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
         child: Text(
           '暂无内容',
           style: TextStyle(
-            color: isDark ? Colors.white.withOpacity(0.2) : const Color(0xFFD1D5DB),
+            color: AppColor.borderStrong(context),
             fontSize: widget.fontSize,
           ),
         ),
@@ -336,7 +337,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
 
   /// 左右分栏 — PureWriter 风格：隐藏滚动条
   Widget _buildSplitView(bool isDark, ColorScheme cs) {
-    final sepColor = isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E5EA);
+    final sepColor = AppColor.border(context);
 
     return Row(
       children: [
@@ -374,12 +375,12 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
                         fontFamily: widget.fontFamily,
                         height: widget.lineHeight,
                         fontSize: widget.fontSize,
-                        color: isDark ? Colors.white.withOpacity(0.9) : const Color(0xFF374151),
+                        color: AppColor.textPrimary(context),
                       ),
                       decoration: InputDecoration(
                         hintText: '支持 Markdown 语法写作...',
                         hintStyle: TextStyle(
-                          color: isDark ? Colors.white.withOpacity(0.2) : const Color(0xFFD1D5DB),
+                          color: AppColor.borderStrong(context),
                           fontSize: widget.fontSize,
                         ),
                         border: InputBorder.none,
@@ -436,7 +437,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
                         child: Text(
                           '实时预览',
                           style: TextStyle(
-                            color: isDark ? Colors.white.withOpacity(0.15) : const Color(0xFFD1D5DB),
+                            color: AppColor.borderStrong(context),
                             fontSize: widget.fontSize,
                           ),
                         ),

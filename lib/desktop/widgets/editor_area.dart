@@ -4,6 +4,7 @@ library;
 
 import 'package:flutter/material.dart';
 import '../../controllers/editor_controller.dart';
+import '../../theme/app_color.dart';
 
 class DesktopEditorArea extends StatelessWidget {
   final List<EditorTab> tabs;
@@ -32,14 +33,13 @@ class DesktopEditorArea extends StatelessWidget {
     }
 
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+      color: AppColor.surfaceBase(context),
       child: Column(
         children: [
           // 标签页栏
-          _buildTabBar(cs, isDark),
+          _buildTabBar(context, cs),
           // 内容区域
           Expanded(
             child: IndexedStack(
@@ -57,18 +57,14 @@ class DesktopEditorArea extends StatelessWidget {
     );
   }
 
-  Widget _buildTabBar(ColorScheme cs, bool isDark) {
+  Widget _buildTabBar(BuildContext context, ColorScheme cs) {
     return Container(
       height: 36,
       decoration: BoxDecoration(
-        color: isDark
-            ? const Color(0xFF1E1E2E)
-            : const Color(0xFFF5F5F7),
+        color: AppColor.surfaceBase(context),
         border: Border(
           bottom: BorderSide(
-            color: isDark
-                ? Colors.white.withOpacity(0.06)
-                : const Color(0xFFE5E5EA),
+            color: AppColor.border(context),
           ),
         ),
       ),
@@ -90,7 +86,7 @@ class DesktopEditorArea extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     decoration: BoxDecoration(
                       color: isActive
-                          ? (isDark ? const Color(0xFF1A1A2E) : Colors.white)
+                          ? (AppColor.surfaceBase(context))
                           : Colors.transparent,
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
                       border: isActive
@@ -100,14 +96,10 @@ class DesktopEditorArea extends StatelessWidget {
                                 width: 2,
                               ),
                               left: BorderSide(
-                                color: isDark
-                                    ? Colors.white.withOpacity(0.06)
-                                    : const Color(0xFFE5E5EA),
+                                color: AppColor.border(context),
                               ),
                               right: BorderSide(
-                                color: isDark
-                                    ? Colors.white.withOpacity(0.06)
-                                    : const Color(0xFFE5E5EA),
+                                color: AppColor.border(context),
                               ),
                             )
                           : null,
@@ -120,7 +112,7 @@ class DesktopEditorArea extends StatelessWidget {
                           size: 14,
                           color: isActive
                               ? cs.primary
-                              : (isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF)),
+                              : (AppColor.textMuted(context)),
                         ),
                         const SizedBox(width: 6),
                         Text(
@@ -129,8 +121,8 @@ class DesktopEditorArea extends StatelessWidget {
                             fontSize: 12,
                             fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
                             color: isActive
-                                ? (isDark ? Colors.white : const Color(0xFF1F2937))
-                                : (isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280)),
+                                ? AppColor.textPrimary(context)
+                                : (AppColor.icon(context)),
                           ),
                         ),
                         if (tab.canClose) ...[
@@ -146,9 +138,7 @@ class DesktopEditorArea extends StatelessWidget {
                               child: Icon(
                                 Icons.close,
                                 size: 12,
-                                color: isDark
-                                    ? Colors.white.withOpacity(0.2)
-                                    : const Color(0xFFD1D5DB),
+                                color: AppColor.borderStrong(context),
                               ),
                             ),
                           ),
@@ -174,9 +164,7 @@ class DesktopEditorArea extends StatelessWidget {
                 child: Icon(
                   Icons.add,
                   size: 16,
-                  color: isDark
-                      ? Colors.white.withOpacity(0.4)
-                      : const Color(0xFF9CA3AF),
+                  color: AppColor.textMuted(context),
                 ),
               ),
             ),
@@ -186,10 +174,8 @@ class DesktopEditorArea extends StatelessWidget {
   }
 
   Widget _emptyState(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Container(
-      color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+      color: AppColor.surfaceBase(context),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -199,17 +185,13 @@ class DesktopEditorArea extends StatelessWidget {
               width: 96,
               height: 96,
               decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.white.withOpacity(0.03)
-                    : const Color(0xFFF3F4F6),
+                color: AppColor.surfaceHover(context),
                 borderRadius: BorderRadius.circular(24),
               ),
               child: Icon(
                 Icons.edit_note,
                 size: 48,
-                color: isDark
-                    ? Colors.white.withOpacity(0.1)
-                    : const Color(0xFFD1D5DB),
+                color: AppColor.borderStrong(context),
               ),
             ),
             const SizedBox(height: 24),
@@ -220,9 +202,7 @@ class DesktopEditorArea extends StatelessWidget {
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w600,
-                color: isDark
-                    ? Colors.white.withOpacity(0.6)
-                    : const Color(0xFF374151),
+                color: AppColor.textSecondary(context),
               ),
             ),
             const SizedBox(height: 8),
@@ -232,9 +212,7 @@ class DesktopEditorArea extends StatelessWidget {
               '创建新文章开始写作，或从左侧面板打开已有内容',
               style: TextStyle(
                 fontSize: 13,
-                color: isDark
-                    ? Colors.white.withOpacity(0.3)
-                    : const Color(0xFF9CA3AF),
+                color: AppColor.textMuted(context),
               ),
             ),
             const SizedBox(height: 32),
@@ -249,7 +227,7 @@ class DesktopEditorArea extends StatelessWidget {
                   label: '新建文章',
                   shortcut: 'Ctrl+N',
                   onTap: onNewArticle,
-                  isDark: isDark,
+                  
                 ),
                 const SizedBox(width: 16),
                 _quickAction(
@@ -258,7 +236,7 @@ class DesktopEditorArea extends StatelessWidget {
                   label: '同步数据',
                   shortcut: 'Ctrl+S',
                   onTap: onSync,
-                  isDark: isDark,
+                  
                 ),
                 const SizedBox(width: 16),
                 _quickAction(
@@ -267,7 +245,7 @@ class DesktopEditorArea extends StatelessWidget {
                   label: '设置',
                   shortcut: 'Ctrl+,',
                   onTap: onSettings,
-                  isDark: isDark,
+                  
                 ),
               ],
             ),
@@ -279,9 +257,7 @@ class DesktopEditorArea extends StatelessWidget {
               'Ctrl+N 新建 · Ctrl+S 保存 · Ctrl+P 发布 · Ctrl+L 菜单',
               style: TextStyle(
                 fontSize: 11,
-                color: isDark
-                    ? Colors.white.withOpacity(0.15)
-                    : const Color(0xFFD1D5DB),
+                color: AppColor.borderStrong(context),
               ),
             ),
           ],
@@ -296,7 +272,6 @@ class DesktopEditorArea extends StatelessWidget {
     required String label,
     required String shortcut,
     required VoidCallback? onTap,
-    required bool isDark,
   }) {
     final cs = Theme.of(context).colorScheme;
     return GestureDetector(
@@ -305,14 +280,10 @@ class DesktopEditorArea extends StatelessWidget {
         width: 120,
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
         decoration: BoxDecoration(
-          color: isDark
-              ? Colors.white.withOpacity(0.03)
-              : const Color(0xFFF9FAFB),
+          color: AppColor.surfaceHover(context),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isDark
-                ? Colors.white.withOpacity(0.06)
-                : const Color(0xFFE5E7EB),
+            color: AppColor.border(context),
           ),
         ),
         child: Column(
@@ -329,9 +300,7 @@ class DesktopEditorArea extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
-                color: isDark
-                    ? Colors.white.withOpacity(0.7)
-                    : const Color(0xFF374151),
+                color: AppColor.textSecondary(context),
               ),
             ),
             const SizedBox(height: 4),
@@ -339,9 +308,7 @@ class DesktopEditorArea extends StatelessWidget {
               shortcut,
               style: TextStyle(
                 fontSize: 10,
-                color: isDark
-                    ? Colors.white.withOpacity(0.2)
-                    : const Color(0xFFD1D5DB),
+                color: AppColor.borderStrong(context),
               ),
             ),
           ],

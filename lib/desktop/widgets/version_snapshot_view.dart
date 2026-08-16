@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../../theme/app_color.dart';
 import '../../services/version_snapshot_service.dart';
 import '../../services/conflict_diff_service.dart';
 
@@ -105,10 +106,10 @@ class _VersionSnapshotViewState extends State<VersionSnapshotView> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF252526) : const Color(0xFFF3F3F3),
+        color: AppColor.surfaceRaised(context),
         border: Border(
           bottom: BorderSide(
-            color: isDark ? const Color(0xFF3E3E42) : const Color(0xFFE0E0E0),
+            color: AppColor.surfaceRaised(context),
           ),
         ),
       ),
@@ -248,7 +249,7 @@ class _VersionSnapshotViewState extends State<VersionSnapshotView> {
         // 顶部工具栏
         Container(
           padding: const EdgeInsets.all(8),
-          color: isDark ? const Color(0xFF252526) : const Color(0xFFF3F3F3),
+          color: AppColor.surfaceRaised(context),
           child: Row(
             children: [
               TextButton.icon(
@@ -279,10 +280,10 @@ class _VersionSnapshotViewState extends State<VersionSnapshotView> {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF252526) : const Color(0xFFF3F3F3),
+            color: AppColor.surfaceRaised(context),
             border: Border(
               top: BorderSide(
-                color: isDark ? const Color(0xFF3E3E42) : const Color(0xFFE0E0E0),
+                color: AppColor.surfaceRaised(context),
               ),
             ),
           ),
@@ -312,7 +313,7 @@ class _VersionSnapshotViewState extends State<VersionSnapshotView> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(4),
         border: Border.all(
-          color: isDark ? const Color(0xFF3E3E42) : const Color(0xFFE0E0E0),
+          color: AppColor.surfaceRaised(context),
         ),
       ),
       child: Column(

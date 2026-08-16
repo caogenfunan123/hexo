@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../../theme/app_color.dart';
 
 /// 动画配置常量（对齐 UI 规范）
 class AnimationConfig {
@@ -142,7 +143,7 @@ class ThemeTransition extends StatelessWidget {
     return AnimatedContainer(
       duration: AnimationConfig.theme,
       curve: AnimationConfig.themeCurve,
-      color: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFF5F5F7),
+      color: AppColor.surfaceBase(context),
       child: child,
     );
   }

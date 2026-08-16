@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../theme/app_color.dart';
 import '../../models/repo_config.dart';
 import '../../models/article.dart';
 import '../../models/ui_settings.dart';
@@ -87,7 +88,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
     return Container(
       width: widget.width.clamp(200, 400),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E2E) : const Color(0xFFF5F5F7),
+        color: AppColor.surfaceBase(context),
         border: Border(
           right: BorderSide(
             color: isDark
@@ -102,7 +103,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
           Column(
             children: [
               // 面板头部
-              _buildHeader(cs, isDark),
+              _buildHeader(cs),
               const SizedBox(height: 4),
 
               // 滚动内容
@@ -445,7 +446,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
             right: 0,
             top: 0,
             bottom: 0,
-            child: _buildResizeHandle(isDark),
+            child: _buildResizeHandle(),
           ),
         ],
       ),
@@ -455,7 +456,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
   // ============================================================
   // 面板头部
   // ============================================================
-  Widget _buildHeader(ColorScheme cs, bool isDark) {
+  Widget _buildHeader(ColorScheme cs) {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
       child: Row(
@@ -465,7 +466,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
             style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w700,
-              color: isDark ? Colors.white : const Color(0xFF0F172A),
+              color: AppColor.textPrimary(context),
               letterSpacing: 0.5,
             ),
           ),
@@ -492,7 +493,6 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
     required VoidCallback onToggle,
     required List<Widget> children,
   }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     // 简易模式下分组内无可见项时整组隐藏
     if (children.isEmpty) return const SizedBox.shrink();
     return Column(
@@ -510,17 +510,13 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                 Icon(
                   collapsed ? Icons.chevron_right : Icons.expand_more,
                   size: 14,
-                  color: isDark
-                      ? Colors.white.withOpacity(0.3)
-                      : const Color(0xFF9CA3AF),
+                  color: AppColor.iconMuted(context),
                 ),
                 const SizedBox(width: 4),
                 Icon(
                   icon,
                   size: 12,
-                  color: isDark
-                      ? Colors.white.withOpacity(0.3)
-                      : const Color(0xFF9CA3AF),
+                  color: AppColor.iconMuted(context),
                 ),
                 const SizedBox(width: 6),
                 Text(
@@ -528,9 +524,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
-                    color: isDark
-                        ? Colors.white.withOpacity(0.3)
-                        : const Color(0xFF9CA3AF),
+                    color: AppColor.iconMuted(context),
                     letterSpacing: 0.8,
                   ),
                 ),
@@ -586,7 +580,6 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
     String? shortcut,
     int badge = 0,
   }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cs = Theme.of(context).colorScheme;
 
     return Padding(
@@ -607,12 +600,8 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                   color: isPrimary
                       ? cs.primary
                       : isSubtle
-                      ? (isDark
-                            ? Colors.white.withOpacity(0.35)
-                            : const Color(0xFF9CA3AF))
-                      : (isDark
-                            ? Colors.white.withOpacity(0.6)
-                            : const Color(0xFF4B5563)),
+                      ? (AppColor.iconMuted(context))
+                      : (AppColor.icon(context)),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -623,9 +612,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                       fontWeight: isPrimary ? FontWeight.w600 : FontWeight.w400,
                       color: isPrimary
                           ? cs.primary
-                          : (isDark
-                                ? Colors.white.withOpacity(0.8)
-                                : const Color(0xFF374151)),
+                          : (AppColor.textSecondary(context)),
                     ),
                   ),
                 ),
@@ -653,9 +640,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                     shortcut,
                     style: TextStyle(
                       fontSize: 10,
-                      color: isDark
-                          ? Colors.white.withOpacity(0.2)
-                          : const Color(0xFFD1D5DB),
+                      color: AppColor.borderStrong(context),
                     ),
                   ),
               ],
@@ -670,7 +655,6 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
   // 文章列表（平铺标题，点击打开，长按管理）
   // ============================================================
   List<Widget> _buildArticleItems() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final articles = widget.drafts.where((a) {
       final name = a.title.trim();
       if (SystemLogFiles.isSystemLogFileName(name)) return false;
@@ -687,9 +671,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
             '暂无文章',
             style: TextStyle(
               fontSize: 11,
-              color: isDark
-                  ? Colors.white.withOpacity(0.3)
-                  : const Color(0xFF9CA3AF),
+              color: AppColor.iconMuted(context),
             ),
           ),
         ),
@@ -700,7 +682,6 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
   }
 
   Widget _articleItem(Article a) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: Material(
@@ -719,9 +700,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                 Icon(
                   Icons.description_outlined,
                   size: 13,
-                  color: isDark
-                      ? Colors.white.withOpacity(0.35)
-                      : const Color(0xFF9CA3AF),
+                  color: AppColor.iconMuted(context),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -729,9 +708,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                     a.title.isEmpty ? '(无标题)' : a.title,
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark
-                          ? Colors.white.withOpacity(0.75)
-                          : const Color(0xFF374151),
+                      color: AppColor.textSecondary(context),
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -771,16 +748,13 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
     bool isActive = false,
     VoidCallback? onTap,
   }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cs = Theme.of(context).colorScheme;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: Material(
         color: isActive
-            ? (isDark
-                  ? Colors.white.withOpacity(0.08)
-                  : cs.primary.withOpacity(0.08))
+            ? (cs.primary.withOpacity(0.08))
             : Colors.transparent,
         borderRadius: BorderRadius.circular(6),
         child: InkWell(
@@ -795,9 +769,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                   size: 15,
                   color: isDefault
                       ? Colors.amber.shade600
-                      : (isDark
-                            ? Colors.white.withOpacity(0.5)
-                            : const Color(0xFF6B7280)),
+                      : (AppColor.icon(context)),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -809,9 +781,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                         style: TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w500,
-                          color: isDark
-                              ? Colors.white.withOpacity(0.85)
-                              : const Color(0xFF374151),
+                          color: AppColor.textSecondary(context),
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -820,9 +790,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                           subtitle,
                           style: TextStyle(
                             fontSize: 10,
-                            color: isDark
-                                ? Colors.white.withOpacity(0.35)
-                                : const Color(0xFF9CA3AF),
+                            color: AppColor.iconMuted(context),
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -885,7 +853,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
   // ============================================================
   // 拖拽调整宽度手柄
   // ============================================================
-  Widget _buildResizeHandle(bool isDark) {
+  Widget _buildResizeHandle() {
     return GestureDetector(
       onHorizontalDragStart: (_) => setState(() => _resizing = true),
       onHorizontalDragUpdate: (d) {
@@ -902,9 +870,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
           child: Center(
             child: Container(
               width: 1,
-              color: isDark
-                  ? Colors.white.withOpacity(0.06)
-                  : Colors.black.withOpacity(0.08),
+              color: AppColor.border(context),
             ),
           ),
         ),

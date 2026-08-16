@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../../theme/app_color.dart';
 import '../../services/conflict_diff_service.dart';
 
 /// 冲突解决方式
@@ -101,10 +102,10 @@ class _ConflictDiffViewState extends State<ConflictDiffView> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF252526) : const Color(0xFFF3F3F3),
+        color: AppColor.surfaceRaised(context),
         border: Border(
           bottom: BorderSide(
-            color: isDark ? const Color(0xFF3E3E42) : const Color(0xFFE0E0E0),
+            color: AppColor.surfaceRaised(context),
           ),
         ),
       ),
@@ -158,7 +159,7 @@ class _ConflictDiffViewState extends State<ConflictDiffView> {
         // 分隔线
         Container(
           width: 1,
-          color: isDark ? const Color(0xFF3E3E42) : const Color(0xFFE0E0E0),
+          color: AppColor.surfaceRaised(context),
         ),
         // 远程版本
         Expanded(
@@ -186,7 +187,7 @@ class _ConflictDiffViewState extends State<ConflictDiffView> {
         ),
         Container(
           height: 1,
-          color: isDark ? const Color(0xFF3E3E42) : const Color(0xFFE0E0E0),
+          color: AppColor.surfaceRaised(context),
         ),
         Expanded(
           child: _buildDiffPanel(
@@ -339,10 +340,10 @@ class _ConflictDiffViewState extends State<ConflictDiffView> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF252526) : const Color(0xFFF3F3F3),
+        color: AppColor.surfaceRaised(context),
         border: Border(
           top: BorderSide(
-            color: isDark ? const Color(0xFF3E3E42) : const Color(0xFFE0E0E0),
+            color: AppColor.surfaceRaised(context),
           ),
         ),
       ),

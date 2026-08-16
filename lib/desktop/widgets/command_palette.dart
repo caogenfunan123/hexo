@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../../theme/app_color.dart';
 import 'package:flutter/services.dart';
 
 /// 命令面板中的单个命令项
@@ -138,12 +139,10 @@ class _CommandPaletteState extends State<CommandPalette> {
               width: 560,
               constraints: const BoxConstraints(maxHeight: 480),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
+                color: AppColor.surfaceBase(context),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: isDark
-                      ? Colors.white.withOpacity(0.1)
-                      : const Color(0xFFE5E5EA),
+                  color: AppColor.border(context),
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -165,9 +164,7 @@ class _CommandPaletteState extends State<CommandPalette> {
                       decoration: BoxDecoration(
                         border: Border(
                           bottom: BorderSide(
-                            color: isDark
-                                ? Colors.white.withOpacity(0.06)
-                                : const Color(0xFFE5E5EA),
+                            color: AppColor.border(context),
                           ),
                         ),
                       ),
@@ -177,23 +174,19 @@ class _CommandPaletteState extends State<CommandPalette> {
                         autofocus: true,
                         style: TextStyle(
                           fontSize: 14,
-                          color: isDark ? Colors.white : const Color(0xFF1F2937),
+                          color: AppColor.textPrimary(context),
                         ),
                         decoration: InputDecoration(
                           hintText: '输入命令名称搜索...',
                           hintStyle: TextStyle(
-                            color: isDark
-                                ? Colors.white.withOpacity(0.3)
-                                : const Color(0xFF9CA3AF),
+                            color: AppColor.textMuted(context),
                             fontSize: 14,
                           ),
                           border: InputBorder.none,
                           prefixIcon: Icon(
                             Icons.search,
                             size: 18,
-                            color: isDark
-                                ? Colors.white.withOpacity(0.3)
-                                : const Color(0xFF9CA3AF),
+                            color: AppColor.textMuted(context),
                           ),
                           contentPadding: const EdgeInsets.symmetric(vertical: 12),
                         ),
@@ -208,9 +201,7 @@ class _CommandPaletteState extends State<CommandPalette> {
                               child: Text(
                                 '无匹配命令',
                                 style: TextStyle(
-                                  color: isDark
-                                      ? Colors.white.withOpacity(0.3)
-                                      : const Color(0xFF9CA3AF),
+                                  color: AppColor.textMuted(context),
                                 ),
                               ),
                             )
@@ -240,7 +231,7 @@ class _CommandPaletteState extends State<CommandPalette> {
                                           size: 16,
                                           color: selected
                                               ? cs.primary
-                                              : (isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280)),
+                                              : (AppColor.icon(context)),
                                         ),
                                         const SizedBox(width: 10),
                                         Expanded(
@@ -252,18 +243,14 @@ class _CommandPaletteState extends State<CommandPalette> {
                                                 style: TextStyle(
                                                   fontSize: 13,
                                                   fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                                                  color: isDark
-                                                      ? Colors.white.withOpacity(0.9)
-                                                      : const Color(0xFF1F2937),
+                                                  color: AppColor.textPrimary(context),
                                                 ),
                                               ),
                                               Text(
                                                 cmd.category,
                                                 style: TextStyle(
                                                   fontSize: 10,
-                                                  color: isDark
-                                                      ? Colors.white.withOpacity(0.3)
-                                                      : const Color(0xFF9CA3AF),
+                                                  color: AppColor.textMuted(context),
                                                 ),
                                               ),
                                             ],
@@ -272,9 +259,7 @@ class _CommandPaletteState extends State<CommandPalette> {
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                           decoration: BoxDecoration(
-                                            color: isDark
-                                                ? Colors.white.withOpacity(0.05)
-                                                : const Color(0xFFF3F4F6),
+                                            color: AppColor.surfaceHover(context),
                                             borderRadius: BorderRadius.circular(4),
                                           ),
                                           child: Text(
@@ -282,9 +267,7 @@ class _CommandPaletteState extends State<CommandPalette> {
                                             style: TextStyle(
                                               fontSize: 10,
                                               fontFamily: 'monospace',
-                                              color: isDark
-                                                  ? Colors.white.withOpacity(0.4)
-                                                  : const Color(0xFF6B7280),
+                                              color: AppColor.icon(context),
                                             ),
                                           ),
                                         ),
@@ -302,9 +285,7 @@ class _CommandPaletteState extends State<CommandPalette> {
                       decoration: BoxDecoration(
                         border: Border(
                           top: BorderSide(
-                            color: isDark
-                                ? Colors.white.withOpacity(0.06)
-                                : const Color(0xFFE5E5EA),
+                            color: AppColor.border(context),
                           ),
                         ),
                       ),
@@ -335,7 +316,7 @@ class _CommandPaletteState extends State<CommandPalette> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
           decoration: BoxDecoration(
-            color: isDark ? Colors.white.withOpacity(0.06) : const Color(0xFFE5E7EB),
+            color: AppColor.border(context),
             borderRadius: BorderRadius.circular(3),
           ),
           child: Text(
@@ -343,7 +324,7 @@ class _CommandPaletteState extends State<CommandPalette> {
             style: TextStyle(
               fontSize: 9,
               fontFamily: 'monospace',
-              color: isDark ? Colors.white.withOpacity(0.5) : const Color(0xFF6B7280),
+              color: AppColor.icon(context),
             ),
           ),
         ),
@@ -352,7 +333,7 @@ class _CommandPaletteState extends State<CommandPalette> {
           label,
           style: TextStyle(
             fontSize: 10,
-            color: isDark ? Colors.white.withOpacity(0.3) : const Color(0xFF9CA3AF),
+            color: AppColor.textMuted(context),
           ),
         ),
       ],

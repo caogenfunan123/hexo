@@ -6,6 +6,7 @@ library;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../../../theme/app_color.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:cross_file/cross_file.dart';
 
@@ -150,7 +151,7 @@ class _EditorDropTargetState extends State<EditorDropTarget> {
                     duration: const Duration(milliseconds: 200),
                     padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
+                      color: AppColor.surfaceBase(context),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: Theme.of(context).colorScheme.primary,
@@ -178,7 +179,7 @@ class _EditorDropTargetState extends State<EditorDropTarget> {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : const Color(0xFF1F2937),
+                            color: AppColor.textPrimary(context),
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -186,7 +187,7 @@ class _EditorDropTargetState extends State<EditorDropTarget> {
                           '支持图片、Markdown 和文本文件',
                           style: TextStyle(
                             fontSize: 11,
-                            color: isDark ? Colors.white.withOpacity(0.4) : const Color(0xFF9CA3AF),
+                            color: AppColor.textMuted(context),
                           ),
                         ),
                       ],
