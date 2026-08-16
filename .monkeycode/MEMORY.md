@@ -57,10 +57,11 @@ Entries discovered by the Agent during task execution should follow this format:
 - Context: Discovered by Agent while reviewing spec 完成度与功能现状
 - Category: Troubleshooting & Debugging
 - Instructions:
-  - 三个功能存疑点（疑似"代码存在但未生效/未验证"，排查优先级从高到低）：
-    1. 简易模式接线：`lib/desktop/feature_entries.dart`（AppMode/ModeVisibilityFilter/FeatureEntry 注册表）已实现，但 desktop_shell.dart 与 editor_ui_ext.dart 未搜到消费注册表的接线点，疑似未真正接入 left_panel 渲染与移动端 drawer 过滤
-    2. 一键建站向导端到端未验证：`site_scaffold_builder.dart`(803 行)/`site_wizard_service.dart`(743 行)/`cloudflare_pages_provider.dart`/`framework_build_map.dart`/`wizard_models.dart` 代码齐全且 CI 编译通过，但 tasklist 全 `[ ]`，从未实测 GitHub 建 repo → CI Pages → Cloudflare deploy hook 全链路
-    3. Agent 工作台思考模式空壳：operit spec 记录 `thinkingEnabled` 是未接线预留字段，agent_workbench_screen.dart 未搜到 reasoning/thinking 处理，疑似 deepseek-reasoner 仍被当普通模型调用，推理过程不渲染
+  - 三个功能存疑点（2026-08-16 已排查，结论如下）：
+    1. 简易模式接线【已解决】：feature_entries 注册表实际已在 left_panel._nav / 移动端 drawer(navVisible) / main._navigateTo 三处消费；站点分组"添加站点/运维与监控"原先绕过 _nav，已改用 _nav 并补注册 'site_operations'(hidden)
+    2. 一键建站向导端到端【静态审查通过，待真实环境实测】：site_wizard_service(→GitHubProvider/GitLabProvider/CloudflarePagesProvider/SiteScaffoldBuilder/RollbackManager) → create_site 工具(builtin_tools，由 AiChatPanel 注入 siteWizardService) → 向导 UI(site_wizard_screen fallback) 链路完整无代码断点；真实"GitHub 建 repo→CI Pages→CF deploy hook"需用户用真实 token 在应用内验证
+    3. Agent 工作台思考模式【已解决】：thinkingEnabled 链路（AiModelEntity→_profileFromModel→ai_service body）完整，此前仅缺 UI 开关；已在 ai_model_manager_screen 添加模型对话框加"深度思考"开关+推理强度下拉，deepseek-reasoner 预设默认 thinking=true；ai_service 三处 OpenAI 路径 thinkingEnabled 时移除 temperature（reasoner/o 系列不接受非 1 temperature）；reasoning 提取→dispatcher→chat_panel 渲染已闭环
+  - 模型推理兼容：OpenAI Chat/Responses 的 thinkingEnabled 需同时满足——发送 reasoning_effort/reasoning 参数、移除 temperature（reasoner/o 系列要求 temperature=1，发非 1 值会 400）；Anthropic 走 body.thinking 不受 temperature 限制
 
 [Project Knowledge Summary]
 - Date: 2026-08-16
