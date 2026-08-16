@@ -29,3 +29,5 @@ ios/*.xcconfig
 ios/ServiceDefinitions.json
 ios/Runner/GeneratedPluginRegistrant.*
 pycache
+__pycache__/
+*.pyc

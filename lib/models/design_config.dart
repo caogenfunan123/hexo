@@ -55,12 +55,12 @@ class DesignConfig {
   final String editorTheme;
 
   const DesignConfig({
-    this.seedColor = 0xFF0EA5E9,
-    this.lightBgColor = 0xFFF0F4F8,
+    this.seedColor = 0xFF0D9488,
+    this.lightBgColor = 0xFFF0FDFA,
     this.lightCardColor = 0xFFFFFFFF,
-    this.lightTextColor = 0xFF0F172A,
-    this.darkBgColor = 0xFF0F172A,
-    this.darkCardColor = 0xFF1E293B,
+    this.lightTextColor = 0xFF134E4A,
+    this.darkBgColor = 0xFF042F2E,
+    this.darkCardColor = 0xFF0F3D3A,
     this.borderRadiusScale = 1.0,
     this.paddingScale = 1.0,
     this.fontScale = 1.0,

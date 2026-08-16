@@ -339,7 +339,7 @@ class BuiltinTools {
           name: 'seedColor',
           type: 'number',
           description:
-              '种子色(0xAARRGGBB)，如 0xFF0EA5E9=天蓝, 0xFF8B5CF6=紫, 0xFF10B981=绿, 0xFFF59E0B=橙, 0xFFEF4444=红, 0xFFEC4899=粉',
+              '种子色(0xAARRGGBB)，如 0xFF0D9488=青绿, 0xFF8B5CF6=紫, 0xFF10B981=绿, 0xFFF59E0B=橙, 0xFFEF4444=红, 0xFFEC4899=粉',
           required: false),
       ToolParam(
           name: 'lightBgColor',

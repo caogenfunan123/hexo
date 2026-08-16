@@ -2079,16 +2079,16 @@ class DesktopShellState extends State<DesktopShell>
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF0F9FF),
+                  color: const Color(0xFFF0FDFA),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFBAE6FD)),
+                  border: Border.all(color: const Color(0xFF99F6E4)),
                 ),
                 child: Row(
                   children: [
                     const Icon(
                       Icons.info_outline,
                       size: 14,
-                      color: Color(0xFF0EA5E9),
+                      color: Color(0xFF0D9488),
                     ),
                     const SizedBox(width: 6),
                     Expanded(
@@ -2097,7 +2097,7 @@ class DesktopShellState extends State<DesktopShell>
                         '文件名: ${_doc.articleType == ArticleType.page ? '无日期前缀' : ((_editorRepo?.fileNameRule.postDatePrefix ?? false) ? '自动加日期' : '纯标题')}',
                         style: const TextStyle(
                           fontSize: 11,
-                          color: Color(0xFF0369A1),
+                          color: Color(0xFF134E4A),
                         ),
                       ),
                     ),
@@ -6353,6 +6353,7 @@ class DesktopShellState extends State<DesktopShell>
 
   void _showThemeColorPicker() async {
     const colors = [
+      Color(0xFF0D9488),
       Color(0xFF0EA5E9),
       Color(0xFF6366F1),
       Color(0xFF8B5CF6),
@@ -6365,13 +6366,14 @@ class DesktopShellState extends State<DesktopShell>
       Color(0xFF1E293B),
     ];
     const names = [
+      '青绿',
       '天蓝',
       '靛蓝',
       '紫色',
       '粉色',
       '玫瑰红',
       '翡翠绿',
-      '青绿',
+      '青色',
       '琥珀',
       '石板灰',
       '深灰',

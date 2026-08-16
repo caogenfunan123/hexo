@@ -4,6 +4,7 @@ part of '../main.dart';
 extension EditorMiscExt on _RootShellState {
   Future<void> _showThemeColorPicker() async {
     const colors = [
+      Color(0xFF0D9488),
       Color(0xFF0EA5E9),
       Color(0xFF6366F1),
       Color(0xFF8B5CF6),
@@ -16,13 +17,14 @@ extension EditorMiscExt on _RootShellState {
       Color(0xFF1E293B),
     ];
     const names = [
+      '青绿',
       '天蓝',
       '靛蓝',
       '紫色',
       '粉色',
       '玫瑰红',
       '翡翠绿',
-      '青绿',
+      '青色',
       '琥珀',
       '石板灰',
       '深灰',

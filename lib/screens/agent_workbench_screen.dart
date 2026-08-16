@@ -673,7 +673,7 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
             ),
           ],
           bottom: const PreferredSize(
-            preferredSize: Size.fromHeight(40),
+            preferredSize: Size.fromHeight(72),
             child: TabBar(
               indicatorSize: TabBarIndicatorSize.label,
               tabs: [

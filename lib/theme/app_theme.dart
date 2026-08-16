@@ -3,17 +3,17 @@ import 'package:flutter/material.dart';
 import '../models/design_config.dart';
 
 class AppTheme {
-  static const Color seed = Color(0xFF0EA5E9);
-  static const bg = Color(0xFFF0F4F8);
+  static const Color seed = Color(0xFF0D9488);
+  static const bg = Color(0xFFF0FDFA);
   static const card = Colors.white;
-  static const text = Color(0xFF0F172A);
-  static const muted = Color(0xFF64748B);
-  static const divider = Color(0xFFE2E8F0);
-  static const accent = Color(0xFF0EA5E9);
+  static const text = Color(0xFF134E4A);
+  static const muted = Color(0xFF475569);
+  static const divider = Color(0xFF99F6E4);
+  static const accent = Color(0xFFEA580C);
   static const accentPurple = Color(0xFF8B5CF6);
   static const accentGreen = Color(0xFF10B981);
-  static const accentOrange = Color(0xFFF59E0B);
-  static const accentRed = Color(0xFFEF4444);
+  static const accentOrange = Color(0xFFF97316);
+  static const accentRed = Color(0xFFDC2626);
 
   // ── 根据 DesignConfig 动态生成主题 ──
 
@@ -126,8 +126,12 @@ class AppTheme {
           fontWeight: FontWeight.w700,
           letterSpacing: -0.3,
         ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(bottom: Radius.circular(baseRadius * 1.5)),
+        toolbarHeight: 48,
+        shape: Border(
+          bottom: BorderSide(
+            color: dividerColor,
+            width: 1,
+          ),
         ),
       ),
       cardTheme: CardThemeData(
@@ -146,7 +150,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isLight ? const Color(0xFFF8FAFC) : cardColor,
+        fillColor: isLight ? const Color(0xFFF0FDFA) : cardColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(baseRadius),
           borderSide: BorderSide(color: dividerColor),
@@ -199,8 +203,11 @@ class AppTheme {
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(baseRadius)),
-        backgroundColor: textColor,
-        contentTextStyle: TextStyle(color: bgColor, fontSize: bodyFontSize),
+        backgroundColor: scheme.inverseSurface,
+        contentTextStyle: TextStyle(
+          color: scheme.onInverseSurface,
+          fontSize: bodyFontSize,
+        ),
       ),
       dividerTheme: DividerThemeData(
         color: dividerColor,
@@ -268,7 +275,7 @@ class AppTheme {
   // ── 原有静态方法保留（向后兼容） ──
 
   static ThemeData light({int? seedColor}) {
-    final localSeed = Color(seedColor ?? 0xFF0EA5E9);
+    final localSeed = Color(seedColor ?? 0xFF0D9488);
     final scheme = ColorScheme.fromSeed(
       seedColor: localSeed,
       brightness: Brightness.light,
@@ -291,8 +298,9 @@ class AppTheme {
           fontWeight: FontWeight.w700,
           letterSpacing: -0.3,
         ),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
+        toolbarHeight: 48,
+        shape: Border(
+          bottom: BorderSide(color: divider, width: 1),
         ),
       ),
       cardTheme: CardThemeData(
@@ -307,7 +315,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFFF8FAFC),
+        fillColor: const Color(0xFFF0FDFA),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: divider),
@@ -415,7 +423,7 @@ class AppTheme {
   }
 
   static ThemeData dark({int? seedColor}) {
-    final localSeed = Color(seedColor ?? 0xFF0EA5E9);
+    final localSeed = Color(seedColor ?? 0xFF0D9488);
     final scheme = ColorScheme.fromSeed(
       seedColor: localSeed,
       brightness: Brightness.dark,
@@ -423,11 +431,11 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      scaffoldBackgroundColor: const Color(0xFF0F172A),
+      scaffoldBackgroundColor: const Color(0xFF042F2E),
       appBarTheme: AppBarTheme(
         centerTitle: false,
         elevation: 0,
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: const Color(0xFF0F3D3A),
         foregroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         titleTextStyle: const TextStyle(
@@ -437,7 +445,7 @@ class AppTheme {
         ),
       ),
       cardTheme: CardThemeData(
-        color: const Color(0xFF1E293B),
+        color: const Color(0xFF0F3D3A),
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
@@ -447,7 +455,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFF1E293B),
+        fillColor: const Color(0xFF0F3D3A),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: Colors.grey.shade700),
@@ -470,13 +478,13 @@ class AppTheme {
       ),
       dialogTheme: DialogThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: const Color(0xFF0F3D3A),
         elevation: 8,
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        backgroundColor: const Color(0xFF334155),
+        backgroundColor: const Color(0xFF115E59),
         contentTextStyle: const TextStyle(color: Colors.white, fontSize: 14),
       ),
       dividerTheme: DividerThemeData(
@@ -502,7 +510,7 @@ class AppTheme {
         ),
       ),
       drawerTheme: DrawerThemeData(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: const Color(0xFF0F3D3A),
         surfaceTintColor: Colors.transparent,
       ),
     );
