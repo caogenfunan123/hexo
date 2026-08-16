@@ -17,6 +17,7 @@ import 'ai_model_probe_service.dart';
 import 'ai_provider.dart';
 import 'ai_session_manager.dart';
 import 'ai_session_tools.dart';
+import 'ai_tool_catalog_prompt.dart';
 
 /// 模型切换事件（UI 提示条用）
 class SwitchEvent {
@@ -84,6 +85,13 @@ class AiRequestDispatcher {
   /// 上下文持有器：保存完整会话历史（含 tool_calls），保证切换模型时上下文不丢失
   final List<Map<String, dynamic>> _chatHistory = [];
   String _systemPrompt = '';
+
+  /// 工具能力地图后缀：每次请求基于会话过滤后的实际可用工具动态生成，
+  /// 让模型开局掌握全局工具，避免盲目探测 list_tools。
+  String _toolCatalogSuffix = '';
+
+  /// 发送给模型的实际 System Prompt = 内核 + 工具能力地图
+  String get _effectiveSystemPrompt => _systemPrompt + _toolCatalogSuffix;
 
   List<Map<String, dynamic>> get chatHistory => List.unmodifiable(_chatHistory);
 
@@ -429,8 +437,6 @@ $prev
         if (_isStale(generation)) return;
       }
 
-      final messages = _buildContextMessages(settings.ai.aiMaxContextChars);
-
       // 按需工具发现：默认只暴露 list_tools 元工具，其余工具由模型调用
       // list_tools(tool_name=...) 后注入 injectedToolIds，下一轮可用。
       final registry = ToolRegistry();
@@ -457,6 +463,11 @@ $prev
       // 会话注入边界：audit 只读会话等禁止注入写工具（用白名单兜底）
       final toolList = filterToolsForSession(exposedTools, sessionType);
 
+      // 注入工具能力地图：让模型开局掌握全局工具，选型更有针对性
+      _toolCatalogSuffix = buildToolCatalogPrompt(toolList);
+
+      final messages = _buildContextMessages(settings.ai.aiMaxContextChars);
+
       final tools = !disableTools && toolList.isNotEmpty
           ? toolList.map((t) => t.toOpenAiFunction()).toList()
           : null;
@@ -468,7 +479,7 @@ $prev
         final response = await _aiService
             .completeWithToolsStreaming(
               settings: settings,
-              systemPrompt: _systemPrompt,
+              systemPrompt: _effectiveSystemPrompt,
               messages: messages,
               profile: profile,
               tools: tools,
@@ -818,16 +829,16 @@ $prev
     }
     if (maxChars <= 0 || history.isEmpty) {
       return [
-        {'role': 'system', 'content': _systemPrompt},
+        {'role': 'system', 'content': _effectiveSystemPrompt},
         ...history,
       ];
     }
 
-    final systemLen = _systemPrompt.length;
+    final systemLen = _effectiveSystemPrompt.length;
     final budget = maxChars > systemLen ? maxChars - systemLen : 0;
     if (budget <= 0) {
       return [
-        {'role': 'system', 'content': _systemPrompt},
+        {'role': 'system', 'content': _effectiveSystemPrompt},
       ];
     }
 
@@ -838,7 +849,7 @@ $prev
     }
     if (totalChars <= budget) {
       return [
-        {'role': 'system', 'content': _systemPrompt},
+        {'role': 'system', 'content': _effectiveSystemPrompt},
         ...history,
       ];
     }
@@ -883,7 +894,7 @@ $prev
 
     final dropped = history.length - anchors.length - tail.length;
     final messages = <Map<String, dynamic>>[
-      {'role': 'system', 'content': _systemPrompt},
+      {'role': 'system', 'content': _effectiveSystemPrompt},
     ];
     if (dropped > 0) {
       messages.add({
@@ -1024,7 +1035,7 @@ $prev
 
         // 构建完整消息列表
         final messages = [
-          {'role': 'system', 'content': _systemPrompt},
+          {'role': 'system', 'content': _effectiveSystemPrompt},
           ..._chatHistory,
         ];
 
@@ -1033,7 +1044,7 @@ $prev
         final result = await _aiService
             .complete(
               settings: settings,
-              systemPrompt: _systemPrompt,
+              systemPrompt: _effectiveSystemPrompt,
               userPrompt: _buildMessagesString(messages),
               profile: profile,
               temperature: temperature,
