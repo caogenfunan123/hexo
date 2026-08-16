@@ -687,6 +687,7 @@ class AiChatPanelState extends State<AiChatPanel> {
         preferredModel: _selectedModel,
         autoOptimal: widget.settings.ai.aiAutoOptimalModel,
         enabledSkillIds: _selectedSkillIds,
+        sessionType: widget.sessionType,
       );
 
       _streamSub = stream.listen(

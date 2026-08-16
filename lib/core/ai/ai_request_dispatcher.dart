@@ -14,6 +14,8 @@ import 'ai_model_entity.dart';
 import 'ai_model_manager.dart';
 import 'ai_model_probe_service.dart';
 import 'ai_provider.dart';
+import 'ai_session_manager.dart';
+import 'ai_session_tools.dart';
 
 /// 模型切换事件（UI 提示条用）
 class SwitchEvent {
@@ -106,6 +108,7 @@ class AiRequestDispatcher {
     int? timeoutSeconds,
     int? maxSwitchCount,
     Set<String>? enabledSkillIds,
+    AiSessionType? sessionType,
   }) {
     // 取消之前的请求
     cancelCurrent();
@@ -128,6 +131,7 @@ class AiRequestDispatcher {
       timeoutSeconds: timeoutSeconds,
       maxSwitchCount: maxSwitchCount,
       enabledSkillIds: enabledSkillIds,
+      sessionType: sessionType,
     );
 
     return controller.stream;
@@ -143,6 +147,7 @@ class AiRequestDispatcher {
     int? timeoutSeconds,
     int? maxSwitchCount,
     Set<String>? enabledSkillIds,
+    AiSessionType? sessionType,
   }) async {
     List<AiModelEntity> fallbacks = [];
     try {
@@ -169,6 +174,7 @@ class AiRequestDispatcher {
       maxSwitchCount: effectiveMaxSwitch,
       timeoutSeconds: effectiveTimeout,
       enabledSkillIds: enabledSkillIds,
+      sessionType: sessionType,
     );
   }
 
@@ -185,6 +191,7 @@ class AiRequestDispatcher {
     int switchCount = 0,
     bool disableTools = false,
     Set<String>? enabledSkillIds,
+    AiSessionType? sessionType,
   }) async {
     const maxToolRounds = 12;
     final fullContent = StringBuffer();
@@ -221,20 +228,19 @@ class AiRequestDispatcher {
         }
       }
 
-      final messages = [
-        {'role': 'system', 'content': _systemPrompt},
-        ..._chatHistory,
-      ];
+      final messages = _buildContextMessages(settings.ai.aiMaxContextChars);
 
       // 技能选择：内置 + MCP 始终可用；自定义技能按 enabledSkillIds 过滤
       // 未指定时（null/空）表示全部启用，保持向后兼容
+      // 按会话场景过滤内置工具白名单，减少工具定义 token 消耗
       final registry = ToolRegistry();
       final skillIds = enabledSkillIds;
-      final toolList = registry.enabledTools.where((t) {
+      final allEnabled = registry.enabledTools.where((t) {
         if (t.type != ToolType.skill) return true;
         if (skillIds == null || skillIds.isEmpty) return true;
         return skillIds.contains(t.id);
       }).toList();
+      final toolList = filterToolsForSession(allEnabled, sessionType);
 
       final tools = !disableTools && toolList.isNotEmpty
           ? toolList.map((t) => t.toOpenAiFunction()).toList()
@@ -356,6 +362,7 @@ class AiRequestDispatcher {
             timeoutSeconds: timeoutSeconds,
             switchCount: switchCount,
             enabledSkillIds: enabledSkillIds,
+            sessionType: sessionType,
           );
           return;
         }
@@ -424,6 +431,7 @@ class AiRequestDispatcher {
             switchCount: switchCount + 1,
             disableTools: true,
             enabledSkillIds: enabledSkillIds,
+            sessionType: sessionType,
           );
           return;
         }
@@ -450,6 +458,7 @@ class AiRequestDispatcher {
             timeoutSeconds: timeoutSeconds,
             switchCount: switchCount + 1,
             enabledSkillIds: enabledSkillIds,
+            sessionType: sessionType,
           );
           return;
         }
@@ -548,6 +557,75 @@ class AiRequestDispatcher {
     _chatHistory
       ..clear()
       ..addAll(cleaned);
+  }
+
+  /// 构建发送给模型的完整消息列表（system + 压缩后的历史）。
+  ///
+  /// 上下文压缩策略（滑动窗口）：从最新消息往前累积，超过 [maxChars] 后
+  /// 丢弃最老的完整轮次（user 或 tool 及其附属消息），并在窗口头部插入
+  /// 一条占位说明。system prompt 始终完整保留。
+  /// 该压缩只影响本次发送视图，不破坏 [_chatHistory] 的完整继承。
+  List<Map<String, dynamic>> _buildContextMessages(int maxChars) {
+    if (maxChars <= 0 || _chatHistory.isEmpty) {
+      return [
+        {'role': 'system', 'content': _systemPrompt},
+        ..._chatHistory,
+      ];
+    }
+
+    // 预留 system prompt 的空间
+    final systemLen = _systemPrompt.length;
+    final budget = maxChars > systemLen ? maxChars - systemLen : 0;
+
+    // 从后往前累积，直到超预算
+    var used = 0;
+    final tail = <Map<String, dynamic>>[];
+    for (var i = _chatHistory.length - 1; i >= 0; i--) {
+      final m = _chatHistory[i];
+      final len = _messageChars(m);
+      // 单条超大消息（如工具结果）不能被截断时，至少尝试保留它
+      if (used + len > budget && tail.isNotEmpty) break;
+      tail.insert(0, m);
+      used += len;
+      if (used >= budget) break;
+    }
+
+    final dropped = _chatHistory.length - tail.length;
+    final messages = <Map<String, dynamic>>[
+      {'role': 'system', 'content': _systemPrompt},
+    ];
+    if (dropped > 0) {
+      messages.add({
+        'role': 'system',
+        'content': '[早期对话因上下文长度限制已被省略，共 $dropped 条消息。'
+            '请基于现有上下文继续，必要时询问用户补充细节。]',
+      });
+    }
+    messages.addAll(tail);
+    return messages;
+  }
+
+  /// 估算一条消息占用的字符数（content 文本 + tool_calls 序列化）
+  int _messageChars(Map<String, dynamic> m) {
+    var len = 0;
+    final content = m['content'];
+    if (content is String) {
+      len += content.length;
+    } else if (content is List) {
+      len += content.fold<int>(0, (sum, b) {
+        if (b is Map) {
+          return sum + (b['text']?.toString().length ?? 0);
+        }
+        return sum + (b?.toString().length ?? 0);
+      });
+    }
+    final tc = m['tool_calls'];
+    if (tc is List) {
+      try {
+        len += jsonEncode(tc).length;
+      } catch (_) {}
+    }
+    return len;
   }
 
   /// 记录单次流式调用（成功/失败）到模型管理器，供择优评分

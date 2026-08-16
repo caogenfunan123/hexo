@@ -20,6 +20,7 @@ class AiSettings {
   final bool aiAutoOptimalModel;   // 自动择优模式，默认开启
   final bool aiAllowAutoSaveTools; // 允许 AI 自动保存工具到工具箱，默认开启
   final bool aiConfirmHighRiskTools; // 高风险工具（删除/回滚/克隆）执行前需用户确认，默认关闭（AI 全权）
+  final int aiMaxContextChars;     // 上下文滑动窗口上限（字符），超限丢弃最老对话，默认 32000
 
   const AiSettings({
     this.aiProvider = 'openai',
@@ -35,6 +36,7 @@ class AiSettings {
     this.aiAutoOptimalModel = true,
     this.aiAllowAutoSaveTools = true,
     this.aiConfirmHighRiskTools = false,
+    this.aiMaxContextChars = 32000,
   });
 
   AiProfile? get activeAiProfile {
@@ -85,6 +87,7 @@ class AiSettings {
     bool? aiAutoOptimalModel,
     bool? aiAllowAutoSaveTools,
     bool? aiConfirmHighRiskTools,
+    int? aiMaxContextChars,
   }) {
     return AiSettings(
       aiProvider: aiProvider ?? this.aiProvider,
@@ -101,6 +104,7 @@ class AiSettings {
       aiAllowAutoSaveTools: aiAllowAutoSaveTools ?? this.aiAllowAutoSaveTools,
       aiConfirmHighRiskTools:
           aiConfirmHighRiskTools ?? this.aiConfirmHighRiskTools,
+      aiMaxContextChars: aiMaxContextChars ?? this.aiMaxContextChars,
     );
   }
 
@@ -118,6 +122,7 @@ class AiSettings {
         'aiAutoOptimalModel': aiAutoOptimalModel,
         'aiAllowAutoSaveTools': aiAllowAutoSaveTools,
         'aiConfirmHighRiskTools': aiConfirmHighRiskTools,
+        'aiMaxContextChars': aiMaxContextChars,
       };
 
   factory AiSettings.fromJson(Map<String, dynamic> j) {
@@ -160,6 +165,7 @@ class AiSettings {
       aiAutoOptimalModel: j['aiAutoOptimalModel'] != false,
       aiAllowAutoSaveTools: j['aiAllowAutoSaveTools'] != false,
       aiConfirmHighRiskTools: j['aiConfirmHighRiskTools'] == true,
+      aiMaxContextChars: (j['aiMaxContextChars'] as num?)?.toInt() ?? 32000,
     );
   }
 }

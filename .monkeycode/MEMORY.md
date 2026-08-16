@@ -51,3 +51,13 @@ Entries discovered by the Agent during task execution should follow this format:
   - 删除方法前先打印全部区间确认无重叠；已完成的 part：editor_publish/sync/settings_dialogs/ui/text/ai/repo/remote/misc/drawer_ext.dart（main.dart 1293 行，flutter analyze 0 error/warning、471+ info 全为历史 deprecated 类）
   - 本环境无 JDK/Android SDK，Android 构建验证只能靠 GitHub Actions CI；测试基线 +2 -1（test_batch_publish.dart frontmatter 单引号 vs 断言双引号，非重构引入）
   - 本环境无 PHP，无法运行 `php -l` 校验 SecureApi 插件 PHP 语法，只能人工审查
+
+[Project Knowledge Summary]
+- Date: 2026-08-16
+- Context: Discovered by Agent while reviewing spec 完成度与功能现状
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - 三个功能存疑点（疑似"代码存在但未生效/未验证"，排查优先级从高到低）：
+    1. 简易模式接线：`lib/desktop/feature_entries.dart`（AppMode/ModeVisibilityFilter/FeatureEntry 注册表）已实现，但 desktop_shell.dart 与 editor_ui_ext.dart 未搜到消费注册表的接线点，疑似未真正接入 left_panel 渲染与移动端 drawer 过滤
+    2. 一键建站向导端到端未验证：`site_scaffold_builder.dart`(803 行)/`site_wizard_service.dart`(743 行)/`cloudflare_pages_provider.dart`/`framework_build_map.dart`/`wizard_models.dart` 代码齐全且 CI 编译通过，但 tasklist 全 `[ ]`，从未实测 GitHub 建 repo → CI Pages → Cloudflare deploy hook 全链路
+    3. Agent 工作台思考模式空壳：operit spec 记录 `thinkingEnabled` 是未接线预留字段，agent_workbench_screen.dart 未搜到 reasoning/thinking 处理，疑似 deepseek-reasoner 仍被当普通模型调用，推理过程不渲染

@@ -231,19 +231,24 @@ class ToolExecutor {
     }
   }
 
-  /// 将工具调用结果格式化为发给 AI 的消息
+  /// 将工具调用结果格式化为发给 AI 的消息。
+  ///
+  /// 对超长结果做截断提炼，避免工具原始返回（如 list_dir 大目录、
+  /// 网页全文）整体塞进上下文。保留头部并附截断提示，模型据此判断
+  /// 是否需要分段读取。
   static List<Map<String, dynamic>> formatToolResultsForAi(
     List<ToolCallRequest> requests,
-    List<ToolCallResult> results,
-  ) {
+    List<ToolCallResult> results, {
+    int maxResultChars = 6000,
+  }) {
     final messages = <Map<String, dynamic>>[];
     final ts = DateTime.now().millisecondsSinceEpoch;
     for (var i = 0; i < results.length && i < requests.length; i++) {
       final result = results[i];
       final request = requests[i];
       final detail = result.success
-          ? result.content
-          : '工具执行失败: ${result.error}${result.content.isNotEmpty ? '\n${result.content}' : ''}';
+          ? _trimToolResult(result.content, maxResultChars)
+          : '工具执行失败: ${result.error}${result.content.isNotEmpty ? '\n${_trimToolResult(result.content, maxResultChars)}' : ''}';
       messages.add({
         'role': 'tool',
         'tool_call_id': request.callId.isNotEmpty
@@ -253,5 +258,12 @@ class ToolExecutor {
       });
     }
     return messages;
+  }
+
+  /// 截断超长工具结果，保留开头并提示截断位置。
+  static String _trimToolResult(String content, int maxChars) {
+    if (content.length <= maxChars) return content;
+    return '${content.substring(0, maxChars)}\n'
+        '...[工具结果过长，已截断：原 ${content.length} 字符，仅显示前 $maxChars 字符]';
   }
 }
