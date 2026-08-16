@@ -561,14 +561,16 @@ class AiRequestDispatcher {
 
   /// 构建发送给模型的完整消息列表（system + 压缩后的历史）。
   ///
-  /// 上下文压缩策略（滑动窗口）：从最新消息往前累积，超过 [maxChars] 后
-  /// 丢弃最老的完整轮次（user 或 tool 及其附属消息），并在窗口头部插入
-  /// 一条占位说明。system prompt 始终完整保留。
-  /// 该压缩只影响本次发送视图，不破坏 [_chatHistory] 的完整继承。
-  ///
-  /// 注意：滑动窗口可能把一对 assistant(tool_calls) 与 tool 回执拦腰截断，
-  /// 产生"带 tool_calls 无回执"或"孤立 tool"的残缺消息，触发服务端 400。
+  /// 上下文压缩策略（对称滑动窗口）：若历史未超限，原样保留；若超限，
+  /// 则保留「开头任务锚点 + 最近对话窗口」两段，只丢弃中间部分：
+  /// - 开头锚点：对话早期的纯文本消息（用户的目标指令、早期的上下文），
+  ///   避免模型丢失"本次会话要做什么"。只取文本轮次，跳过工具消息。
+  /// - 最近窗口：从最新消息往前累积的完整轮次（含工具调用对偶），
+  ///   保证最近的对话和工具执行状态仍然可见。
+  /// 窗口截断可能把一对 assistant(tool_calls) 与 tool 回执拦腰截断，产生
+  /// "带 tool_calls 无回执"或"孤立 tool"的残缺消息，触发服务端 400。
   /// 因此累积后必须再次走 [_sanitizeHistory] 清洗，保证对偶完整。
+  /// 该压缩只影响本次发送视图，不破坏 [_chatHistory] 的完整继承。
   List<Map<String, dynamic>> _buildContextMessages(int maxChars) {
     if (maxChars <= 0 || _chatHistory.isEmpty) {
       return [
@@ -577,37 +579,76 @@ class AiRequestDispatcher {
       ];
     }
 
-    // 预留 system prompt 的空间
     final systemLen = _systemPrompt.length;
     final budget = maxChars > systemLen ? maxChars - systemLen : 0;
-
-    // 从后往前累积，直到超预算
-    var used = 0;
-    final tail = <Map<String, dynamic>>[];
-    for (var i = _chatHistory.length - 1; i >= 0; i--) {
-      final m = _chatHistory[i];
-      final len = _messageChars(m);
-      // 单条超大消息（如工具结果）不能被截断时，至少尝试保留它
-      if (used + len > budget && tail.isNotEmpty) break;
-      tail.insert(0, m);
-      used += len;
-      if (used >= budget) break;
+    if (budget <= 0) {
+      return [
+        {'role': 'system', 'content': _systemPrompt},
+      ];
     }
 
-    // 窗口截断后清洗残缺 tool_calls/tool 对偶，防止服务端 400
+    // 未超限时原样返回，避免打乱历史顺序
+    var totalChars = 0;
+    for (final m in _chatHistory) {
+      totalChars += _messageChars(m);
+    }
+    if (totalChars <= budget) {
+      return [
+        {'role': 'system', 'content': _systemPrompt},
+        ..._chatHistory,
+      ];
+    }
+
+    // 对称分配：开头锚点占约 25%，最近窗口占约 75%
+    final anchorBudget = (budget * 0.25).round();
+    final tailBudget = budget - anchorBudget;
+
+    // 1) 开头锚点：从前往后累积纯文本消息（跳过工具消息）
+    final anchors = <Map<String, dynamic>>[];
+    final anchorIdx = <int>{};
+    var usedAnchor = 0;
+    for (var i = 0; i < _chatHistory.length; i++) {
+      final m = _chatHistory[i];
+      if (m['role'] == 'tool') continue;
+      if (m['tool_calls'] is List && (m['tool_calls'] as List).isNotEmpty) {
+        continue;
+      }
+      final len = _messageChars(m);
+      if (usedAnchor + len > anchorBudget && anchors.isNotEmpty) break;
+      anchors.add(m);
+      anchorIdx.add(i);
+      usedAnchor += len;
+      if (usedAnchor >= anchorBudget) break;
+    }
+
+    // 2) 最近窗口：从后往前累积完整轮次（含工具对偶），跳过锚点已覆盖的
+    final tail = <Map<String, dynamic>>[];
+    var usedTail = 0;
+    for (var i = _chatHistory.length - 1; i >= 0; i--) {
+      if (anchorIdx.contains(i)) continue;
+      final m = _chatHistory[i];
+      final len = _messageChars(m);
+      if (usedTail + len > tailBudget && tail.isNotEmpty) break;
+      tail.insert(0, m);
+      usedTail += len;
+      if (usedTail >= tailBudget) break;
+    }
+
+    // 3) 清洗窗口残缺 tool_calls/tool 对偶，防止服务端 400
     final cleanedTail = _sanitizeHistory(tail);
 
-    final dropped = _chatHistory.length - tail.length;
+    final dropped = _chatHistory.length - anchors.length - tail.length;
     final messages = <Map<String, dynamic>>[
       {'role': 'system', 'content': _systemPrompt},
     ];
     if (dropped > 0) {
       messages.add({
         'role': 'system',
-        'content': '[早期对话因上下文长度限制已被省略，共 $dropped 条消息。'
-            '请基于现有上下文继续，必要时询问用户补充细节。]',
+        'content': '[对话中段因上下文长度限制已被省略，共 $dropped 条消息。'
+            '已保留开头任务上下文与最近对话，请基于现有信息继续执行当前任务。]',
       });
     }
+    messages.addAll(anchors);
     messages.addAll(cleanedTail);
     return messages;
   }
