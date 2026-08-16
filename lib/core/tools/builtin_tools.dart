@@ -713,7 +713,7 @@ class BuiltinTools {
         '登录令牌与站点到站点管理，无需额外配置即可一键发布。',
     type: ToolType.builtin,
     builtinHandler: 'create_site',
-    riskLevel: 'high',
+    riskLevel: 'middle',
     parameters: const [
       ToolParam(
         name: 'mode',
@@ -813,7 +813,7 @@ class BuiltinTools {
         '仓库名已存在时失败（GitHub 上同名仓库无法重复创建），可调用 rollback_site 清理残留后换名重试。',
     type: ToolType.builtin,
     builtinHandler: 'create_repo',
-    riskLevel: 'high',
+    riskLevel: 'middle',
     parameters: const [
       ToolParam(
         name: 'mode',
@@ -893,7 +893,7 @@ class BuiltinTools {
         '返回写入的远程路径。该步骤幂等，可安全重试。',
     type: ToolType.builtin,
     builtinHandler: 'write_welcome_post',
-    riskLevel: 'high',
+    riskLevel: 'middle',
     parameters: const [
       ToolParam(
         name: 'mode',
@@ -982,7 +982,7 @@ class BuiltinTools {
         '需要提供 create_repo 返回的 repo_owner / project_id / framework_id 上下文。',
     type: ToolType.builtin,
     builtinHandler: 'poll_site_build',
-    riskLevel: 'high',
+    riskLevel: 'middle',
     parameters: const [
       ToolParam(
         name: 'mode',
@@ -1065,7 +1065,7 @@ class BuiltinTools {
         '传入 poll_site_build 返回的 hook 值即可。',
     type: ToolType.builtin,
     builtinHandler: 'trigger_cf_deploy',
-    riskLevel: 'high',
+    riskLevel: 'middle',
     parameters: const [
       ToolParam(
         name: 'hook',
@@ -1176,7 +1176,7 @@ class BuiltinTools {
         '注册后该站点即可在站点管理中直接发布文章。',
     type: ToolType.builtin,
     builtinHandler: 'register_site',
-    riskLevel: 'high',
+    riskLevel: 'middle',
     parameters: const [
       ToolParam(
         name: 'mode',
