@@ -28,3 +28,4 @@ ios/Flutter/Flutter.podspec
 ios/*.xcconfig
 ios/ServiceDefinitions.json
 ios/Runner/GeneratedPluginRegistrant.*
+pycache
