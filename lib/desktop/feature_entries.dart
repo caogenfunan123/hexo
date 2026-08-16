@@ -79,6 +79,7 @@ abstract final class NavEntries {
     'cloud_sync': FeatureVisibility.shown,
     'p2p_sync': FeatureVisibility.shown,
     'add_site': FeatureVisibility.shown,
+    'site_operations': FeatureVisibility.hidden, // 运维与监控（诊断类，简易模式隐藏）
     'site_manager': FeatureVisibility.shown,
     'create_site': FeatureVisibility.shown, // 一键建站（AI 对话主模式）
     // 仪表盘由首页替代

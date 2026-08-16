@@ -14,14 +14,17 @@ class _ModelPreset {
   final String modelName;
   final String baseUrl;
   final String group;
-  const _ModelPreset(this.modelId, this.modelName, this.baseUrl, this.group);
+  final bool thinking;
+  const _ModelPreset(this.modelId, this.modelName, this.baseUrl, this.group,
+      {this.thinking = false});
 }
 
 const _presetModels = [
   _ModelPreset(
       'deepseek-chat', 'DeepSeek V3', 'https://api.deepseek.com/v1', 'code'),
   _ModelPreset('deepseek-reasoner', 'DeepSeek R1',
-      'https://api.deepseek.com/v1', 'code'),
+      'https://api.deepseek.com/v1', 'code',
+      thinking: true),
   _ModelPreset('qwen-max', '通义千问 Max',
       'https://dashscope.aliyuncs.com/compatible-mode/v1', 'general'),
   _ModelPreset('qwen-plus', '通义千问 Plus',
@@ -422,6 +425,8 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
     final keyCtrl = TextEditingController(text: widget.settings.aiApiKey);
     String group = 'general';
     int timeout = 50;
+    bool thinking = false;
+    String effort = 'medium';
 
     final ok = await showDialog<bool>(
       context: context,
@@ -464,6 +469,31 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
                   ],
                   onChanged: (v) => setDlg(() => group = v ?? 'general'),
                 ),
+                const SizedBox(height: 4),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('深度思考 (reasoning)',
+                      style: TextStyle(fontSize: 13)),
+                  subtitle: Text(
+                    thinking
+                        ? '启用后请求带 reasoning_effort，推理过程将在对话中展示'
+                        : '适用于 deepseek-reasoner 等推理模型',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  value: thinking,
+                  onChanged: (v) => setDlg(() => thinking = v),
+                ),
+                if (thinking)
+                  DropdownButtonFormField<String>(
+                    value: effort,
+                    decoration: const InputDecoration(labelText: '推理强度'),
+                    items: const [
+                      DropdownMenuItem(value: 'low', child: Text('低')),
+                      DropdownMenuItem(value: 'medium', child: Text('中')),
+                      DropdownMenuItem(value: 'high', child: Text('高')),
+                    ],
+                    onChanged: (v) => setDlg(() => effort = v ?? 'medium'),
+                  ),
               ],
             ),
           ),
@@ -490,6 +520,8 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
       apiKey: keyCtrl.text.trim(),
       group: group,
       timeoutSecond: timeout,
+      thinkingEnabled: thinking,
+      reasoningEffort: effort,
     );
 
     await widget.modelManager.addModel(model);
@@ -591,6 +623,7 @@ class _AiModelManagerScreenState extends State<AiModelManagerScreen> {
               apiKey: key,
               group: p.group,
               enable: true,
+              thinkingEnabled: p.thinking,
             ))
         .toList();
 

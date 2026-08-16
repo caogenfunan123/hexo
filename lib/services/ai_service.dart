@@ -1020,6 +1020,8 @@ class AiService {
     };
     if (p.thinkingEnabled) {
       body['reasoning'] = {'effort': p.reasoningEffort};
+      // 推理模型不接受非 1 的 temperature（o 系列 / reasoner 要求），移除避免 400
+      body.remove('temperature');
     }
     if (tools != null && tools.isNotEmpty) {
       body['tools'] = tools.map((t) {
@@ -1170,6 +1172,8 @@ class AiService {
       if (!VolcengineAdapter.isVolcengineArk(p.baseUrl)) {
         body['reasoning_effort'] = p.reasoningEffort;
       }
+      // 推理模型不接受非 1 的 temperature（o 系列 / reasoner 要求），移除避免 400
+      body.remove('temperature');
     }
 
     if (tools != null && tools.isNotEmpty) {
@@ -1555,6 +1559,8 @@ class AiService {
       } else {
         body['reasoning_effort'] = p.reasoningEffort;
       }
+      // 推理模型不接受非 1 的 temperature（o 系列 / reasoner 要求），移除避免 400
+      body.remove('temperature');
     }
 
     if (tools != null && tools.isNotEmpty) {

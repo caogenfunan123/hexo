@@ -136,7 +136,8 @@ class AiRequestDispatcher {
       if (role == 'user') {
         userCount++;
         chars += _messageChars(m);
-      } else if (role == 'assistant') {
+      } else if (role == 'assistant' || role == 'tool') {
+        // tool 结果也计入：大工具结果占预算大头，漏计会让摘要触发偏晚
         chars += _messageChars(m);
       }
     }

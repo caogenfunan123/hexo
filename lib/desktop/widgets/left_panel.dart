@@ -189,13 +189,15 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                             },
                           ),
                         ),
-                        _navItem(
+                        ..._nav(
+                          id: 'add_site',
                           icon: Icons.add,
                           label: '添加站点',
                           onTap: widget.bus.onShowSiteEditor,
                           isSubtle: true,
                         ),
-                        _navItem(
+                        ..._nav(
+                          id: 'site_operations',
                           icon: Icons.monitor_heart_outlined,
                           label: '运维与监控',
                           onTap: widget.bus.onShowSiteOperations,
