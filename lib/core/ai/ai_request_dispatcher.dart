@@ -437,19 +437,13 @@ $prev
         if (_isStale(generation)) return;
       }
 
-      // 按需工具发现：默认只暴露 list_tools 元工具，其余工具由模型调用
-      // list_tools(tool_name=...) 后注入 injectedToolIds，下一轮可用。
+      // 全量工具暴露：开局直接把所有启用工具（内置/技能/MCP）交给模型，
+      // 避免"按需注入"让模型反复 list_tools 探测却不执行任务。
       final registry = ToolRegistry();
       final skillIds = enabledSkillIds;
       final List<ToolEntity> exposedTools = [];
 
-      final listToolsDef = registry.get('list_tools');
-      if (listToolsDef != null) exposedTools.add(listToolsDef);
-
-      final injected = injectedToolIds ?? const <String>{};
-      for (final id in injected) {
-        final t = registry.get(id);
-        if (t == null) continue;
+      for (final t in registry.enabledTools) {
         // 自定义技能按 enabledSkillIds 过滤
         if (t.type == ToolType.skill &&
             skillIds != null &&

@@ -76,8 +76,8 @@ String buildToolCatalogPrompt(List<ToolEntity> tools) {
 
   final buf = StringBuffer('\n=====工具能力地图（当前会话可用）=====\n');
   buf.writeln(
-    '以下是本会话已授权的全部工具。规划任务时直接从能力地图选型，'
-    '按需调用 list_tools(tool_name=...) 查看参数细节并注入，不必先探测工具清单。',
+    '以下是本会话已授权的全部工具（均已直接可用，含完整参数定义）。'
+    '规划任务时直接从能力地图选型并调用，需要核对参数名时再速查 list_tools。',
   );
   for (final domain in domains) {
     final list = grouped[domain];
