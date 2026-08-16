@@ -1,11 +1,14 @@
 /// 会话场景 → 内置工具白名单映射。
 ///
-/// 目的：避免把全部工具定义一次性塞给模型，减少 token 消耗并提升工具选择准确率。
+/// 用途：作为**注入边界**——按需工具机制下，模型通过 list_tools 发现工具，
+/// dispatcher 把注入的工具在此白名单内过滤，防止跨会话注入越界能力
+/// （如 audit 只读会话被注入写工具）。
 /// 规则：
-/// - 未列出的会话类型（null）默认返回全量工具，保持向后兼容。
+/// - 未列出的会话类型（null）不做边界限制。
 /// - 仅过滤内置工具（builtin）；MCP 与自定义 Skill 始终保留（用户主动接入/创建的能力）。
-/// - 动态 CMS 工具（wp_* / ghost_* / typecho_* / remote_media_upload）由 AiSessionManager
-///   的场景 Prompt 约束，不在白名单里硬编码，避免站点类型变更时工具缺失。
+/// - 动态 CMS 工具（wp_* / ghost_* / typecho_* / remote_media_upload）按站点类型
+///   由运行时判断，不在白名单里硬编码，避免站点类型变更时工具缺失。
+/// - list_tools 为常驻元工具，所有会话白名单均包含，确保模型始终可发现工具。
 
 import '../tools/tool_entity.dart';
 import 'ai_session_manager.dart';
@@ -29,6 +32,7 @@ const Map<AiSessionType, Set<String>> _sessionToolWhitelist = {
     'list_templates',
     'read_template',
     'update_template',
+    'list_tools',
     'list_skills',
     'create_skill',
     'update_skill',
@@ -50,6 +54,7 @@ const Map<AiSessionType, Set<String>> _sessionToolWhitelist = {
     'list_templates',
     'read_template',
     'update_template',
+    'list_tools',
     'list_skills',
     'create_skill',
     'update_skill',
@@ -67,6 +72,7 @@ const Map<AiSessionType, Set<String>> _sessionToolWhitelist = {
     'git_rollback',
     'git_clone',
     'create_dir',
+    'list_tools',
     'list_skills',
     'create_skill',
     'update_skill',
@@ -84,6 +90,7 @@ const Map<AiSessionType, Set<String>> _sessionToolWhitelist = {
     'create_dir',
     'git_snapshot',
     'git_rollback',
+    'list_tools',
     'list_skills',
     'create_skill',
     'update_skill',
@@ -99,12 +106,14 @@ const Map<AiSessionType, Set<String>> _sessionToolWhitelist = {
     'git_snapshot',
     'list_templates',
     'read_template',
+    'list_tools',
     'list_skills',
   },
   // 应用 UI 设计：只暴露设计配置工具
   AiSessionType.appDesign: {
     'read_app_config',
     'update_app_config',
+    'list_tools',
     'list_skills',
     'create_skill',
     'update_skill',
@@ -122,6 +131,7 @@ const Map<AiSessionType, Set<String>> _sessionToolWhitelist = {
     'read_template',
     'update_template',
     'git_snapshot',
+    'list_tools',
     'list_skills',
   },
 };

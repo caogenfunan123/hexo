@@ -192,6 +192,7 @@ class AiRequestDispatcher {
     bool disableTools = false,
     Set<String>? enabledSkillIds,
     AiSessionType? sessionType,
+    Set<String>? injectedToolIds,
   }) async {
     const maxToolRounds = 12;
     final fullContent = StringBuffer();
@@ -230,17 +231,31 @@ class AiRequestDispatcher {
 
       final messages = _buildContextMessages(settings.ai.aiMaxContextChars);
 
-      // 技能选择：内置 + MCP 始终可用；自定义技能按 enabledSkillIds 过滤
-      // 未指定时（null/空）表示全部启用，保持向后兼容
-      // 按会话场景过滤内置工具白名单，减少工具定义 token 消耗
+      // 按需工具发现：默认只暴露 list_tools 元工具，其余工具由模型调用
+      // list_tools(tool_name=...) 后注入 injectedToolIds，下一轮可用。
       final registry = ToolRegistry();
       final skillIds = enabledSkillIds;
-      final allEnabled = registry.enabledTools.where((t) {
-        if (t.type != ToolType.skill) return true;
-        if (skillIds == null || skillIds.isEmpty) return true;
-        return skillIds.contains(t.id);
-      }).toList();
-      final toolList = filterToolsForSession(allEnabled, sessionType);
+      final List<ToolEntity> exposedTools = [];
+
+      final listToolsDef = registry.get('list_tools');
+      if (listToolsDef != null) exposedTools.add(listToolsDef);
+
+      final injected = injectedToolIds ?? const <String>{};
+      for (final id in injected) {
+        final t = registry.get(id);
+        if (t == null) continue;
+        // 自定义技能按 enabledSkillIds 过滤
+        if (t.type == ToolType.skill &&
+            skillIds != null &&
+            skillIds.isNotEmpty &&
+            !skillIds.contains(t.id)) {
+          continue;
+        }
+        exposedTools.add(t);
+      }
+
+      // 会话注入边界：audit 只读会话等禁止注入写工具（用白名单兜底）
+      final toolList = filterToolsForSession(exposedTools, sessionType);
 
       final tools = !disableTools && toolList.isNotEmpty
           ? toolList.map((t) => t.toOpenAiFunction()).toList()
@@ -287,6 +302,20 @@ class AiRequestDispatcher {
             return;
           }
           final assistantMsg = response.allMessages.last;
+
+          // 按需注入：模型调用 list_tools(tool_name=xxx) 后，把目标工具加入
+          // 注入集合，下一轮 tools 自动带上其完整定义。
+          final nextInjected = <String>{...?injectedToolIds};
+          for (final tc in response.toolCalls!) {
+            if (tc.toolId != 'list_tools') continue;
+            final name = tc.arguments['tool_name']?.toString().trim() ?? '';
+            final target = name.isNotEmpty ? registry.get(name) : null;
+            if (target != null && target.enabled) {
+              nextInjected.add(name);
+            }
+          }
+          final effectiveInjected =
+              nextInjected.isEmpty ? injectedToolIds : nextInjected;
 
           if (response.reasoningContent != null &&
               response.reasoningContent!.isNotEmpty &&
@@ -363,6 +392,7 @@ class AiRequestDispatcher {
             switchCount: switchCount,
             enabledSkillIds: enabledSkillIds,
             sessionType: sessionType,
+            injectedToolIds: effectiveInjected,
           );
           return;
         }
@@ -459,6 +489,7 @@ class AiRequestDispatcher {
             switchCount: switchCount + 1,
             enabledSkillIds: enabledSkillIds,
             sessionType: sessionType,
+            injectedToolIds: injectedToolIds,
           );
           return;
         }

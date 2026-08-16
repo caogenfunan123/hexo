@@ -18,6 +18,7 @@ import '../ai/token_vault.dart';
 import 'remote_cms_tools.dart';
 import 'skill_manager.dart';
 import 'tool_entity.dart';
+import 'tool_registry.dart';
 
 /// 内置工具定义和实现
 class BuiltinTools {
@@ -76,6 +77,7 @@ class BuiltinTools {
         updateSkill,
         deleteSkill,
         listSkills,
+        listTools,
         listTemplates,
         readTemplate,
         updateTemplate,
@@ -519,6 +521,33 @@ class BuiltinTools {
     type: ToolType.builtin,
     builtinHandler: 'list_skills',
     parameters: const [],
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
+
+  // ── ⑭b 工具目录（按需发现与注入） ──
+  static final ToolEntity listTools = ToolEntity(
+    id: 'list_tools',
+    name: '工具目录',
+    description: '工具发现入口。不传参返回全部可用工具清单（id + 一句话描述）；'
+        '传 keyword 按语义搜索相关工具；传 tool_name 查看指定工具完整参数定义，'
+        '该工具会在下一轮自动注入并可直接调用。',
+    type: ToolType.builtin,
+    builtinHandler: 'list_tools',
+    parameters: const [
+      ToolParam(
+        name: 'keyword',
+        type: 'string',
+        description: '按语义搜索工具，如"建站""Git""搜索"。可选',
+        required: false,
+      ),
+      ToolParam(
+        name: 'tool_name',
+        type: 'string',
+        description: '要查看完整定义并注入的工具 id，如 create_repo。可选',
+        required: false,
+      ),
+    ],
     createdAt: DateTime(2026, 1, 1),
     updatedAt: DateTime(2026, 1, 1),
   );
@@ -1361,6 +1390,8 @@ class BuiltinTools {
         return _executeDeleteSkill(request);
       case 'list_skills':
         return _executeListSkills(request);
+      case 'list_tools':
+        return _executeListTools(request);
       case 'list_templates':
         return _executeListTemplates(request);
       case 'read_template':
@@ -2616,6 +2647,67 @@ class BuiltinTools {
         error: '列表获取失败: $e',
       );
     }
+  }
+
+  // ── 工具目录：按需发现与注入入口 ──
+  static Future<ToolCallResult> _executeListTools(
+      ToolCallRequest req) async {
+    final keyword = req.arguments['keyword']?.toString().trim() ?? '';
+    final toolName = req.arguments['tool_name']?.toString().trim() ?? '';
+
+    final registry = ToolRegistry();
+    final tools = registry.enabledTools.where((t) {
+      if (t.id == 'list_tools') return false; // 目录工具自身不展示
+      return t.type == ToolType.builtin ||
+          t.type == ToolType.skill ||
+          t.type == ToolType.mcp;
+    }).toList();
+
+    // 查看指定工具的完整定义（下一轮由 dispatcher 注入）
+    if (toolName.isNotEmpty) {
+      final target = registry.get(toolName);
+      if (target == null || !target.enabled) {
+        return ToolCallResult(
+          toolId: 'list_tools',
+          content: '未找到工具: $toolName',
+          success: false,
+        );
+      }
+      final params = target.parameters.map((p) {
+        return '  - ${p.name}${p.required ? " (必填)" : ""}: ${p.description}';
+      }).join('\n');
+      return ToolCallResult(
+        toolId: 'list_tools',
+        content: '工具 $toolName（${target.name}）完整参数定义：\n$params',
+        success: true,
+      );
+    }
+
+    // 关键词语义搜索：匹配 id/name/description
+    List<ToolEntity> filtered = tools;
+    if (keyword.isNotEmpty) {
+      final kw = keyword.toLowerCase();
+      filtered = tools.where((t) {
+        return t.id.toLowerCase().contains(kw) ||
+            t.name.toLowerCase().contains(kw) ||
+            t.description.toLowerCase().contains(kw);
+      }).toList();
+    }
+
+    final buf = StringBuffer();
+    buf.writeln('=== 工具目录 ===\n');
+    if (filtered.isEmpty) {
+      buf.writeln('未找到匹配工具，可换关键词重试，或不传参查看全部。');
+    }
+    for (final t in filtered) {
+      buf.writeln('• ${t.id}（${t.name}）: ${t.description}');
+    }
+    buf.writeln('\n需要查看某个工具的参数定义时，调用 list_tools 并传 tool_name="<工具id>"。');
+    return ToolCallResult(
+      toolId: 'list_tools',
+      content: buf.toString(),
+      success: true,
+    );
   }
 
   // ── 列出本地文章模板 ──
