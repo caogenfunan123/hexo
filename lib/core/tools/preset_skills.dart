@@ -17,6 +17,7 @@ class PresetSkills {
     themeDiagnose,
     markdownSyntax,
     articleWriting,
+    softwareBeautify,
   ];
 
   /// 主题复刻：从目标站点/截图还原主题样式
@@ -219,6 +220,40 @@ class PresetSkills {
     updatedAt: DateTime(2026, 1, 1),
   );
 
+  /// 软件美化：优化应用界面视觉与交互（Material 3 方法论）
+  static final ToolEntity softwareBeautify = ToolEntity(
+    id: 'skill_software_beautify',
+    name: '软件美化',
+    description:
+        '系统化优化软件/应用界面：信息架构与布局、配色体系、排版、组件规范、动效、'
+        '暗色模式、易用性。基于 Material Design 3 规范与专业 UI 方法论，'
+        '适用于 Flutter 桌面/移动应用、Web 面板等。',
+    type: ToolType.skill,
+    parameters: const [
+      ToolParam(
+        name: 'target',
+        type: 'string',
+        description: '要美化的软件/界面范围描述（页面、窗口、模块名）',
+        required: true,
+      ),
+      ToolParam(
+        name: 'focus',
+        type: 'string',
+        description: '美化重点：整体/配色/布局/组件/动效/暗色模式，缺省整体',
+        required: false,
+      ),
+      ToolParam(
+        name: 'style',
+        type: 'string',
+        description: '目标风格：简洁/商务/极客/文艺/科技感等',
+        required: false,
+      ),
+    ],
+    skillContent: _softwareBeautifyContent,
+    createdAt: DateTime(2026, 1, 1),
+    updatedAt: DateTime(2026, 1, 1),
+  );
+
   // ── 技能内容（System Prompt） ──
 
   static const _themeReplicaContent = '''
@@ -412,5 +447,56 @@ class PresetSkills {
 
 ## 输出
 - 完整 Markdown 文章（含 Front Matter），直接可发布
+''';
+
+  static const _softwareBeautifyContent = r'''
+# 技能：软件美化
+
+系统化优化软件/应用界面，让界面专业、统一、易用。基于 Material Design 3
+规范与专业 UI 方法论，适用于 Flutter 桌面/移动应用、Web 面板等。
+
+## 执行流程
+1. 先诊断现状：审视目标界面，列出具体问题（无层级、配色杂乱、间距失衡、
+   组件不统一、缺暗色模式、可点击元素无反馈等），按严重度排序
+2. 给出优化方案：针对问题逐项给出修改建议（优先集中式主题/样式层，避免
+   散落硬编码）
+3. 输出代码改动：完整源码片段 + 文件路径，可直接应用
+
+## 美化维度（按 focus 或整体执行）
+1. 信息架构与布局
+   - 导航结构清晰（侧栏/顶栏/抽屉），层级 ≤ 3 层
+   - 8px 栅格基准，区块间距成倍数（8/16/24），留白充足不拥挤
+   - 重要操作显性化，次要操作弱化（图标/文字按钮）
+2. 配色体系
+   - 语义色完整：主色/次色/背景/表面/错误/警告/成功/链接，抽成主题常量
+   - 暗色模式完整实现：背景深灰蓝（如 #12141a）非纯黑，文字浅灰白，
+     卡片色略亮于背景
+   - 对比度：正文 ≥ 7:1，强调/辅助文字 ≥ 4.5:1，纯灰文字避免过淡
+3. 排版
+   - 字号阶梯：大标题 22-28 / 标题 18-20 / 正文 14-16 / 辅助 12-13
+   - 行高 1.4-1.6，段落间距 8-16px，中文用系统字体栈（微软雅黑/苹方/思源黑体）
+4. 组件规范
+   - 按钮/卡片/输入框/对话框/表格/列表风格统一（Flutter 用 ThemeData/
+     ThemeExtension 统一定义）
+   - 圆角 4/8/12 档一致，阴影 2-4 层有层级感
+   - 输入框有聚焦态/错误态，对话框有明确标题与操作按钮
+5. 动效与反馈
+   - 过渡 150-300ms，缓动曲线，不干扰操作
+   - hover/按下/聚焦有反馈，加载态/空态/错误态有明确提示
+6. 易用性
+   - 触控目标 ≥ 44px，键盘可用（Tab 焦点序合理）
+   - 危险操作二次确认，重要结果可撤销
+
+## 风格参考
+- 简洁：大量留白、浅色中性色、单强调色、细线分隔
+- 商务：深蓝主色 + 高对比层级 + 克制动效
+- 极客：深底浅字 + 荧光强调色（如 #10b981）+ 等宽字点缀
+- 文艺：暖灰底 + 砖红点缀 + 圆角大 + 柔和阴影
+
+## 输出规范
+- 优先修改集中式主题/样式定义，避免在每个组件里硬编码颜色字号
+- 每处改动给出文件路径 + 完整代码块
+- 改前提示用户可先建 Git 快照
+- 完成附【验收清单】：逐项勾选已落实的美化点
 ''';
 }
