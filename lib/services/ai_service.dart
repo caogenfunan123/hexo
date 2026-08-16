@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../core/ai/ai_message_cleaner.dart';
+import '../core/ai/ai_model_manager.dart';
 import '../core/ai/ai_provider.dart';
 import '../core/tools/tool_entity.dart';
 import '../core/ai/ai_session_manager.dart';
@@ -56,6 +57,10 @@ class AiService {
   /// 对标 MonkeyCode task-stream-client 的 RECONNECT_DELAYS_MS。
   static const int _kMaxStreamAttempts = 5;
   static const List<int> _kReconnectDelaysMs = [500, 1000, 2000, 4000, 8000];
+
+  /// 中转站模型管理器：settings 未配置有效 profile/legacy 字段时，
+  /// 兜底使用模型池首选启用模型，保证编辑器内联 AI 等入口与对话走同一套模型。
+  AiModelManager? modelManager;
 
   String _joinUrl(String base, String path) {
     var b = base.trim();
@@ -272,6 +277,7 @@ class AiService {
     int toolRound = 0,
     required void Function(StreamChunk chunk) onChunk,
   }) async {
+    await _primeManagerFallback();
     final p = resolveProfile(settings, override: profile);
     if (p.apiKey.isEmpty) {
       throw Exception('请先在设置中配置 AI 中转站并填写 API Key');
@@ -350,13 +356,62 @@ class AiService {
   AiProfile resolveProfile(AppSettings settings, {AiProfile? override}) {
     if (override != null) return override;
     final p = settings.activeAiProfile;
-    if (p != null) return p;
+    if (p != null && p.apiKey.isNotEmpty) return p;
+    // 兜底：settings 无有效 profile 时，回退到中转站模型池首选启用模型，
+    // 保证编辑器 AI 等入口与对话面板使用同一套模型。
+    final legacyEmpty =
+        settings.aiBaseUrl.trim().isEmpty || settings.aiApiKey.isEmpty;
+    if (legacyEmpty) {
+      final fromPool = _profileFromManager();
+      if (fromPool != null) return fromPool;
+    }
     return AiProfile(
       id: 'temp',
       name: '临时',
       baseUrl: settings.aiBaseUrl,
       apiKey: settings.aiApiKey,
       model: settings.aiModel,
+    );
+  }
+
+  /// 从模型池首选启用模型构造 AiProfile；池不可用返回 null。
+  AiProfile? _profileFromManager() {
+    final mm = modelManager;
+    if (mm == null) return null;
+    try {
+      final cached = _cachedEnabledModel;
+      if (cached != null) return cached;
+    } catch (_) {}
+    return null;
+  }
+
+  /// 已缓存的模型池首选（避免每次同步构造时异步读盘）。
+  AiProfile? _cachedEnabledModel;
+  Future<void> _primeManagerFallback() async {
+    final mm = modelManager;
+    if (mm == null) return;
+    try {
+      final enabled = await mm.getEnabled();
+      if (enabled.isNotEmpty) {
+        _cachedEnabledModel = _profileFromModelEntity(enabled.first);
+      }
+    } catch (_) {}
+  }
+
+  /// 由模型实体构造 AiProfile（含接口类型）
+  AiProfile _profileFromModelEntity(AiModelEntity m) {
+    return AiProfile(
+      id: m.modelId,
+      name: m.modelName,
+      baseUrl: m.apiBase,
+      apiKey: m.effectiveKey,
+      model: m.modelId,
+      apiPath: m.apiPath,
+      useBearer: m.useBearer,
+      interfaceType: m.interfaceType,
+      thinkingEnabled: m.thinkingEnabled,
+      reasoningEffort: m.reasoningEffort,
+      reasoningBudgetTokens: m.reasoningBudgetTokens,
     );
   }
 
@@ -457,6 +512,7 @@ class AiService {
     AiProfile? profile,
     double temperature = 0.7,
   }) async {
+    await _primeManagerFallback();
     final p = resolveProfile(settings, override: profile);
     if (p.apiKey.isEmpty) {
       throw Exception('请先在设置中配置 AI 中转站并填写 API Key');
@@ -697,6 +753,7 @@ class AiService {
     double temperature = 0.7,
     int toolRound = 0,
   }) async {
+    await _primeManagerFallback();
     final p = resolveProfile(settings, override: profile);
     if (p.apiKey.isEmpty) {
       throw Exception('请先在设置中配置 AI 中转站并填写 API Key');

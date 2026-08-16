@@ -62,6 +62,7 @@ import 'screens/template_manager_screen.dart';
 import 'screens/theme_migration_screen.dart';
 import 'screens/tool_library_screen.dart';
 import 'screens/log_screen.dart';
+import 'screens/local_file_zone_screen.dart';
 import 'screens/mobile_recycle_bin_screen.dart';
 import 'core/tools/skill_manager.dart';
 import 'core/tools/remote_cms_tools.dart';
@@ -487,6 +488,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     );
     siteManagerInitialized = true;
     _updateSystemBarStyle();
+    aiService.modelManager = aiModelManager;
     _bootstrap();
   }
 

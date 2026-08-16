@@ -351,6 +351,7 @@ class DesktopShellState extends State<DesktopShell>
       scrollController: _focusScrollCtrl,
       textController: _doc.contentCtrl,
     );
+    aiService.modelManager = aiModelManager;
     _bootstrap();
   }
 
