@@ -565,6 +565,10 @@ class AiRequestDispatcher {
   /// 丢弃最老的完整轮次（user 或 tool 及其附属消息），并在窗口头部插入
   /// 一条占位说明。system prompt 始终完整保留。
   /// 该压缩只影响本次发送视图，不破坏 [_chatHistory] 的完整继承。
+  ///
+  /// 注意：滑动窗口可能把一对 assistant(tool_calls) 与 tool 回执拦腰截断，
+  /// 产生"带 tool_calls 无回执"或"孤立 tool"的残缺消息，触发服务端 400。
+  /// 因此累积后必须再次走 [_sanitizeHistory] 清洗，保证对偶完整。
   List<Map<String, dynamic>> _buildContextMessages(int maxChars) {
     if (maxChars <= 0 || _chatHistory.isEmpty) {
       return [
@@ -590,6 +594,9 @@ class AiRequestDispatcher {
       if (used >= budget) break;
     }
 
+    // 窗口截断后清洗残缺 tool_calls/tool 对偶，防止服务端 400
+    final cleanedTail = _sanitizeHistory(tail);
+
     final dropped = _chatHistory.length - tail.length;
     final messages = <Map<String, dynamic>>[
       {'role': 'system', 'content': _systemPrompt},
@@ -601,7 +608,7 @@ class AiRequestDispatcher {
             '请基于现有上下文继续，必要时询问用户补充细节。]',
       });
     }
-    messages.addAll(tail);
+    messages.addAll(cleanedTail);
     return messages;
   }
 
