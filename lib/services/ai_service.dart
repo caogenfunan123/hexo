@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../core/ai/ai_message_cleaner.dart';
+import '../core/ai/ai_model_entity.dart';
 import '../core/ai/ai_model_manager.dart';
 import '../core/ai/ai_provider.dart';
 import '../core/tools/tool_entity.dart';
