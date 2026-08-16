@@ -86,7 +86,8 @@ extension EditorRemoteExt on _RootShellState {
           builder: (_) => LocalFileZoneScreen(
             storage: storage,
             github: github,
-            activeRepo: _resolvedRepoFor(activeRepo),
+            activeRepo:
+                activeRepo == null ? null : _resolvedRepoFor(activeRepo),
           ),
         ),
       );
