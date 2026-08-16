@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../core/ai/ai_message_cleaner.dart';
 import '../core/ai/ai_provider.dart';
 import '../core/tools/tool_entity.dart';
 import '../core/ai/ai_session_manager.dart';
@@ -51,6 +52,11 @@ class FetchModelException implements Exception {
 }
 
 class AiService {
+  /// 流式断线重连上限（总尝试次数）与指数退避延迟表（ms），
+  /// 对标 MonkeyCode task-stream-client 的 RECONNECT_DELAYS_MS。
+  static const int _kMaxStreamAttempts = 5;
+  static const List<int> _kReconnectDelaysMs = [500, 1000, 2000, 4000, 8000];
+
   String _joinUrl(String base, String path) {
     var b = base.trim();
     while (b.endsWith('/')) {
@@ -274,9 +280,10 @@ class AiService {
       throw Exception('请先选择模型');
     }
 
-    // 断线重连：最多重试 1 次。重连前通过 resetStream 通知 UI 清空已累积内容，
-    // 避免与重连后从头流式输出的内容重复（对标 MonkeyCode 的断线重连+去重）。
-    for (var attempt = 0; attempt < 2; attempt++) {
+    // 断线重连（对标 MonkeyCode task-stream-client）：最多 [_kMaxStreamAttempts]
+    // 次尝试，重试间隔按指数退避延迟表递增。重连前通过 resetStream 通知 UI
+    // 清空已累积内容，避免与重连后从头流式输出的内容重复。
+    for (var attempt = 0; attempt < _kMaxStreamAttempts; attempt++) {
       try {
         switch (p.interfaceType) {
           case InterfaceType.anthropic:
@@ -315,26 +322,29 @@ class AiService {
             );
         }
       } on SocketException {
-        if (attempt == 0) {
-          onChunk(const StreamChunk(content: '', resetStream: true));
-          continue;
-        }
-        rethrow;
+        if (!await _scheduleStreamReconnect(attempt, onChunk)) rethrow;
       } on HttpException {
-        if (attempt == 0) {
-          onChunk(const StreamChunk(content: '', resetStream: true));
-          continue;
-        }
-        rethrow;
+        if (!await _scheduleStreamReconnect(attempt, onChunk)) rethrow;
       } on TimeoutException {
-        if (attempt == 0) {
-          onChunk(const StreamChunk(content: '', resetStream: true));
-          continue;
-        }
-        rethrow;
+        if (!await _scheduleStreamReconnect(attempt, onChunk)) rethrow;
       }
     }
     throw Exception('断线重连失败');
+  }
+
+  /// 流式重连调度：发 resetStream 通知 UI 清空累积，按指数退避表等待后
+  /// 允许继续重试。返回 false 表示已达到重试上限，应终止重试。
+  Future<bool> _scheduleStreamReconnect(
+    int attempt,
+    void Function(StreamChunk chunk) onChunk,
+  ) async {
+    if (attempt >= _kMaxStreamAttempts - 1) return false;
+    onChunk(const StreamChunk(content: '', resetStream: true));
+    final idx = attempt < _kReconnectDelaysMs.length
+        ? attempt
+        : _kReconnectDelaysMs.length - 1;
+    await Future<void>.delayed(Duration(milliseconds: _kReconnectDelaysMs[idx]));
+    return true;
   }
 
   AiProfile resolveProfile(AppSettings settings, {AiProfile? override}) {
@@ -749,7 +759,7 @@ class AiService {
       if (role == 'system') continue; // system 单独传
       if (role == 'assistant') {
         final raw = m['content'];
-        final content = _contentToText(raw);
+        final content = AiMessageCleaner.cleanForModel(_contentToText(raw));
         final toolCalls = m['tool_calls'];
         if (toolCalls is List && toolCalls.isNotEmpty) {
           final blocks = <Map<String, dynamic>>[];
@@ -844,7 +854,7 @@ class AiService {
         continue;
       }
       if (role == 'assistant') {
-        final text = _contentToText(m['content']);
+        final text = AiMessageCleaner.cleanForModel(_contentToText(m['content']));
         final toolCalls = m['tool_calls'];
         if (toolCalls is List && toolCalls.isNotEmpty) {
           if (text.isNotEmpty) {
@@ -1142,7 +1152,10 @@ class AiService {
         continue;
       }
       final normalized = Map<String, dynamic>.from(m);
-      normalized['content'] = _contentToText(m['content']);
+      final text = _contentToText(m['content']);
+      normalized['content'] = role == 'assistant'
+          ? AiMessageCleaner.cleanForModel(text)
+          : text;
       allMessages.add(normalized);
     }
 
@@ -1178,6 +1191,8 @@ class AiService {
     String? finishReason;
     Map<String, dynamic>? usage;
     var completed = false;
+    // 同一连接内按 data 原文去重，防御服务端重复推送同一事件
+    final seenData = <String>{};
 
     try {
       await _ssePost(
@@ -1190,6 +1205,7 @@ class AiService {
             completed = true;
             return;
           }
+          if (data.isEmpty || !seenData.add(data)) return;
           dynamic parsed;
           try {
             parsed = jsonDecode(data);
@@ -1336,6 +1352,8 @@ class AiService {
     final blockOrder = <int>[];
     Map<String, dynamic>? usage;
     var completed = false;
+    // 同一连接内按 data 原文去重，防御服务端重复推送同一事件
+    final seenData = <String>{};
 
     try {
       await _ssePost(
@@ -1349,6 +1367,7 @@ class AiService {
             completed = true;
             return;
           }
+          if (data.isEmpty || !seenData.add(data)) return;
           dynamic parsed;
           try {
             parsed = jsonDecode(data);
@@ -1516,7 +1535,10 @@ class AiService {
         continue;
       }
       final normalized = Map<String, dynamic>.from(m);
-      normalized['content'] = _contentToText(m['content']);
+      final text = _contentToText(m['content']);
+      normalized['content'] = role == 'assistant'
+          ? AiMessageCleaner.cleanForModel(text)
+          : text;
       allMessages.add(normalized);
     }
 

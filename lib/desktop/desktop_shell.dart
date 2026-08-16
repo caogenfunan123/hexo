@@ -17,6 +17,7 @@ import 'package:archive/archive.dart';
 import '../controllers/controllers.dart';
 
 import '../models/ai_profile.dart';
+import '../models/ai_chat_message.dart';
 import '../models/app_settings.dart';
 import '../models/design_config.dart';
 import '../models/article.dart';

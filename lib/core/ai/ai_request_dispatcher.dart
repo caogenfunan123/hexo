@@ -10,6 +10,7 @@ import '../../services/volcengine_adapter.dart';
 import '../tools/tool_entity.dart';
 import '../tools/tool_executor.dart';
 import '../tools/tool_registry.dart';
+import 'ai_message_cleaner.dart';
 import 'ai_model_entity.dart';
 import 'ai_model_manager.dart';
 import 'ai_model_probe_service.dart';
@@ -176,6 +177,10 @@ class AiRequestDispatcher {
               .join(', ');
           if (names.isNotEmpty) content = '[调用工具: $names]';
         }
+      }
+      // 剥除思考块与 Gemini 签名，避免污染摘要
+      if (role == 'assistant') {
+        content = AiMessageCleaner.cleanForModel(content);
       }
       final cleaned = content.trim();
       if (cleaned.isEmpty) continue;

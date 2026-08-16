@@ -7,6 +7,10 @@ import 'tool_registry.dart';
 
 /// 工具执行器：接收 AI 的工具调用请求，执行对应工具并返回结果
 class ToolExecutor {
+  /// 所有工具结果累加的整体上限（字节），仿 Operit
+  /// ConversationMarkupManager.MAX_FINAL_TOOL_RESULT_MESSAGE_CHARS。
+  static const int _kToolResultTotalBudgetChars = 64 * 1024;
+
   static final ToolExecutor _instance = ToolExecutor._();
   factory ToolExecutor() => _instance;
   ToolExecutor._();
@@ -236,25 +240,44 @@ class ToolExecutor {
   /// 对超长结果做截断提炼，避免工具原始返回（如 list_dir 大目录、
   /// 网页全文）整体塞进上下文。保留头部并附截断提示，模型据此判断
   /// 是否需要分段读取。
+  ///
+  /// 整体预算（仿 Operit ConversationMarkupManager）：
+  /// 单条结果先按 [maxResultChars] 截断，所有结果累加不超过
+  /// [_kToolResultTotalBudgetChars]（64KB）。超预算的条目标记占位回执，
+  /// 保持与 assistant tool_calls 的对偶完整（否则 _sanitizeHistory
+  /// 会判定对偶残缺而把整轮工具调用连坐丢弃）。
   static List<Map<String, dynamic>> formatToolResultsForAi(
     List<ToolCallRequest> requests,
     List<ToolCallResult> results, {
     int maxResultChars = 6000,
   }) {
+    const totalBudget = _kToolResultTotalBudgetChars;
     final messages = <Map<String, dynamic>>[];
     final ts = DateTime.now().millisecondsSinceEpoch;
+    var used = 0;
     for (var i = 0; i < results.length && i < requests.length; i++) {
       final result = results[i];
       final request = requests[i];
       final detail = result.success
           ? _trimToolResult(result.content, maxResultChars)
           : '工具执行失败: ${result.error}${result.content.isNotEmpty ? '\n${_trimToolResult(result.content, maxResultChars)}' : ''}';
+      final toolCallId = request.callId.isNotEmpty
+          ? request.callId
+          : 'call_${result.toolId}_${ts}_$i';
+
+      final String content;
+      if (used + detail.length > totalBudget) {
+        content = '[工具 ${request.toolId} 已执行，但结果因整体上下文预算超限'
+            '（累计已用 $used/$totalBudget 字符）未返回全文。'
+            '如需细节请用读取类工具按需查询]';
+      } else {
+        content = detail;
+        used += detail.length;
+      }
       messages.add({
         'role': 'tool',
-        'tool_call_id': request.callId.isNotEmpty
-            ? request.callId
-            : 'call_${result.toolId}_${ts}_$i',
-        'content': detail,
+        'tool_call_id': toolCallId,
+        'content': content,
       });
     }
     return messages;

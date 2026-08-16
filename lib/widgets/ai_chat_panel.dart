@@ -20,6 +20,7 @@ import '../core/tools/skill_manager.dart';
 import '../core/tools/tool_entity.dart';
 import '../core/tools/tool_registry.dart';
 import '../core/tools/builtin_tools.dart';
+import '../models/ai_chat_message.dart';
 import '../models/app_settings.dart';
 import '../models/repo_config.dart';
 import '../models/template_item.dart';
@@ -28,6 +29,7 @@ import '../services/ai_service.dart';
 import '../services/github_service.dart';
 import '../services/site_wizard_service.dart';
 import '../services/storage_service.dart';
+import 'ai_chat_components.dart';
 import 'ai_model_picker.dart';
 import '../screens/ai_model_manager_screen.dart';
 
@@ -116,29 +118,7 @@ class AiChatPanel extends StatefulWidget {
 }
 
 /// 解析出的文件操作
-class ParsedFileOp {
-  final String path;
-  final String content;
-  final String language;
-  bool written;
-  String? writeError;
-
-  ParsedFileOp({
-    required this.path,
-    required this.content,
-    this.language = 'text',
-    this.written = false,
-    this.writeError,
-  });
-
-  ParsedFileOp copy() => ParsedFileOp(
-        path: path,
-        content: content,
-        language: language,
-        written: written,
-        writeError: writeError,
-      );
-}
+/// 由 ai_chat_panel.dart 拆分，定义见 lib/models/ai_chat_message.dart。
 
 class AiChatPanelState extends State<AiChatPanel> {
   final _chatCtrl = TextEditingController();
@@ -187,6 +167,9 @@ class AiChatPanelState extends State<AiChatPanel> {
 
   /// 思考块手动折叠覆盖（按 reasoning 内容）：用户手动点击后的状态
   final Map<String, bool> _collapsedReasoning = {};
+
+  /// 工具调用分组手动折叠覆盖（按首个 toolCall id）：用户手动点击后的状态
+  final Set<String> _collapsedToolGroups = {};
 
   List<ChatMessage> get messages => _messages;
 
@@ -992,6 +975,11 @@ class AiChatPanelState extends State<AiChatPanel> {
   void clearHistory() {
     widget.dispatcher.clearHistory();
     _parsedFiles.clear();
+    _toolCallStates.clear();
+    _toolCallResults.clear();
+    _expandedToolCalls.clear();
+    _collapsedToolGroups.clear();
+    _collapsedReasoning.clear();
     setState(() => _messages.clear());
     // 删除本地持久化文件
     _deleteHistoryFile();
@@ -1367,7 +1355,7 @@ class AiChatPanelState extends State<AiChatPanel> {
               ),
               if (_messages.isNotEmpty) ...[
                 const SizedBox(width: 4),
-                _SessionHeaderButton(
+                AiSessionHeaderButton(
                   icon: Icons.add_comment_outlined,
                   label: '新建',
                   tooltip: '新建会话（清空当前对话）',
@@ -1610,7 +1598,7 @@ class AiChatPanelState extends State<AiChatPanel> {
 
   /// 思考动画：跳动的三个点
   Widget _buildThinkingAnimation(ColorScheme cs) {
-    return _ThinkingDots(color: cs.primary);
+    return AiThinkingDots(color: cs.primary);
   }
 
   /// 推理过程渲染：可折叠的思考区块（与正文视觉区分）
@@ -1689,7 +1677,7 @@ class AiChatPanelState extends State<AiChatPanel> {
   /// 消息内容：支持流式光标
   Widget _buildMessageContent(ChatMessage msg, ColorScheme cs, bool isUser, bool isAssistant, bool isStreaming) {
     if (isStreaming && isAssistant) {
-      return _StreamingText(
+      return AiStreamingText(
         text: msg.content,
         cs: cs,
         showCursor: true,
@@ -1767,7 +1755,10 @@ class AiChatPanelState extends State<AiChatPanel> {
             // 👇 工具调用卡片（结构化展示 assistant 的工具调用）
             if (isAssistant && msg.toolCalls != null && msg.toolCalls!.isNotEmpty) ...[
               const SizedBox(height: 8),
-              ...msg.toolCalls!.map((tc) => _buildToolCallCard(tc, cs)),
+              if (msg.toolCalls!.length == 1)
+                _buildToolCallCard(msg.toolCalls!.first, cs)
+              else
+                _buildToolCallGroup(msg, cs),
             ],
             // 👇 复制按钮（仅 AI 回复，且有内容）
             if (isAssistant && msg.content.isNotEmpty && !isThinkingBubble) ...[
@@ -2034,6 +2025,107 @@ class AiChatPanelState extends State<AiChatPanel> {
     );
   }
 
+  /// 工具调用分组：多工具调用折叠为「工具调用 (N)」，流式中自动展开、结束后折叠
+  Widget _buildToolCallGroup(ChatMessage msg, ColorScheme cs) {
+    final calls = msg.toolCalls!;
+    final firstId =
+        calls.first['id']?.toString() ?? calls.first['call_id']?.toString() ?? 'group';
+    final groupKey = firstId;
+    final anyRunning = calls.any((tc) {
+      final id = tc['id']?.toString() ?? tc['call_id']?.toString();
+      return id != null && _toolCallStates[id] == _ToolCallUiState.running;
+    });
+    final failed = calls.any((tc) {
+      final id = tc['id']?.toString() ?? tc['call_id']?.toString();
+      return id != null && _toolCallStates[id] == _ToolCallUiState.failure;
+    });
+    final doneCount = calls.where((tc) {
+      final id = tc['id']?.toString() ?? tc['call_id']?.toString();
+      final st = id != null ? _toolCallStates[id] : null;
+      return st == _ToolCallUiState.success || st == _ToolCallUiState.failure;
+    }).length;
+
+    // 手动折叠优先；否则运行中自动展开、结束后折叠
+    final collapsed =
+        _collapsedToolGroups.contains(groupKey) ? true : !anyRunning;
+    final statusColor = anyRunning
+        ? cs.primary
+        : (failed ? const Color(0xFFE53935) : const Color(0xFF4CAF50));
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: statusColor.withOpacity(0.45)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => setState(() {
+          if (collapsed) {
+            _collapsedToolGroups.remove(groupKey);
+          } else {
+            _collapsedToolGroups.add(groupKey);
+          }
+        }),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.build, size: 15, color: statusColor),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '工具调用 (${calls.length})',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (anyRunning)
+                    const SizedBox(
+                      width: 13,
+                      height: 13,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  else
+                    Icon(
+                      failed ? Icons.error : Icons.check_circle,
+                      size: 15,
+                      color: statusColor,
+                    ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '$doneCount/${calls.length}',
+                    style: TextStyle(fontSize: 10, color: cs.outline),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    collapsed
+                        ? Icons.keyboard_arrow_down
+                        : Icons.keyboard_arrow_up,
+                    size: 16,
+                    color: cs.outline,
+                  ),
+                ],
+              ),
+              if (!collapsed) ...[
+                const SizedBox(height: 8),
+                ...calls.map((tc) => _buildToolCallCard(tc, cs)),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// 工具结果专属渲染（对标 MonkeyCode 各工具 renderDetail）：
   /// web_search 结果列表 / file_read 文件内容 / git_clone 仓库信息 / 其余纯文本
   Widget _buildToolResultDetail(
@@ -2106,18 +2198,28 @@ class AiChatPanelState extends State<AiChatPanel> {
 
     if (name.contains('read') || name.contains('view')) {
       return _resultBlock(content, cs, isFailure,
-          maxLines: null, fontSize: 11.5);
+          maxLines: null,
+          fontSize: 11.5,
+          showActions: true,
+          blockTitle: '读取文件结果');
     }
 
     if (name.contains('git_clone') && !isFailure) {
       final info = _parseGitCloneSummary(content);
       if (info != null) {
-        return _resultBlock(info, cs, false, maxLines: null, fontSize: 11);
+        return _resultBlock(info, cs, false,
+            maxLines: null,
+            fontSize: 11,
+            showActions: true,
+            blockTitle: '仓库克隆结果');
       }
     }
 
     return _resultBlock(content, cs, isFailure,
-        maxLines: 6, fontSize: 11);
+        maxLines: 6,
+        fontSize: 11,
+        showActions: true,
+        blockTitle: '工具结果');
   }
 
   Widget _resultBlock(
@@ -2126,8 +2228,13 @@ class AiChatPanelState extends State<AiChatPanel> {
     bool isFailure, {
     int? maxLines,
     double fontSize = 11,
+    bool showActions = false,
+    String? blockTitle,
   }) {
-    return Container(
+    final lineCount = text.split('\n').length;
+    final hasMore =
+        (maxLines != null && lineCount > maxLines) || text.length > 2000;
+    final block = Container(
       width: double.infinity,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
@@ -2146,11 +2253,124 @@ class AiChatPanelState extends State<AiChatPanel> {
         ),
       ),
     );
+    if (!showActions || !hasMore) return block;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        block,
+        const SizedBox(height: 4),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _resultAction(
+              Icons.open_in_full,
+              '查看全文',
+              () => _showToolResultDialog(blockTitle ?? '工具结果', text),
+            ),
+            const SizedBox(width: 12),
+            _resultAction(
+              Icons.copy,
+              '复制',
+              () {
+                Clipboard.setData(ClipboardData(text: text));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('已复制工具结果'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _resultAction(IconData icon, String label, VoidCallback onTap) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(4),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: cs.primary),
+            const SizedBox(width: 3),
+            Text(
+              label,
+              style: TextStyle(fontSize: 11, color: cs.primary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 工具结果全文弹窗：滚动查看 + 复制
+  Future<void> _showToolResultDialog(String title, String text) {
+    final cs = Theme.of(context).colorScheme;
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 15),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.copy, size: 18),
+              tooltip: '复制全文',
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: text));
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                    content: Text('已复制'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+        content: Container(
+          width: double.maxFinite,
+          constraints: BoxConstraints(
+            maxWidth: 640,
+            maxHeight: MediaQuery.of(ctx).size.height * 0.6,
+          ),
+          child: SingleChildScrollView(
+            child: SelectableText(
+              text,
+              style: TextStyle(
+                fontSize: 12,
+                fontFamily: 'monospace',
+                height: 1.5,
+                color: cs.onSurface,
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 解析 web_search 输出「1. 标题\n   URL\n」为条目列表
-  List<_SearchEntry> _parseSearchResults(String content) {
-    final entries = <_SearchEntry>[];
+  List<SearchEntry> _parseSearchResults(String content) {
+    final entries = <SearchEntry>[];
     final lines = content.split('\n');
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i].trim();
@@ -2165,7 +2385,7 @@ class AiChatPanelState extends State<AiChatPanel> {
         }
       }
       if (title.isEmpty) continue;
-      entries.add(_SearchEntry(title, url));
+      entries.add(SearchEntry(title, url));
       i++; // 跳过已消费的 URL 行
     }
     return entries;
@@ -2194,11 +2414,11 @@ class AiChatPanelState extends State<AiChatPanel> {
     return '${(ms / 1000).toStringAsFixed(1)}s';
   }
 
-  /// 参数值摘要（长文本截断，避免撑爆卡片）
+  /// 参数值摘要（大参数按字节显示，避免撑爆卡片）
   String _argValue(dynamic v) {
     if (v == null) return 'null';
     final s = v.toString();
-    if (s.length > 80) return '${s.substring(0, 77)}...';
+    if (s.length > 80) return '<${s.length} 字节>';
     return s;
   }
 
@@ -2272,247 +2492,11 @@ class AiChatPanelState extends State<AiChatPanel> {
 enum _ToolCallUiState { running, success, failure }
 
 /// web_search 结果条目
-class _SearchEntry {
-  final String title;
-  final String url;
-  const _SearchEntry(this.title, this.url);
-}
-
-class ChatMessage {
-  final String role;
-  final String content;
-  final DateTime time;
-  final List<Map<String, dynamic>>? toolCalls;   // assistant 消息携带的工具调用
-  final String? toolCallId;                      // tool 消息携带的调用 ID
-  final String? reasoningContent;                // assistant 消息的推理过程
-
-  ChatMessage({
-    required this.role,
-    required this.content,
-    DateTime? time,
-    this.toolCalls,
-    this.toolCallId,
-    this.reasoningContent,
-  }) : time = time ?? DateTime.now();
-
-  Map<String, dynamic> toJson() => {
-        'role': role,
-        'content': content,
-        'time': time.toIso8601String(),
-        if (toolCalls != null) 'toolCalls': toolCalls,
-        if (toolCallId != null) 'toolCallId': toolCallId,
-        if (reasoningContent != null) 'reasoningContent': reasoningContent,
-      };
-
-  factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
-        role: j['role']?.toString() ?? 'system',
-        content: j['content']?.toString() ?? '',
-        time: DateTime.tryParse(j['time']?.toString() ?? '') ?? DateTime.now(),
-        toolCalls: (j['toolCalls'] as List?)
-            ?.whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList(),
-        toolCallId: j['toolCallId']?.toString(),
-        reasoningContent: j['reasoningContent']?.toString(),
-      );
-
-  /// 是否能在 UI 中显示（system / user / assistant 可显示，tool 不可显示）
-  bool get showInUi => role == 'system' || role == 'user' || role == 'assistant';
-
-  /// 从 dispatcher 的 Map 格式创建
-  factory ChatMessage.fromContextMap(Map<String, dynamic> m) => ChatMessage(
-        role: m['role']?.toString() ?? 'system',
-        content: m['content']?.toString() ?? '',
-        toolCalls: (m['tool_calls'] as List?)
-            ?.whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList(),
-        toolCallId: m['tool_call_id']?.toString(),
-        reasoningContent: m['reasoning_content']?.toString() ??
-            m['reasoningContent']?.toString(),
-      );
-}
+/// 由 ai_chat_panel.dart 拆分，定义见 lib/models/ai_chat_message.dart。
 
 /// 思考动画：三个跳动的点
-class _ThinkingDots extends StatefulWidget {
-  final Color color;
-  const _ThinkingDots({required this.color});
-
-  @override
-  State<_ThinkingDots> createState() => _ThinkingDotsState();
-}
-
-class _ThinkingDotsState extends State<_ThinkingDots> with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late List<Animation<double>> _animations;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    );
-    _animations = List.generate(3, (i) {
-      return Tween<double>(begin: 0.3, end: 1.0).animate(
-        CurvedAnimation(
-          parent: _ctrl,
-          curve: Interval(i * 0.2, 0.6 + i * 0.2, curve: Curves.easeInOut),
-        ),
-      );
-    });
-    _ctrl.repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text('思考中', style: TextStyle(fontSize: 13, color: widget.color.withOpacity(0.7))),
-        const SizedBox(width: 6),
-        ...List.generate(3, (i) {
-          return AnimatedBuilder(
-            animation: _animations[i],
-            builder: (_, child) => Padding(
-              padding: EdgeInsets.only(left: i > 0 ? 3 : 0),
-              child: Opacity(
-                opacity: _animations[i].value,
-                child: Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: widget.color,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            ),
-          );
-        }),
-      ],
-    );
-  }
-}
-
+/// 由 ai_chat_panel.dart 拆分，见 lib/widgets/ai_chat_components.dart（AiThinkingDots）。
 /// 流式文本：带闪烁光标
-class _StreamingText extends StatefulWidget {
-  final String text;
-  final ColorScheme cs;
-  final bool showCursor;
-
-  const _StreamingText({required this.text, required this.cs, required this.showCursor});
-
-  @override
-  State<_StreamingText> createState() => _StreamingTextState();
-}
-
-class _StreamingTextState extends State<_StreamingText> with SingleTickerProviderStateMixin {
-  late AnimationController _cursorCtrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _cursorCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    );
-    _cursorCtrl.repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _cursorCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _cursorCtrl,
-      builder: (_, child) {
-        return RichText(
-          text: TextSpan(
-            style: TextStyle(
-              fontSize: 14,
-              color: widget.cs.onSurface,
-              fontFamily: 'monospace',
-              height: 1.5,
-            ),
-            children: [
-              TextSpan(text: widget.text),
-              if (widget.showCursor)
-                WidgetSpan(
-                  alignment: PlaceholderAlignment.baseline,
-                  baseline: TextBaseline.alphabetic,
-                  child: Opacity(
-                    opacity: _cursorCtrl.value,
-                    child: Container(
-                      width: 2,
-                      height: 16,
-                      margin: const EdgeInsets.only(left: 1),
-                      decoration: BoxDecoration(
-                        color: widget.cs.primary,
-                        borderRadius: BorderRadius.circular(1),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
+/// 见 lib/widgets/ai_chat_components.dart（AiStreamingText）。
 /// 会话标题栏按钮
-class _SessionHeaderButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String tooltip;
-  final VoidCallback? onTap;
-
-  const _SessionHeaderButton({
-    required this.icon,
-    required this.label,
-    required this.tooltip,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final enabled = onTap != null;
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(6),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 14, color: enabled ? cs.primary : cs.outline),
-              const SizedBox(width: 3),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: enabled ? cs.primary : cs.outline,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+/// 见 lib/widgets/ai_chat_components.dart（AiSessionHeaderButton）。

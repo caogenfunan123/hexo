@@ -12,6 +12,7 @@ import '../core/task/agent_task_type.dart';
 import '../core/task/task_model.dart';
 import '../core/tools/tool_entity.dart';
 import '../models/app_settings.dart';
+import '../models/ai_chat_message.dart';
 import '../models/repo_config.dart';
 import '../services/ai_service.dart';
 import '../services/github_service.dart';
