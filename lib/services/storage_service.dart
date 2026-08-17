@@ -78,11 +78,30 @@ class StorageService {
         if (home.isNotEmpty) {
           final newPath = Directory('$home/Documents/拓墨');
           final oldPath = Directory('$home/.hexo_app');
-          // 自动迁移：旧路径存在且新路径不存在时，复制旧数据到新路径
+          // 自动迁移：旧路径存在且新路径不存在时，
+          // 优先同分区 rename（O(1) 瞬间完成，不阻塞启动）；
+          // rename 失败（跨分区/设备）则后台异步复制，本会话继续使用旧路径。
           if (await oldPath.exists() && !await newPath.exists()) {
-            await _copyDirectory(oldPath, newPath);
+            var migrated = false;
+            try {
+              await newPath.parent.create(recursive: true);
+              await oldPath.rename(newPath.path);
+              migrated = true;
+            } catch (e) {
+              debugPrint('StorageService: 同分区迁移失败，改用后台复制: $e');
+            }
+            if (!migrated) {
+              _scheduleBackgroundCopy(oldPath, newPath);
+            }
           }
-          _root = newPath;
+          if (await newPath.exists()) {
+            _root = newPath;
+          } else if (await oldPath.exists()) {
+            // 后台迁移进行中：本会话继续使用旧路径，数据不丢
+            _root = oldPath;
+          } else {
+            _root = newPath;
+          }
           if (!await _root!.exists()) await _root!.create(recursive: true);
           await _ensureCategoryDirs();
           return _root!;
@@ -204,6 +223,20 @@ class StorageService {
         debugPrint('StorageService._copyDirectory skip: $e');
       }
     }
+  }
+
+  /// 后台异步复制旧目录到新目录（跨分区迁移兜底），不阻塞启动
+  void _scheduleBackgroundCopy(Directory src, Directory dest) {
+    // fire-and-forget，不在 root getter 内等待
+    Future<void>(() async {
+      try {
+        debugPrint('StorageService: 开始后台迁移 ${src.path} -> ${dest.path}');
+        await _copyDirectory(src, dest);
+        debugPrint('StorageService: 后台迁移完成 ${dest.path}');
+      } catch (e) {
+        debugPrint('StorageService: 后台迁移失败: $e');
+      }
+    });
   }
 
   Future<File> _file(String name) async => File('${(await root).path}/$name');
