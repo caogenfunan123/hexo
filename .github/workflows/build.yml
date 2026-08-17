@@ -361,19 +361,19 @@ jobs:
       - name: Verify artifacts
         run: |
           # 检查关键文件是否存在
-          if [ ! -f "artifacts/hexo-apk/app-release.apk" ]; then
+          if [ ! -f "artifacts/app-release.apk" ]; then
             echo "::warning::Android APK not found"
           fi
           
-          if [ ! -d "artifacts/hexo-web" ]; then
+          if [ ! -d "artifacts/assets" ]; then
             echo "::warning::Web build not found"
           fi
           
-          if [ ! -f "artifacts/hexo-linux/hexo-linux.tar.gz" ]; then
+          if [ ! -f "artifacts/hexo-linux.tar.gz" ]; then
             echo "::warning::Linux build not found"
           fi
           
-          if [ ! -f "artifacts/hexo-windows/hexo-windows.zip" ]; then
+          if [ ! -f "artifacts/hexo-windows.zip" ]; then
             echo "::warning::Windows build not found"
           fi
 
@@ -409,7 +409,9 @@ jobs:
             - 构建时间: ${{ github.run_started_at }}
             - 提交: `${{ github.sha }}`
           files: |
-            artifacts/**
+            artifacts/app-release.apk
+            artifacts/hexo-linux.tar.gz
+            artifacts/hexo-windows.zip
           fail_on_unmatched_files: false
           prerelease: false
           draft: false
