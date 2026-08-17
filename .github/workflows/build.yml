@@ -414,6 +414,5 @@ jobs:
             artifacts/app-release.apk
             artifacts/hexo-linux.tar.gz
             artifacts/hexo-windows.zip
-          fail_on_unmatched_files: false
           prerelease: false
           draft: false
