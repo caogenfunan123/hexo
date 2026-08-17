@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -705,6 +706,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         final result = await _updateChecker!.check();
         if (!mounted || !result.hasUpdate) return;
         final r = result.release!;
+        final artifact = r.artifactFor(_platformKey) ?? r.firstArtifact;
         showDialog<void>(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -715,17 +717,40 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    '当前 ${result.currentVersion} → 最新 ${r.versionString}',
+                    '当前 ${result.currentVersion} → 最新 ${r.version}',
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  if (r.body.trim().isNotEmpty) ...[
+                  if (r.notes.trim().isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Text(
-                      r.body.trim(),
+                      r.notes.trim(),
                       style: const TextStyle(fontSize: 12, height: 1.4),
                       maxLines: 8,
                       overflow: TextOverflow.ellipsis,
                     ),
+                  ],
+                  if (artifact != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '下载: ${artifact.url}',
+                      style: const TextStyle(fontSize: 11, color: Colors.blue),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (artifact.sha256 != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          'SHA256: ${artifact.sha256}',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontFamily: 'monospace',
+                            color: Colors.grey,
+                          ),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                   ],
                 ],
               ),
@@ -738,7 +763,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
               FilledButton(
                 onPressed: () {
                   Navigator.pop(ctx);
-                  _openUpdateUrl(r.htmlUrl);
+                  _openUpdateUrl(artifact?.url ?? r.version);
                 },
                 child: const Text('去更新'),
               ),
@@ -749,6 +774,17 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     } catch (e) {
       debugPrint('Init update check error: $e');
     }
+  }
+
+  /// 当前运行平台标识（与 release.json platforms 键对齐）
+  String get _platformKey {
+    if (kIsWeb) return 'web';
+    if (Platform.isAndroid) return 'android';
+    if (Platform.isIOS) return 'ios';
+    if (Platform.isWindows) return 'windows';
+    if (Platform.isLinux) return 'linux';
+    if (Platform.isMacOS) return 'macos';
+    return 'other';
   }
 
   /// 打开更新页面

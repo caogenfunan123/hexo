@@ -3,6 +3,7 @@ name: CI Build & Monitor
 on:
   push:
     branches: [main, develop]
+    tags: ['v*']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -332,9 +333,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-  # ── 发布到 GitHub Release（仅 main 分支 push） ──
+  # ── 发布到 GitHub Release（仅 tag vX.Y.Z push 触发） ──
+  # 普通代码 push 不产生 release，避免 Releases 页面被构建噪音刷屏。
+  # 发版流程见 docs/RELEASE_PROCESS.md；tag 由 tools/release.sh 创建。
   release:
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [analyze, build-android, build-web, build-linux, build-windows]
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -374,43 +377,37 @@ jobs:
             echo "::warning::Windows build not found"
           fi
 
+      - name: Compute SHA256 for assets
+        run: |
+          set -euo pipefail
+          cd artifacts
+          for f in $(find . -type f); do
+            echo "$(sha256sum "$f" | awk '{print $1}')  $f"
+          done
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "Build ${{ github.sha }}"
-          tag_name: "build-${{ github.sha }}"
+          name: "v${GITHUB_REF_NAME#v}"
+          tag_name: "${{ github.ref_name }}"
           body: |
-            ## 自动构建
+            ## 版本 ${{ github.ref_name }}
 
-            - 提交: `${{ github.sha }}`
-            - 分支: `${{ github.ref_name }}`
-            - [查看 CI 详情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            > 发布流程见 `docs/RELEASE_PROCESS.md`；客户端通过仓库根目录 `release.json` 获取更新信息。
 
-            | 平台 | 产物 | 状态 |
+            | 平台 | 产物 | 下载 |
             |------|------|------|
-            | Android | `hexo-apk` | ${{ needs.build-android.result == 'success' }} |
-            | Web | `hexo-web` | ${{ needs.build-web.result == 'success' }} |
-            | Linux 桌面 | `hexo-linux` | ${{ needs.build-linux.result == 'success' }} |
-            | Windows 桌面 | `hexo-windows` | ${{ needs.build-windows.result == 'success' }} |
+            | Android | `app-release.apk` | https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/app-release.apk |
+            | Linux | `hexo-linux.tar.gz` | https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/hexo-linux.tar.gz |
+            | Windows | `hexo-windows.zip` | https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/hexo-windows.zip |
+
+            ### 更新日志
+            详见仓库根目录 `release.json` 的 `notes` 字段，或本次提交历史。
 
             ### 构建信息
             - Flutter 版本: 3.44.9
             - 构建时间: ${{ github.run_started_at }}
-            - 提交信息: ${{ github.event.head_commit.message }}
-
-            ### 直接下载
-            | 平台 | 下载地址 |
-            |------|----------|
-            | Android APK | https://github.com/${{ github.repository }}/releases/download/build-${{ github.sha }}/app-release.apk |
-            | Linux | https://github.com/${{ github.repository }}/releases/download/build-${{ github.sha }}/hexo-linux.tar.gz |
-            | Windows | https://github.com/${{ github.repository }}/releases/download/build-${{ github.sha }}/hexo-windows.zip |
-            | Web | https://github.com/${{ github.repository }}/releases/download/build-${{ github.sha }}/main.dart.js (需配合 assets/ 使用，建议直接看上面的 hexo-web 目录) |
-
-            ### 功能更新
-            - ✅ 多语言支持（简体中文、English、日本語、한국어）
-            - ✅ 静态博客批量发布功能
-            - ✅ 预览 URL 配置
-            - ✅ 完整的测试覆盖
+            - 提交: `${{ github.sha }}`
           files: |
             artifacts/**
           fail_on_unmatched_files: false

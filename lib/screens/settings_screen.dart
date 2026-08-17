@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -9,6 +10,7 @@ import '../models/git_provider.dart';
 import '../models/repo_config.dart';
 import '../services/github_service.dart';
 import '../services/storage_service.dart';
+import '../services/update_checker_service.dart';
 import '../services/draft_encryption_service.dart';
 import '../services/webdav_service.dart';
 import '../l10n/app_localizations.dart';
@@ -99,6 +101,114 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (mounted) setState(() {});
       }
     } catch (_) {}
+  }
+
+  /// 手动检查更新：读取 release.json 清单并弹窗展示
+  Future<void> _checkForUpdates() async {
+    final l10n = AppLocalizations.ofContext(context);
+    final checker = UpdateCheckerService(currentVersion: _cachedVersion);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => const AlertDialog(
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 16),
+            Text('正在检查更新...'),
+          ],
+        ),
+      ),
+    );
+    final result = await checker.check();
+    checker.dispose();
+    if (!mounted) return;
+    Navigator.pop(context);
+    if (result.hasUpdate) {
+      final r = result.release!;
+      final artifact = r.artifactFor(_platformKey) ?? r.firstArtifact;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('发现新版本'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '当前 ${result.currentVersion} → 最新 ${r.version}',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                if (r.notes.trim().isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    r.notes.trim(),
+                    style: const TextStyle(fontSize: 12, height: 1.4),
+                    maxLines: 8,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                if (artifact != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '下载: ${artifact.url}',
+                    style:
+                        const TextStyle(fontSize: 11, color: Colors.blue),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (artifact.sha256 != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'SHA256: ${artifact.sha256}',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontFamily: 'monospace',
+                          color: Colors.grey,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('稍后'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _openUrl(artifact?.url ?? r.version);
+              },
+              child: const Text('去更新'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      widget.onShowToast('当前已是最新版本');
+    }
+  }
+
+  /// 当前运行平台标识（与 release.json platforms 键对齐）
+  String get _platformKey {
+    if (kIsWeb) return 'web';
+    if (Platform.isAndroid) return 'android';
+    if (Platform.isIOS) return 'ios';
+    if (Platform.isWindows) return 'windows';
+    if (Platform.isLinux) return 'linux';
+    if (Platform.isMacOS) return 'macos';
+    return 'other';
   }
 
   @override
@@ -1403,6 +1513,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             title: Text(l10n.translate('about_version')),
             subtitle: Text(_cachedVersion),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.system_update_alt_outlined),
+            title: Text(l10n.checkForUpdates),
+            subtitle: const Text('从 GitHub 读取最新版本清单'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _checkForUpdates,
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,

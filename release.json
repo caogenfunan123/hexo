@@ -1,0 +1,24 @@
+{
+  "version": "1.0.4",
+  "build": 5,
+  "name": "Hexo 写作系统",
+  "notes": "",
+  "publishedAt": "2026-08-17T00:00:00+08:00",
+  "platforms": {
+    "android": {
+      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.4/app-release.apk",
+      "sha256": "",
+      "size": 0
+    },
+    "windows": {
+      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.4/hexo-windows.zip",
+      "sha256": "",
+      "size": 0
+    },
+    "linux": {
+      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.4/hexo-linux.tar.gz",
+      "sha256": "",
+      "size": 0
+    }
+  }
+}
