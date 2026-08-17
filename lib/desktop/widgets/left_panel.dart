@@ -320,12 +320,13 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                           label: '备份与恢复',
                           onTap: widget.bus.onShowBackupRestore,
                         ),
-                        ..._nav(
-                          id: 'local_file_zone',
-                          icon: Icons.folder_open_outlined,
-                          label: '本地文件区',
-                          onTap: widget.bus.onOpenFileZone,
-                        ),
+                        if (widget.bus.onOpenFileZone != null)
+                          ..._nav(
+                            id: 'local_file_zone',
+                            icon: Icons.folder_open_outlined,
+                            label: '本地文件区',
+                            onTap: widget.bus.onOpenFileZone!,
+                          ),
                         ..._nav(
                           id: 'proxy_settings',
                           icon: Icons.vpn_lock_outlined,
