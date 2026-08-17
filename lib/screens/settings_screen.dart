@@ -69,7 +69,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  static String _cachedVersion = '1.0.4';
+  static String _cachedVersion = '1.0.5';
   late TextEditingController _siteNameCtrl;
   late TextEditingController _siteBioCtrl;
   late TextEditingController _quickNoteAnchorCtrl;

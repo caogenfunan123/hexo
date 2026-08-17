@@ -333,7 +333,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   /// 每个草稿上次统计的字数（用于记录增量，避免重复累计）
   final Map<String, int> _lastWordCounts = {};
   UpdateCheckerService? _updateChecker;
-  String _appVersion = '1.0.4';
+  String _appVersion = '1.0.5';
 
   RepoConfig? get activeRepo {
     if (repos.isEmpty) return null;

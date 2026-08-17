@@ -7,6 +7,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.OpenableColumns;
+import android.provider.Settings;
 import android.util.Base64;
 
 import androidx.annotation.NonNull;
@@ -27,9 +28,11 @@ public class MainActivity extends FlutterActivity {
     private static final int REQ_PICK_IMAGE = 0x4858;
     private static final int REQ_PICK_FILE = 0x4859;
     private static final int REQ_PICK_DIR = 0x4860;
+    private static final int REQ_MANAGE_STORAGE = 0x4861;
     private MethodChannel.Result pendingPickResult;
     private MethodChannel.Result pendingPickFileResult;
     private MethodChannel.Result pendingPickDirResult;
+    private MethodChannel.Result pendingManageStorageResult;
     /** 待投递的速记参数缓存（Flutter 拉取后清空） */
     private java.util.Map<String, String> pendingQuickNote;
     /** Flutter 侧监听回调（用于热启动主动推送） */
@@ -164,6 +167,39 @@ public class MainActivity extends FlutterActivity {
                         case "checkStoragePermission":
                             // Android 11+ 分区存储：应用私有目录始终可写
                             result.success(true);
+                            break;
+                        case "checkManageStoragePermission":
+                            // Android 11+: 检查是否有"所有文件访问"权限
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                                result.success(Environment.isExternalStorageManager());
+                            } else {
+                                // Android 10 及以下：已有 READ/WRITE_EXTERNAL_STORAGE 即可
+                                result.success(true);
+                            }
+                            break;
+                        case "requestManageStoragePermission":
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                                if (Environment.isExternalStorageManager()) {
+                                    result.success(true);
+                                } else {
+                                    if (pendingManageStorageResult != null) {
+                                        result.error("BUSY", "已有权限请求进行中", null);
+                                        return;
+                                    }
+                                    pendingManageStorageResult = result;
+                                    try {
+                                        Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                                        intent.setData(Uri.parse("package:" + getPackageName()));
+                                        startActivityForResult(intent, REQ_MANAGE_STORAGE);
+                                    } catch (Exception e) {
+                                        pendingManageStorageResult = null;
+                                        result.error("REQUEST_FAILED", e.getMessage(), null);
+                                    }
+                                }
+                            } else {
+                                // Android 10 及以下不需要此权限
+                                result.success(true);
+                            }
                             break;
                         case "openFolder":
                             openFolder(call, result);
@@ -328,6 +364,15 @@ public class MainActivity extends FlutterActivity {
             // ACTION_OPEN_DOCUMENT_TREE 返回 tree:// URI；取文档路径作为可写目录
             String treePath = uri.toString();
             result.success(treePath);
+        } else if (requestCode == REQ_MANAGE_STORAGE && pendingManageStorageResult != null) {
+            MethodChannel.Result result = pendingManageStorageResult;
+            pendingManageStorageResult = null;
+            // 用户从设置页面返回，重新检查权限状态
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                result.success(Environment.isExternalStorageManager());
+            } else {
+                result.success(true);
+            }
         }
     }
 

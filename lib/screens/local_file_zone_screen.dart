@@ -15,18 +15,21 @@ import '../services/storage_service.dart';
 /// - 文本文件支持查看与编辑（保存即回写本地，完成"暂存修改"）
 /// - 可把仓库文件"下载到本地"暂存、编辑后再"统一上传"回仓库
 /// - 可从系统选择文件导入暂存区
+/// - 可选择外部目录浏览任意位置的文件
 ///
 /// 跨平台（Android/iOS/桌面）统一走 dart:io 文件读写，不依赖原生 channel。
 class LocalFileZoneScreen extends StatefulWidget {
   final StorageService storage;
   final GitHubService? github;
   final RepoConfig? activeRepo;
+  final void Function(String fileName, String content, String filePath)? onOpenFile;
 
   const LocalFileZoneScreen({
     super.key,
     required this.storage,
     this.github,
     this.activeRepo,
+    this.onOpenFile,
   });
 
   @override
@@ -38,6 +41,7 @@ class _LocalFileZoneScreenState extends State<LocalFileZoneScreen> {
   final List<FileSystemEntity> _entries = [];
   final Set<String> _loadErrors = {};
   bool _loading = true;
+  static const _channel = MethodChannel('hexo/native');
 
   @override
   void initState() {
@@ -114,6 +118,57 @@ class _LocalFileZoneScreenState extends State<LocalFileZoneScreen> {
   }
 
   Future<void> _refresh() async {
+    await _loadEntries();
+  }
+
+  /// 选择外部目录浏览
+  Future<void> _chooseExternalDirectory() async {
+    // Android 11+ 需要检查"所有文件访问"权限
+    if (Platform.isAndroid) {
+      try {
+        final hasPermission = await _channel.invokeMethod<bool>('checkManageStoragePermission');
+        if (hasPermission != true) {
+          // 弹窗说明权限用途
+          if (!mounted) return;
+          final granted = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('需要文件访问权限'),
+              content: const Text('浏览和编辑设备上的文件需要"所有文件访问"权限。\n\n请点击"授权"前往系统设置中开启。'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('授权'),
+                ),
+              ],
+            ),
+          );
+          if (granted != true) return;
+          // 请求权限
+          final result = await _channel.invokeMethod<bool>('requestManageStoragePermission');
+          if (result != true) {
+            _showToast('未获得文件访问权限');
+            return;
+          }
+        }
+      } catch (e) {
+        _showToast('权限检查失败: $e');
+        return;
+      }
+    }
+    // 选择目录
+    final path = await FilePicker.platform.getDirectoryPath();
+    if (path == null || !mounted) return;
+    final dir = Directory(path);
+    if (!await dir.exists()) {
+      _showToast('目录不存在: $path');
+      return;
+    }
+    _cwd = dir;
     await _loadEntries();
   }
 
@@ -266,7 +321,7 @@ class _LocalFileZoneScreenState extends State<LocalFileZoneScreen> {
     }
   }
 
-  /// 文件操作菜单：编辑 / 上传仓库 / 复制路径
+  /// 文件操作菜单：编辑 / 在编辑器中打开 / 上传仓库 / 复制路径
   Future<void> _fileActions(File file) async {
     final action = await showModalBottomSheet<String>(
       context: context,
@@ -280,6 +335,12 @@ class _LocalFileZoneScreenState extends State<LocalFileZoneScreen> {
               subtitle: Text(file.path, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
             const Divider(height: 1),
+            if (widget.onOpenFile != null)
+              ListTile(
+                leading: const Icon(Icons.open_in_new),
+                title: const Text('在编辑器中打开'),
+                onTap: () => Navigator.pop(ctx, 'open_in_editor'),
+              ),
             ListTile(
               leading: const Icon(Icons.edit_outlined),
               title: const Text('编辑 / 查看（保存回写本地暂存）'),
@@ -301,6 +362,9 @@ class _LocalFileZoneScreenState extends State<LocalFileZoneScreen> {
     );
     if (action == null || !mounted) return;
     switch (action) {
+      case 'open_in_editor':
+        await _openInEditor(file);
+        break;
       case 'edit':
         await _openTextEditor(file);
         break;
@@ -317,6 +381,24 @@ class _LocalFileZoneScreenState extends State<LocalFileZoneScreen> {
         if (repoPath == null) return;
         await _uploadToRepo(file, repoPath);
         break;
+    }
+  }
+
+  /// 在编辑器中打开文件
+  Future<void> _openInEditor(File file) async {
+    String content;
+    try {
+      content = await file.readAsString();
+    } catch (e) {
+      _showToast('读取失败: $e');
+      return;
+    }
+    final name = _name(file);
+    final fileName = name.replaceAll(RegExp(r'\.(md|markdown|txt)$'), '');
+    widget.onOpenFile?.call(fileName, content, file.path);
+    if (mounted) {
+      _showToast('已打开: $name');
+      Navigator.of(context).pop();
     }
   }
 
@@ -371,6 +453,11 @@ class _LocalFileZoneScreenState extends State<LocalFileZoneScreen> {
             icon: const Icon(Icons.refresh),
             tooltip: '刷新',
             onPressed: _loading ? null : _refresh,
+          ),
+          IconButton(
+            icon: const Icon(Icons.folder_open_outlined),
+            tooltip: '选择外部目录',
+            onPressed: _loading ? null : _chooseExternalDirectory,
           ),
           IconButton(
             icon: const Icon(Icons.file_download_outlined),

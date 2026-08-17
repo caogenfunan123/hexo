@@ -61,6 +61,7 @@ import '../screens/theme_migration_screen.dart';
 import '../screens/theme_store_screen.dart';
 import '../screens/tool_library_screen.dart';
 import '../screens/log_screen.dart';
+import '../screens/local_file_zone_screen.dart';
 import '../core/tools/skill_manager.dart';
 import '../core/tools/remote_cms_tools.dart';
 import '../core/cancel_token.dart';
@@ -7310,6 +7311,22 @@ class DesktopShellState extends State<DesktopShell>
     }
   }
 
+  /// 打开本地文件区（文件浏览器）
+  void _openLocalFileZone() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => LocalFileZoneScreen(
+          storage: storage,
+          github: github,
+          activeRepo: _editorRepo,
+          onOpenFile: (fileName, content, filePath) {
+            openExternalFile(fileName, content, filePath);
+          },
+        ),
+      ),
+    );
+  }
+
   // ============================================================
   // 剪贴板图片粘贴（桌面版：粘贴截图 → 上传图床 → 插入 Markdown）
   // ============================================================
@@ -10001,6 +10018,7 @@ $htmlContent
     onPublish: _handlePublish,
     // 文件操作
     onOpenFile: _openFileDialog,
+    onOpenFileZone: _openLocalFileZone,
     // 文章管理
     onOpenArticle: (a) => _openExistingArticle(a),
     onRenameArticle: _renameArticle,

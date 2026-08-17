@@ -69,19 +69,39 @@ class StorageService {
         }
       } catch (_) {}
     }
-    // 桌面端：使用 path_provider 获取应用支持目录
+    // 桌面端：使用 Documents/拓墨 作为默认目录
     if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
       try {
-        final appDir = await getApplicationSupportDirectory();
-        _root = Directory('${appDir.path}/hexo_blog_manager');
+        final home = Platform.environment['HOME'] ??
+            Platform.environment['USERPROFILE'] ??
+            '';
+        if (home.isNotEmpty) {
+          final newPath = Directory('$home/Documents/拓墨');
+          final oldPath = Directory('$home/.hexo_app');
+          // 自动迁移：旧路径存在且新路径不存在时，复制旧数据到新路径
+          if (await oldPath.exists() && !await newPath.exists()) {
+            await _copyDirectory(oldPath, newPath);
+          }
+          _root = newPath;
+          if (!await _root!.exists()) await _root!.create(recursive: true);
+          await _ensureCategoryDirs();
+          return _root!;
+        }
+      } catch (e) {
+        debugPrint('StorageService: desktop root failed: $e');
+      }
+    }
+    // 移动端：使用 MethodChannel 获取公共 Documents 目录
+    try {
+      final path = await _channel.invokeMethod<String>('getPublicDocumentsDir');
+      if (path != null && path.isNotEmpty) {
+        _root = Directory(path);
         if (!await _root!.exists()) await _root!.create(recursive: true);
         await _ensureCategoryDirs();
         return _root!;
-      } catch (e) {
-        debugPrint('StorageService: path_provider failed: $e');
       }
-    }
-    // 移动端：使用 MethodChannel 获取应用文件目录
+    } catch (_) {}
+    // 回退：使用应用内部文件目录
     try {
       final path = await _channel.invokeMethod<String>('getFilesDir');
       if (path != null && path.isNotEmpty) {

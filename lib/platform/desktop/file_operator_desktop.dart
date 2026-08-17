@@ -13,7 +13,7 @@ class DesktopFileOperator extends AppFileOperator {
     final home = Platform.environment['HOME'] ??
         Platform.environment['USERPROFILE'] ??
         '/tmp';
-    return '$home/.hexo_app';
+    return '$home/Documents/拓墨';
   }
 
   Future<void> _ensureRoot() async {

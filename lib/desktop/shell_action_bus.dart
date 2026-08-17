@@ -75,6 +75,7 @@ class ShellActionBus {
 
   // ── 文件操作 ──
   final VoidCallback? onOpenFile;
+  final VoidCallback? onOpenFileZone;
 
   // ── 文章管理（侧边栏 / 首页长按操作） ──
   final ValueChanged<Article>? onOpenArticle;
@@ -131,6 +132,7 @@ class ShellActionBus {
     required this.onPublish,
     // 文件操作
     this.onOpenFile,
+    this.onOpenFileZone,
     // 文章管理
     this.onOpenArticle,
     this.onRenameArticle,
