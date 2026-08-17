@@ -91,17 +91,7 @@ class StorageService {
         debugPrint('StorageService: desktop root failed: $e');
       }
     }
-    // 移动端：使用 MethodChannel 获取公共 Documents 目录
-    try {
-      final path = await _channel.invokeMethod<String>('getPublicDocumentsDir');
-      if (path != null && path.isNotEmpty) {
-        _root = Directory(path);
-        if (!await _root!.exists()) await _root!.create(recursive: true);
-        await _ensureCategoryDirs();
-        return _root!;
-      }
-    } catch (_) {}
-    // 回退：使用应用内部文件目录
+    // 移动端：使用应用内部文件目录（保证老用户数据路径不变）
     try {
       final path = await _channel.invokeMethod<String>('getFilesDir');
       if (path != null && path.isNotEmpty) {
