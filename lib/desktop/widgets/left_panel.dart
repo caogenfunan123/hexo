@@ -7,10 +7,12 @@ import '../../theme/app_color.dart';
 import '../../models/repo_config.dart';
 import '../../models/article.dart';
 import '../../models/ui_settings.dart';
+import '../../models/nav_custom_config.dart';
 import '../../core/site_manager.dart';
 import '../../widgets/article_action_menu.dart';
 import '../shell_action_bus.dart';
 import '../feature_entries.dart';
+import '../nav_entries_meta.dart';
 
 class DesktopLeftPanel extends StatefulWidget {
   final double width;
@@ -25,6 +27,9 @@ class DesktopLeftPanel extends StatefulWidget {
   // 界面模式（简易/标准）
   final AppMode mode;
   final List<String> simpleModeExtras;
+
+  // 侧边栏自定义导航配置（显隐偏好 + 置顶顺序）
+  final NavCustomConfig navCustom;
 
   // 折叠状态持久化（保持上次状态）
   final List<String> collapsedSections;
@@ -44,6 +49,7 @@ class DesktopLeftPanel extends StatefulWidget {
     required this.bus,
     this.mode = AppMode.simple,
     this.simpleModeExtras = const [],
+    this.navCustom = const NavCustomConfig(),
     this.collapsedSections = const [],
     this.onCollapsedSectionsChanged,
   });
@@ -111,6 +117,19 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                 child: ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   children: [
+                    // 顶部置顶区：用户固定的常用入口
+                    if (_pinnedItems().isNotEmpty) ...[
+                      _buildPinnedZone(),
+                      const SizedBox(height: 2),
+                    ],
+
+                    // 空态兜底：用户隐藏了全部入口
+                    if (widget.navCustom.customized &&
+                        _allNavHidden()) ...[
+                      _buildEmptyFallback(),
+                      const SizedBox(height: 2),
+                    ],
+
                     // 创作
                     _buildSection(
                       key: 'create',
@@ -190,11 +209,10 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                           ),
                         ),
                         ..._nav(
-                          id: 'add_site',
-                          icon: Icons.add,
-                          label: '添加站点',
+                          id: 'site_manager',
+                          icon: Icons.storage_outlined,
+                          label: '站点管理',
                           onTap: widget.bus.onShowSiteEditor,
-                          isSubtle: true,
                         ),
                         ..._nav(
                           id: 'site_operations',
@@ -213,28 +231,16 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                       onToggle: () => _toggleSection('manage'),
                       children: [
                         ..._nav(
-                          id: 'remote_posts',
-                          icon: Icons.cloud_outlined,
-                          label: '远程文章',
-                          onTap: widget.bus.onOpenRemote,
+                          id: 'cloud_sync',
+                          icon: Icons.cloud_sync,
+                          label: '同步中心',
+                          onTap: widget.bus.onOpenSyncSettings,
                         ),
                         ..._nav(
-                          id: 'sync_status',
-                          icon: Icons.sync,
-                          label: '同步状态',
-                          onTap: widget.bus.onOpenSync,
-                        ),
-                        ..._nav(
-                          id: 'dashboard',
-                          icon: Icons.dashboard_outlined,
-                          label: '仪表盘',
-                          onTap: widget.bus.onOpenDashboard,
-                        ),
-                        ..._nav(
-                          id: 'history',
-                          icon: Icons.history_outlined,
-                          label: '提交历史',
-                          onTap: widget.bus.onOpenHistory,
+                          id: 'p2p_sync',
+                          icon: Icons.wifi,
+                          label: 'P2P 同步',
+                          onTap: widget.bus.onOpenP2PSync,
                         ),
                       ],
                     ),
@@ -382,18 +388,6 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                       onToggle: () => _toggleSection('system'),
                       children: [
                         ..._nav(
-                          id: 'cloud_sync',
-                          icon: Icons.cloud_sync,
-                          label: '云同步',
-                          onTap: widget.bus.onOpenSyncSettings,
-                        ),
-                        ..._nav(
-                          id: 'p2p_sync',
-                          icon: Icons.wifi,
-                          label: 'P2P 同步',
-                          onTap: widget.bus.onOpenP2PSync,
-                        ),
-                        ..._nav(
                           id: 'settings',
                           icon: Icons.settings_outlined,
                           label: '设置',
@@ -424,18 +418,6 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                           onTap: widget.bus.onExportLogs,
                         ),
                         ..._nav(
-                          id: 'blog_site_manager',
-                          icon: Icons.dns_outlined,
-                          label: '动态博客登录',
-                          onTap: widget.bus.onShowBlogSiteManager,
-                        ),
-                        ..._nav(
-                          id: 'site_manager',
-                          icon: Icons.storage_outlined,
-                          label: '站点管理',
-                          onTap: widget.bus.onShowSiteEditor,
-                        ),
-                        ..._nav(
                           id: 'help',
                           icon: Icons.help_outline,
                           label: '帮助 / 快捷键',
@@ -443,13 +425,27 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 2),
+
+                    // 底部固定入口：全部功能 + 自定义侧边栏
+                    if (widget.bus.onOpenAllFeatures != null)
+                      _navItem(
+                        icon: Icons.apps_outlined,
+                        label: '全部功能',
+                        onTap: widget.bus.onOpenAllFeatures!,
+                      ),
+                    if (widget.bus.onOpenCustomizeSidebar != null)
+                      _navItem(
+                        icon: Icons.tune,
+                        label: '自定义侧边栏',
+                        onTap: widget.bus.onOpenCustomizeSidebar!,
+                      ),
                     const SizedBox(height: 12),
                   ],
                 ),
               ),
             ],
           ),
-
           // 右侧拖拽调整宽度手柄
           Positioned(
             right: 0,
@@ -550,7 +546,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
   // ============================================================
   // 导航项
   // ============================================================
-  /// 按入口 id 过滤后展开导航项（简易模式下隐藏专业入口）
+  /// 按入口 id 过滤后展开导航项（简易模式下隐藏专业入口，用户自定义覆盖）
   List<Widget> _nav({
     required String id,
     required IconData icon,
@@ -561,10 +557,11 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
     String? shortcut,
     int badge = 0,
   }) {
-    final visible = NavEntries.visibleEntry(
+    final visible = NavEntries.navVisibleFor(
       id,
       widget.mode,
       widget.simpleModeExtras,
+      widget.navCustom,
     );
     if (!visible) return const [];
     return [
@@ -883,6 +880,107 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // 置顶区
+  // ============================================================
+  /// 入口 id → 显示信息（供置顶区与 Hub 复用）
+  static const Map<String, (IconData, String)> _entryMeta = {
+    for (final e in kNavEntries) e.id: (e.icon, e.label),
+  };
+
+  /// 入口 id → 动作回调（置顶项点击）
+  VoidCallback? _entryAction(String id) => navEntryAction(widget.bus, id);
+
+  /// 用户置顶的可见入口项（过滤掉不可见/无法映射动作的）
+  List<Widget> _pinnedItems() {
+    final items = <Widget>[];
+    final order = widget.navCustom.pinnedOrder;
+    if (order.isEmpty) return items;
+    for (final id in order) {
+      if (!NavEntries.navVisibleFor(
+        id,
+        widget.mode,
+        widget.simpleModeExtras,
+        widget.navCustom,
+      )) {
+        continue;
+      }
+      final meta = _entryMeta[id];
+      final action = _entryAction(id);
+      if (meta == null || action == null) continue;
+      items.add(_navItem(
+        icon: meta.$1,
+        label: meta.$2,
+        onTap: action,
+      ));
+    }
+    return items;
+  }
+
+  Widget _buildPinnedZone() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(6, 6, 6, 2),
+          child: Row(
+            children: [
+              Icon(
+                Icons.push_pin_outlined,
+                size: 12,
+                color: AppColor.iconMuted(context),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '置顶',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: AppColor.iconMuted(context),
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ],
+          ),
+        ),
+        ..._pinnedItems(),
+      ],
+    );
+  }
+
+  /// 用户自定义后是否所有注册入口都被隐藏
+  bool _allNavHidden() {
+    if (!widget.navCustom.customized || widget.navCustom.visible.isEmpty) {
+      return false;
+    }
+    return widget.navCustom.visible.values.every((v) => !v);
+  }
+
+  Widget _buildEmptyFallback() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '侧边栏已全部隐藏，可从"全部功能"访问。',
+            style: TextStyle(
+              fontSize: 11,
+              color: AppColor.iconMuted(context),
+            ),
+          ),
+          const SizedBox(height: 8),
+          _navItem(
+            icon: Icons.restore,
+            label: '恢复默认',
+            onTap: () => widget.bus.onOpenCustomizeSidebar?.call(),
+          ),
+        ],
       ),
     );
   }

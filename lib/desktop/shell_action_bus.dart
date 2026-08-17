@@ -77,6 +77,10 @@ class ShellActionBus {
   final VoidCallback? onOpenFile;
   final VoidCallback? onOpenFileZone;
 
+  // ── 侧边栏自定义 & 全部功能 ──
+  final VoidCallback? onOpenAllFeatures;
+  final VoidCallback? onOpenCustomizeSidebar;
+
   // ── 文章管理（侧边栏 / 首页长按操作） ──
   final ValueChanged<Article>? onOpenArticle;
   final ValueChanged<Article>? onRenameArticle;
@@ -133,6 +137,9 @@ class ShellActionBus {
     // 文件操作
     this.onOpenFile,
     this.onOpenFileZone,
+    // 侧边栏自定义 & 全部功能
+    this.onOpenAllFeatures,
+    this.onOpenCustomizeSidebar,
     // 文章管理
     this.onOpenArticle,
     this.onRenameArticle,

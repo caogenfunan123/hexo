@@ -7,7 +7,8 @@
 /// - optIn  默认隐藏，用户可在设置中手动加回（写入 UiSettings.simpleModeExtras）
 library;
 
-import '../../models/ui_settings.dart';
+import '../models/ui_settings.dart';
+import '../models/nav_custom_config.dart';
 
 /// 简易模式下的入口可见性
 enum FeatureVisibility {
@@ -72,19 +73,19 @@ abstract final class NavEntries {
     'home': FeatureVisibility.shown,
     'new_article': FeatureVisibility.shown,
     'drafts': FeatureVisibility.shown,
-    // 同步与站点（全部同步功能保留可见）
-    'remote_posts': FeatureVisibility.shown,
-    'sync_status': FeatureVisibility.shown,
-    'history': FeatureVisibility.shown,
-    'cloud_sync': FeatureVisibility.shown,
+    // 同步与站点
+    'remote_posts': FeatureVisibility.hidden, // 并入"同步中心"（cloud_sync）
+    'sync_status': FeatureVisibility.hidden, // 并入"同步中心"（cloud_sync）
+    'history': FeatureVisibility.hidden, // 并入"同步中心"（cloud_sync）
+    'cloud_sync': FeatureVisibility.shown, // 同步中心（承载远程文章/同步状态/提交历史）
     'p2p_sync': FeatureVisibility.shown,
-    'add_site': FeatureVisibility.shown,
+    'add_site': FeatureVisibility.hidden, // 并入"站点管理"（site_manager）
     'site_operations': FeatureVisibility.hidden, // 运维与监控（诊断类，简易模式隐藏）
-    'site_manager': FeatureVisibility.shown,
+    'site_manager': FeatureVisibility.shown, // 站点管理（含添加站点/动态博客登录）
     'create_site': FeatureVisibility.shown, // 一键建站（AI 对话主模式）
     // 仪表盘由首页替代
     'dashboard': FeatureVisibility.hidden,
-    // AI 工作台与模型配置（唯一 AI 对话入口）
+    // AI 工作台与模型配置
     'agent_workbench': FeatureVisibility.shown,
     'theme_store': FeatureVisibility.shown,
     'ai_model_manager': FeatureVisibility.shown,
@@ -110,9 +111,15 @@ abstract final class NavEntries {
     'logs': FeatureVisibility.hidden,
     'export_logs': FeatureVisibility.hidden,
     'cache_cleanup': FeatureVisibility.hidden,
-    'blog_site_manager': FeatureVisibility.hidden,
+    'blog_site_manager': FeatureVisibility.hidden, // 并入"站点管理"（site_manager）
     'settings': FeatureVisibility.shown,
     'help': FeatureVisibility.shown,
+    // 本功能新增入口
+    'all_features': FeatureVisibility.shown, // 全部功能 Hub
+    'customize_sidebar': FeatureVisibility.shown, // 自定义侧边栏
+    'backup_restore': FeatureVisibility.hidden,
+    'content_stats': FeatureVisibility.hidden,
+    'local_file_zone': FeatureVisibility.optIn,
   };
 
   /// 简易模式下可见入口
@@ -121,6 +128,28 @@ abstract final class NavEntries {
 
   static bool visibleEntry(String id, AppMode mode, List<String> extras) =>
       ModeVisibilityFilter.isVisible(id, mode, extras, registry);
+
+  /// 按模式默认（不考虑 extras 加回）判断入口是否可见，用于自定义对话框展示默认状态
+  static bool visibleEntryOrDefault(String id, AppMode mode) {
+    if (mode == AppMode.standard) return true;
+    final vis = registry[id];
+    return vis == FeatureVisibility.shown;
+  }
+
+  /// 组合过滤：用户自定义覆盖模式默认
+  /// 优先级：navCustom.customized 且 visible 含该 id → 按用户偏好；
+  /// 其余回落模式默认过滤。
+  static bool navVisibleFor(
+    String id,
+    AppMode mode,
+    List<String> extras,
+    NavCustomConfig navCustom,
+  ) {
+    if (navCustom.hasOverride(id)) {
+      return navCustom.visible[id] ?? false;
+    }
+    return visibleEntry(id, mode, extras);
+  }
 }
 
 /// 设置界面分区注册表

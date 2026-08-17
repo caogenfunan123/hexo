@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../core/repository/static_blog_repository.dart';
@@ -10,6 +12,7 @@ import '../services/log_service.dart';
 /// 全部静态博客文章聚合管理界面
 ///
 /// 聚合所有静态博客仓库的文章，支持搜索、批量选择与批量删除。
+/// 带快照缓存：二次打开先直出缓存，再按仓库指纹增量刷新。
 class AllStaticBlogsScreen extends StatefulWidget {
   /// 全部静态博客仓库
   final List<RepoConfig> repos;
@@ -17,6 +20,9 @@ class AllStaticBlogsScreen extends StatefulWidget {
   final AppSettings settings;
   final GitHubService githubService;
   final LogService logService;
+
+  /// 快照缓存根目录提供者（null 禁用缓存）
+  final Future<Directory> Function()? snapshotRootProvider;
 
   /// 打开文章到编辑器的回调
   final void Function(BlogPost post) onOpenInEditor;
@@ -30,6 +36,7 @@ class AllStaticBlogsScreen extends StatefulWidget {
     required this.settings,
     required this.githubService,
     required this.logService,
+    this.snapshotRootProvider,
     required this.onOpenInEditor,
     required this.onDeletePost,
   });
@@ -69,9 +76,11 @@ class _AllStaticBlogsScreenState extends State<AllStaticBlogsScreen> {
         appSettings: widget.settings,
         githubService: widget.githubService,
         logService: widget.logService,
+        snapshotRootProvider: widget.snapshotRootProvider,
       );
     }).toList();
-    _loadPosts();
+    // 先直出缓存，再增量刷新
+    _loadWithCache();
   }
 
   @override
@@ -83,38 +92,107 @@ class _AllStaticBlogsScreenState extends State<AllStaticBlogsScreen> {
     super.dispose();
   }
 
-  Future<void> _loadPosts() async {
-    if (mounted) {
-      setState(() {
-        _loading = true;
-        _error = null;
-      });
+  /// 带快照缓存的加载：先直出缓存立即渲染，再逐个仓库比对指纹增量刷新
+  Future<void> _loadWithCache() async {
+    // 第一阶段：读缓存快照立即渲染（无网络）
+    if (widget.snapshotRootProvider != null) {
+      final cachedMerged = await _loadAllFromCache();
+      if (cachedMerged != null) {
+        if (!mounted) return;
+        setState(() {
+          _posts = cachedMerged;
+          _loading = false;
+          _error = null;
+        });
+      }
+    }
+    // 第二阶段：按指纹比对，仅对变化的仓库重拉
+    await _refreshChanged();
+  }
+
+  /// 从各仓库缓存快照合并文章（全部缓存缺失时返回 null）
+  Future<List<BlogPost>?> _loadAllFromCache() async {
+    final merged = <BlogPost>[];
+    final seen = <String>{};
+    var loadedAny = false;
+    for (var i = 0; i < _repositories.length; i++) {
+      final repo = _repositories[i];
+      final snap = await repo.loadSnapshot();
+      if (snap == null) continue;
+      loadedAny = true;
+      for (final p in snap.posts) {
+        final key = '${p.siteId ?? widget.repos[i].id}:${p.link ?? p.title}';
+        if (seen.contains(key)) continue;
+        seen.add(key);
+        merged.add(p);
+      }
+    }
+    if (!loadedAny) return null;
+    merged.sort((a, b) => b.modifiedDate.compareTo(a.modifiedDate));
+    return merged;
+  }
+
+  /// 增量刷新：每个仓库比对指纹，无变化跳过网络，有变化重拉该仓库
+  Future<void> _refreshChanged() async {
+    final results = <List<BlogPost>?>[];
+    try {
+      results.addAll(await Future.wait(_repositories.map((repo) async {
+        try {
+          // 重新拉取：缓存失效（指纹变化/无缓存）时才会发网络请求
+          return await repo.getPostsCached(forceRefresh: false);
+        } catch (e) {
+          // 单仓库失败：保留该仓库既有缓存展示，不阻断整体
+          debugPrint('AllStaticBlogs: refresh ${repo.repoConfig.name}: $e');
+          return null;
+        }
+      })));
+    } catch (e) {
+      debugPrint('AllStaticBlogs: 增量刷新失败 $e');
+      return;
     }
 
+    if (!mounted) return;
+    // 失败仓库（null）沿用当前已渲染数据，未失败仓库用最新结果
+    final next = <BlogPost>[];
+    final seen = <String>{};
+    for (var i = 0; i < results.length; i++) {
+      final list = results[i];
+      if (list == null) continue;
+      final siteId = widget.repos[i].id;
+      for (final p in list) {
+        final key = '${p.siteId ?? siteId}:${p.link ?? p.title}';
+        if (seen.contains(key)) continue;
+        seen.add(key);
+        next.add(p);
+      }
+    }
+    next.sort((a, b) => b.modifiedDate.compareTo(a.modifiedDate));
+    setState(() {
+      if (next.isNotEmpty) _posts = next;
+      _loading = false;
+      if (_error != null) _error = null;
+    });
+  }
+
+  /// 强制全量刷新：跳过缓存，全部仓库重新拉取并重建缓存
+  Future<void> _forceRefresh() async {
+    if (_loading) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
     try {
-      // 聚合所有仓库的文章
       final results = await Future.wait(_repositories.map((repo) async {
         try {
-          return await repo.getPosts(page: 1, perPage: 500);
+          return await repo.getPostsCached(forceRefresh: true);
         } catch (e) {
-          debugPrint('AllStaticBlogs: load ${repo.repoConfig.name} failed: $e');
+          debugPrint('AllStaticBlogs: force ${repo.repoConfig.name}: $e');
           return <BlogPost>[];
         }
       }));
 
-      final merged = <BlogPost>[];
-      final seen = <String>{};
-      for (var i = 0; i < results.length; i++) {
-        final siteId = widget.repos[i].id;
-        for (final p in results[i]) {
-          final key = '${p.siteId ?? siteId}:${p.link ?? p.title}';
-          if (seen.contains(key)) continue;
-          seen.add(key);
-          merged.add(p);
-        }
-      }
-
-      merged.sort((a, b) => b.modifiedDate.compareTo(a.modifiedDate));
+      final merged = _mergePosts(results);
 
       if (!mounted) return;
       setState(() {
@@ -129,6 +207,26 @@ class _AllStaticBlogsScreenState extends State<AllStaticBlogsScreen> {
       });
     }
   }
+
+  /// 合并多仓库文章并去重排序
+  List<BlogPost> _mergePosts(List<List<BlogPost>> results) {
+    final merged = <BlogPost>[];
+    final seen = <String>{};
+    for (var i = 0; i < results.length; i++) {
+      final siteId = widget.repos[i].id;
+      for (final p in results[i]) {
+        final key = '${p.siteId ?? siteId}:${p.link ?? p.title}';
+        if (seen.contains(key)) continue;
+        seen.add(key);
+        merged.add(p);
+      }
+    }
+    merged.sort((a, b) => b.modifiedDate.compareTo(a.modifiedDate));
+    return merged;
+  }
+
+  /// 兼容旧调用：直接全量加载（保留原语义）
+  Future<void> _loadPosts() => _forceRefresh();
 
   List<BlogPost> get _filteredPosts {
     if (_searchQuery.isEmpty) return _posts;
@@ -308,8 +406,8 @@ class _AllStaticBlogsScreenState extends State<AllStaticBlogsScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh, size: 20),
-            onPressed: _loading || _deleting ? null : _loadPosts,
-            tooltip: '刷新',
+            onPressed: _loading || _deleting ? null : _forceRefresh,
+            tooltip: '强制刷新',
           ),
         ],
       ),
@@ -415,7 +513,7 @@ class _AllStaticBlogsScreenState extends State<AllStaticBlogsScreen> {
                     ),
                   ),
                   TextButton(
-                    onPressed: () => _loadPosts(),
+                    onPressed: () => _forceRefresh(),
                     child: const Text('重试'),
                   ),
                 ],
@@ -449,7 +547,7 @@ class _AllStaticBlogsScreenState extends State<AllStaticBlogsScreen> {
                         ),
                       )
                     : RefreshIndicator(
-                        onRefresh: _loadPosts,
+                        onRefresh: _forceRefresh,
                         child: ListView.builder(
                           padding: const EdgeInsets.all(12),
                           itemCount: _filteredPosts.length,

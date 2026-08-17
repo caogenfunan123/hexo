@@ -4,6 +4,7 @@ library;
 
 import 'design_config.dart';
 import 'editor_theme.dart';
+import 'nav_custom_config.dart';
 
 /// 应用界面模式
 enum AppMode {
@@ -65,6 +66,9 @@ class UiSettings {
   // 桌面侧边栏折叠的分组 key 集合（保持上次折叠状态）
   final List<String> collapsedLeftSections;
 
+  // 侧边栏自定义导航配置（显隐偏好 + 置顶顺序）
+  final NavCustomConfig navCustom;
+
   // 设置页折叠的分区 key 集合（保持上次折叠状态）
   final List<String> collapsedSettingsSections;
 
@@ -101,6 +105,7 @@ class UiSettings {
     this.appMode = AppMode.simple,
     this.simpleModeExtras = const [],
     this.collapsedLeftSections = const [],
+    this.navCustom = const NavCustomConfig(),
     this.collapsedSettingsSections = const [],
     this.quickNoteAnchor = '',
     this.timestampFormat = 'date',
@@ -134,6 +139,7 @@ class UiSettings {
     AppMode? appMode,
     List<String>? simpleModeExtras,
     List<String>? collapsedLeftSections,
+    NavCustomConfig? navCustom,
     List<String>? collapsedSettingsSections,
     String? quickNoteAnchor,
     String? timestampFormat,
@@ -163,6 +169,7 @@ class UiSettings {
       appMode: appMode ?? this.appMode,
       simpleModeExtras: simpleModeExtras ?? this.simpleModeExtras,
       collapsedLeftSections: collapsedLeftSections ?? this.collapsedLeftSections,
+      navCustom: navCustom ?? this.navCustom,
       collapsedSettingsSections: collapsedSettingsSections ?? this.collapsedSettingsSections,
       quickNoteAnchor: quickNoteAnchor ?? this.quickNoteAnchor,
       timestampFormat: timestampFormat ?? this.timestampFormat,
@@ -194,6 +201,7 @@ class UiSettings {
     'appMode': appMode.name,
     'simpleModeExtras': simpleModeExtras,
     'collapsedLeftSections': collapsedLeftSections,
+    'navCustom': navCustom.toJson(),
     'collapsedSettingsSections': collapsedSettingsSections,
     'quickNoteAnchor': quickNoteAnchor,
     'timestampFormat': timestampFormat,
@@ -237,6 +245,9 @@ class UiSettings {
     appMode: AppMode.fromKey(j['appMode']),
     simpleModeExtras: _parseList(j['simpleModeExtras'], const []),
     collapsedLeftSections: _parseList(j['collapsedLeftSections'], const []),
+    navCustom: j['navCustom'] is Map
+        ? NavCustomConfig.fromJson(Map<String, dynamic>.from(j['navCustom'] as Map))
+        : const NavCustomConfig(),
     collapsedSettingsSections: _parseList(j['collapsedSettingsSections'], const []),
     quickNoteAnchor: j['quickNoteAnchor']?.toString() ?? '',
     timestampFormat: j['timestampFormat']?.toString() ?? 'date',

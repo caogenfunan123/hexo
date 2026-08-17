@@ -149,6 +149,25 @@ bool navVisibleFor(
 - `_navigateTo` 简易模式重定向逻辑改为基于 `navVisibleFor` 判定（当前 `visibleEntry` 调用点替换）。
 - 抽屉尾部增加"全部功能"与"自定义侧边栏"入口。
 
+### 9. 全部博客管理快照缓存
+
+`StaticBlogRepository.getPosts` 与 `AllStaticBlogsScreen` 增加快照缓存层。缓存以单仓库为粒度持久化到应用数据目录（复用既有存储目录机制），详见 `static_blog_repository.dart`：
+
+```dart
+class StaticBlogSnapshot {
+  final DateTime baseline;          // 本次缓存时记录的仓库变更基线
+  final List<BlogPostCacheEntry> posts; // 文章快照
+  const StaticBlogSnapshot({required this.baseline, required this.posts});
+  // toJson / fromJson
+}
+```
+
+- **首次加载**：`getPosts` 拉取全量后写入 `snapshot_<repoId>.json`（含 baseline），复用现有持久化目录。
+- **再次打开**：`AllStaticBlogsScreen` 先读缓存快照立即渲染；随后对比仓库基线，仅对基线变化的仓库调用 `repo.reloadIfChanged()` 重新拉取单仓库并更新缓存。
+- **仓库基线**：以 `githubService.listPosts(recursive:true)` 返回的 `lastModified` 最大值 + 文件数量 + 各文件 sha 构成的指纹；无更新时指纹一致则跳过网络请求。
+- **强制刷新**：页面级"刷新"按钮跳过缓存，全量重拉全部仓库并重置缓存。
+- **缓存不可用**：快照文件缺失/损坏/版本不符时回退全量加载，不影响页面正常展示。
+
 ## Data Models
 
 ### UiSettings JSON 增量
@@ -213,3 +232,5 @@ bool navVisibleFor(
 [^5]: (File) - [lib/main.dart](lib/main.dart#L980) — 移动端 _navigateTo 重定向逻辑（visibleEntry 调用点替换）
 [^6]: (File) - [lib/desktop/desktop_shell.dart](lib/desktop/desktop_shell.dart) — 桌面导航接线与 ShellActionBus
 [^7]: (Spec) - [simple-user-mode 需求](./requirements.md) — 双端一致性沿用其既有模式过滤设计
+[^8]: (File) - [lib/screens/all_static_blogs_screen.dart](lib/screens/all_static_blogs_screen.dart) — 全部博客管理页（新增快照缓存）
+[^9]: (File) - [lib/core/repository/static_blog_repository.dart](lib/core/repository/static_blog_repository.dart) — 仓库文章加载（getPosts 无缓存，改造为快照缓存）

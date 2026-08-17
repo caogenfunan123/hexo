@@ -250,6 +250,10 @@ await Navigator.of(context).push<void>(
           settings: settings,
           githubService: github,
           logService: logService,
+          snapshotRootProvider: () async {
+            final root = await storage.root;
+            return Directory('${root.path}/同步缓存');
+          },
           onOpenInEditor: _openStaticBlogPostInEditor,
           onDeletePost: _deleteStaticBlogPost,
         ),

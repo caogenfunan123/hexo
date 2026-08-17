@@ -1,4 +1,8 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
+
+import 'package:flutter/foundation.dart';
 
 import '../../models/blog_post.dart';
 import '../../models/blog_site_config.dart';
@@ -7,6 +11,45 @@ import '../repository/blog_repository.dart';
 import '../../services/github_service.dart';
 import '../../services/log_service.dart';
 import '../../models/app_settings.dart';
+
+/// 静态博客文章快照缓存条目
+///
+/// 持久化到应用数据目录，供「全部博客管理」二次打开时免网络直出。
+class StaticBlogSnapshot {
+  /// 缓存时的仓库指纹（来自 [GitHubService.listPostsFingerprint]）
+  final String fingerprint;
+
+  /// 缓存写入时间
+  final DateTime savedAt;
+
+  /// 文章快照
+  final List<BlogPost> posts;
+
+  const StaticBlogSnapshot({
+    required this.fingerprint,
+    required this.savedAt,
+    required this.posts,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'fingerprint': fingerprint,
+        'savedAt': savedAt.toIso8601String(),
+        'posts': posts.map((e) => e.toJson()).toList(),
+      };
+
+  factory StaticBlogSnapshot.fromJson(Map<String, dynamic> j) {
+    final posts = (j['posts'] as List? ?? [])
+        .whereType<Map>()
+        .map((e) => BlogPost.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+    return StaticBlogSnapshot(
+      fingerprint: j['fingerprint']?.toString() ?? '',
+      savedAt:
+          DateTime.tryParse(j['savedAt']?.toString() ?? '') ?? DateTime.now(),
+      posts: posts,
+    );
+  }
+}
 
 /// 静态博客仓库适配器
 /// 
@@ -17,12 +60,19 @@ class StaticBlogRepository implements BlogRepository {
   final AppSettings appSettings;
   final GitHubService githubService;
   final LogService logService;
-  
+
+  /// 快照缓存目录提供者（null 表示不启用缓存，回退全量加载）
+  final Future<Directory> Function()? snapshotRootProvider;
+
+  /// 最近一次成功写入的缓存指纹（供页面判断是否有更新）
+  String? lastCachedFingerprint;
+
   StaticBlogRepository({
     required this.repoConfig,
     required this.appSettings,
     required this.githubService,
     required this.logService,
+    this.snapshotRootProvider,
   });
 
   @override
@@ -51,6 +101,122 @@ class StaticBlogRepository implements BlogRepository {
     } catch (e) {
       return ConnectionResult.fail('连接失败', detail: e.toString());
     }
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // 快照缓存：按仓库粒度持久化，二次打开免网络直出
+  // ════════════════════════════════════════════════════════════
+
+  Directory? _cacheDir;
+
+  /// 快照缓存目录（应用数据目录下 `.blog_snapshot/<repoId>`）
+  Future<Directory> _snapshotDir() async {
+    if (_cacheDir != null) return _cacheDir!;
+    final provider = snapshotRootProvider;
+    if (provider == null) {
+      throw StateError('未配置快照缓存目录');
+    }
+    final root = await provider();
+    final dir = Directory('${root.path}/.blog_snapshot/${_safePath(repoConfig.id)}');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    _cacheDir = dir;
+    return dir;
+  }
+
+  File _snapshotFile(Directory dir) => File('${dir.path}/snapshot.json');
+
+  /// 将不可信字符串消毒为安全单一路径段
+  static String _safePath(String input) => input
+      .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1f]'), '_')
+      .replaceAll(RegExp(r'\s+'), '_');
+
+  /// 读取缓存快照；文件缺失/损坏返回 null（调用方回退全量加载）
+  Future<StaticBlogSnapshot?> loadSnapshot() async {
+    try {
+      final dir = await _snapshotDir();
+      final f = _snapshotFile(dir);
+      if (!await f.exists()) return null;
+      final text = await f.readAsString();
+      if (text.trim().isEmpty) return null;
+      final data = jsonDecode(text);
+      if (data is! Map) return null;
+      final snap = StaticBlogSnapshot.fromJson(Map<String, dynamic>.from(data));
+      if (snap.fingerprint.isEmpty || snap.posts.isEmpty) return null;
+      return snap;
+    } catch (e) {
+      debugPrint('StaticBlogRepository: 读取快照失败 $e');
+      return null;
+    }
+  }
+
+  /// 写入缓存快照（原子写入，损坏不留半截文件）
+  Future<void> saveSnapshot(List<BlogPost> posts, {required String fingerprint}) async {
+    try {
+      final dir = await _snapshotDir();
+      final f = _snapshotFile(dir);
+      final tmp = File('${f.path}.tmp.${DateTime.now().microsecondsSinceEpoch}');
+      final snap = StaticBlogSnapshot(
+        fingerprint: fingerprint,
+        savedAt: DateTime.now(),
+        posts: posts,
+      );
+      await tmp.writeAsString(const JsonEncoder.withIndent('  ').convert(snap.toJson()),
+          flush: true);
+      await tmp.rename(f.path);
+      lastCachedFingerprint = fingerprint;
+    } catch (e) {
+      debugPrint('StaticBlogRepository: 写入快照失败 $e');
+    }
+  }
+
+  /// 清空缓存（强制刷新前调用）
+  Future<void> clearSnapshot() async {
+    try {
+      final dir = await _snapshotDir();
+      final f = _snapshotFile(dir);
+      if (await f.exists()) await f.delete();
+    } catch (e) {
+      debugPrint('StaticBlogRepository: 清空快照失败 $e');
+    }
+  }
+
+  /// 获取当前仓库指纹（null 表示仓库不可读，需回退全量）
+  Future<String?> currentFingerprint() => githubService.listPostsFingerprint(repoConfig);
+
+  /// 若缓存未过期则直接返回缓存文章列表，否则返回 null
+  Future<List<BlogPost>?> cachedIfFresh({
+    required bool forceRefresh,
+  }) async {
+    if (!forceRefresh && snapshotRootProvider != null) {
+      final snap = await loadSnapshot();
+      if (snap != null) {
+        final fp = await currentFingerprint();
+        if (fp != null && fp == snap.fingerprint) {
+          return snap.posts;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// 获取文章列表（带快照缓存：先比对指纹，无更新直接返回缓存）
+  Future<List<BlogPost>> getPostsCached({bool forceRefresh = false}) async {
+    final cached = await cachedIfFresh(forceRefresh: forceRefresh);
+    if (cached != null) return cached;
+
+    final posts = await getPosts(page: 1, perPage: 500);
+    if (snapshotRootProvider != null) {
+      final fp = await currentFingerprint();
+      if (fp != null) {
+        await saveSnapshot(posts, fingerprint: fp);
+      }
+    }
+    return posts;
+  }
+
+  /// 带缓存的全量文章列表（供聚合页面合并去重）
+  Future<List<BlogPost>> getAllPostsCached({bool forceRefresh = false}) async {
+    return getPostsCached(forceRefresh: forceRefresh);
   }
 
   @override

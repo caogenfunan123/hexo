@@ -38,6 +38,8 @@ import '../core/ai/ai_session_manager.dart';
 import '../core/ai/theme_migration_service.dart';
 import '../core/template_engine/template_resolver.dart';
 import '../screens/ai_article_chat_screen.dart';
+import '../screens/all_features_screen.dart';
+import '../desktop/widgets/sidebar_customize_dialog.dart';
 import '../core/task/agent_task_type.dart';
 import '../screens/agent_workbench_screen.dart';
 import '../screens/ai_model_manager_screen.dart';
@@ -7327,6 +7329,40 @@ class DesktopShellState extends State<DesktopShell>
     );
   }
 
+  /// 打开"全部功能"枢纽页
+  void _openAllFeatures() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => AllFeaturesScreen(
+          mode: settings.ui.appMode,
+          simpleModeExtras: settings.ui.simpleModeExtras,
+          navCustom: settings.ui.navCustom,
+          bus: _bus,
+          onNavCustomChanged: (cfg) {
+            _updateSettings(
+              settings.copyWith(ui: settings.ui.copyWith(navCustom: cfg)),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// 打开"自定义侧边栏"对话框
+  void _openSidebarCustomize() {
+    showSidebarCustomizeDialog(
+      context: context,
+      mode: settings.ui.appMode,
+      simpleModeExtras: settings.ui.simpleModeExtras,
+      navCustom: settings.ui.navCustom,
+      onNavCustomChanged: (cfg) {
+        _updateSettings(
+          settings.copyWith(ui: settings.ui.copyWith(navCustom: cfg)),
+        );
+      },
+    );
+  }
+
   // ============================================================
   // 剪贴板图片粘贴（桌面版：粘贴截图 → 上传图床 → 插入 Markdown）
   // ============================================================
@@ -10019,6 +10055,9 @@ $htmlContent
     // 文件操作
     onOpenFile: _openFileDialog,
     onOpenFileZone: _openLocalFileZone,
+    // 侧边栏自定义 & 全部功能
+    onOpenAllFeatures: _openAllFeatures,
+    onOpenCustomizeSidebar: _openSidebarCustomize,
     // 文章管理
     onOpenArticle: (a) => _openExistingArticle(a),
     onRenameArticle: _renameArticle,
@@ -10125,6 +10164,7 @@ $htmlContent
             siteManager: siteManager,
             mode: settings.ui.appMode,
             simpleModeExtras: settings.ui.simpleModeExtras,
+            navCustom: settings.ui.navCustom,
             collapsedSections: settings.ui.collapsedLeftSections,
             onCollapsedSectionsChanged: (keys) {
               _updateSettings(

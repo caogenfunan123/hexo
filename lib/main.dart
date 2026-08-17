@@ -48,6 +48,9 @@ import 'screens/theme_store_screen.dart';
 import 'screens/remote_screen.dart';
 import 'screens/remote_posts_screen.dart';
 import 'screens/all_static_blogs_screen.dart';
+import 'screens/all_features_screen.dart';
+import 'desktop/shell_action_bus.dart';
+import 'desktop/widgets/sidebar_customize_dialog.dart';
 import 'screens/static_blog_posts_screen.dart';
 import 'screens/sync_screen.dart';
 import 'screens/sync_settings_screen.dart';
@@ -982,10 +985,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     if (settings.ui.appMode == AppMode.simple) {
       final targetId = _pageEntryId(page);
       if (targetId != null &&
-          !NavEntries.visibleEntry(
+          !NavEntries.navVisibleFor(
             targetId,
             AppMode.simple,
             settings.ui.simpleModeExtras,
+            settings.ui.navCustom,
           )) {
         page = MobilePage.home.index;
       }

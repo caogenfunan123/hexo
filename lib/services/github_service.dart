@@ -185,6 +185,27 @@ class GitHubService {
     return items;
   }
 
+  /// 轻量仓库文章指纹：仅枚举文件路径与 SHA，不做逐文件 commit 历史请求。
+  ///
+  /// 用于「全部博客管理」快照缓存比对——无更新时两端指纹一致即跳过网络请求。
+  /// 指纹由文件数量 + 排序后的 path:sha 拼接串构成，内容变更/增删都会改变指纹。
+  /// 返回 null 表示仓库不可读（网络/鉴权失败），调用方应回退全量加载。
+  Future<String?> listPostsFingerprint(RepoConfig repo) async {
+    try {
+      final all = <GitHubFileItem>[];
+      await _collectMarkdownFiles(repo, repo.postsPath, all);
+      all.sort((a, b) => a.path.compareTo(b.path));
+      final sb = StringBuffer('${all.length};');
+      for (final f in all) {
+        sb.write('${f.path}:${f.sha ?? ''};');
+      }
+      return sb.toString();
+    } catch (e) {
+      debugPrint('Git: listPostsFingerprint failed: $e');
+      return null;
+    }
+  }
+
   Future<Article> getArticle(RepoConfig repo, GitHubFileItem item) async {
     final read = await adapter(repo).readFile(repo, item.path);
     if (read == null) throw Exception('无效的文件响应');

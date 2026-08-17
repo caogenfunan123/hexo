@@ -918,7 +918,8 @@ extension EditorUiExt on _RootShellState {
     final mode = settings.ui.appMode;
     final extras = settings.ui.simpleModeExtras;
 
-    bool navVisible(String id) => NavEntries.visibleEntry(id, mode, extras);
+    bool navVisible(String id) =>
+        NavEntries.navVisibleFor(id, mode, extras, settings.ui.navCustom);
 
     return Drawer(
       backgroundColor: Colors.white,
@@ -1195,6 +1196,24 @@ extension EditorUiExt on _RootShellState {
                           Icons.history,
                           l10n.translate('nav_log'),
                         ),
+                    ],
+                  ),
+                  // ── 全部功能 & 自定义侧边栏 ──
+                  _drawerSectionGroup(
+                    'hub',
+                    '功能',
+                    Icons.apps_outlined,
+                    children: [
+                      _drawerAction(
+                        Icons.apps_outlined,
+                        '全部功能',
+                        _showAllFeaturesMobile,
+                      ),
+                      _drawerAction(
+                        Icons.tune,
+                        '自定义侧边栏',
+                        _showSidebarCustomizeMobile,
+                      ),
                     ],
                   ),
                 ],
@@ -1994,6 +2013,107 @@ extension EditorUiExt on _RootShellState {
           },
         ),
       ),
+    );
+  }
+
+  /// 移动端"全部功能"枢纽页
+  Future<void> _showAllFeaturesMobile() async {
+    final cfg = settings.ui.navCustom;
+
+    void save(NavCustomConfig c) {
+      _updateSettings(
+        settings.copyWith(ui: settings.ui.copyWith(navCustom: c)),
+      );
+    }
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => AllFeaturesScreen(
+          mode: settings.ui.appMode,
+          simpleModeExtras: settings.ui.simpleModeExtras,
+          navCustom: cfg,
+          onEntryTapOverride: _mobileEntryTap,
+          onOpenCustomize: () {
+            showSidebarCustomizeDialog(
+              context: context,
+              mode: settings.ui.appMode,
+              simpleModeExtras: settings.ui.simpleModeExtras,
+              navCustom: settings.ui.navCustom,
+              onNavCustomChanged: save,
+            );
+          },
+          onNavCustomChanged: save,
+        ),
+      ),
+    );
+  }
+
+  /// 移动端入口点击：把入口 id 映射到移动端导航动作
+  ///
+  /// 仅映射移动端确实存在的动作/页面；移动端未实现的功能返回 null，
+  /// 由 Hub 页对不可达入口做降级提示。
+  VoidCallback? _mobileEntryTap(String id) {
+    // 既有移动端导航页面切换
+    final page = _entryToMobilePage(id);
+    if (page != null) {
+      final p = page;
+      return () {
+        Navigator.of(context).pop(); // 关掉 Hub 页
+        _navigateTo(p.index);
+      };
+    }
+    // 特殊动作（仅限移动端已存在实现）
+    return switch (id) {
+      'agent_workbench' => _showAgentWorkbench,
+      'theme_store' => _showThemeStore,
+      'ai_model_manager' => _showAiModelManager,
+      'template_manager' => _showTemplateManager,
+      'snippets' => _showSnippetManager,
+      'config_editor' => _showSiteConfigEditor,
+      'p2p_sync' => _openP2PSync,
+      'site_manager' => _showStaticBlogPosts,
+      'blog_site_manager' => _showBlogSiteManager,
+      'add_site' => _showAllStaticBlogs,
+      'recycle_bin' => _showMobileRecycleBin,
+      'theme_migration' => _showMigrationTool,
+      'all_features' => null,
+      'customize_sidebar' => () => _showSidebarCustomizeMobile(),
+      _ => null,
+    };
+  }
+
+  /// 入口 id → 移动端底部导航页
+  MobilePage? _entryToMobilePage(String id) {
+    return switch (id) {
+      'home' => MobilePage.home,
+      'new_article' => MobilePage.editor,
+      'drafts' => MobilePage.drafts,
+      'remote_posts' => MobilePage.remote,
+      'sync_status' => MobilePage.sync,
+      'history' => MobilePage.history,
+      'rss' => MobilePage.rss,
+      'dashboard' => MobilePage.home,
+      'preview' => MobilePage.preview,
+      'settings' => MobilePage.settings,
+      'logs' => MobilePage.logs,
+      'batch_upload' => MobilePage.batchUpload,
+      'reader' => MobilePage.reader,
+      _ => null,
+    };
+  }
+
+  /// 移动端"自定义侧边栏"入口
+  void _showSidebarCustomizeMobile() {
+    showSidebarCustomizeDialog(
+      context: context,
+      mode: settings.ui.appMode,
+      simpleModeExtras: settings.ui.simpleModeExtras,
+      navCustom: settings.ui.navCustom,
+      onNavCustomChanged: (cfg) {
+        _updateSettings(
+          settings.copyWith(ui: settings.ui.copyWith(navCustom: cfg)),
+        );
+      },
     );
   }
 }
