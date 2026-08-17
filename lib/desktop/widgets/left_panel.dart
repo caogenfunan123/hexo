@@ -888,7 +888,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
   // 置顶区
   // ============================================================
   /// 入口 id → 显示信息（供置顶区与 Hub 复用）
-  static const Map<String, (IconData, String)> _entryMeta = {
+  late final Map<String, (IconData, String)> _entryMeta = {
     for (final e in kNavEntries) e.id: (e.icon, e.label),
   };
 

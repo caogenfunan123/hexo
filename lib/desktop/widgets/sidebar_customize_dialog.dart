@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_color.dart';
 import '../../models/ui_settings.dart';
 import '../../models/nav_custom_config.dart';
+import '../../desktop/feature_entries.dart';
 import '../../desktop/nav_entries_meta.dart';
 
 Future<void> showSidebarCustomizeDialog({

@@ -20,7 +20,8 @@ class AllFeaturesScreen extends StatefulWidget {
   final ShellActionBus? bus;
 
   /// 非桌面端可传入自定义入口点击处理器（替代 bus 动作映射）
-  final VoidCallback Function(String entryId)? onEntryTapOverride;
+  /// 返回 null 表示该入口在当前端不可达（降级为不可点）。
+  final VoidCallback? Function(String entryId)? onEntryTapOverride;
 
   /// 打开自定义侧边栏（为空则隐藏 appbar 按钮）
   final VoidCallback? onOpenCustomize;
@@ -189,7 +190,7 @@ class _AllFeaturesScreenState extends State<AllFeaturesScreen> {
     final pinned = widget.navCustom.isPinned(def.id);
     final onTapOverride = widget.onEntryTapOverride;
     final action = onTapOverride != null
-        ? () => onTapOverride(def.id)
+        ? onTapOverride(def.id)
         : (widget.bus != null ? navEntryAction(widget.bus!, def.id) : null);
     final enabled = action != null;
 
