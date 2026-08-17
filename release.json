@@ -1,24 +1,24 @@
 {
-  "version": "1.0.4",
-  "build": 5,
+  "version": "1.0.5",
+  "build": 6,
   "name": "Hexo 写作系统",
-  "notes": "",
-  "publishedAt": "2026-08-17T00:00:00+08:00",
+  "notes": "v1.0.5 更新内容：\n- Android: 添加所有文件访问权限支持\n- 桌面端: 默认存储路径改为 Documents/拓墨\n- 桌面端: 自动迁移旧路径数据\n- Android: 默认使用公共 Documents 目录\n- 本地文件区: 支持选择外部目录浏览\n- 本地文件区: 支持在编辑器中打开文件\n- 左侧面板: 添加本地文件区入口",
+  "publishedAt": "2026-08-17T07:47:00+08:00",
   "platforms": {
     "android": {
-      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.4/app-release.apk",
-      "sha256": "bcfeec5790edf67cef07ced563757af8eb8eb44d5248729915d3452fda331aec",
-      "size": 73011376
+      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.5/app-release.apk",
+      "sha256": "2adb4fcb16e82352f043f27c944ee683a5176af5a20a65963e219fc24532023f",
+      "size": 73011428
     },
     "windows": {
-      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.4/hexo-windows.zip",
-      "sha256": "b0e09129bbe26a2dbaec408a7d2ae621110c7e3f2abea54f94203e9ec5d3215d",
-      "size": 21479866
+      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.5/hexo-windows.zip",
+      "sha256": "da7763bcb42b8d80eab6376fc422ebd91122ae015e21f5d9068500b32760a501",
+      "size": 21484045
     },
     "linux": {
-      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.4/hexo-linux.tar.gz",
-      "sha256": "411b1f3ac78c2fc3f23d6d09d6d80e0a53c327d1521f480795d3454d5885f7c4",
-      "size": 18333063
+      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.5/hexo-linux.tar.gz",
+      "sha256": "f2cc3da28949c56821c580c2cbc995d78814785423905f55fafbc361b9ed9f45",
+      "size": 18334386
     }
   }
 }
