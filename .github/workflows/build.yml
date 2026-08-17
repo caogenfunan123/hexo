@@ -390,6 +390,8 @@ jobs:
         with:
           name: "v${GITHUB_REF_NAME#v}"
           tag_name: "${{ github.ref_name }}"
+          fail_on_unmatched_files: false
+          overwrite: true
           body: |
             ## 版本 ${{ github.ref_name }}
 
