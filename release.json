@@ -2,23 +2,23 @@
   "version": "1.0.7",
   "build": 8,
   "name": "Hexo 写作系统",
-  "notes": "★修复：桌面小部件（阅读/任务/速记）深链在应用热启动（进程存活）时被系统判定为普通图标启动而吞掉参数，点「编辑/选文」只打开主界面；现改用独立 scheme 深链 + onResume 兜底重推 + 前台补拉，冷热启动均可直达编辑器/文章选择器。",
-  "publishedAt": "2026-08-18T01:00:00+00:00",
+  "notes": "★修复：桌面小部件（阅读/任务/速记）深链在应用热启动（进程存活）时被系统判定为普通图标启动而吞掉参数，点「编辑/选文」只打开主界面；现改用独立 scheme 深链 + onResume 兜底重推 + 前台补拉，冷热启动均可直达编辑器/文章选择器。关于页新增官网入口（app.caogenfunan.me）。",
+  "publishedAt": "2026-08-18T00:37:51Z",
   "platforms": {
     "android": {
       "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.7/app-release.apk",
-      "sha256": "",
-      "size": 0
+      "sha256": "43484cbd8dd4318e9f5f7f640350141387d1a8b8a45cf6f8e4973fc1803c9fd2",
+      "size": 73226036
     },
     "windows": {
       "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.7/hexo-windows.zip",
-      "sha256": "",
-      "size": 0
+      "sha256": "fecae4e075dbe3690af18c1029b8eb716fb91cdca307125958c3246e5542f79e",
+      "size": 21505202
     },
     "linux": {
       "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.7/hexo-linux.tar.gz",
-      "sha256": "",
-      "size": 0
+      "sha256": "ddeb0d47e8f62319eba18afcaafe7d89c840bb2e572e5e88478c5376597b7940",
+      "size": 18349697
     }
   }
 }
