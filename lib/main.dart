@@ -333,12 +333,13 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   VersionSnapshotService? _snapshotService;
   QuickNoteService? _quickNoteService; // ignore: unused_field 保持监听器生命周期
   StreamSubscription<QuickNoteRequest>? _quickNoteSub;
+  bool _quickNoteInited = false;
   WritingStatsService? _statsService;
 
   /// 每个草稿上次统计的字数（用于记录增量，避免重复累计）
   final Map<String, int> _lastWordCounts = {};
   UpdateCheckerService? _updateChecker;
-  String _appVersion = '1.0.6';
+  String _appVersion = '1.0.7';
 
   RepoConfig? get activeRepo {
     if (repos.isEmpty) return null;
@@ -495,6 +496,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     siteManagerInitialized = true;
     _updateSystemBarStyle();
     aiService.modelManager = aiModelManager;
+    // 提前注册速记通道（小部件/磁贴深链），不再依赖 bootstrap 尾部初始化：
+    // 拉得越早，冷启动深链消费越快；配合 resumed 补拉彻底消灭热启动丢参数
+    _initQuickNote();
     _bootstrap();
   }
 
@@ -800,7 +804,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   }
 
   /// 初始化速记入口：拉取冷启动参数 + 监听热启动推送
+  /// 幂等：initState 与 bootstrap 尾部都可能调用，只注册一次
   void _initQuickNote() {
+    if (_quickNoteInited) return;
+    _quickNoteInited = true;
     try {
       final service = QuickNoteService();
       _quickNoteService = service;
@@ -824,7 +831,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       return;
     }
     if (req.isPickArticle) {
-      _pickArticleForWidget();
+      // 延迟一帧：极早期（initState 阶段）收到的选文请求此时 Navigator 可能尚未挂载，
+      // showDialog 需要 Navigator；postFrame 后必有可用的根 Navigator。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _pickArticleForWidget();
+      });
       return;
     }
     if (req.mode != 'new') return;
@@ -972,6 +983,11 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       _autoSyncToCloud();
     } else if (state == AppLifecycleState.resumed) {
       _autoPullFromCloud();
+      // 兜底补拉：热启动时 Java 侧 onNewIntent 的推送可能在 Flutter 监听器就绪前
+      // 发出并被丢弃；回到前台时主动拉一次 pendingQuickNote（Java 侧失败会保留缓存）
+      _quickNoteService?.fetchLaunchRequest().then((req) {
+        if (req != null && mounted) _handleQuickNote(req);
+      });
     }
   }
 

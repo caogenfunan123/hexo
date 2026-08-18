@@ -69,7 +69,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  static String _cachedVersion = '1.0.6';
+  static String _cachedVersion = '1.0.7';
   late TextEditingController _siteNameCtrl;
   late TextEditingController _siteBioCtrl;
   late TextEditingController _quickNoteAnchorCtrl;
@@ -1553,6 +1553,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Clipboard.setData(const ClipboardData(text: '1995@139.com'));
               widget.onShowToast(l10n.translate('email_copied'));
             },
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.language),
+            title: const Text('官网'),
+            subtitle: const Text('app.caogenfunan.me'),
+            trailing: const Icon(Icons.open_in_new),
+            onTap: () => _openUrl('https://app.caogenfunan.me'),
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,

@@ -71,6 +71,22 @@ public class MainActivity extends FlutterActivity {
         }
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 兜底：onNewIntent 推送时 Flutter 侧监听器可能尚未就绪（冷启动初始化竞态），
+        // 消息发出后无人消费 → pendingQuickNote 已置 null 造成"死缓存"。
+        // 恢复前台时若仍有缓存则重推一次；Dart 侧 resumed 也会主动 fetch 兜底。
+        if (pendingQuickNote != null && pendingQuickNote.size() > 0 && quickNoteChannel != null) {
+            try {
+                quickNoteChannel.invokeMethod("onQuickNote", pendingQuickNote);
+                pendingQuickNote = null;
+            } catch (Exception e) {
+                android.util.Log.d("QuickNote", "resume push failed, keep cached", e);
+            }
+        }
+    }
+
     /** 从 Intent 提取速记参数存入缓存，返回是否携带 */
     private boolean captureQuickNote(Intent intent) {
         if (intent == null) return false;
