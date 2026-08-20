@@ -187,12 +187,15 @@ class StorageService {
 
   /// 一键迁移旧目录全部历史文件到当前全局根目录
   /// [oldRoot] 旧根目录路径；返回迁移的文件/目录数量
-  Future<int> migrateFrom(String oldRoot) async {
+  /// [onProgress] 可选进度回调，参数为 (已处理数量, 总数量)
+  Future<int> migrateFrom(String oldRoot, {void Function(int done, int total)? onProgress}) async {
     final source = Directory(oldRoot);
     if (!await source.exists()) return 0;
     final target = await root;
     if (source.path == target.path) return 0;
     var count = 0;
+    final total = await _countEntities(source);
+    onProgress?.call(0, total);
     await for (final entity in source.list(followLinks: false)) {
       try {
         final name = entity.uri.pathSegments.last;
@@ -203,11 +206,22 @@ class StorageService {
           await entity.copy('${target.path}/$name');
           count++;
         }
+        onProgress?.call(count, total);
       } catch (e) {
         debugPrint('StorageService.migrateFrom skip: $e');
       }
     }
     return count;
+  }
+
+  Future<int> _countEntities(Directory dir) async {
+    var n = 0;
+    try {
+      await for (final _ in dir.list(followLinks: false)) {
+        n++;
+      }
+    } catch (_) {}
+    return n;
   }
 
   Future<void> _copyDirectory(Directory src, Directory dest) async {
@@ -404,6 +418,31 @@ class StorageService {
     final dir = await draftsDir();
     final f = File('${dir.path}/${_safePathSegment(a.id)}_${a.fileName()}');
     await f.writeAsString(a.toMarkdownWithFrontMatter());
+  }
+
+  /// 将文件保存到用户可见的目录（移动端用 MediaStore Downloads，桌面端用 mdArticlesDir）
+  /// 返回保存后的路径（移动端返回 content:// URI，桌面端返回文件路径）
+  Future<String?> saveToUserVisibleDir(String fileName, String content) async {
+    // Android：通过原生通道导出到 Downloads
+    if (!kIsWeb && Platform.isAndroid) {
+      try {
+        final tmp = File('${(await root).path}/.tmp_${DateTime.now().millisecondsSinceEpoch}_$fileName');
+        await tmp.writeAsString(content);
+        final result = await _channel.invokeMethod<String>('exportFile', {
+          'sourcePath': tmp.path,
+          'fileName': fileName,
+        });
+        try { await tmp.delete(); } catch (_) {}
+        return result;
+      } catch (e) {
+        debugPrint('StorageService.saveToUserVisibleDir error: $e');
+      }
+    }
+    // iOS / 桌面端 / fallback：写入 mdArticlesDir
+    final dir = await mdArticlesDir();
+    final f = File('${dir.path}/$fileName');
+    await f.writeAsString(content);
+    return f.path;
   }
 
   /// 将不可信字符串消毒为安全的单一路径段（用于文件名拼接）

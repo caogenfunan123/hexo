@@ -1,11 +1,14 @@
 package com.example.hexo;
 
 import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.DocumentsContract;
+import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.util.Base64;
@@ -13,7 +16,10 @@ import android.util.Base64;
 import androidx.annotation.NonNull;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -311,6 +317,38 @@ public class MainActivity extends FlutterActivity {
                             result.success(ok);
                             break;
                         }
+                        case "getExportDir":
+                            result.success(getPublicDocumentsDir());
+                            break;
+                        case "convertTreeUriToPath": {
+                            String treeUriStr = call.argument("treeUri");
+                            result.success(treeUriStr != null ? treeUriToPath(treeUriStr) : null);
+                            break;
+                        }
+                        case "exportFile": {
+                            String sourcePath = call.argument("sourcePath");
+                            String fileName = call.argument("fileName");
+                            if (sourcePath == null || fileName == null) {
+                                result.error("INVALID_ARGS", "sourcePath and fileName required", null);
+                                return;
+                            }
+                            try {
+                                String exported;
+                                if (android.os.Build.VERSION.SDK_INT >= 29) {
+                                    exported = exportFileToDownloadsMediaStore(sourcePath, fileName);
+                                } else {
+                                    exported = exportFileToDownloadsLegacy(sourcePath, fileName);
+                                }
+                                if (exported != null) {
+                                    result.success(exported);
+                                } else {
+                                    result.error("EXPORT_FAILED", "export returned null", null);
+                                }
+                            } catch (Exception e) {
+                                result.error("EXPORT_FAILED", e.getMessage(), null);
+                            }
+                            break;
+                        }
                         default:
                             result.notImplemented();
                     }
@@ -494,5 +532,88 @@ public class MainActivity extends FlutterActivity {
             if (cursor != null) cursor.close();
         }
         return null;
+    }
+
+    /** 将 SAF tree URI（如 content://.../tree/primary%3ADocuments%2FTuomo）转换为真实物理路径 */
+    private String treeUriToPath(String treeUri) {
+        try {
+            Uri uri = Uri.parse(treeUri);
+            String docId = DocumentsContract.getTreeDocumentId(uri);
+            // "primary:Documents/Tuomo" 或 "ABCD-1234:foo"
+            String[] parts = docId.split(":", 2);
+            String type = parts[0];
+            String relativePath = parts.length > 1 ? parts[1] : "";
+            if ("primary".equals(type)) {
+                return Environment.getExternalStorageDirectory().getAbsolutePath() + "/" + relativePath;
+            }
+            // 非主存储（SD 卡）
+            java.io.File[] dirs = getExternalFilesDirs(null);
+            for (java.io.File d : dirs) {
+                if (d != null && d.getAbsolutePath().contains(type)) {
+                    String extPath = d.getAbsolutePath();
+                    int idx = extPath.indexOf("/Android/data/");
+                    if (idx > 0) extPath = extPath.substring(0, idx);
+                    return extPath + "/" + relativePath;
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.w("Main", "treeUriToPath failed", e);
+        }
+        return null;
+    }
+
+    /** 通过 MediaStore Downloads 将文件导出到用户可见的下载目录（Android 10+），返回 content:// URI */
+    private String exportFileToDownloadsMediaStore(String sourcePath, String fileName) throws Exception {
+        java.io.File src = new java.io.File(sourcePath);
+        if (!src.exists()) return null;
+        byte[] content = new byte[(int) src.length()];
+        try (FileInputStream fis = new FileInputStream(src)) {
+            int offset = 0;
+            while (offset < content.length) {
+                int n = fis.read(content, offset, content.length - offset);
+                if (n < 0) break;
+                offset += n;
+            }
+        }
+
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
+        values.put(MediaStore.Downloads.MIME_TYPE, "text/markdown");
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            values.put(MediaStore.Downloads.IS_PENDING, 1);
+        }
+
+        Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+        if (uri == null) return null;
+
+        try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+            if (out == null) return null;
+            out.write(content);
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            values.clear();
+            values.put(MediaStore.Downloads.IS_PENDING, 0);
+            getContentResolver().update(uri, values, null, null);
+        }
+
+        return uri.toString();
+    }
+
+    /** Android 9-：直接写入外部存储 Download 目录 */
+    private String exportFileToDownloadsLegacy(String sourcePath, String fileName) throws Exception {
+        java.io.File src = new java.io.File(sourcePath);
+        if (!src.exists()) return null;
+        java.io.File dest = new java.io.File(
+                Environment.getExternalStorageDirectory(), "Download/" + fileName);
+        try (FileInputStream fis = new FileInputStream(src);
+             java.io.FileOutputStream fos = new java.io.FileOutputStream(dest)) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = fis.read(buf)) >= 0) {
+                fos.write(buf, 0, n);
+            }
+        }
+        return dest.getAbsolutePath();
     }
 }

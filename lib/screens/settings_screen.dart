@@ -237,8 +237,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// 选择全局存储根目录
   ///
-  /// Android 使用原生 SAF 目录选择；SAF 返回的 content:// tree URI 无法被
-  /// dart:io 直接读写，此时回退到应用外部专属存储目录（真实可写路径）。
+  /// Android 使用原生 SAF 目录选择；SAF 返回的 content:// tree URI 先尝试
+  /// 转换为真实物理路径，失败则回退到公共 Documents/Tuomo 目录。
   Future<void> _pickStorageRoot() async {
     final l10n = AppLocalizations.ofContext(context);
     var path = '';
@@ -250,11 +250,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
           path = picked;
         } else if (picked.startsWith('content://') ||
             picked.startsWith('tree://')) {
-          // SAF tree URI 不可直接用于 dart:io，回退应用外部存储目录
-          final external = await channel.invokeMethod<String>(
-            'getExternalFilesDir',
+          // SAF tree URI：先尝试转换为真实物理路径
+          final realPath = await channel.invokeMethod<String>(
+            'convertTreeUriToPath',
+            {'treeUri': picked},
           );
-          if (external != null && external.isNotEmpty) path = external;
+          if (realPath != null && realPath.isNotEmpty) {
+            path = realPath;
+          } else {
+            // 转换失败（如 SD 卡不可用），回退公共 Documents 目录
+            final publicDir = await channel.invokeMethod<String>(
+              'getPublicDocumentsDir',
+            );
+            if (publicDir != null && publicDir.isNotEmpty) path = publicDir;
+          }
         }
       }
     } catch (_) {
@@ -312,13 +321,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
     widget.onShowToast(l10n.translate('global_storage_reset'));
   }
 
-  /// 一键迁移旧目录全部历史文件到当前全局根目录
+  /// 一键迁移旧目录全部历史文件到当前全局根目录（带进度对话框）
   Future<void> _migrateStorageRoot(String oldRoot) async {
     final l10n = AppLocalizations.ofContext(context);
-    final count = await widget.storage.migrateFrom(oldRoot);
-    widget.onShowToast(
-      l10n.translate('global_storage_migrated', params: {'count': '$count'}),
+    final progress = ValueNotifier<int>(0);
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(l10n.translate('migrating_title')),
+          content: ValueListenableBuilder<int>(
+            valueListenable: progress,
+            builder: (ctx, done, _) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const LinearProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Text(
+                    l10n.translate('migrating_progress',
+                        params: {'count': '$done'}),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
     );
+    try {
+      final count = await widget.storage
+          .migrateFrom(oldRoot, onProgress: (d, _) => progress.value = d);
+      progress.dispose();
+      if (mounted) Navigator.of(context).pop();
+      widget.onShowToast(
+        l10n.translate('global_storage_migrated', params: {'count': '$count'}),
+      );
+    } catch (e) {
+      progress.dispose();
+      if (mounted) Navigator.of(context).pop();
+      widget.onShowToast('$e');
+    }
   }
 
   /// 选择自定义壁纸图片

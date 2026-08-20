@@ -948,7 +948,6 @@ extension EditorPublishExt on _RootShellState {
   Future<void> _saveMdBackup() async {
     try {
       final a = _collect(draft: false);
-      final dir = await storage.mdArticlesDir();
       final timestamp = DateTime.now()
           .toIso8601String()
           .replaceAll(':', '-')
@@ -957,12 +956,17 @@ extension EditorPublishExt on _RootShellState {
           ? a.title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
           : 'untitled';
       final fileName = '${timestamp}_$safeTitle.md';
-      final file = File('${dir.path}/$fileName');
-      await file.writeAsString(a.content);
-      if (mounted)
-        _showToast(
-          'MD 已保存到 ${StorageService.dirMdArticles}/$fileName\n${dir.path}',
-        );
+      final path = await storage.saveToUserVisibleDir(
+        fileName,
+        a.content,
+      );
+      if (mounted) {
+        if (path != null && (path.startsWith('content://') || path.startsWith('/'))) {
+          _showToast('MD 已保存: $fileName');
+        } else {
+          _showToast('MD 保存失败');
+        }
+      }
     } catch (e) {
       if (mounted) _showToast('MD 保存失败: $e');
     }
