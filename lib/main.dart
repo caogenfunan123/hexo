@@ -109,6 +109,7 @@ import 'services/recycle_bin_service.dart';
 import 'services/quick_note_service.dart';
 import 'services/timestamp_util.dart';
 import 'services/writing_stats_service.dart';
+import 'core/utils/abi_util.dart';
 import 'services/update_checker_service.dart';
 import 'services/draft_encryption_service.dart';
 import 'services/version_snapshot_service.dart';
@@ -727,7 +728,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         final result = await _updateChecker!.check();
         if (!mounted || !result.hasUpdate) return;
         final r = result.release!;
-        final artifact = r.artifactFor(_platformKey) ?? r.firstArtifact;
+        final artifact = Platform.isAndroid
+            ? (r.androidArtifact(await getDeviceAbi()) ?? r.firstArtifact)
+            : (r.artifactFor(_platformKey) ?? r.firstArtifact);
         showDialog<void>(
           context: context,
           builder: (ctx) => AlertDialog(

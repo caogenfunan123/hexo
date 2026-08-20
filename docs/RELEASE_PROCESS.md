@@ -34,7 +34,24 @@
     "android": {
       "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.5/app-release.apk",
       "sha256": "64 位小写 hex",
-      "size": 12345678
+      "size": 12345678,
+      "abi": {
+        "arm64": {
+          "url": ".../app-arm64-v8a-release.apk",
+          "sha256": "64 位小写 hex",
+          "size": 12345678
+        },
+        "armv7": {
+          "url": ".../app-armeabi-v7a-release.apk",
+          "sha256": "64 位小写 hex",
+          "size": 12345678
+        },
+        "universal": {
+          "url": ".../app-release.apk",
+          "sha256": "64 位小写 hex",
+          "size": 12345678
+        }
+      }
     },
     "windows": { "url": ".../hexo-windows.zip", "sha256": "", "size": 0 },
     "linux": { "url": ".../hexo-linux.tar.gz", "sha256": "", "size": 0 }
@@ -43,6 +60,11 @@
 ```
 
 - 平台键与 GitHub Actions 产物一一对应：`android`/`windows`/`linux`（`web` 暂不用于分发）。
+- Android 产物结构：`android.abi` 下的 `arm64`/`armv7`/`universal` 分别对应
+  `app-arm64-v8a-release.apk` / `app-armeabi-v7a-release.apk` / `app-release.apk`。
+  顶层 `android.url` 指向 universal 包，**兼容暂未升级的旧客户端**。
+- 客户端（`UpdateCheckerService.androidArtifact`）按设备 `Build.SUPPORTED_ABIS[0]`
+  自动匹配 arm64/armv7，无匹配时回退 universal。
 - 产物 URL 固定形态：`https://github.com/caogenfunan123/hexo/releases/download/{tag}/{asset}`。
 
 ## 发布步骤（固定顺序）
@@ -63,8 +85,9 @@
 1. 读取 `pubspec.yaml` 当前版本，将 patch 位 +1（`1.0.4+5` → `1.0.5+6`），
    也可用 `--version 1.2.0` 显式指定。
 2. 同步 `lib/main.dart` 的 `_appVersion` 与 `lib/screens/settings_screen.dart` 的 `_cachedVersion`。
-3. 计算三个安装包（APK / Windows zip / Linux tar.gz，需已存在）的 SHA256 与字节大小，
-   写入 `release.json` 的 `platforms`，更新 `version`/`build`/`notes`/`publishedAt`。
+3. 计算各平台安装包（arm64/armv7/universal APK、Windows zip / Linux tar.gz，需已存在）
+   的 SHA256 与字节大小，写入 `release.json` 的 `platforms`（Android 写入 `abi` 三个子项），
+   更新 `version`/`build`/`notes`/`publishedAt`。
 4. `git add` 相关文件 → 提交 `chore(release): v1.0.5` → 打 tag `v1.0.5` → push main + tag。
 
 ### 3. CI 构建并发布

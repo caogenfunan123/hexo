@@ -51,6 +51,22 @@ android {
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
+
+        // 需要按架构拆分 APK 时，统一走 splits.abi（见下方），
+        // 通过 productFlavors 拆分会破坏 Flutter 的符号加载约定。
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a"
+        }
+    }
+
+    // ── ABI 拆分：一次构建产出 arm64-v8a / armeabi-v7a / universal 三个 APK ──
+    splits {
+        abi {
+            enable true
+            reset()
+            include "armeabi-v7a", "arm64-v8a"
+            universalApk true
+        }
     }
 
     signingConfigs {
@@ -65,7 +81,10 @@ android {
     buildTypes {
         release {
             signingConfig keystoreProperties['storeFile'] ? signingConfigs.release : signingConfigs.debug
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // R8 全量压缩：移除未使用代码与资源，配合 ABI 拆分进一步减小包体
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }

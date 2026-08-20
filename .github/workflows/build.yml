@@ -117,25 +117,35 @@ jobs:
           cp /tmp/signing/key.properties android/
           echo "Signing keystore ready"
 
-      - name: Build APK
+      - name: Build APKs (all ABIs + universal)
         run: |
           set -o pipefail
           flutter pub get
           
-          # 构建 APK
-          flutter build apk --release 2>&1 | tee /tmp/build.log
+          # 一键构建 arm64-v8a / armeabi-v7a / universal 三个 APK
+          flutter build apk --release --split-per-abi 2>&1 | tee /tmp/build.log
           
           # 验证构建结果
-          if [ ! -f "build/app/outputs/flutter-apk/app-release.apk" ]; then
+          OUT=build/app/outputs/flutter-apk
+          if [ ! -f "$OUT/app-release.apk" ]; then
             echo "::error::APK build failed - app-release.apk not found"
+            ls -la "$OUT" || true
             echo "=== Last 100 lines of output ==="
             tail -100 /tmp/build.log
             exit 1
           fi
           
           echo "APK build completed successfully"
-          echo "APK size: $(du -h build/app/outputs/flutter-apk/app-release.apk | cut -f1)"
+          ls -lh "$OUT"/*.apk
           echo '## Android Build Succeeded' >> $GITHUB_STEP_SUMMARY
+          {
+            echo '## APK 产物'
+            echo '| 文件 | 大小 |'
+            echo '|---|---|'
+            for f in "$OUT"/*.apk; do
+              echo "| $(basename "$f") | $(du -h "$f" | cut -f1) |"
+            done
+          } >> $GITHUB_STEP_SUMMARY
 
       - name: Upload build log
         if: always()
@@ -145,12 +155,12 @@ jobs:
           path: /tmp/build.log
           retention-days: 7
 
-      - name: Upload APK
+      - name: Upload APKs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: hexo-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: warn
           retention-days: 30
 
@@ -361,9 +371,11 @@ jobs:
       - name: Verify artifacts
         run: |
           # 检查关键文件是否存在
-          if [ ! -f "artifacts/app-release.apk" ]; then
-            echo "::warning::Android APK not found"
-          fi
+          for apk in app-release.apk app-arm64-v8a-release.apk app-armeabi-v7a-release.apk; do
+            if [ ! -f "artifacts/$apk" ]; then
+              echo "::warning::Android APK not found: $apk"
+            fi
+          done
           
           if [ ! -d "artifacts/assets" ]; then
             echo "::warning::Web build not found"
@@ -399,7 +411,9 @@ jobs:
 
             | 平台 | 产物 | 下载 |
             |------|------|------|
-            | Android | `app-release.apk` | https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/app-release.apk |
+            | Android universal | `app-release.apk` | https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/app-release.apk |
+            | Android arm64 | `app-arm64-v8a-release.apk` | https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/app-arm64-v8a-release.apk |
+            | Android armv7 | `app-armeabi-v7a-release.apk` | https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/app-armeabi-v7a-release.apk |
             | Linux | `hexo-linux.tar.gz` | https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/hexo-linux.tar.gz |
             | Windows | `hexo-windows.zip` | https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/hexo-windows.zip |
 
@@ -412,6 +426,8 @@ jobs:
             - 提交: `${{ github.sha }}`
           files: |
             artifacts/app-release.apk
+            artifacts/app-arm64-v8a-release.apk
+            artifacts/app-armeabi-v7a-release.apk
             artifacts/hexo-linux.tar.gz
             artifacts/hexo-windows.zip
           prerelease: false

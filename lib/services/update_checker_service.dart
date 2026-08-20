@@ -16,14 +16,28 @@ class PlatformArtifact {
   final String url;
   final String? sha256;
   final int? size;
+  final Map<String, PlatformArtifact>? abi;
 
-  const PlatformArtifact({required this.url, this.sha256, this.size});
+  const PlatformArtifact({required this.url, this.sha256, this.size, this.abi});
 
-  factory PlatformArtifact.fromJson(Map<String, dynamic> j) => PlatformArtifact(
-        url: j['url']?.toString() ?? '',
-        sha256: j['sha256']?.toString(),
-        size: (j['size'] as num?)?.toInt(),
-      );
+  factory PlatformArtifact.fromJson(Map<String, dynamic> j) {
+    Map<String, PlatformArtifact>? abiMap;
+    if (j['abi'] is Map) {
+      abiMap = {};
+      (j['abi'] as Map).forEach((k, v) {
+        if (v is Map) {
+          abiMap![k.toString()] =
+              PlatformArtifact.fromJson(Map<String, dynamic>.from(v));
+        }
+      });
+    }
+    return PlatformArtifact(
+      url: j['url']?.toString() ?? '',
+      sha256: j['sha256']?.toString(),
+      size: (j['size'] as num?)?.toInt(),
+      abi: abiMap,
+    );
+  }
 }
 
 /// 更新信息
@@ -46,6 +60,27 @@ class ReleaseInfo {
 
   /// 当前平台对应的下载产物（android / linux / windows / web）
   PlatformArtifact? artifactFor(String platformKey) => platforms[platformKey];
+
+  /// Android 平台按设备 ABI 匹配的下载产物
+  ///
+  /// [deviceAbi] 为 `Build.SUPPORTED_ABIS[0]` 的值（如 `arm64-v8a`）。
+  /// 优先匹配 ABI 子项，无匹配时回退到 universal 或顶层 artifact。
+  PlatformArtifact? androidArtifact(String deviceAbi) {
+    final android = platforms['android'];
+    if (android == null || android.abi == null || android.abi!.isEmpty) {
+      return android;
+    }
+    final key = _mapAbiToKey(deviceAbi);
+    return android.abi![key] ?? android.abi!['universal'] ?? android;
+  }
+
+  /// 将设备 ABI 字符串映射到 release.json 中的键名
+  static String _mapAbiToKey(String abi) {
+    if (abi.startsWith('arm64')) return 'arm64';
+    if (abi.startsWith('armeabi')) return 'armv7';
+    // x86 / x86_64 / mips -> universal 兜底
+    return 'universal';
+  }
 
   /// 兜底：第一个可用平台产物
   PlatformArtifact? get firstArtifact =>

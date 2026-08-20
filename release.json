@@ -8,7 +8,24 @@
     "android": {
       "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.9/app-release.apk",
       "sha256": "f318ac5bc77f67a90bc4fe4bd5828a0ede65941b1e7649ce54165787a91e8791",
-      "size": 80608459
+      "size": 80608459,
+      "abi": {
+        "arm64": {
+          "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.9/app-arm64-v8a-release.apk",
+          "sha256": "",
+          "size": 0
+        },
+        "armv7": {
+          "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.9/app-armeabi-v7a-release.apk",
+          "sha256": "",
+          "size": 0
+        },
+        "universal": {
+          "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.9/app-release.apk",
+          "sha256": "f318ac5bc77f67a90bc4fe4bd5828a0ede65941b1e7649ce54165787a91e8791",
+          "size": 80608459
+        }
+      }
     },
     "windows": {
       "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.9/hexo-windows.zip",

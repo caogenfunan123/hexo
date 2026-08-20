@@ -10,6 +10,7 @@ import '../models/git_provider.dart';
 import '../models/repo_config.dart';
 import '../services/github_service.dart';
 import '../services/storage_service.dart';
+import '../core/utils/abi_util.dart';
 import '../services/update_checker_service.dart';
 import '../services/draft_encryption_service.dart';
 import '../services/webdav_service.dart';
@@ -130,7 +131,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Navigator.pop(context);
     if (result.hasUpdate) {
       final r = result.release!;
-      final artifact = r.artifactFor(_platformKey) ?? r.firstArtifact;
+      final artifact = Platform.isAndroid
+          ? (r.androidArtifact(await getDeviceAbi()) ?? r.firstArtifact)
+          : (r.artifactFor(_platformKey) ?? r.firstArtifact);
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(

@@ -174,6 +174,11 @@ public class MainActivity extends FlutterActivity {
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), CHANNEL)
                 .setMethodCallHandler((call, result) -> {
                     switch (call.method) {
+                        case "getAbi":
+                            result.success(android.os.Build.SUPPORTED_ABIS.length > 0
+                                    ? android.os.Build.SUPPORTED_ABIS[0]
+                                    : "");
+                            break;
                         case "getFilesDir":
                             result.success(getFilesDir().getAbsolutePath());
                             break;
