@@ -8,12 +8,15 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../core/markdown/markdown_preview_builder.dart';
+import '../services/local_asset_server.dart';
 
 /// 基于 WebView 的 Markdown 渲染预览组件（支持 Mermaid 与 KaTeX 公式）。
 ///
-/// 通过 `flutter_inappwebview` 6.x 加载本地 HTML：内联 mermaid.js / KaTeX /
-/// highlight.js，支持 Android / iOS / macOS / Windows / Web。Linux 桌面端
-/// 不支持 WebView，自动降级为 `flutter_markdown` 静态渲染。
+/// 通过 `flutter_inappwebview` 6.x 加载本地 HTML：使用 `InAppLocalhostServer`
+/// 提供 mermaid.js / KaTeX / highlight.js 等静态资源（非 Web 平台），
+/// 避免因内联 ~4MB 的 JS/CSS 通过 MethodChannel 传输触发 Android
+/// `TransactionTooLargeException`。Web 端保留内联方式。
+/// Linux 桌面端不支持 WebView，自动降级为 `flutter_markdown` 静态渲染。
 ///
 /// 内容变更时组件内部做 200ms 防抖，通过 `setContent` 增量更新页面，
 /// 避免整页重载闪烁。
@@ -125,41 +128,64 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
   }
 
   Future<String> _buildHtml(String markdown) async {
+    if (kIsWeb) {
+      return _buildHtmlInline(markdown);
+    }
+    await LocalAssetServer.instance.ensureStarted();
+    return _buildHtmlExternal(markdown);
+  }
+
+  /// Web 平台：保留旧的内联方式（无 Binder 限制）。
+  Future<String> _buildHtmlInline(String markdown) async {
     final template = await _asset('assets/preview/web/preview_template.html');
     final dark = widget.darkTheme;
     final mermaidTheme = dark ? 'dark' : 'default';
     return template
+        .replaceAll('/*__BASE_URL__*/', '')
         .replaceAll(
-          '/*__KATEX_CSS__*/',
-          await _asset('assets/preview/web/katex-inline.min.css'),
+          '<link rel="stylesheet" href="web/katex-inline.min.css">',
+          '<style>${await _asset('assets/preview/web/katex-inline.min.css')}</style>',
         )
         .replaceAll(
-          '/*__HIGHLIGHT_CSS__*/',
-          await _asset(
-            dark
-                ? 'assets/preview/web/highlight-github-dark.css'
-                : 'assets/preview/web/highlight-github.css',
-          ),
+          '<link rel="stylesheet" href="web/__HIGHLIGHT_CSS_FILENAME__">',
+          '<style>${await _asset(dark ? 'assets/preview/web/highlight-github-dark.css' : 'assets/preview/web/highlight-github.css')}</style>',
         )
         .replaceAll(
-          '/*__KATEX_JS__*/',
-          await _asset('assets/preview/web/katex.min.js'),
+          '<script src="web/katex.min.js"></script>',
+          '<script>${await _asset('assets/preview/web/katex.min.js')}</script>',
         )
         .replaceAll(
-          '/*__AUTORENDER_JS__*/',
-          await _asset('assets/preview/web/auto-render.min.js'),
+          '<script src="web/auto-render.min.js"></script>',
+          '<script>${await _asset('assets/preview/web/auto-render.min.js')}</script>',
         )
         .replaceAll(
-          '/*__HIGHLIGHT_JS__*/',
-          await _asset('assets/preview/web/highlight.min.js'),
+          '<script src="web/highlight.min.js"></script>',
+          '<script>${await _asset('assets/preview/web/highlight.min.js')}</script>',
         )
         .replaceAll(
-          '/*__DART_LANG_JS__*/',
-          await _asset('assets/preview/web/languages-dart.min.js'),
+          '<script src="web/languages-dart.min.js"></script>',
+          '<script>${await _asset('assets/preview/web/languages-dart.min.js')}</script>',
         )
         .replaceAll(
-          '/*__MERMAID_JS__*/',
-          await _asset('assets/preview/web/mermaid.min.js'),
+          '<script src="web/mermaid.min.js"></script>',
+          '<script>${await _asset('assets/preview/web/mermaid.min.js')}</script>',
+        )
+        .replaceAll('/*__BODY_CLASS__*/', dark ? 'theme-dark' : 'theme-light')
+        .replaceAll('/*__INIT_JS__*/', _initJs(mermaidTheme))
+        .replaceAll('__CONTENT__', MarkdownPreviewBuilder.buildBody(markdown));
+  }
+
+  /// 非 Web 平台：使用 `InAppLocalhostServer` 外部引用 JS/CSS。
+  Future<String> _buildHtmlExternal(String markdown) async {
+    final template = await _asset('assets/preview/web/preview_template.html');
+    final dark = widget.darkTheme;
+    final mermaidTheme = dark ? 'dark' : 'default';
+    final baseUrl = LocalAssetServer.instance.baseUrl;
+    return template
+        .replaceAll('/*__BASE_URL__*/', baseUrl)
+        .replaceAll(
+          '/*__HIGHLIGHT_CSS_FILENAME__*/',
+          dark ? 'highlight-github-dark.css' : 'highlight-github.css',
         )
         .replaceAll('/*__BODY_CLASS__*/', dark ? 'theme-dark' : 'theme-light')
         .replaceAll('/*__INIT_JS__*/', _initJs(mermaidTheme))
