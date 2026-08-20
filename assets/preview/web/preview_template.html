@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="stylesheet" href="/web/katex-inline.min.css">
-<link rel="stylesheet" href="/web/highlight-github.css" id="hl-css">
+<link rel="stylesheet" href="/assets/preview/web/katex-inline.min.css">
+<link rel="stylesheet" href="/assets/preview/web/highlight-github.css" id="hl-css">
 <style>
 html, body {
   margin: 0;
@@ -104,11 +104,11 @@ body.theme-dark #content .mermaid {
   padding: 4px 0;
 }
 </style>
-<script src="/web/katex.min.js"></script>
-<script src="/web/auto-render.min.js"></script>
-<script src="/web/highlight.min.js"></script>
-<script src="/web/languages-dart.min.js"></script>
-<script src="/web/mermaid.min.js"></script>
+<script src="/assets/preview/web/katex.min.js"></script>
+<script src="/assets/preview/web/auto-render.min.js"></script>
+<script src="/assets/preview/web/highlight.min.js"></script>
+<script src="/assets/preview/web/languages-dart.min.js"></script>
+<script src="/assets/preview/web/mermaid.min.js"></script>
 </head>
 <body class="theme-light">
 <div id="content"></div>
@@ -118,7 +118,7 @@ var _dark = _params.get('dark') === '1';
 if (_dark) {
   document.body.className = 'theme-dark';
   var _hlCss = document.getElementById('hl-css');
-  if (_hlCss) _hlCss.href = '/web/highlight-github-dark.css';
+  if (_hlCss) _hlCss.href = '/assets/preview/web/highlight-github-dark.css';
 }
 
 function renderAll() {
@@ -184,23 +184,6 @@ function setContent(html) {
   if (!el) return;
   el.innerHTML = html;
   renderAll();
-}
-
-function loadContent() {
-  fetch('/content')
-    .then(function (r) {
-      if (!r.ok) throw new Error('fetch failed: ' + r.status);
-      return r.text();
-    })
-    .then(function (html) {
-      document.getElementById('content').innerHTML = html;
-      renderAll();
-    })
-    .catch(function (e) {});
-}
-
-function refreshContent() {
-  loadContent();
 }
 
 document.addEventListener('DOMContentLoaded', renderAll);

@@ -9,20 +9,20 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../core/markdown/markdown_preview_builder.dart';
-import '../services/local_asset_server.dart';
 import '../services/preview_debug_store.dart';
 
 /// 基于 WebView 的 Markdown 渲染预览组件（支持 Mermaid 与 KaTeX 公式）。
 ///
-/// 加载策略：
-/// - 非 Web 平台：启动本地 HTTP 服务器（`LocalAssetServer`），WebView 通过
-///   `initialUrlRequest` 加载 `http://127.0.0.1:18080/preview.html`。HTML
-///   只有 ~3KB,JS/CSS/内容通过 HTTP 加载，完全不经过 MethodChannel，
-///   避免 Android Binder 事务上限导致卡死。内容更新时通过
-///   `evaluateJavascript('refreshContent()')`（小指令）触发 JS 重新
-///   `fetch('/content')`。
-/// - Web 平台：无 Binder 限制，保留内联资源方式。
-/// - Linux 桌面端：不支持 WebView，降级为 `flutter_markdown` 静态渲染。
+/// 资源加载策略：
+/// - Android：使用 `WebViewAssetLoader` 把 `assets/preview/web/` 通过
+///   `https://appassets.androidplatform.net/assets/*` 虚拟域原生提供给
+///   WebView。JS/CSS 由系统 WebView 网络栈直接读 APK assets，全程不经过
+///   MethodChannel / Binder，避免大负载卡死，也无本地端口与明文流量问题。
+/// - iOS / Web / 桌面：无 Binder 限制（iOS 亦无 1MB 限制），将 JS/CSS
+///   直接内联进 HTML，通过 `initialData` 加载。
+///
+/// 正文始终在构建 HTML 时内联进 `<div id="content">`，首屏渲染不依赖任何
+/// 网络请求；内容更新通过 `evaluateJavascript('setContent(...)')`。
 class MarkdownPreviewWebView extends StatefulWidget {
   const MarkdownPreviewWebView({
     super.key,
@@ -50,12 +50,14 @@ class MarkdownPreviewWebView extends StatefulWidget {
 class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
   static final Map<String, Future<String>> _assetCache = {};
 
+  /// Android 原生虚拟域（WebViewAssetLoader），只能映射 `/assets/` 前缀。
+  static const String _assetDomain = 'appassets.androidplatform.net';
+
   InAppWebViewController? _webCtrl;
   Timer? _debounce;
   late Future<void> _initFuture;
   String _lastRenderedMarkdown = '';
-  String? _inlineHtml;
-  bool _serverFailed = false;
+  String? _html;
   bool _webViewError = false;
 
   bool get _webViewSupported {
@@ -71,35 +73,18 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
     }
   }
 
+  bool get _useAssetLoader =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
   @override
   void initState() {
     super.initState();
     _lastRenderedMarkdown = widget.markdown;
     _initFuture = _initPreview();
-    _wireDebugLog();
-  }
-
-  void _wireDebugLog() {
-    if (kIsWeb) return;
-    LocalAssetServer.instance.onLog = (line) {
-      PreviewDebugStore.instance.log('server', line);
-    };
   }
 
   Future<void> _initPreview() async {
-    if (kIsWeb) {
-      _inlineHtml = await _buildHtmlInline(widget.markdown);
-      return;
-    }
-    // 先设置内容再启动服务器，确保首个请求到达时内容已就绪
-    LocalAssetServer.instance.updateContent(
-      MarkdownPreviewBuilder.buildBody(widget.markdown),
-    );
-    final ok = await LocalAssetServer.instance.ensureStarted();
-    if (!ok) {
-      _serverFailed = true;
-      return;
-    }
+    _html = await _buildHtml(widget.markdown);
   }
 
   @override
@@ -112,7 +97,7 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
     if (_webViewSupported && _webCtrl != null) {
       if (themeChanged) {
         _reloadFullPage();
-      } else if (contentChanged) {
+      } else {
         _scheduleUpdate();
       }
     } else {
@@ -128,89 +113,15 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
     super.dispose();
   }
 
-  void _scheduleUpdate() {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 200), () async {
-      if (!mounted || _webCtrl == null) return;
-      if (widget.markdown == _lastRenderedMarkdown) return;
-      _lastRenderedMarkdown = widget.markdown;
-      final body = MarkdownPreviewBuilder.buildBody(widget.markdown);
-      if (kIsWeb) {
-        try {
-          await _webCtrl?.evaluateJavascript(
-            source: 'setContent(${jsonEncode(body)})',
-          );
-        } catch (_) {}
-      } else {
-        LocalAssetServer.instance.updateContent(body);
-        try {
-          await _webCtrl?.evaluateJavascript(
-            source: 'refreshContent()',
-          );
-        } catch (_) {}
-      }
-    });
-  }
-
-  Future<void> _reloadFullPage() async {
-    _lastRenderedMarkdown = widget.markdown;
-    if (!mounted || _webCtrl == null) return;
-    try {
-      if (kIsWeb) {
-        _inlineHtml = await _buildHtmlInline(widget.markdown);
-        await _webCtrl?.loadData(
-          data: _inlineHtml!,
-          mimeType: 'text/html',
-          encoding: 'utf8',
-          baseUrl: WebUri('about:blank'),
-        );
-      } else {
-        if (_serverFailed) return;
-        LocalAssetServer.instance.updateContent(
-          MarkdownPreviewBuilder.buildBody(widget.markdown),
-        );
-        final url = LocalAssetServer.instance.previewUrl +
-            (widget.darkTheme ? '?dark=1' : '?dark=0');
-        await _webCtrl?.loadUrl(
-          urlRequest: URLRequest(url: WebUri(url)),
-        );
-      }
-    } catch (_) {}
-  }
-
-  /// Web 平台：内联全部 CSS/JS（无 Binder 限制）。
-  Future<String> _buildHtmlInline(String markdown) async {
+  /// 构建预览 HTML。
+  ///
+  /// Android 使用 [WebViewAssetLoader]：保留模板中的 `/assets/preview/web/*`
+  /// 资源引用，配合 `initialData.baseUrl` 指向虚拟域解析资源；其余平台
+  /// 将 JS/CSS 全部内联（避免 Binder 只是 Android 的约束）。
+  Future<String> _buildHtml(String markdown) async {
     final template = await _asset('assets/preview/web/preview_template.html');
     final dark = widget.darkTheme;
-    return template
-        .replaceAll(
-          '<link rel="stylesheet" href="/web/katex-inline.min.css">',
-          '<style>${await _asset('assets/preview/web/katex-inline.min.css')}</style>',
-        )
-        .replaceAll(
-          '<link rel="stylesheet" href="/web/highlight-github.css" id="hl-css">',
-          '<style>${await _asset(dark ? 'assets/preview/web/highlight-github-dark.css' : 'assets/preview/web/highlight-github.css')}</style>',
-        )
-        .replaceAll(
-          '<script src="/web/katex.min.js"></script>',
-          '<script>${await _asset('assets/preview/web/katex.min.js')}</script>',
-        )
-        .replaceAll(
-          '<script src="/web/auto-render.min.js"></script>',
-          '<script>${await _asset('assets/preview/web/auto-render.min.js')}</script>',
-        )
-        .replaceAll(
-          '<script src="/web/highlight.min.js"></script>',
-          '<script>${await _asset('assets/preview/web/highlight.min.js')}</script>',
-        )
-        .replaceAll(
-          '<script src="/web/languages-dart.min.js"></script>',
-          '<script>${await _asset('assets/preview/web/languages-dart.min.js')}</script>',
-        )
-        .replaceAll(
-          '<script src="/web/mermaid.min.js"></script>',
-          '<script>${await _asset('assets/preview/web/mermaid.min.js')}</script>',
-        )
+    var html = template
         .replaceAll(
           'var _dark = _params.get(\'dark\') === \'1\';',
           'var _dark = ${dark ? 'true' : 'false'};',
@@ -219,10 +130,100 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
           '<div id="content"></div>',
           '<div id="content">${MarkdownPreviewBuilder.buildBody(markdown)}</div>',
         );
+    if (!_useAssetLoader) {
+      html = html
+          .replaceAll(
+            '<link rel="stylesheet" href="/assets/preview/web/katex-inline.min.css">',
+            '<style>${await _asset('assets/preview/web/katex-inline.min.css')}</style>',
+          )
+          .replaceAll(
+            '<link rel="stylesheet" href="/assets/preview/web/highlight-github.css" id="hl-css">',
+            '<style>${await _asset(dark ? 'assets/preview/web/highlight-github-dark.css' : 'assets/preview/web/highlight-github.css')}</style>',
+          )
+          .replaceAll(
+            '<script src="/assets/preview/web/katex.min.js"></script>',
+            '<script>${await _asset('assets/preview/web/katex.min.js')}</script>',
+          )
+          .replaceAll(
+            '<script src="/assets/preview/web/auto-render.min.js"></script>',
+            '<script>${await _asset('assets/preview/web/auto-render.min.js')}</script>',
+          )
+          .replaceAll(
+            '<script src="/assets/preview/web/highlight.min.js"></script>',
+            '<script>${await _asset('assets/preview/web/highlight.min.js')}</script>',
+          )
+          .replaceAll(
+            '<script src="/assets/preview/web/languages-dart.min.js"></script>',
+            '<script>${await _asset('assets/preview/web/languages-dart.min.js')}</script>',
+          )
+          .replaceAll(
+            '<script src="/assets/preview/web/mermaid.min.js"></script>',
+            '<script>${await _asset('assets/preview/web/mermaid.min.js')}</script>',
+          );
+    }
+    return html;
   }
 
   Future<String> _asset(String name) {
     return _assetCache.putIfAbsent(name, () => rootBundle.loadString(name));
+  }
+
+  void _scheduleUpdate() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 200), () {
+      if (!mounted || _webCtrl == null) return;
+      _setContent(widget.markdown);
+    });
+  }
+
+  void _setContent(String markdown) {
+    if (!mounted || _webCtrl == null) return;
+    if (markdown == _lastRenderedMarkdown) return;
+    _lastRenderedMarkdown = markdown;
+    final body = MarkdownPreviewBuilder.buildBody(markdown);
+    PreviewDebugStore.instance.log(
+      'widget',
+      'setContent body=${body.length} chars',
+    );
+    try {
+      _webCtrl?.evaluateJavascript(
+        source: 'setContent(${jsonEncode(body)})',
+      );
+    } catch (e) {
+      PreviewDebugStore.instance.log(
+        'widget',
+        'evaluateJavascript setContent failed: $e',
+        level: LogLevel.error,
+      );
+      _reloadFullPage();
+    }
+  }
+
+  Future<void> _reloadFullPage() async {
+    _lastRenderedMarkdown = widget.markdown;
+    if (!mounted || _webCtrl == null || _html == null) return;
+    PreviewDebugStore.instance.log(
+      'widget',
+      'reloadFullPage theme=${widget.darkTheme}',
+    );
+    final html = await _buildHtml(widget.markdown);
+    if (!mounted) return;
+    try {
+      await _webCtrl?.loadData(
+        data: html,
+        mimeType: 'text/html',
+        encoding: 'utf8',
+        baseUrl: WebUri(
+          _useAssetLoader ? 'https://$_assetDomain/' : 'about:blank',
+        ),
+      );
+    } catch (e) {
+      PreviewDebugStore.instance.log(
+        'widget',
+        'loadData failed: $e',
+        level: LogLevel.error,
+      );
+    }
   }
 
   @override
@@ -230,92 +231,62 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
     if (!_webViewSupported) {
       return _buildFallback();
     }
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Positioned.fill(
-          child: FutureBuilder<void>(
-            future: _initFuture,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) {
-                return const Center(
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                );
-              }
-              if (kIsWeb) {
-                if (_inlineHtml == null) {
-                  return const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  );
-                }
-                return _buildWebView(
-                  initialData: InAppWebViewInitialData(
-                    data: _inlineHtml!,
-                    mimeType: 'text/html',
-                    encoding: 'utf8',
-                    baseUrl: WebUri('about:blank'),
-                  ),
-                );
-              }
-              if (_serverFailed) {
-                return _buildFallback();
-              }
-              if (_webViewError) {
-                return _buildFallback();
-              }
-              final url = LocalAssetServer.instance.previewUrl +
-                  (widget.darkTheme ? '?dark=1' : '?dark=0');
-              return _buildWebView(
-                initialUrlRequest: URLRequest(url: WebUri(url)),
-              );
-            },
-          ),
-        ),
-        if (!kIsWeb)
-          Positioned(
-            left: 8,
-            bottom: 8,
-            child: _DebugLogButton(
-              title: '预览排错',
-              onPressed: () => _showDebugLog(context),
+    return FutureBuilder<void>(
+      future: _initFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(
+            child: CircularProgressIndicator(strokeWidth: 2),
+          );
+        }
+        if (_webViewError) {
+          return _buildFallback();
+        }
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            _buildWebView(
+              initialData: InAppWebViewInitialData(
+                data: _html!,
+                mimeType: 'text/html',
+                encoding: 'utf8',
+                baseUrl: WebUri(
+                  _useAssetLoader ? 'https://$_assetDomain/' : 'about:blank',
+                ),
+              ),
             ),
-          ),
-      ],
-    );
-  }
-
-  void _showDebugLog(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF1E1E1E),
-      builder: (sheetCtx) {
-        return _DebugLogSheet(
-          logs: PreviewDebugStore.instance.entries,
-          onCopy: () {
-            final text = PreviewDebugStore.instance.export();
-            if (text.isNotEmpty) {
-              Clipboard.setData(ClipboardData(text: text));
-              ScaffoldMessenger.of(sheetCtx).showSnackBar(
-                const SnackBar(content: Text('日志已复制')),
-              );
-            }
-          },
+            Positioned(
+              left: 8,
+              bottom: 8,
+              child: _DebugLogButton(
+                title: '预览排错',
+                onPressed: () => _showDebugLog(context),
+              ),
+            ),
+          ],
         );
       },
     );
   }
 
-  Widget _buildWebView({InAppWebViewInitialData? initialData, URLRequest? initialUrlRequest}) {
+  Widget _buildWebView({required InAppWebViewInitialData initialData}) {
+    final settings = InAppWebViewSettings(
+      javaScriptEnabled: true,
+      domStorageEnabled: true,
+      supportZoom: false,
+      transparentBackground: false,
+      webViewAssetLoader: _useAssetLoader
+          ? WebViewAssetLoader(
+              domain: _assetDomain,
+              pathHandlers: [
+                AssetsPathHandler(path: '/assets/'),
+              ],
+            )
+          : null,
+    );
     return InAppWebView(
       initialData: initialData,
-      initialUrlRequest: initialUrlRequest,
-      initialSettings: InAppWebViewSettings(
-        javaScriptEnabled: true,
-        domStorageEnabled: true,
-        supportZoom: false,
-        transparentBackground: false,
-      ),
+      initialSettings: settings,
       onWebViewCreated: (controller) {
         _webCtrl = controller;
         controller.addJavaScriptHandler(
@@ -338,15 +309,14 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
         setState(() => _webViewError = true);
       },
       onReceivedHttpError: (controller, request, errorResponse) {
-        final url = request.url.toString();
         PreviewDebugStore.instance.log(
           'webview',
-          'onReceivedHttpError status=${errorResponse.statusCode} url=$url',
+          'onReceivedHttpError status=${errorResponse.statusCode} url=${request.url}',
           level: LogLevel.error,
         );
-        // 只对主页面（/preview.html）的 HTTP 错误做降级，子资源（favicon 等）忽略
         if (!mounted) return;
-        if (url.contains('/preview.html')) {
+        final url = request.url.toString();
+        if (url.contains('preview.html')) {
           setState(() => _webViewError = true);
         }
       },
@@ -381,6 +351,28 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
               m.messageLevel == ConsoleMessageLevel.WARNING)
           ? LogLevel.error
           : LogLevel.info,
+    );
+  }
+
+  void _showDebugLog(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1E1E1E),
+      builder: (sheetCtx) {
+        return _DebugLogSheet(
+          logs: PreviewDebugStore.instance.entries,
+          onCopy: () {
+            final text = PreviewDebugStore.instance.export();
+            if (text.isNotEmpty) {
+              Clipboard.setData(ClipboardData(text: text));
+              ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                const SnackBar(content: Text('日志已复制')),
+              );
+            }
+          },
+        );
+      },
     );
   }
 
