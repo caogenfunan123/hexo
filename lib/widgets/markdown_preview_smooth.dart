@@ -11,16 +11,19 @@ import 'package:flutter_smooth_markdown/flutter_smooth_markdown.dart';
 /// 当 [SmoothMarkdown] 的 Mermaid 渲染结果与预期差异较大时，可切换回
 /// [MarkdownPreviewWebView]（基于 WebView 的 100% 还原方案）。
 class MarkdownPreviewSmooth extends StatelessWidget {
-  const MarkdownPreviewSmooth({
+  MarkdownPreviewSmooth({
     super.key,
     required this.markdown,
     this.darkTheme = false,
     this.onOpenLink,
-  });
+  }) : _plugins = ParserPluginRegistry()..register(const MermaidPlugin()),
+       _builderRegistry = BuilderRegistry()..register('mermaid', const MermaidBuilder());
 
   final String markdown;
   final bool darkTheme;
   final ValueChanged<String>? onOpenLink;
+  final ParserPluginRegistry _plugins;
+  final BuilderRegistry _builderRegistry;
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +38,8 @@ class MarkdownPreviewSmooth extends StatelessWidget {
         onTapLink: (url) {
           onOpenLink?.call(url);
         },
+        plugins: _plugins,
+        builderRegistry: _builderRegistry,
       ),
     );
   }
