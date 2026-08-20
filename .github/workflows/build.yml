@@ -122,8 +122,9 @@ jobs:
           set -o pipefail
           flutter pub get
           
-          # 一键构建 arm64-v8a / armeabi-v7a / universal 三个 APK
-          flutter build apk --release --split-per-abi 2>&1 | tee /tmp/build.log
+          # 不加 --split-per-abi：splits { abi { universalApk true } } 在 build.gradle
+          # 中已配置，一次构建同时产出 arm64-v8a / armeabi-v7a / universal 三个 APK
+          flutter build apk --release 2>&1 | tee /tmp/build.log
           
           # 验证构建结果
           OUT=build/app/outputs/flutter-apk
