@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:saf/saf.dart';
 import 'dart:io';
 import '../models/app_settings.dart';
 import '../models/git_provider.dart';
@@ -368,7 +367,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text(l10n.translate('close')),
+              child: Text(l10n.translate('cancel')),
             ),
           ],
         );
