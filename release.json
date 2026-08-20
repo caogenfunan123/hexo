@@ -7,18 +7,18 @@
   "platforms": {
     "android": {
       "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.8/app-release.apk",
-      "sha256": "",
-      "size": 0
+      "sha256": "b7225a528e6621a42b0fa9ec4ded806cf079963d1702c0298f6731338ee63b4e",
+      "size": 74660510
     },
     "windows": {
       "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.8/hexo-windows.zip",
-      "sha256": "",
-      "size": 0
+      "sha256": "1b766161d49f14907c199c3ac93ef4d16bcd42327230f83aa184b0476203f6a7",
+      "size": 22906223
     },
     "linux": {
       "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.8/hexo-linux.tar.gz",
-      "sha256": "",
-      "size": 0
+      "sha256": "b2ffa7a2bd509e586062072a37ca5436831aeb72284477ba94a05e6c10abd8d4",
+      "size": 19740775
     }
   }
 }
