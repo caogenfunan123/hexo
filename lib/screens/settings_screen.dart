@@ -69,7 +69,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  static String _cachedVersion = '1.0.8';
+  static String _cachedVersion = '1.0.9';
   late TextEditingController _siteNameCtrl;
   late TextEditingController _siteBioCtrl;
   late TextEditingController _quickNoteAnchorCtrl;
@@ -1718,6 +1718,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     'GPL-3.0',
                     'https://github.com/Zettlr/Zettlr',
                   ),
+                  (
+                    'Markora',
+                    'Mermaid + KaTeX 离线渲染架构（仅参考思路，未复制代码）',
+                    'GPL-3.0',
+                    'https://github.com/AgentBase/Markora',
+                  ),
                 ]),
                 const SizedBox(height: 12),
                 _creditGroup('布局与交互参考', [
@@ -1766,6 +1772,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     'Contents API / Git Data API 批量上传',
                     '服务条款',
                     'https://docs.github.com/rest',
+                  ),
+                  (
+                    'flutter_smooth_markdown',
+                    '纯原生 Markdown 渲染引擎（Mermaid + KaTeX 支持）',
+                    'MIT',
+                    'https://github.com/JackCaow/flutter-smooth-markdown',
                   ),
                 ]),
               ],

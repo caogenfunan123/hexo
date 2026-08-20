@@ -1,24 +1,24 @@
 {
-  "version": "1.0.8",
-  "build": 9,
+  "version": "1.0.9",
+  "build": 10,
   "name": "Hexo 写作系统",
-  "notes": "★新增：Markdown 编辑器预览支持 Mermaid 图表与 KaTeX 公式渲染（WebView 内联）+ 本地 .md 文件打开（Android/iOS 文件关联打开、桌面端托盘/菜单选择）",
-  "publishedAt": "2026-08-20T01:22:16+00:00",
+  "notes": "★重构：App 内预览改用 flutter_smooth_markdown 纯原生 Widget 渲染，彻底解决 WebView 白屏/卡死/连接失败问题\\n★修复：Mermaid 图表与 KaTeX 公式执行顺序冲突，防止 KaTeX 篡改 mermaid 源码\\n★修复：MermaidPlugin 与 MermaidBuilder 注册，确保 mermaid 代码块自动渲染为图表\\n★新增：设置页鸣谢添加 Markora（架构参考）与 flutter_smooth_markdown（渲染引擎）",
+  "publishedAt": "2026-08-20T04:12:36+00:00",
   "platforms": {
     "android": {
-      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.8/app-release.apk",
-      "sha256": "b7225a528e6621a42b0fa9ec4ded806cf079963d1702c0298f6731338ee63b4e",
-      "size": 74660510
+      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.9/app-release.apk",
+      "sha256": "",
+      "size": 0
     },
     "windows": {
-      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.8/hexo-windows.zip",
-      "sha256": "1b766161d49f14907c199c3ac93ef4d16bcd42327230f83aa184b0476203f6a7",
-      "size": 22906223
+      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.9/hexo-windows.zip",
+      "sha256": "",
+      "size": 0
     },
     "linux": {
-      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.8/hexo-linux.tar.gz",
-      "sha256": "b2ffa7a2bd509e586062072a37ca5436831aeb72284477ba94a05e6c10abd8d4",
-      "size": 19740775
+      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.9/hexo-linux.tar.gz",
+      "sha256": "",
+      "size": 0
     }
   }
 }
