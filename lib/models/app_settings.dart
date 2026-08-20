@@ -37,6 +37,10 @@ class AppSettings {
   // 为空时使用默认目录；设置后本地导出/云同步/Git/分享缓存统一读写该目录
   final String storageRootDir;
 
+  // ── Android SAF 自定义导出文件夹 URI（content://...） ──
+  // 用于导出 MD、备份到用户可见目录；为空表示未设置
+  final String? externalSafUri;
+
   // ── 运行时标志（不持久化）──
   // 存量用户升级后首次进入时，若设置文件存在但尚无 appMode 记录，置 true 以弹出模式选择引导
   final bool needsModeGuide;
@@ -52,6 +56,7 @@ class AppSettings {
     this.activeRepoId = '',
     this.language = 'zh-CN',
     this.storageRootDir = '',
+    this.externalSafUri,
     this.needsModeGuide = false,
   });
 
@@ -178,6 +183,7 @@ class AppSettings {
     String? activeRepoId,
     String? language,
     String? storageRootDir,
+    String? externalSafUri,
     // ── 扁平参数（向后兼容旧代码） ──
     // GitHubSettings
     String? defaultToken,
@@ -380,6 +386,7 @@ class AppSettings {
       activeRepoId: activeRepoId ?? this.activeRepoId,
       language: language ?? this.language,
       storageRootDir: storageRootDir ?? this.storageRootDir,
+      externalSafUri: externalSafUri ?? this.externalSafUri,
       needsModeGuide: needsModeGuide ?? this.needsModeGuide,
     );
   }
@@ -399,6 +406,7 @@ class AppSettings {
         'activeRepoId': activeRepoId,
         'language': language,
         'storageRootDir': storageRootDir,
+        'externalSafUri': externalSafUri,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j,
@@ -414,6 +422,7 @@ class AppSettings {
       activeRepoId: j['activeRepoId']?.toString() ?? '',
       language: j['language']?.toString() ?? 'zh-CN',
       storageRootDir: j['storageRootDir']?.toString() ?? '',
+      externalSafUri: j['externalSafUri']?.toString(),
       needsModeGuide: needsModeGuide,
     );
   }

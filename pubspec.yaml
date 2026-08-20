@@ -37,6 +37,8 @@ dependencies:
   provider: ^6.1.1
   # 工具
   path_provider: ^2.1.0
+  # Android SAF 存储访问框架
+  saf: ^2.1.0
   # 打开外部链接
   url_launcher: ^6.3.2
   # 版本信息

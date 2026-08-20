@@ -961,8 +961,11 @@ extension EditorPublishExt on _RootShellState {
         a.content,
       );
       if (mounted) {
-        if (path != null && (path.startsWith('content://') || path.startsWith('/'))) {
-          _showToast('MD 已保存: $fileName');
+        if (path != null) {
+          final savedToSaf = storage.externalSafUri != null;
+          _showToast(savedToSaf
+              ? 'MD 已保存到自定义文件夹: $fileName'
+              : 'MD 已保存到下载目录: $fileName');
         } else {
           _showToast('MD 保存失败');
         }

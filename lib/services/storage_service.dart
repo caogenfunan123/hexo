@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:saf/saf.dart';
 
 import '../models/app_settings.dart';
 import '../models/article.dart';
@@ -39,6 +41,10 @@ class StorageService {
   Directory? _root;
   String _customRoot = '';
 
+  // ── Android SAF 自定义导出文件夹 ──
+  Saf? _saf;
+  String? _externalSafUri;
+
   /// 草稿加密钩子（由 DraftEncryptionService 注册）
   /// 保存时对明文 JSON 加密；加载时对加密 JSON 解密
   static String? Function(String plainJson)? draftsEncryptor;
@@ -55,6 +61,51 @@ class StorageService {
 
   /// 当前自定义根目录路径（未设置时为空）
   String get customRoot => _customRoot;
+
+  // ── Android SAF 导出文件夹 ──
+
+  /// 设置 SAF 授权目录 URI（为空清除）
+  void setExternalSafUri(String? uri) {
+    _externalSafUri = uri?.trim();
+  }
+
+  /// 当前 SAF 授权目录 URI（未设置时为空）
+  String? get externalSafUri => _externalSafUri;
+
+  Saf _getSaf() {
+    _saf ??= Saf();
+    return _saf!;
+  }
+
+  /// 唤起系统文件夹选择器，返回授权目录（含持久化权限）
+  Future<SafDocumentFile?> pickExternalSafDir() async {
+    return _getSaf().pickDirectory();
+  }
+
+  /// 导出内容到 SAF 授权目录，返回 true 表示成功
+  Future<bool> exportToExternalSaf(String fileName, String content) async {
+    if (_externalSafUri == null) return false;
+    try {
+      final saf = _getSaf();
+      final bytes = Uint8List.fromList(utf8.encode(content));
+      await saf.writeFileBytes(_externalSafUri!, fileName, 'text/markdown', bytes);
+      return true;
+    } catch (e) {
+      debugPrint('exportToExternalSaf error: $e');
+      return false;
+    }
+  }
+
+  /// 从 SAF 授权目录读取文件内容，返回文本或 null
+  Future<String?> importFromExternalSaf(String uri) async {
+    try {
+      final bytes = await _getSaf().readFileBytes(uri);
+      return utf8.decode(bytes);
+    } catch (e) {
+      debugPrint('importFromExternalSaf error: $e');
+      return null;
+    }
+  }
 
   Future<Directory> get root async {
     if (_root != null) return _root!;
@@ -420,10 +471,16 @@ class StorageService {
     await f.writeAsString(a.toMarkdownWithFrontMatter());
   }
 
-  /// 将文件保存到用户可见的目录（移动端用 MediaStore Downloads，桌面端用 mdArticlesDir）
-  /// 返回保存后的路径（移动端返回 content:// URI，桌面端返回文件路径）
+  /// 将文件保存到用户可见的目录
+  /// 优先顺序：SAF 授权目录 → MediaStore Downloads → 内部 mdArticlesDir
+  /// 返回保存后的 URI/路径，null 表示全部失败
   Future<String?> saveToUserVisibleDir(String fileName, String content) async {
-    // Android：通过原生通道导出到 Downloads
+    // 1. SAF 优先
+    if (Platform.isAndroid && _externalSafUri != null) {
+      final ok = await exportToExternalSaf(fileName, content);
+      if (ok) return _externalSafUri; // SAF 目录 URI
+    }
+    // 2. Android: MediaStore Downloads
     if (!kIsWeb && Platform.isAndroid) {
       try {
         final tmp = File('${(await root).path}/.tmp_${DateTime.now().millisecondsSinceEpoch}_$fileName');
@@ -438,7 +495,7 @@ class StorageService {
         debugPrint('StorageService.saveToUserVisibleDir error: $e');
       }
     }
-    // iOS / 桌面端 / fallback：写入 mdArticlesDir
+    // 3. 兜底：写入内部 mdArticlesDir
     final dir = await mdArticlesDir();
     final f = File('${dir.path}/$fileName');
     await f.writeAsString(content);

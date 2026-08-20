@@ -406,6 +406,7 @@ class DesktopShellState extends State<DesktopShell>
     try {
       final (s, r, d, t, sn) = await _loadAppData();
       storage.setCustomRoot(s.storageRootDir);
+      storage.setExternalSafUri(s.externalSafUri);
       await _bootstrapCore(s, r, d, t, sn);
     } catch (e) {
       debugPrint('Bootstrap error: $e');
@@ -1555,6 +1556,7 @@ class DesktopShellState extends State<DesktopShell>
     final oldLang = settings.language;
     setState(() => settings = s);
     storage.setCustomRoot(s.storageRootDir);
+    storage.setExternalSafUri(s.externalSafUri);
     _updateSiteManager();
     _startAutoSync();
     await storage.saveSettings(s);

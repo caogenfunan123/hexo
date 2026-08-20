@@ -86,8 +86,9 @@ extension SettingsDialogsExt on _RootShellState {
     _startAutoSync(); // 重启自动同步（间隔/开关可能变化）
     // 壁纸变化时刷新自动字色
     _refreshWallpaperBrightness();
-    // 同步全局统一存储目录
+    // 同步全局统一存储目录 / SAF 导出文件夹
     storage.setCustomRoot(s.storageRootDir);
+    storage.setExternalSafUri(s.externalSafUri);
     await storage.saveSettings(s);
     widget.onThemeChanged(Color(s.themeColor));
     // 通知父 widget 重建 MaterialApp（DesignConfig 变化时主题实时更新）

@@ -235,38 +235,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ── 全局文件存储目录 ──
 
-  /// 选择全局存储根目录
-  ///
-  /// Android 使用原生 SAF 目录选择；SAF 返回的 content:// tree URI 先尝试
-  /// 转换为真实物理路径，失败则回退到公共 Documents/Tuomo 目录。
+  /// 桌面端选择全局存储根目录（移动端改用 SAF 导出文件夹）
   Future<void> _pickStorageRoot() async {
     final l10n = AppLocalizations.ofContext(context);
     var path = '';
     try {
       const channel = MethodChannel('hexo/native');
       final picked = await channel.invokeMethod<String>('pickDirectory');
-      if (picked != null && picked.isNotEmpty) {
-        if (picked.startsWith('/')) {
-          path = picked;
-        } else if (picked.startsWith('content://') ||
-            picked.startsWith('tree://')) {
-          // SAF tree URI：先尝试转换为真实物理路径
-          final realPath = await channel.invokeMethod<String>(
-            'convertTreeUriToPath',
-            {'treeUri': picked},
-          );
-          if (realPath != null && realPath.isNotEmpty) {
-            path = realPath;
-          } else {
-            // 转换失败（如 SD 卡不可用），回退公共 Documents 目录
-            final publicDir = await channel.invokeMethod<String>(
-              'getPublicDocumentsDir',
-            );
-            if (publicDir != null && publicDir.isNotEmpty) path = publicDir;
-          }
-        }
+      if (picked != null && picked.isNotEmpty && picked.startsWith('/')) {
+        path = picked;
       }
-    } catch (_) {
+    } catch (_) {}
+    if (path.isEmpty) {
       try {
         final picked = await FilePicker.platform.getDirectoryPath(
           dialogTitle: l10n.translate('pick_global_storage_root'),
@@ -319,6 +299,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final ns = widget.settings.copyWith(storageRootDir: '');
     await widget.onSettingsChanged(ns);
     widget.onShowToast(l10n.translate('global_storage_reset'));
+  }
+
+  /// Android SAF：选择外部导出文件夹（持久化 content:// URI）
+  Future<void> _pickExternalSafDir() async {
+    final l10n = AppLocalizations.ofContext(context);
+    try {
+      final dir = await widget.storage.pickExternalSafDir();
+      if (dir == null) return;
+      final ns = widget.settings.copyWith(externalSafUri: dir.uri);
+      await widget.onSettingsChanged(ns);
+      widget.onShowToast(
+        l10n.translate('external_saf_dir_set', params: {'name': dir.name}),
+      );
+    } catch (e) {
+      widget.onShowToast(l10n.translate('pick_dir_failed'));
+    }
+  }
+
+  /// Android SAF：清除外部导出文件夹授权
+  Future<void> _clearExternalSafDir() async {
+    final l10n = AppLocalizations.ofContext(context);
+    final ns = widget.settings.copyWith(externalSafUri: null);
+    await widget.onSettingsChanged(ns);
+    widget.onShowToast(l10n.translate('external_saf_dir_cleared'));
   }
 
   /// 一键迁移旧目录全部历史文件到当前全局根目录（带进度对话框）
@@ -872,78 +876,129 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ]),
 
         const SizedBox(height: 20),
-        // ── 全局文件存储目录 ──
-        _section('global_storage', l10n.translate('settings_global_storage'), [
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(
-              Icons.folder_outlined,
-              color: Color(0xFF6366F1),
+        // ── 文件存储区域 ──
+        // 桌面端：全局文件存储目录（路径选择）
+        // 移动端：SAF 授权导出文件夹（content:// URI）
+        if (kIsWeb || !Platform.isAndroid)
+          _section('global_storage', l10n.translate('settings_global_storage'), [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(
+                Icons.folder_outlined,
+                color: Color(0xFF6366F1),
+              ),
+              title: Text(l10n.translate('global_storage_root')),
+              subtitle: Text(
+                s.storageRootDir.isEmpty
+                    ? l10n.translate('global_storage_default')
+                    : s.storageRootDir,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _pickStorageRoot,
             ),
-            title: Text(l10n.translate('global_storage_root')),
-            subtitle: Text(
-              s.storageRootDir.isEmpty
-                  ? l10n.translate('global_storage_default')
-                  : s.storageRootDir,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12),
+            const Divider(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: _storageActionBtn(
+                    icon: Icons.copy_outlined,
+                    label: l10n.translate('copy_path'),
+                    onTap: () => _copyStorageRootPath(),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _storageActionBtn(
+                    icon: Icons.restart_alt,
+                    label: l10n.translate('reset_storage_root'),
+                    onTap: _resetStorageRoot,
+                  ),
+                ),
+              ],
             ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: _pickStorageRoot,
-          ),
-          const Divider(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _storageActionBtn(
-                  icon: Icons.copy_outlined,
-                  label: l10n.translate('copy_path'),
-                  onTap: () => _copyStorageRootPath(),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _storageActionBtn(
-                  icon: Icons.restart_alt,
-                  label: l10n.translate('reset_storage_root'),
-                  onTap: _resetStorageRoot,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _storageActionBtn(
-                  icon: Icons.folder_open_outlined,
-                  label: l10n.translate('open_save_dir'),
-                  onTap: () => _openStorageFolderInSettings(),
-                ),
-              ),
-            ],
-          ),
-          if (s.storageRootDir.isNotEmpty) ...[
             const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
                   child: _storageActionBtn(
-                    icon: Icons.drive_file_move_outline,
-                    label: l10n.translate('migrate_storage_root'),
-                    onTap: () => _migrateStorageRoot(s.storageRootDir),
+                    icon: Icons.folder_open_outlined,
+                    label: l10n.translate('open_save_dir'),
+                    onTap: () => _openStorageFolderInSettings(),
                   ),
                 ),
               ],
             ),
-          ],
-          const SizedBox(height: 12),
-          Text(
-            l10n.translate('global_storage_hint'),
-            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
-          ),
-        ]),
+            if (s.storageRootDir.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _storageActionBtn(
+                      icon: Icons.drive_file_move_outline,
+                      label: l10n.translate('migrate_storage_root'),
+                      onTap: () => _migrateStorageRoot(s.storageRootDir),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 12),
+            Text(
+              l10n.translate('global_storage_hint'),
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+            ),
+          ]),
+        if (Platform.isAndroid)
+          _section('export_folder', l10n.translate('settings_export_folder'), [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(
+                Icons.sd_card_outlined,
+                color: Color(0xFF6366F1),
+              ),
+              title: Text(l10n.translate('export_folder_title')),
+              subtitle: Text(
+                s.externalSafUri != null && s.externalSafUri!.isNotEmpty
+                    ? s.externalSafUri!
+                    : l10n.translate('export_folder_not_set'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _pickExternalSafDir,
+            ),
+            const Divider(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: _storageActionBtn(
+                    icon: Icons.folder_open_outlined,
+                    label: l10n.translate('pick_export_folder'),
+                    onTap: _pickExternalSafDir,
+                  ),
+                ),
+                if (s.externalSafUri != null && s.externalSafUri!.isNotEmpty) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _storageActionBtn(
+                      icon: Icons.close,
+                      label: l10n.translate('clear_export_folder'),
+                      onTap: _clearExternalSafDir,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              l10n.translate('export_folder_hint'),
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+            ),
+          ]),
 
         const SizedBox(height: 20),
         // ── 发布状态预设 ──

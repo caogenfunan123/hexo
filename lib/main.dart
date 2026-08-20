@@ -539,8 +539,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     try {
       var s = await storage.loadSettings();
       var r = await storage.loadRepos();
-      // 同步全局统一存储目录配置
+      // 同步全局统一存储目录配置 / SAF 导出文件夹
       storage.setCustomRoot(s.storageRootDir);
+      storage.setExternalSafUri(s.externalSafUri);
       var d = await storage.loadDrafts();
       // 导入原生悬浮速记窗写入的 md（若有），并入草稿并持久化防丢
       try {
