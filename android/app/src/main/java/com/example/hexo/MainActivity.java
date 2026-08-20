@@ -25,6 +25,7 @@ import io.flutter.plugin.common.MethodChannel;
 public class MainActivity extends FlutterActivity {
     private static final String CHANNEL = "hexo/native";
     private static final String QN_CHANNEL = "hexo/quick_note";
+    private static final String FILE_CHANNEL = "hexo/file_open";
     private static final int REQ_PICK_IMAGE = 0x4858;
     private static final int REQ_PICK_FILE = 0x4859;
     private static final int REQ_PICK_DIR = 0x4860;
@@ -37,12 +38,18 @@ public class MainActivity extends FlutterActivity {
     private java.util.Map<String, String> pendingQuickNote;
     /** Flutter 侧监听回调（用于热启动主动推送） */
     private MethodChannel quickNoteChannel;
+    /** 外部文件打开缓存：内容 URI 复制到应用私有目录后的路径 */
+    private String pendingOpenFilePath;
+    /** Flutter 侧文件打开回调通道 */
+    private MethodChannel fileOpenChannel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         // 冷启动：缓存 Intent 中的速记参数，供 Flutter 引擎就绪后拉取
         captureQuickNote(getIntent());
+        // 冷启动：缓存外部文件打开 Intent
+        captureOpenFile(getIntent());
         // 强制重建全部桌面小部件：
         // APK 升级后系统不会自动刷新已放置的 widget，旧实例仍绑定旧版 PendingIntent（可能指向打开主软件）。
         // 每次打开主应用重建一次，保证点击行为始终与最新代码一致。
@@ -59,7 +66,7 @@ public class MainActivity extends FlutterActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        // 热启动：缓存 + 主动推送
+        // 热启动：缓存 + 主动推送速记参数
         boolean captured = captureQuickNote(intent);
         if (captured && quickNoteChannel != null) {
             try {
@@ -67,6 +74,16 @@ public class MainActivity extends FlutterActivity {
                 pendingQuickNote = null;
             } catch (Exception e) {
                 android.util.Log.d("QuickNote", "push failed, keep cached", e);
+            }
+        }
+        // 热启动：缓存 + 主动推送外部文件打开
+        boolean fileCaptured = captureOpenFile(intent);
+        if (fileCaptured && fileOpenChannel != null) {
+            try {
+                fileOpenChannel.invokeMethod("onOpenFile", pendingOpenFilePath);
+                pendingOpenFilePath = null;
+            } catch (Exception e) {
+                android.util.Log.d("FileOpen", "push failed, keep cached", e);
             }
         }
     }
@@ -83,6 +100,15 @@ public class MainActivity extends FlutterActivity {
                 pendingQuickNote = null;
             } catch (Exception e) {
                 android.util.Log.d("QuickNote", "resume push failed, keep cached", e);
+            }
+        }
+        // 文件打开同样兜底重推
+        if (pendingOpenFilePath != null && fileOpenChannel != null) {
+            try {
+                fileOpenChannel.invokeMethod("onOpenFile", pendingOpenFilePath);
+                pendingOpenFilePath = null;
+            } catch (Exception e) {
+                android.util.Log.d("FileOpen", "resume push failed, keep cached", e);
             }
         }
     }
@@ -104,6 +130,36 @@ public class MainActivity extends FlutterActivity {
         }
         pendingQuickNote = data;
         return true;
+    }
+
+    /** 从 ACTION_VIEW Intent 读取外部文件，复制到应用缓存目录，返回是否成功 */
+    private boolean captureOpenFile(Intent intent) {
+        if (intent == null) return false;
+        if (!Intent.ACTION_VIEW.equals(intent.getAction())) return false;
+        Uri uri = intent.getData();
+        if (uri == null) return false;
+        try {
+            // 读取文件显示名称
+            String name = queryName(uri);
+            if (name == null) name = "untitled.md";
+            // 复制到应用私有缓存目录
+            java.io.File cacheDir = getCacheDir();
+            java.io.File target = new java.io.File(cacheDir, name);
+            try (InputStream in = getContentResolver().openInputStream(uri);
+                 java.io.FileOutputStream out = new java.io.FileOutputStream(target)) {
+                if (in == null) return false;
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) >= 0) {
+                    out.write(buf, 0, n);
+                }
+            }
+            pendingOpenFilePath = target.getAbsolutePath();
+            return true;
+        } catch (Exception e) {
+            android.util.Log.w("FileOpen", "capture failed", e);
+            return false;
+        }
     }
 
     @Override
@@ -133,6 +189,12 @@ public class MainActivity extends FlutterActivity {
                             java.util.Map<String, String> cached = pendingQuickNote;
                             pendingQuickNote = null;
                             result.success(cached);
+                            break;
+                        case "getPendingOpenFile":
+                            // 拉取并清空缓存的外部文件路径
+                            String p1 = pendingOpenFilePath;
+                            pendingOpenFilePath = null;
+                            result.success(p1);
                             break;
                         case "pickImage":
                             if (pendingPickResult != null) {
@@ -262,6 +324,19 @@ public class MainActivity extends FlutterActivity {
                 java.util.Map<String, String> cached = pendingQuickNote;
                 pendingQuickNote = null;
                 result.success(cached);
+            } else {
+                result.notImplemented();
+            }
+        });
+
+        // 原生 → Flutter 反向通道：热启动时主动推送外部文件打开
+        fileOpenChannel = new MethodChannel(
+                flutterEngine.getDartExecutor().getBinaryMessenger(), FILE_CHANNEL);
+        fileOpenChannel.setMethodCallHandler((call, result) -> {
+            if ("getPendingOpenFile".equals(call.method)) {
+                String cachedPath = pendingOpenFilePath;
+                pendingOpenFilePath = null;
+                result.success(cachedPath);
             } else {
                 result.notImplemented();
             }
