@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../models/session_state.dart';
+import 'web_storage_backend.dart';
 
 /// 会话持久化服务：APP 被杀后台后恢复上次页面状态
 class SessionService {
@@ -28,6 +29,7 @@ class SessionService {
   }
 
   Future<Directory> _baseDir() async {
+    if (kIsWeb) return Directory('/session');
     // 使用应用文档目录
     final home = Platform.environment['HOME'] ??
         Platform.environment['USERPROFILE'] ??
@@ -40,6 +42,10 @@ class SessionService {
   /// 保存当前会话快照
   Future<void> saveSession(SessionState state) async {
     _cached = state;
+    if (kIsWeb) {
+      webStorageWrite('hexo.session', state.toJsonString());
+      return;
+    }
     try {
       final f = await _sessionFile();
       await f.writeAsString(state.toJsonString());
@@ -50,6 +56,17 @@ class SessionService {
 
   /// 读取上次会话快照
   Future<SessionState> loadSession() async {
+    if (kIsWeb) {
+      final text = webStorageRead('hexo.session');
+      if (text == null || text.isEmpty) return SessionState.empty;
+      try {
+        _cached = SessionState.fromJsonString(text);
+        return _cached;
+      } catch (e) {
+        debugPrint('Session: loadSession failed: $e');
+        return SessionState.empty;
+      }
+    }
     try {
       final f = await _sessionFile();
       if (!await f.exists()) return SessionState.empty;
@@ -64,6 +81,10 @@ class SessionService {
   /// 清除会话（用户手动退出文章时调用）
   Future<void> clearSession() async {
     _cached = SessionState.empty;
+    if (kIsWeb) {
+      webStorageRemove('hexo.session');
+      return;
+    }
     try {
       final f = await _sessionFile();
       if (await f.exists()) await f.delete();
@@ -79,6 +100,7 @@ class SessionService {
     String categories = '',
     String cover = '',
   }) async {
+    if (kIsWeb) return ''; // 浏览器会话不做文件快照，仅内存缓存会话
     final dir = await _autoSaveDirectory();
     final ts = DateTime.now().millisecondsSinceEpoch;
     final safeId = articleId
@@ -104,6 +126,7 @@ class SessionService {
 
   /// 获取文章的所有自动保存快照，按时间倒序
   Future<List<AutoSaveSnapshot>> listSnapshots(String articleId) async {
+    if (kIsWeb) return const [];
     final dir = await _autoSaveDirectory();
     if (!await dir.exists()) return [];
 
@@ -128,6 +151,7 @@ class SessionService {
 
   /// 读取指定快照内容
   Future<String> readSnapshotContent(String path) async {
+    if (kIsWeb) return '';
     final f = File(path);
     if (!await f.exists()) return '';
     return await f.readAsString();
@@ -135,6 +159,7 @@ class SessionService {
 
   /// 清理旧快照，只保留最近 N 个
   Future<void> cleanupSnapshots(String articleId, {int keep = 20}) async {
+    if (kIsWeb) return;
     final snapshots = await listSnapshots(articleId);
     if (snapshots.length <= keep) return;
     for (final s in snapshots.skip(keep)) {

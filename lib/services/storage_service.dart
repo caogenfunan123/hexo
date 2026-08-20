@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:saf/saf.dart';
 
+import 'web_storage_backend.dart';
+
 import '../models/app_settings.dart';
 import '../models/article.dart';
 import '../models/repo_config.dart';
@@ -132,6 +134,11 @@ class StorageService {
 
   Future<Directory> get root async {
     if (_root != null) return _root!;
+    // Web 平台：无本地文件系统，返回虚拟路径
+    if (kIsWeb) {
+      _root = Directory('/hexo');
+      return _root!;
+    }
     // 优先使用用户配置的全局统一存储目录
     if (_customRoot.isNotEmpty) {
       try {
@@ -203,6 +210,7 @@ class StorageService {
 
   /// 在根目录自动创建分类子文件夹
   Future<void> _ensureCategoryDirs() async {
+    if (kIsWeb) return;
     if (_root == null) return;
     for (final name in [
       dirMdArticles,
@@ -226,6 +234,7 @@ class StorageService {
 
   /// MD 文章导出目录
   Future<Directory> mdArticlesDir() async {
+    if (kIsWeb) return Directory('${(await root).path}/$dirMdArticles');
     final d = Directory('${(await root).path}/$dirMdArticles');
     if (!await d.exists()) await d.create(recursive: true);
     return d;
@@ -233,6 +242,7 @@ class StorageService {
 
   /// 文章长图导出目录
   Future<Directory> longImagesDir() async {
+    if (kIsWeb) return Directory('${(await root).path}/$dirLongImages');
     final d = Directory('${(await root).path}/$dirLongImages');
     if (!await d.exists()) await d.create(recursive: true);
     return d;
@@ -240,6 +250,7 @@ class StorageService {
 
   /// 云同步缓存目录
   Future<Directory> syncCacheDir() async {
+    if (kIsWeb) return Directory('${(await root).path}/$dirSyncCache');
     final d = Directory('${(await root).path}/$dirSyncCache');
     if (!await d.exists()) await d.create(recursive: true);
     return d;
@@ -247,6 +258,7 @@ class StorageService {
 
   /// Git 博文目录
   Future<Directory> gitPostsDir() async {
+    if (kIsWeb) return Directory('${(await root).path}/$dirGitPosts');
     final d = Directory('${(await root).path}/$dirGitPosts');
     if (!await d.exists()) await d.create(recursive: true);
     return d;
@@ -254,6 +266,7 @@ class StorageService {
 
   /// 临时分享文件目录
   Future<Directory> shareTempDir() async {
+    if (kIsWeb) return Directory('${(await root).path}/$dirShareTemp');
     final d = Directory('${(await root).path}/$dirShareTemp');
     if (!await d.exists()) await d.create(recursive: true);
     return d;
@@ -329,7 +342,54 @@ class StorageService {
 
   Future<File> _file(String name) async => File('${(await root).path}/$name');
 
+  /// Web 平台读取 JSON 文件（localStorage）
+  Future<Map<String, dynamic>> _webReadMap(String name) async {
+    final text = webStorageRead(_webKey(name));
+    if (text == null || text.trim().isEmpty) return {};
+    try {
+      final data = jsonDecode(text);
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+    } catch (e) {
+      debugPrint('Storage: 读取 $name 失败，返回空配置: $e');
+    }
+    return {};
+  }
+
+  /// Web 平台读取 JSON 列表文件（localStorage）
+  Future<List<dynamic>> _webReadList(String name) async {
+    final text = webStorageRead(_webKey(name));
+    if (text == null || text.trim().isEmpty) return [];
+    try {
+      final data = jsonDecode(text);
+      if (data is List) return data;
+    } catch (e) {
+      debugPrint('Storage: 读取 $name 失败，返回空列表: $e');
+    }
+    return [];
+  }
+
+  /// Web 平台写入 JSON 文件（localStorage）
+  Future<void> _webWrite(String name, Object data) async {
+    webStorageWrite(_webKey(name),
+        const JsonEncoder.withIndent('  ').convert(data));
+  }
+
+  /// Web 平台读取原始文本文件（localStorage）
+  Future<String?> _webReadRaw(String name) async {
+    return webStorageRead(_webKey(name));
+  }
+
+  /// Web 平台写入原始文本文件（localStorage）
+  Future<void> _webWriteRaw(String name, String content) async {
+    webStorageWrite(_webKey(name), content);
+  }
+
+  /// Web 平台 localStorage key 前缀，避免冲突
+  String _webKey(String name) => 'hexo.storage_$name';
+
   Future<Map<String, dynamic>> _readMap(String name) async {
+    if (kIsWeb) return _webReadMap(name);
     try {
       final f = await _file(name);
       if (!await f.exists()) return {};
@@ -345,6 +405,7 @@ class StorageService {
   }
 
   Future<List<dynamic>> _readList(String name) async {
+    if (kIsWeb) return _webReadList(name);
     try {
       final f = await _file(name);
       if (!await f.exists()) return [];
@@ -359,6 +420,7 @@ class StorageService {
   }
 
   Future<void> _write(String name, Object data) async {
+    if (kIsWeb) return _webWrite(name, data);
     final f = await _file(name);
     // 临时文件 + rename 原子写入，防止崩溃留下截断文件；
     // 唯一后缀避免并发写同一文件时互相截断
@@ -369,6 +431,12 @@ class StorageService {
   }
 
   Future<AppSettings> loadSettings() async {
+    if (kIsWeb) {
+      final m = await _webReadMap(_settingsFile);
+      final exists = webStorageRead(_webKey(_settingsFile)) != null;
+      final needsGuide = exists && !m.containsKey('appMode');
+      return AppSettings.fromJson(m, needsModeGuide: needsGuide);
+    }
     final f = await _file(_settingsFile);
     final exists = await f.exists();
     final m = await _readMap(_settingsFile);
@@ -465,6 +533,7 @@ class StorageService {
 
   /// 读取原始文件内容（不存在返回 null）
   Future<String?> _readRaw(String name) async {
+    if (kIsWeb) return _webReadRaw(name);
     try {
       final f = await _file(name);
       if (!await f.exists()) return null;
@@ -478,6 +547,7 @@ class StorageService {
 
   /// 写入原始文本（原子写入）
   Future<void> _writeRaw(String name, String content) async {
+    if (kIsWeb) return _webWriteRaw(name, content);
     final f = await _file(name);
     final tmp = File('${f.path}.tmp.${DateTime.now().microsecondsSinceEpoch}.${Random().nextInt(0xFFFFFF)}');
     await tmp.writeAsString(content, flush: true);
@@ -489,6 +559,7 @@ class StorageService {
   }
 
   Future<void> exportDraftMarkdown(Article a) async {
+    if (kIsWeb) return; // 浏览器无本地文件系统，跳过导出
     final dir = await draftsDir();
     final f = File('${dir.path}/${_safePathSegment(a.id)}_${a.fileName()}');
     await f.writeAsString(a.toMarkdownWithFrontMatter());
@@ -498,6 +569,7 @@ class StorageService {
   /// 优先顺序：SAF 授权目录 → MediaStore Downloads → 内部 mdArticlesDir
   /// 返回保存后的 URI/路径，null 表示全部失败
   Future<String?> saveToUserVisibleDir(String fileName, String content) async {
+    if (kIsWeb) return null; // 浏览器无本地目录写入能力
     // 1. SAF 优先
     if (Platform.isAndroid && _externalSafUri != null) {
       final ok = await exportToExternalSaf(fileName, content);
@@ -544,6 +616,7 @@ class StorageService {
   ///
   /// 返回新导入的草稿列表（调用方负责并入并持久化 drafts）。
   Future<List<Article>> importNativeQuickNotes() async {
+    if (kIsWeb) return []; // 浏览器无原生速记导入
     final dir = await mdArticlesDir();
     final imported = <Article>[];
     try {
@@ -647,6 +720,13 @@ class StorageService {
 
   // ── 设备密钥（用于云端同步加密） ──
   Future<String> loadDeviceKey() async {
+    if (kIsWeb) {
+      final stored = webStorageRead(_webKey(_deviceKeyFile));
+      if (stored != null && stored.trim().isNotEmpty) return stored.trim();
+      final key = _generateDeviceKey();
+      webStorageWrite(_webKey(_deviceKeyFile), key);
+      return key;
+    }
     try {
       final f = await _file(_deviceKeyFile);
       if (await f.exists()) {
@@ -661,6 +741,10 @@ class StorageService {
   }
 
   Future<void> saveDeviceKey(String key) async {
+    if (kIsWeb) {
+      webStorageWrite(_webKey(_deviceKeyFile), key);
+      return;
+    }
     final f = await _file(_deviceKeyFile);
     await f.writeAsString(key);
   }

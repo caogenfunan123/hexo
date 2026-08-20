@@ -193,7 +193,8 @@ jobs:
         
       - name: Build Web
         run: |
-          flutter build web --release \
+          # 使用 --base-href 让 Web 版可部署到 GitHub Pages 子路径（/hexo-web/）
+          flutter build web --release --base-href /hexo-web/ \
             2>&1 | tee /tmp/build-web.log
           
           # 验证构建结果
