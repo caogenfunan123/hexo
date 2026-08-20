@@ -116,7 +116,6 @@ await Navigator.of(context).push<void>(
       final filePath = '${dir.path}/${timestamp}_$safeTitle.png';
 
       // 渲染长图：标题 + Markdown 正文
-      final mdStyle = createMobileMarkdownStyle(context: context);
       final width = MediaQuery.of(context).size.width;
       final boundaryKey = GlobalKey();
 
@@ -148,7 +147,6 @@ await Navigator.of(context).push<void>(
                   const SizedBox(height: 12),
                   SmoothMarkdown(
                     data: a.content.isEmpty ? '*（无内容）*' : a.content,
-                    styleSheet: mdStyle,
                     selectable: false,
                     plugins: ParserPluginRegistry()
                       ..register(const MermaidPlugin()),
