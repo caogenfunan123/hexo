@@ -2,10 +2,10 @@
 part of '../main.dart';
 
 extension EditorRemoteExt on _RootShellState {
-  /// 预览文章（复用原 AppBar 预览逻辑）
+  /// 预览文章（复用原 AppBar 预览逻辑，支持 Mermaid 与公式）
   void _openArticlePreview() {
     if (_editorBusy) return;
-    final mdStyle = createMobileMarkdownStyle(context: context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => Scaffold(
@@ -15,15 +15,18 @@ extension EditorRemoteExt on _RootShellState {
               _doc.titleCtrl.text.isEmpty ? '预览' : _doc.titleCtrl.text,
             ),
           ),
-          body: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Markdown(
-              data: _doc.contentCtrl.text.isEmpty
-                  ? '*暂无内容*'
-                  : _doc.contentCtrl.text,
-              selectable: true,
-              styleSheet: mdStyle,
-            ),
+          body: MarkdownPreviewWebView(
+            markdown: _doc.contentCtrl.text.isEmpty
+                ? '*暂无内容*'
+                : _doc.contentCtrl.text,
+            darkTheme: isDark,
+            onOpenLink: (url) async {
+              final uri = Uri.tryParse(url);
+              if (uri != null &&
+                  (uri.scheme == 'http' || uri.scheme == 'https')) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
           ),
         ),
       ),

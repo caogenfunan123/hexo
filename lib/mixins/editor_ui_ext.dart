@@ -623,6 +623,15 @@ extension EditorUiExt on _RootShellState {
                   _openStorageFolder();
                 },
               ),
+              _menuRow(
+                icon: Icons.file_open_outlined,
+                label: '打开本地 .md 文件',
+                color: const Color(0xFF8B5CF6),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _openLocalMdFile();
+                },
+              ),
               const Divider(height: 18),
               // ── 发布渠道 ──
               _menuGroupTitle('发布渠道'),

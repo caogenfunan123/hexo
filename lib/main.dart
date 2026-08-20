@@ -13,6 +13,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:file_picker/file_picker.dart';
 
 import 'controllers/controllers.dart';
 
@@ -111,6 +112,7 @@ import 'services/update_checker_service.dart';
 import 'services/draft_encryption_service.dart';
 import 'services/version_snapshot_service.dart';
 import 'widgets/word_count_badge.dart';
+import 'widgets/markdown_preview_webview.dart';
 import 'screens/home_screen.dart';
 import 'models/ui_settings.dart';
 import 'desktop/feature_entries.dart';
@@ -334,6 +336,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   QuickNoteService? _quickNoteService; // ignore: unused_field 保持监听器生命周期
   StreamSubscription<QuickNoteRequest>? _quickNoteSub;
   bool _quickNoteInited = false;
+  static const MethodChannel _fileOpenChannel = MethodChannel('hexo/file_open');
+  bool _fileOpenInited = false;
   WritingStatsService? _statsService;
 
   /// 每个草稿上次统计的字数（用于记录增量，避免重复累计）
@@ -499,6 +503,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     // 提前注册速记通道（小部件/磁贴深链），不再依赖 bootstrap 尾部初始化：
     // 拉得越早，冷启动深链消费越快；配合 resumed 补拉彻底消灭热启动丢参数
     _initQuickNote();
+    _initFileOpen();
     _bootstrap();
   }
 
@@ -820,6 +825,30 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       service.startListening();
     } catch (e) {
       debugPrint('Init quick note error: $e');
+    }
+  }
+
+  /// 初始化外部文件打开监听：拉取冷启动参数 + 监听热启动推送
+  void _initFileOpen() {
+    if (_fileOpenInited) return;
+    _fileOpenInited = true;
+    // 热启动推送（应用已在运行）
+    _fileOpenChannel.setMethodCallHandler((call) async {
+      if (call.method == 'onOpenFile' && call.arguments is String) {
+        final path = call.arguments as String;
+        if (mounted) _openArticleFromNative(path);
+      }
+    });
+    // 冷启动参数（引擎刚就绪时拉取）
+    try {
+      const nativeChannel = MethodChannel('hexo/native');
+      nativeChannel.invokeMethod<String>('getPendingOpenFile').then((path) {
+        if (path != null && path.isNotEmpty && mounted) {
+          _openArticleFromNative(path);
+        }
+      });
+    } catch (_) {
+      // iOS 没有 hexo/native channel 处理，静默忽略
     }
   }
 

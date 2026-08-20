@@ -251,6 +251,10 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
           windowManager.show();
           _invokeShell('new');
         }),
+        MenuItemLabel(label: '打开文件', onClicked: (_) {
+          windowManager.show();
+          openMarkdownFile();
+        }),
         MenuSeparator(),
         MenuItemLabel(label: '退出', onClicked: (_) async {
           await _editorCtrl.onBeforeClose();

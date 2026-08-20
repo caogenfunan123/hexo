@@ -967,4 +967,20 @@ extension EditorPublishExt on _RootShellState {
       if (mounted) _showToast('MD 保存失败: $e');
     }
   }
+
+  Future<void> _openLocalMdFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['md', 'markdown', 'txt'],
+        allowMultiple: false,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final path = result.files.single.path;
+      if (path == null) return;
+      await _openArticleFromNative(path);
+    } catch (e) {
+      if (mounted) _showToast('打开文件失败: $e');
+    }
+  }
 }

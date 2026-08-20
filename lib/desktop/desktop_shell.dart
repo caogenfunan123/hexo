@@ -94,6 +94,7 @@ import '../screens/content_stats_screen.dart';
 import '../screens/backup_restore_screen.dart';
 import '../screens/p2p_sync_screen.dart';
 import '../widgets/ai_chat_panel.dart';
+import '../widgets/markdown_preview_webview.dart';
 import 'widgets/ai_selection_edit_dialog.dart';
 
 // ── 新功能集成（桌面版） ──
@@ -10666,10 +10667,24 @@ $htmlContent
                               ),
                             ),
                             Expanded(
-                              child: SingleChildScrollView(
-                                padding: const EdgeInsets.all(16),
-                                child: _buildMarkdownPreview(
-                                  _doc.contentCtrl.text,
+                              child: MarkdownPreviewWebView(
+                                markdown: _doc.contentCtrl.text,
+                                darkTheme: isDark,
+                                onOpenLink: (url) async {
+                                  final uri = Uri.tryParse(url);
+                                  if (uri != null &&
+                                      (uri.scheme == 'http' ||
+                                          uri.scheme == 'https')) {
+                                    await launchUrl(
+                                      uri,
+                                      mode: LaunchMode.externalApplication,
+                                    );
+                                  }
+                                },
+                                fallbackBuilder: (context, md) =>
+                                    SingleChildScrollView(
+                                  padding: const EdgeInsets.all(16),
+                                  child: _buildMarkdownPreview(md),
                                 ),
                               ),
                             ),
