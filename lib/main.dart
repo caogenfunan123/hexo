@@ -846,6 +846,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   void _initFileOpen() {
     if (_fileOpenInited) return;
     _fileOpenInited = true;
+    if (kIsWeb) return;
     // 热启动推送（应用已在运行）
     _fileOpenChannel.setMethodCallHandler((call) async {
       if (call.method == 'onOpenFile' && call.arguments is String) {
@@ -856,11 +857,16 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     // 冷启动参数（引擎刚就绪时拉取）
     try {
       const nativeChannel = MethodChannel('hexo/native');
-      nativeChannel.invokeMethod<String>('getPendingOpenFile').then((path) {
-        if (path != null && path.isNotEmpty && mounted) {
-          _openArticleFromNative(path);
-        }
-      });
+      nativeChannel
+          .invokeMethod<String>('getPendingOpenFile')
+          .then((path) {
+            if (path != null && path.isNotEmpty && mounted) {
+              _openArticleFromNative(path);
+            }
+          })
+          .catchError((_) {
+            // Web/iOS 没有 hexo/native channel 处理，静默忽略
+          });
     } catch (_) {
       // iOS 没有 hexo/native channel 处理，静默忽略
     }

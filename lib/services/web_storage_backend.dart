@@ -1,5 +1,5 @@
 import 'web_storage_impl_stub.dart'
-    if (dart.library.js_interop) 'web_storage_impl_web.dart' as impl;
+    if (dart.library.html) 'web_storage_impl_web.dart' as impl;
 
 /// Web 平台 localStorage 文本读写。
 ///

@@ -37,6 +37,7 @@ class DraftEncryptionService {
 
   /// 初始化：加载加密元数据
   static Future<void> load(StorageService storage) async {
+    if (kIsWeb) return;
     try {
       final root = await storage.root;
       final f = File('${root.path}/$_metaFile');
