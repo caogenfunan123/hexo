@@ -15,7 +15,7 @@ extension EditorRemoteExt on _RootShellState {
               _doc.titleCtrl.text.isEmpty ? '预览' : _doc.titleCtrl.text,
             ),
           ),
-          body: MarkdownPreviewWebView(
+          body: MarkdownPreviewSmooth(
             markdown: _doc.contentCtrl.text.isEmpty
                 ? '*暂无内容*'
                 : _doc.contentCtrl.text,

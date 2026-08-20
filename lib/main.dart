@@ -113,6 +113,7 @@ import 'services/draft_encryption_service.dart';
 import 'services/version_snapshot_service.dart';
 import 'widgets/word_count_badge.dart';
 import 'widgets/markdown_preview_webview.dart';
+import 'widgets/markdown_preview_smooth.dart';
 import 'screens/home_screen.dart';
 import 'models/ui_settings.dart';
 import 'desktop/feature_entries.dart';
