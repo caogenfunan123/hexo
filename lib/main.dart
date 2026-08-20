@@ -675,9 +675,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       debugPrint('SkillManager init error: $e');
     }
     // 初始化云同步后端
-    _initCloudSync();
-
-    // ── 初始化新功能服务 ──
+    try { _initCloudSync(); } catch (e) { debugPrint('Init cloud sync error: $e'); }
     _initNewServices();
   }
 
@@ -721,79 +719,84 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   /// 启动时静默检查更新，有新版本时提示
   void _initUpdateCheck() {
+    if (kIsWeb) return;
     try {
       _updateChecker = UpdateCheckerService(currentVersion: _appVersion);
-      // 延迟 3 秒，避免与启动流程竞争
       Future.delayed(const Duration(seconds: 3), () async {
-        final result = await _updateChecker!.check();
-        if (!mounted || !result.hasUpdate) return;
-        final r = result.release!;
-        final artifact = Platform.isAndroid
-            ? (r.androidArtifact(await getDeviceAbi()) ?? r.firstArtifact)
-            : (r.artifactFor(_platformKey) ?? r.firstArtifact);
-        showDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('发现新版本'),
-            content: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '当前 ${result.currentVersion} → 最新 ${r.version}',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  if (r.notes.trim().isNotEmpty) ...[
-                    const SizedBox(height: 8),
+        try {
+          final result = await _updateChecker!.check();
+          if (!mounted || !result.hasUpdate) return;
+          final r = result.release!;
+          final artifact = Platform.isAndroid
+              ? (r.androidArtifact(await getDeviceAbi()) ?? r.firstArtifact)
+              : (r.artifactFor(_platformKey) ?? r.firstArtifact);
+          if (!mounted) return;
+          showDialog<void>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('发现新版本'),
+              content: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     Text(
-                      r.notes.trim(),
-                      style: const TextStyle(fontSize: 12, height: 1.4),
-                      maxLines: 8,
-                      overflow: TextOverflow.ellipsis,
+                      '当前 ${result.currentVersion} → 最新 ${r.version}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                  ],
-                  if (artifact != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      '下载: ${artifact.url}',
-                      style: const TextStyle(fontSize: 11, color: Colors.blue),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (artifact.sha256 != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          'SHA256: ${artifact.sha256}',
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontFamily: 'monospace',
-                            color: Colors.grey,
-                          ),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                    if (r.notes.trim().isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        r.notes.trim(),
+                        style: const TextStyle(fontSize: 12, height: 1.4),
+                        maxLines: 8,
+                        overflow: TextOverflow.ellipsis,
                       ),
+                    ],
+                    if (artifact != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '下载: ${artifact.url}',
+                        style: const TextStyle(fontSize: 11, color: Colors.blue),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (artifact.sha256 != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'SHA256: ${artifact.sha256}',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontFamily: 'monospace',
+                              color: Colors.grey,
+                            ),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
                   ],
-                ],
+                ),
               ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('稍后'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _openUpdateUrl(artifact?.url ?? r.version);
+                  },
+                  child: const Text('去更新'),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('稍后'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _openUpdateUrl(artifact?.url ?? r.version);
-                },
-                child: const Text('去更新'),
-              ),
-            ],
-          ),
-        );
+          );
+        } catch (e) {
+          debugPrint('Update check async error: $e');
+        }
       });
     } catch (e) {
       debugPrint('Init update check error: $e');

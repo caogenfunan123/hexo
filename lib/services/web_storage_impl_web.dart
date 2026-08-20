@@ -1,25 +1,14 @@
-import 'dart:js_interop';
+import 'dart:html' show window;
 
-/// 通过 dart:js_interop 访问浏览器 window.localStorage。
+/// 通过 dart:html 的 window.localStorage 读写。
+/// 仅在 Flutter Web 构建时编译。
 
-@JS('window.localStorage')
-external JSObject get _localStorage;
-
-extension _StorageExt on JSObject {
-  external JSString? getItem(String key);
-  external void setItem(String key, String value);
-  external void removeItem(String key);
-}
-
-String? webStorageRead(String key) {
-  final v = _localStorage.getItem(key);
-  return v?.toDart;
-}
+String? webStorageRead(String key) => window.localStorage[key];
 
 void webStorageWrite(String key, String value) {
-  _localStorage.setItem(key, value);
+  window.localStorage[key] = value;
 }
 
 void webStorageRemove(String key) {
-  _localStorage.removeItem(key);
+  window.localStorage.remove(key);
 }
