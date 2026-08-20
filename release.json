@@ -1,41 +1,41 @@
 {
-  "version": "1.0.9",
-  "build": 10,
+  "version": "1.0.10",
+  "build": 11,
   "name": "Hexo 拓墨",
-  "notes": "★重构：App 内预览改用 flutter_smooth_markdown 纯原生 Widget 渲染，彻底解决 WebView 白屏/卡死/连接失败问题\n★修复：Mermaid 图表与 KaTeX 公式执行顺序冲突，防止 KaTeX 篡改 mermaid 源码\n★修复：MermaidPlugin 与 MermaidBuilder 注册，确保 mermaid 代码块自动渲染为图表\n★新增：设置页鸣谢添加 Markora（架构参考）与 flutter_smooth_markdown（渲染引擎）",
-  "publishedAt": "2026-08-20T04:12:36+00:00",
+  "notes": "★ 新增：APK 按架构拆分（arm64-v8a / armeabi-v7a / universal），arm64 包体积从 77MB 降至 28MB\n★ 新增：R8 压缩 + shrinkResources 开启，进一步减小安装包体积\n★ 新增：官网下载页支持按设备架构选择 APK（arm64 推荐 / armv7 / 全架构）\n★ 新增：客户端自动检测设备 ABI 下载对应架构 APK\n★ 修复：移除 abiFilters 保证 universal 包仍包含 x86/x86_64 架构兼容\n★ 修复：补充 Flutter 引擎 proguard keep 规则，消除 R8 混淆风险\n★ 修复：desktop_shell 11683 行重构，_bus late final 缓存替代重复创建\n★ 修复：加密服务 async/await 正确性、ToolSchemaValidator UPDATE 正则、PathUtil Unix 路径保留前导 / 等 23 个代码审查问题",
+  "publishedAt": "2026-08-20T12:50:00+08:00",
   "platforms": {
     "android": {
-      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.9/app-release.apk",
-      "sha256": "f318ac5bc77f67a90bc4fe4bd5828a0ede65941b1e7649ce54165787a91e8791",
-      "size": 80608459,
+      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/app-release.apk",
+      "sha256": "4bc99da43d74bc69149027322af1086d5381c5afccebeaefea0e58c26eb75ee7",
+      "size": 80774556,
       "abi": {
         "arm64": {
-          "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.9/app-arm64-v8a-release.apk",
-          "sha256": "",
-          "size": 0
+          "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/app-arm64-v8a-release.apk",
+          "sha256": "3d16089a12226cae5bb4bd8fdcbe3f55564b9747fa7cd606cb49acf56bd41952",
+          "size": 29449344
         },
         "armv7": {
-          "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.9/app-armeabi-v7a-release.apk",
-          "sha256": "",
-          "size": 0
+          "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/app-armeabi-v7a-release.apk",
+          "sha256": "eb45812e2383b9b1d77a82d1475b0922826645a3970005f18b2e8c9a885136cc",
+          "size": 27661256
         },
         "universal": {
-          "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.9/app-release.apk",
-          "sha256": "f318ac5bc77f67a90bc4fe4bd5828a0ede65941b1e7649ce54165787a91e8791",
-          "size": 80608459
+          "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/app-release.apk",
+          "sha256": "4bc99da43d74bc69149027322af1086d5381c5afccebeaefea0e58c26eb75ee7",
+          "size": 80774556
         }
       }
     },
     "windows": {
-      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.9/hexo-windows.zip",
-      "sha256": "6614b30a1f7f715b8de7b122de748494bad070c560d37af2a22a90bf4b7e1750",
-      "size": 24102123
+      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/hexo-windows.zip",
+      "sha256": "69b91a784ed99ced7bc37ae5180a90ae92c71b354ac82926176f7c62fd16ea44",
+      "size": 24105435
     },
     "linux": {
-      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.9/hexo-linux.tar.gz",
-      "sha256": "2c7230aebb650b13fceb6aeeb547a71d9d4972c4a141a2f798c41bbee6f68c06",
-      "size": 20895048
+      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/hexo-linux.tar.gz",
+      "sha256": "a4e1c4f28c787ce2d6d75fa036c032058fc11e155cfccdc83d429ad976146cb1",
+      "size": 20895670
     }
   }
 }
