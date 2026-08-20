@@ -91,14 +91,15 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
       _inlineHtml = await _buildHtmlInline(widget.markdown);
       return;
     }
+    // 先设置内容再启动服务器，确保首个请求到达时内容已就绪
+    LocalAssetServer.instance.updateContent(
+      MarkdownPreviewBuilder.buildBody(widget.markdown),
+    );
     final ok = await LocalAssetServer.instance.ensureStarted();
     if (!ok) {
       _serverFailed = true;
       return;
     }
-    LocalAssetServer.instance.updateContent(
-      MarkdownPreviewBuilder.buildBody(widget.markdown),
-    );
   }
 
   @override
@@ -337,13 +338,17 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
         setState(() => _webViewError = true);
       },
       onReceivedHttpError: (controller, request, errorResponse) {
+        final url = request.url.toString();
         PreviewDebugStore.instance.log(
           'webview',
-          'onReceivedHttpError status=${errorResponse.statusCode} url=${request.url}',
+          'onReceivedHttpError status=${errorResponse.statusCode} url=$url',
           level: LogLevel.error,
         );
+        // 只对主页面（/preview.html）的 HTTP 错误做降级，子资源（favicon 等）忽略
         if (!mounted) return;
-        setState(() => _webViewError = true);
+        if (url.contains('/preview.html')) {
+          setState(() => _webViewError = true);
+        }
       },
       onConsoleMessage: (controller, consoleMessage) {
         _handleConsoleMessage(consoleMessage);

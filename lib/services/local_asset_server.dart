@@ -44,9 +44,8 @@ class LocalAssetServer {
     return '${t.hour}:${pad(t.minute)}:${pad(t.second)}.${(t.millisecond).toString().padLeft(3, '0')}';
   }
 
-  void _log(String s) {
-    final line = '[$_ts] $s';
-    // debugPrint 会截断长行；直接 writeLine 到 stdout 并抛给回调。
+void _log(String s) {
+    final line = '[${_ts()}] $s';
     stdout.writeln(line);
     onLog?.call(line);
   }
