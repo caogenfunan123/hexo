@@ -151,7 +151,30 @@ function renderAll() {
         securityLevel: 'loose',
         fontFamily: 'sans-serif'
       });
-      mermaid.run({ nodes: document.querySelectorAll('pre.mermaid') });
+      document.querySelectorAll('pre.mermaid').forEach(function (node) {
+        var src = (node.textContent || '').trim();
+        if (src.indexOf('```') === 0) {
+          var firstNewline = src.indexOf('\n');
+          src = firstNewline >= 0 ? src.substring(firstNewline + 1) : '';
+          if (src.lastIndexOf('```') === src.length - 3) {
+            src = src.substring(0, src.length - 3);
+          }
+        }
+        mermaid.render('mmd-' + (node.id || 'g') + '-' + Math.random().toString(36).slice(2, 8), src)
+          .then(function (res) {
+            var wrap = document.createElement('div');
+            wrap.className = 'mermaid svg';
+            wrap.innerHTML = res.svg;
+            node.parentNode.replaceChild(wrap, node);
+          })
+          .catch(function (err) {
+            var div = document.createElement('div');
+            div.className = 'mermaid-error';
+            var msg = (err && err.message) ? err.message : String(err);
+            div.textContent = '图表渲染失败：' + msg;
+            node.parentNode.replaceChild(div, node);
+          });
+      });
     } catch (e) {}
   }
 }
@@ -180,7 +203,7 @@ function refreshContent() {
   loadContent();
 }
 
-document.addEventListener('DOMContentLoaded', loadContent);
+document.addEventListener('DOMContentLoaded', renderAll);
 
 document.addEventListener('click', function (e) {
   var a = e.target;

@@ -109,7 +109,11 @@ class LocalAssetServer {
         '$_assetPrefix/preview_template.html',
       );
       request.response.headers.contentType = ContentType.html;
-      request.response.write(template);
+      // 首次渲染直接把正文内联进 HTML，即使 JS fetch 失败也能显示内容。
+      request.response.write(
+        template.replaceAll('<div id="content"></div>',
+            '<div id="content">$_content</div>'),
+      );
       await request.response.close();
     } catch (e) {
       _serve404(request);

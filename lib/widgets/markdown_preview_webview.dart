@@ -54,6 +54,7 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
   String _lastRenderedMarkdown = '';
   String? _inlineHtml;
   bool _serverFailed = false;
+  bool _webViewError = false;
 
   bool get _webViewSupported {
     if (kIsWeb) return true;
@@ -244,6 +245,9 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
         if (_serverFailed) {
           return _buildFallback();
         }
+        if (_webViewError) {
+          return _buildFallback();
+        }
         final url = LocalAssetServer.instance.previewUrl +
             (widget.darkTheme ? '?dark=1' : '?dark=0');
         return _buildWebView(
@@ -274,6 +278,14 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
             }
           },
         );
+      },
+      onReceivedError: (controller, request, error) {
+        if (!mounted) return;
+        setState(() => _webViewError = true);
+      },
+      onReceivedHttpError: (controller, request, errorResponse) {
+        if (!mounted) return;
+        setState(() => _webViewError = true);
       },
     );
   }
