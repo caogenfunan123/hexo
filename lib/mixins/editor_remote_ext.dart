@@ -165,12 +165,21 @@ await Navigator.of(context).push<void>(
         final image = await boundary.toImage(pixelRatio: 3);
         final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
         if (byteData != null) {
+          final bytes = byteData.buffer.asUint8List();
+          // 写入私有目录作为兜底
           final file = File(filePath);
-          await file.writeAsBytes(byteData.buffer.asUint8List());
+          await file.writeAsBytes(bytes);
+          // 尝试写入 SAF 导出文件夹
+          final savedToSaf = await storage.savePngToExternalSaf(
+            '${timestamp}_$safeTitle.png',
+            bytes,
+          );
           if (mounted) {
-            _showToast(
-              'PNG 长图已保存到 ${StorageService.dirLongImages}/\n$filePath',
-            );
+            if (savedToSaf) {
+              _showToast('PNG 长图已保存到导出文件夹');
+            } else {
+              _showToast('PNG 长图已保存到内部目录\n$filePath');
+            }
           }
         }
       }

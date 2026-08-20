@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:saf/saf.dart';
 import 'dart:io';
 import '../models/app_settings.dart';
 import '../models/git_provider.dart';
@@ -323,6 +324,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final ns = widget.settings.copyWith(externalSafUri: null);
     await widget.onSettingsChanged(ns);
     widget.onShowToast(l10n.translate('external_saf_dir_cleared'));
+  }
+
+  /// Android SAF：查看导出文件夹内容（列出目录下文件）
+  Future<void> _showExternalSafDirDialog() async {
+    final l10n = AppLocalizations.ofContext(context);
+    if (widget.settings.externalSafUri == null ||
+        widget.settings.externalSafUri!.isEmpty) {
+      widget.onShowToast(l10n.translate('pick_export_folder_first'));
+      return;
+    }
+    final files = await widget.storage.listExternalSafDir();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(l10n.translate('export_folder_contents')),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: files.isEmpty
+                ? Text(l10n.translate('export_folder_empty'))
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: files.length,
+                    itemBuilder: (ctx, i) {
+                      final f = files[i];
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.insert_drive_file_outlined),
+                        title: Text(f.name),
+                        trailing: Text(
+                          '${(f.length / 1024).toStringAsFixed(1)} KB',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(l10n.translate('close')),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   /// 一键迁移旧目录全部历史文件到当前全局根目录（带进度对话框）
@@ -988,6 +1039,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       icon: Icons.close,
                       label: l10n.translate('clear_export_folder'),
                       onTap: _clearExternalSafDir,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _storageActionBtn(
+                    icon: Icons.folder_open_outlined,
+                    label: l10n.translate('view_export_folder'),
+                    onTap: _showExternalSafDirDialog,
+                  ),
+                ),
+                if (s.storageRootDir.isNotEmpty) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _storageActionBtn(
+                      icon: Icons.drive_file_move_outline,
+                      label: l10n.translate('migrate_storage_root'),
+                      onTap: () => _migrateStorageRoot(s.storageRootDir),
                     ),
                   ),
                 ],
@@ -1677,19 +1750,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: _showHelpDialog,
           ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.folder_open_outlined),
-            title: Text(l10n.translate('export_dir')),
-            subtitle: Text(l10n.translate('export_dir_hint')),
-            onTap: () async {
-              final dir = await widget.storage.draftsDir();
-              Clipboard.setData(ClipboardData(text: dir.path));
-              widget.onShowToast(
-                l10n.translate('export_dir_copied', params: {'path': dir.path}),
-              );
-            },
-          ),
+          if (kIsWeb || !Platform.isAndroid)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.folder_open_outlined),
+              title: Text(l10n.translate('export_dir')),
+              subtitle: Text(l10n.translate('export_dir_hint')),
+              onTap: () async {
+                final dir = await widget.storage.draftsDir();
+                Clipboard.setData(ClipboardData(text: dir.path));
+                widget.onShowToast(
+                  l10n.translate(
+                    'export_dir_copied',
+                    params: {'path': dir.path},
+                  ),
+                );
+              },
+            ),
         ]),
         const SizedBox(height: 24),
       ],

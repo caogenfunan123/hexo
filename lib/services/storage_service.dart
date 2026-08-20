@@ -107,6 +107,29 @@ class StorageService {
     }
   }
 
+  /// 导出 PNG 字节到 SAF 授权目录，返回 true 表示成功
+  Future<bool> savePngToExternalSaf(String fileName, Uint8List bytes) async {
+    if (_externalSafUri == null) return false;
+    try {
+      await _getSaf().writeFileBytes(_externalSafUri!, fileName, 'image/png', bytes);
+      return true;
+    } catch (e) {
+      debugPrint('savePngToExternalSaf error: $e');
+      return false;
+    }
+  }
+
+  /// 列出 SAF 授权目录下的文件
+  Future<List<SafDocumentFile>> listExternalSafDir() async {
+    if (_externalSafUri == null) return [];
+    try {
+      return await _getSaf().list(_externalSafUri!);
+    } catch (e) {
+      debugPrint('listExternalSafDir error: $e');
+      return [];
+    }
+  }
+
   Future<Directory> get root async {
     if (_root != null) return _root!;
     // 优先使用用户配置的全局统一存储目录
