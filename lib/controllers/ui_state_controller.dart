@@ -42,6 +42,7 @@ class UiStateController extends ChangeNotifier {
     notifyListeners();
     // 自动清除
     Future.delayed(const Duration(seconds: 3), () {
+      if (!hasListeners) return;
       if (_toastMessage == message) {
         _toastMessage = null;
         notifyListeners();

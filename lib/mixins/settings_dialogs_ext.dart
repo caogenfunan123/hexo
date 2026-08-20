@@ -813,12 +813,12 @@ extension SettingsDialogsExt on _RootShellState {
     _showSnippetDialog();
   }
 
-  void _showSnippetDialog() {
+  Future<void> _showSnippetDialog() async {
     final nameCtrl = TextEditingController();
     final contentCtrl = TextEditingController();
     String category = '自定义';
     try {
-      showDialog(
+      await showDialog(
         context: context,
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, setDialogState) {

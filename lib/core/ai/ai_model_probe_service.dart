@@ -41,12 +41,14 @@ class AiModelProbeService {
     if (models.isEmpty) return [];
 
     final results = <ProbeResult>[];
-    final queue = List<AiModelEntity>.from(models);
+    var idx = 0;
     final working = <Future<void>>[];
 
     Future<void> worker() async {
-      while (queue.isNotEmpty) {
-        final model = queue.removeAt(0);
+      while (true) {
+        final i = idx++;
+        if (i >= models.length) break;
+        final model = models[i];
         final stopwatch = Stopwatch()..start();
         try {
           final ok = await ping(model);

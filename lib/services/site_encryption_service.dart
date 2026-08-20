@@ -10,6 +10,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:pointycastle/export.dart';
 
 /// 站点加密服务
@@ -120,7 +121,8 @@ class SiteEncryptionService {
     try {
       await decryptFile(encryptedPath, password);
       return true;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Verify password failed: $e');
       return false;
     }
   }

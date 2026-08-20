@@ -649,7 +649,7 @@ class DesktopShellState extends State<DesktopShell>
     }
   }
 
-  void _initCloudSync() async {
+  Future<void> _initCloudSync() async {
     final deviceKey = await storage.loadDeviceKey();
     cloudSyncService.initDeviceKey(deviceKey);
     final githubBackend = GitHubSyncBackend(github);
@@ -664,7 +664,7 @@ class DesktopShellState extends State<DesktopShell>
     }
   }
 
-  void _initRecycleBin() async {
+  Future<void> _initRecycleBin() async {
     try {
       await recycleBinService.init(await storage.root);
       // 自动清理超过30天的回收站文件
@@ -674,7 +674,7 @@ class DesktopShellState extends State<DesktopShell>
     }
   }
 
-  void _initVersionSnapshots() async {
+  Future<void> _initVersionSnapshots() async {
     try {
       await versionSnapshotService.init(await storage.root);
       // 自动清理超过7天的快照
@@ -684,7 +684,7 @@ class DesktopShellState extends State<DesktopShell>
     }
   }
 
-  void _initFrontMatter() async {
+  Future<void> _initFrontMatter() async {
     try {
       frontMatterService.refreshFromArticles(drafts);
     } catch (e) {
@@ -4712,7 +4712,7 @@ class DesktopShellState extends State<DesktopShell>
     );
   }
 
-  void _exportLogs() async {
+  Future<void> _exportLogs() async {
     try {
       final logs = logService.logs;
       if (logs.isEmpty) {
@@ -4736,7 +4736,7 @@ class DesktopShellState extends State<DesktopShell>
     }
   }
 
-  void _fixEncoding() async {
+  Future<void> _fixEncoding() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -4754,12 +4754,12 @@ class DesktopShellState extends State<DesktopShell>
         // 尝试 UTF-8
         decoded = utf8.decode(rawBytes);
       } catch (e) {
-        debugPrint('Shell: diff preview load failed: $e');
+        debugPrint('Shell: encoding UTF-8 decode failed: $e');
         try {
           // 尝试 GBK
           decoded = gbk.decode(rawBytes);
         } catch (e) {
-          debugPrint('Shell: diff preview parse failed: $e');
+          debugPrint('Shell: encoding GBK decode failed: $e');
           // 尝试 Latin-1
           decoded = latin1.decode(rawBytes);
         }
@@ -4775,13 +4775,13 @@ class DesktopShellState extends State<DesktopShell>
     }
   }
 
-  void _toggleOfflineMode() async {
+  Future<void> _toggleOfflineMode() async {
     final newSettings = settings.copyWith(offlineMode: !settings.offlineMode);
     await _updateSettings(newSettings);
     _showToast(settings.offlineMode ? '已退出离线模式' : '已进入离线模式\n同步和 AI 功能已暂停');
   }
 
-  void _toggleNightEyeProtection() async {
+  Future<void> _toggleNightEyeProtection() async {
     final newSettings = settings.copyWith(
       nightEyeProtection: !settings.nightEyeProtection,
     );
@@ -5482,7 +5482,7 @@ class DesktopShellState extends State<DesktopShell>
     }
   }
 
-  void _importHtmlFile() async {
+  Future<void> _importHtmlFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -5513,7 +5513,7 @@ class DesktopShellState extends State<DesktopShell>
     }
   }
 
-  void _importDocxFile() async {
+  Future<void> _importDocxFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -5837,7 +5837,7 @@ class DesktopShellState extends State<DesktopShell>
     }
   }
 
-  void _showTemplateManager() async {
+  Future<void> _showTemplateManager() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => TemplateManagerScreen(
@@ -6112,7 +6112,7 @@ class DesktopShellState extends State<DesktopShell>
     }
   }
 
-  void _showConfigEditor() async {
+  Future<void> _showConfigEditor() async {
     final repo = effectiveRepo;
     if (repo == null) {
       _showToast('请先配置仓库');
@@ -6180,7 +6180,7 @@ class DesktopShellState extends State<DesktopShell>
     }
   }
 
-  void _showSiteEditor() async {
+  Future<void> _showSiteEditor() async {
     final repo = effectiveRepo;
     if (repo == null) {
       _showToast('请先配置仓库');
@@ -6198,7 +6198,7 @@ class DesktopShellState extends State<DesktopShell>
     if (mounted) setState(() {});
   }
 
-  void _showBlogSiteManager() async {
+  Future<void> _showBlogSiteManager() async {
     await Navigator.of(context).push<BlogSiteConfig?>(
       MaterialPageRoute(
         builder: (_) => BlogSiteEditorScreen(
@@ -6220,7 +6220,7 @@ class DesktopShellState extends State<DesktopShell>
     await _updateSettings(settings.copyWith(blogSiteConfigs: existing));
   }
 
-  void _showAiManager() async {
+  Future<void> _showAiManager() async {
     final baseUrlCtrl = TextEditingController();
     final apiKeyCtrl = TextEditingController();
     final modelCtrl = TextEditingController();
@@ -6428,7 +6428,7 @@ class DesktopShellState extends State<DesktopShell>
     }
   }
 
-  void _showThemeColorPicker() async {
+  Future<void> _showThemeColorPicker() async {
     const colors = [
       Color(0xFF0D9488),
       Color(0xFF0EA5E9),
@@ -6504,7 +6504,7 @@ class DesktopShellState extends State<DesktopShell>
     );
   }
 
-  void _showGithubTokenManager() async {
+  Future<void> _showGithubTokenManager() async {
     final tokens = List<GithubTokenProfile>.from(settings.githubTokens);
     final nameCtrl = TextEditingController();
     final tokenCtrl = TextEditingController();
@@ -6578,7 +6578,9 @@ class DesktopShellState extends State<DesktopShell>
                               style: const TextStyle(fontSize: 13),
                             ),
                             subtitle: Text(
-                              '${t.token.substring(0, 8)}...',
+                              t.token.length > 8
+                                  ? '${t.token.substring(0, 8)}...'
+                                  : t.token,
                               style: const TextStyle(
                                 fontSize: 11,
                                 fontFamily: 'monospace',
@@ -6669,7 +6671,7 @@ class DesktopShellState extends State<DesktopShell>
     }
   }
 
-  void _showRepoManager() async {
+  Future<void> _showRepoManager() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => SiteManagementScreen(
@@ -6899,7 +6901,7 @@ class DesktopShellState extends State<DesktopShell>
   }
 
   /// AI 模板与博客框架入口：打开工作台的模板任务，并刷新模板列表
-  void _showAiTemplateChat() async {
+  Future<void> _showAiTemplateChat() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AgentWorkbenchScreen(
@@ -9935,7 +9937,9 @@ $htmlContent
 
       // 清理文件名
       final safeName = newName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-      final dirPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
+      final dirPath = currentPath.contains('/')
+        ? currentPath.substring(0, currentPath.lastIndexOf('/'))
+        : '';
       final newPath = '$dirPath/$safeName.md';
 
       // 检查目标文件是否已存在
@@ -10061,7 +10065,7 @@ $htmlContent
     }
   }
 
-  void _handleSync() async {
+  Future<void> _handleSync() async {
     _sync.addLog('开始同步...', status: SyncStatus.syncing);
     // 1. 同步远程文章列表
     await _refreshRemote();

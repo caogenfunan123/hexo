@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../../models/ai_profile.dart';
 import '../../models/app_settings.dart';
 import '../../services/ai_service.dart';
@@ -962,7 +964,9 @@ $prev
     if (tc is List) {
       try {
         len += jsonEncode(tc).length;
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('AiDispatcher: token 估算失败: $e');
+      }
     }
     return len;
   }
@@ -982,9 +986,18 @@ $prev
     );
     // 密钥池：成功清零失败计数，失败累计（达到阈值自动轮换）
     if (success) {
-      unawaited(_modelManager.recordKeySuccess(model));
+      unawaited(_recordKeyResult(_modelManager.recordKeySuccess(model)));
     } else {
-      unawaited(_modelManager.recordKeyFailure(model));
+      unawaited(_recordKeyResult(_modelManager.recordKeyFailure(model)));
+    }
+  }
+
+  /// 密钥池状态写入异步执行，失败时记录日志而非静默丢弃
+  Future<void> _recordKeyResult(Future<void> future) async {
+    try {
+      await future;
+    } catch (e) {
+      debugPrint('AiDispatcher: 记录密钥池状态失败: $e');
     }
   }
 
@@ -1098,7 +1111,7 @@ $prev
             stopwatch.elapsedMilliseconds,
             true,
           );
-          unawaited(_modelManager.recordKeySuccess(currentModel));
+          unawaited(_recordKeyResult(_modelManager.recordKeySuccess(currentModel)));
         }
 
         addAssistantMessage(result);
@@ -1122,7 +1135,7 @@ $prev
             stopwatch.elapsedMilliseconds,
             false,
           );
-          unawaited(_modelManager.recordKeyFailure(currentModel));
+          unawaited(_recordKeyResult(_modelManager.recordKeyFailure(currentModel)));
         }
 
         // 判断是否可重试

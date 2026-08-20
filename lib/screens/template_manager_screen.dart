@@ -164,9 +164,10 @@ class _TemplateManagerScreenState extends State<TemplateManagerScreen> {
           userPrompt: promptCtrl.text.trim(),
         );
         if (mounted) {
-          final nameCtrl = TextEditingController(
-            text: 'AI: ${promptCtrl.text.trim().substring(0, 20)}',
-          );
+final preview = promptCtrl.text.trim();
+            final nameCtrl = TextEditingController(
+              text: 'AI: ${preview.length > 20 ? preview.substring(0, 20) : preview}',
+            );
           try {
             final ok2 = await showDialog<bool>(
               context: context,

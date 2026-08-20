@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/repository/blog_repository.dart';
@@ -49,6 +51,7 @@ enum _SiteScopeFilter {
 }
 
 class _UnifiedRemotePostsScreenState extends State<UnifiedRemotePostsScreen> {
+  Timer? _searchDebounce;
   List<BlogPost> _posts = [];
   bool _loading = true;
   bool _loadingMore = false;
@@ -92,6 +95,7 @@ class _UnifiedRemotePostsScreenState extends State<UnifiedRemotePostsScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -546,7 +550,8 @@ class _UnifiedRemotePostsScreenState extends State<UnifiedRemotePostsScreen> {
                       _searchQuery = value;
                     });
                     // 防抖搜索
-                    Future.delayed(const Duration(milliseconds: 500), () {
+                    _searchDebounce?.cancel();
+                    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
                       if (_searchQuery == value) {
                         _loadPosts(refresh: true);
                       }

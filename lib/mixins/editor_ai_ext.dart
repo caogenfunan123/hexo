@@ -54,36 +54,36 @@ extension EditorAiExt on _RootShellState {
           break;
         case 'code':
           final ctrl = TextEditingController();
-          final ok = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('AI 生成代码'),
-              content: TextField(
-                controller: ctrl,
-                maxLines: 5,
-                decoration: const InputDecoration(hintText: '描述需要的代码'),
+          try {
+            final ok = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('AI 生成代码'),
+                content: TextField(
+                  controller: ctrl,
+                  maxLines: 5,
+                  decoration: const InputDecoration(hintText: '描述需要的代码'),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('生成'),
+                  ),
+                ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('生成'),
-                ),
-              ],
-            ),
-          );
-          if (ok != true) {
+            );
+            if (ok != true) return;
+            result = await aiService.generateCode(
+              settings,
+              ctrl.text.trim().isEmpty ? '写一段示例代码' : ctrl.text.trim(),
+            );
+          } finally {
             ctrl.dispose();
-            break;
           }
-          result = await aiService.generateCode(
-            settings,
-            ctrl.text.trim().isEmpty ? '写一段示例代码' : ctrl.text.trim(),
-          );
-          ctrl.dispose();
           _insertText('\n\n$result\n');
           break;
         case 'rewrite':
@@ -93,33 +93,33 @@ extension EditorAiExt on _RootShellState {
           }
           final selected = text.substring(sel.start, sel.end);
           final instrCtrl = TextEditingController(text: '更简洁专业');
-          final ok2 = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('AI 改写'),
-              content: TextField(controller: instrCtrl),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('改写'),
-                ),
-              ],
-            ),
-          );
-          if (ok2 != true) {
+          try {
+            final ok2 = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('AI 改写'),
+                content: TextField(controller: instrCtrl),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('改写'),
+                  ),
+                ],
+              ),
+            );
+            if (ok2 != true) return;
+            result = await aiService.rewriteSelection(
+              settings,
+              selected,
+              instrCtrl.text.trim(),
+            );
+          } finally {
             instrCtrl.dispose();
-            break;
           }
-          result = await aiService.rewriteSelection(
-            settings,
-            selected,
-            instrCtrl.text.trim(),
-          );
-          instrCtrl.dispose();
           final txt = _doc.contentCtrl.text;
           _doc.contentCtrl.value = TextEditingValue(
             text: txt.replaceRange(sel.start, sel.end, result),

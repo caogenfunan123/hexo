@@ -17,10 +17,12 @@ class WebDavItem {
 }
 
 class WebDavService {
+  bool allowSelfSigned = false;
+
   Future<HttpClient> _openClient() async {
     return HttpClient()
       ..connectionTimeout = const Duration(seconds: 25)
-      ..badCertificateCallback = (cert, host, port) => false;
+      ..badCertificateCallback = (cert, host, port) => allowSelfSigned;
   }
 
   Future<String> _put(String url, String token, List<int> bytes, {Map<String, String>? extraHeaders}) async {

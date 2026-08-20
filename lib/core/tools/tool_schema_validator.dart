@@ -60,8 +60,10 @@ class ToolSchemaValidator {
   static final List<RegExp> _dangerPatterns = [
     RegExp(r'DELETE\s+FROM\s+\S+\s*;?\s*$', caseSensitive: false), // 无 WHERE 的 DELETE
     // 无 WHERE 的 UPDATE（危险）；含 WHERE 的正常 UPDATE 放行
+    // 用负向前瞻断言 SET 之后到分号前不存在 WHERE 子句，
+    // 避免 .+ 贪婪匹配导致所有 UPDATE 都被误报
     RegExp(
-        r'UPDATE\s+\S+\s+SET\s+.+(?!\s*WHERE\s+)\s*;?\s*$',
+        r'UPDATE\s+\S+\s+SET\s+(?![^;]*\bWHERE\s)[\s\S]*?;?\s*$',
         caseSensitive: false),
     RegExp(r'git\s+push\s+(-f|--force)', caseSensitive: false),
     RegExp(r'git\s+reset\s+--hard', caseSensitive: false),

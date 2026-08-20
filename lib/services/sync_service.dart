@@ -163,7 +163,7 @@ class SyncService {
         ));
       } else {
         // 有映射，比较时间
-        if (article.updatedAt.isAfter(mapping.lastSyncAt)) {
+        if (article.updatedAt.isAfter(mapping.localModifiedAt ?? mapping.lastSyncAt)) {
           // 本地有更新
           entries.add(SyncEntry(
             localArticleId: article.id,
@@ -205,7 +205,7 @@ class SyncService {
         if (mappedRemoteIds.contains(post.id)) {
           // 已映射，检查远程是否有更新
           final mapping = findByRemoteId(siteId, post.id!);
-          if (mapping != null && post.modifiedDate.isAfter(mapping.lastSyncAt)) {
+          if (mapping != null && post.modifiedDate.isAfter(mapping.remoteModifiedAt ?? mapping.lastSyncAt)) {
             // 更新已有条目的状态
             final idx = entries.indexWhere((e) => e.remotePostId == post.id);
             if (idx >= 0 && entries[idx].status == SyncStatus.synced) {

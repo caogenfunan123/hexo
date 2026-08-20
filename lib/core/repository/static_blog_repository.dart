@@ -369,32 +369,32 @@ class StaticBlogRepository implements BlogRepository {
   /// 获取文章完整内容
   Future<BlogPost> getPostContent(String postId) async {
     try {
-      // 获取文件列表
       final posts = await githubService.listPosts(repoConfig);
-      
-      // 找到对应的文件
-      final fileItem = posts.firstWhere(
-        (item) => item.sha == postId || item.path.contains(postId),
-        orElse: () => throw Exception('文章不存在'),
-      );
-      
-      // 获取文章内容
-      final article = await githubService.getArticle(repoConfig, fileItem);
-      
-      // 转换为 BlogPost
-      return BlogPost(
-        id: fileItem.sha != null ? int.tryParse(fileItem.sha!) : null,
-        title: article.title.isNotEmpty ? article.title : '（无标题）',
-        contentMd: article.content,
-        date: article.createdAt,
-        modifiedDate: article.updatedAt,
-        slug: _extractSlugFromFileItem(fileItem),
-        tags: article.tags,
-        categories: article.categories,
-        siteId: repoConfig.id,
-        status: article.published ? 'publish' : 'draft',
-        link: '${repoConfig.siteUrl}/${fileItem.path}',
-      );
+
+      for (final fileItem in posts) {
+        if (fileItem.sha != postId && !fileItem.path.contains(postId)) {
+          continue;
+        }
+        try {
+          final article = await githubService.getArticle(repoConfig, fileItem);
+          return BlogPost(
+            id: fileItem.sha != null ? int.tryParse(fileItem.sha!) : null,
+            title: article.title.isNotEmpty ? article.title : '（无标题）',
+            contentMd: article.content,
+            date: article.createdAt,
+            modifiedDate: article.updatedAt,
+            slug: _extractSlugFromFileItem(fileItem),
+            tags: article.tags,
+            categories: article.categories,
+            siteId: repoConfig.id,
+            status: article.published ? 'publish' : 'draft',
+            link: '${repoConfig.siteUrl}/${fileItem.path}',
+          );
+        } catch (_) {
+          continue;
+        }
+      }
+      throw Exception('文章不存在');
     } catch (e) {
       logService.add('获取文章内容失败', '$e', success: false);
       throw Exception('获取文章内容失败: $e');

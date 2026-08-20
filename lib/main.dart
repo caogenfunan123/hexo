@@ -819,10 +819,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   /// 幂等：initState 与 bootstrap 尾部都可能调用，只注册一次
   void _initQuickNote() {
     if (_quickNoteInited) return;
-    _quickNoteInited = true;
     try {
       final service = QuickNoteService();
       _quickNoteService = service;
+      _quickNoteInited = true;
       // 热启动推送（应用已在运行）
       _quickNoteSub = service.requests.listen(_handleQuickNote);
       // 冷启动参数（引擎刚就绪时拉取）
@@ -832,6 +832,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       service.startListening();
     } catch (e) {
       debugPrint('Init quick note error: $e');
+      _quickNoteInited = false;
     }
   }
 

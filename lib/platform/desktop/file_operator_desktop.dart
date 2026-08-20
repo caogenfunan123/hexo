@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart' as pp;
 import '../../core/file_manager/file_abstract.dart';
 
 /// 桌面平台（Windows/Mac/Linux）文件操作实现
@@ -94,15 +96,18 @@ class DesktopFileOperator extends AppFileOperator {
 
   @override
   Future<String?> exportToUserDirectory(String relativePath, {String? exportName}) async {
-    // 桌面端：直接复制到同目录，因为桌面端无沙盒限制
-    final source = '$_rootPath/$relativePath';
-    final destName = exportName ?? relativePath.split('/').last;
-    final dest = '$_rootPath/$destName';
-    final file = File(source);
-    if (await file.exists()) {
-      await file.copy(dest);
-      return dest;
+    try {
+      final source = File('$_rootPath/$relativePath');
+      if (!await source.exists()) return null;
+
+      final destName = exportName ?? relativePath.split('/').last;
+      final downloadsDir = await pp.getDownloadsDirectory();
+      final dest = File('${downloadsDir.path}/$destName');
+      await source.copy(dest.path);
+      return dest.path;
+    } catch (e) {
+      debugPrint('DesktopFileOperator: exportToUserDirectory error: $e');
+      return null;
     }
-    return null;
   }
 }

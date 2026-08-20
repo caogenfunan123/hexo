@@ -1895,12 +1895,14 @@ extension EditorUiExt on _RootShellState {
 
     String? selected = a.volume?.trim();
 
+    final isNew = selected != null && !volList.contains(selected);
+    final ctrl = TextEditingController(text: isNew ? selected : '');
+
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlgState) {
           final isNew = selected != null && !volList.contains(selected);
-          final ctrl = TextEditingController(text: isNew ? selected! : '');
           return AlertDialog(
             title: const Text('移动到卷宗'),
             content: SizedBox(
@@ -1972,6 +1974,7 @@ extension EditorUiExt on _RootShellState {
         },
       ),
     );
+    ctrl.dispose();
 
     if (result == null) return;
     final idx = drafts.indexWhere((e) => e.id == a.id);

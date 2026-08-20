@@ -606,6 +606,7 @@ class AiChatPanelState extends State<AiChatPanel> {
   }
 
   void _addSystemMessage(String text) {
+    if (!mounted) return;
     setState(() => _messages.add(ChatMessage(role: 'system', content: text)));
     _saveHistory();
     _scrollToBottom();
@@ -621,6 +622,7 @@ class AiChatPanelState extends State<AiChatPanel> {
   }
 
   void _addAssistantMessage(String text) {
+    if (!mounted) return;
     setState(() => _messages.add(ChatMessage(role: 'assistant', content: text)));
     widget.dispatcher.addAssistantMessage(text);
     _saveHistory();

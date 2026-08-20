@@ -60,6 +60,8 @@ class PathUtil {
     var p = path
         .replaceAll('\\', separator)
         .replaceAll('/', separator);
+    // 记住是否为 Unix 绝对路径（前导 /），保留前导分隔符
+    final unixAbsolute = path.startsWith('/');
     // 去掉末尾分隔符
     while (p.endsWith(separator) && p.length > 1) {
       p = p.substring(0, p.length - 1);
@@ -67,6 +69,9 @@ class PathUtil {
     // 去掉开头多余分隔符
     while (p.startsWith(separator) && p.length > 1) {
       p = p.substring(1);
+    }
+    if (unixAbsolute && !p.startsWith(separator)) {
+      p = '$separator$p';
     }
     return p;
   }
