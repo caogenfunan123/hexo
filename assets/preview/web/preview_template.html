@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="stylesheet" href="/*__BASE_URL__*/web/katex-inline.min.css">
-<link rel="stylesheet" href="/*__BASE_URL__*/web/__HIGHLIGHT_CSS_FILENAME__">
+<link rel="stylesheet" href="/web/katex-inline.min.css">
+<link rel="stylesheet" href="/web/highlight-github.css" id="hl-css">
 <style>
 html, body {
   margin: 0;
@@ -104,16 +104,97 @@ body.theme-dark #content .mermaid {
   padding: 4px 0;
 }
 </style>
-<script src="/*__BASE_URL__*/web/katex.min.js"></script>
-<script src="/*__BASE_URL__*/web/auto-render.min.js"></script>
-<script src="/*__BASE_URL__*/web/highlight.min.js"></script>
-<script src="/*__BASE_URL__*/web/languages-dart.min.js"></script>
-<script src="/*__BASE_URL__*/web/mermaid.min.js"></script>
+<script src="/web/katex.min.js"></script>
+<script src="/web/auto-render.min.js"></script>
+<script src="/web/highlight.min.js"></script>
+<script src="/web/languages-dart.min.js"></script>
+<script src="/web/mermaid.min.js"></script>
 </head>
-<body class="/*__BODY_CLASS__*/">
-<div id="content">__CONTENT__</div>
+<body class="theme-light">
+<div id="content"></div>
 <script>
-/*__INIT_JS__*/
+var _params = new URLSearchParams(location.search);
+var _dark = _params.get('dark') === '1';
+if (_dark) {
+  document.body.className = 'theme-dark';
+  var _hlCss = document.getElementById('hl-css');
+  if (_hlCss) _hlCss.href = '/web/highlight-github-dark.css';
+}
+
+function renderAll() {
+  var el = document.getElementById('content');
+  if (!el) return;
+  if (window.renderMathInElement) {
+    try {
+      renderMathInElement(el, {
+        delimiters: [
+          {left: '\u0024\u0024', right: '\u0024\u0024', display: true},
+          {left: '\u0024', right: '\u0024', display: false}
+        ],
+        throwOnError: false,
+        strict: false
+      });
+    } catch (e) {}
+  }
+  if (window.hljs) {
+    try {
+      document.querySelectorAll('pre code').forEach(function (block) {
+        hljs.highlightElement(block);
+      });
+    } catch (e) {}
+  }
+  if (window.mermaid) {
+    try {
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: _dark ? 'dark' : 'default',
+        securityLevel: 'loose',
+        fontFamily: 'sans-serif'
+      });
+      mermaid.run({ nodes: document.querySelectorAll('pre.mermaid') });
+    } catch (e) {}
+  }
+}
+
+function setContent(html) {
+  var el = document.getElementById('content');
+  if (!el) return;
+  el.innerHTML = html;
+  renderAll();
+}
+
+function loadContent() {
+  fetch('/content')
+    .then(function (r) {
+      if (!r.ok) throw new Error('fetch failed: ' + r.status);
+      return r.text();
+    })
+    .then(function (html) {
+      document.getElementById('content').innerHTML = html;
+      renderAll();
+    })
+    .catch(function (e) {});
+}
+
+function refreshContent() {
+  loadContent();
+}
+
+document.addEventListener('DOMContentLoaded', loadContent);
+
+document.addEventListener('click', function (e) {
+  var a = e.target;
+  while (a && a.tagName !== 'A') { a = a.parentNode; }
+  if (a && a.getAttribute && a.getAttribute('href')) {
+    var href = a.getAttribute('href');
+    try {
+      if (window.flutter_inappwebview &&
+          window.flutter_inappwebview.callHandler) {
+        window.flutter_inappwebview.callHandler('linkHandler', href);
+      }
+    } catch (e) {}
+  }
+}, true);
 </script>
 </body>
 </html>

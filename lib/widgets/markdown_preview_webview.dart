@@ -12,14 +12,15 @@ import '../services/local_asset_server.dart';
 
 /// 基于 WebView 的 Markdown 渲染预览组件（支持 Mermaid 与 KaTeX 公式）。
 ///
-/// 通过 `flutter_inappwebview` 6.x 加载本地 HTML：使用 `InAppLocalhostServer`
-/// 提供 mermaid.js / KaTeX / highlight.js 等静态资源（非 Web 平台），
-/// 避免因内联 ~4MB 的 JS/CSS 通过 MethodChannel 传输触发 Android
-/// `TransactionTooLargeException`。Web 端保留内联方式。
-/// Linux 桌面端不支持 WebView，自动降级为 `flutter_markdown` 静态渲染。
-///
-/// 内容变更时组件内部做 200ms 防抖，通过 `setContent` 增量更新页面，
-/// 避免整页重载闪烁。
+/// 加载策略：
+/// - 非 Web 平台：启动本地 HTTP 服务器（`LocalAssetServer`），WebView 通过
+///   `initialUrlRequest` 加载 `http://127.0.0.1:18080/preview.html`。HTML
+///   只有 ~3KB,JS/CSS/内容通过 HTTP 加载，完全不经过 MethodChannel，
+///   避免 Android Binder 事务上限导致卡死。内容更新时通过
+///   `evaluateJavascript('refreshContent()')`（小指令）触发 JS 重新
+///   `fetch('/content')`。
+/// - Web 平台：无 Binder 限制，保留内联资源方式。
+/// - Linux 桌面端：不支持 WebView，降级为 `flutter_markdown` 静态渲染。
 class MarkdownPreviewWebView extends StatefulWidget {
   const MarkdownPreviewWebView({
     super.key,
@@ -49,8 +50,10 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
 
   InAppWebViewController? _webCtrl;
   Timer? _debounce;
-  late Future<String> _htmlFuture;
+  late Future<void> _initFuture;
   String _lastRenderedMarkdown = '';
+  String? _inlineHtml;
+  bool _serverFailed = false;
 
   bool get _webViewSupported {
     if (kIsWeb) return true;
@@ -69,7 +72,22 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
   void initState() {
     super.initState();
     _lastRenderedMarkdown = widget.markdown;
-    _htmlFuture = _buildHtml(widget.markdown);
+    _initFuture = _initPreview();
+  }
+
+  Future<void> _initPreview() async {
+    if (kIsWeb) {
+      _inlineHtml = await _buildHtmlInline(widget.markdown);
+      return;
+    }
+    final ok = await LocalAssetServer.instance.ensureStarted();
+    if (!ok) {
+      _serverFailed = true;
+      return;
+    }
+    LocalAssetServer.instance.updateContent(
+      MarkdownPreviewBuilder.buildBody(widget.markdown),
+    );
   }
 
   @override
@@ -81,13 +99,13 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
 
     if (_webViewSupported && _webCtrl != null) {
       if (themeChanged) {
-        _reloadFullHtml();
+        _reloadFullPage();
       } else if (contentChanged) {
         _scheduleUpdate();
       }
     } else {
       _lastRenderedMarkdown = widget.markdown;
-      _htmlFuture = _buildHtml(widget.markdown);
+      _initFuture = _initPreview();
     }
   }
 
@@ -105,91 +123,90 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
       if (widget.markdown == _lastRenderedMarkdown) return;
       _lastRenderedMarkdown = widget.markdown;
       final body = MarkdownPreviewBuilder.buildBody(widget.markdown);
-      try {
-        await _webCtrl?.evaluateJavascript(
-          source: 'setContent(${jsonEncode(body)})',
-        );
-      } catch (_) {}
+      if (kIsWeb) {
+        try {
+          await _webCtrl?.evaluateJavascript(
+            source: 'setContent(${jsonEncode(body)})',
+          );
+        } catch (_) {}
+      } else {
+        LocalAssetServer.instance.updateContent(body);
+        try {
+          await _webCtrl?.evaluateJavascript(
+            source: 'refreshContent()',
+          );
+        } catch (_) {}
+      }
     });
   }
 
-  Future<void> _reloadFullHtml() async {
+  Future<void> _reloadFullPage() async {
     _lastRenderedMarkdown = widget.markdown;
-    final html = await _buildHtml(widget.markdown);
     if (!mounted || _webCtrl == null) return;
     try {
-      await _webCtrl?.loadData(
-        data: html,
-        mimeType: 'text/html',
-        encoding: 'utf8',
-        baseUrl: WebUri('about:blank'),
-      );
+      if (kIsWeb) {
+        _inlineHtml = await _buildHtmlInline(widget.markdown);
+        await _webCtrl?.loadData(
+          data: _inlineHtml!,
+          mimeType: 'text/html',
+          encoding: 'utf8',
+          baseUrl: WebUri('about:blank'),
+        );
+      } else {
+        if (_serverFailed) return;
+        LocalAssetServer.instance.updateContent(
+          MarkdownPreviewBuilder.buildBody(widget.markdown),
+        );
+        final url = LocalAssetServer.instance.previewUrl +
+            (widget.darkTheme ? '?dark=1' : '?dark=0');
+        await _webCtrl?.loadUrl(
+          urlRequest: URLRequest(url: WebUri(url)),
+        );
+      }
     } catch (_) {}
   }
 
-  Future<String> _buildHtml(String markdown) async {
-    if (kIsWeb) {
-      return _buildHtmlInline(markdown);
-    }
-    await LocalAssetServer.instance.ensureStarted();
-    return _buildHtmlExternal(markdown);
-  }
-
-  /// Web 平台：保留旧的内联方式（无 Binder 限制）。
+  /// Web 平台：内联全部 CSS/JS（无 Binder 限制）。
   Future<String> _buildHtmlInline(String markdown) async {
     final template = await _asset('assets/preview/web/preview_template.html');
     final dark = widget.darkTheme;
-    final mermaidTheme = dark ? 'dark' : 'default';
     return template
-        .replaceAll('/*__BASE_URL__*/', '')
         .replaceAll(
-          '<link rel="stylesheet" href="web/katex-inline.min.css">',
+          '<link rel="stylesheet" href="/web/katex-inline.min.css">',
           '<style>${await _asset('assets/preview/web/katex-inline.min.css')}</style>',
         )
         .replaceAll(
-          '<link rel="stylesheet" href="web/__HIGHLIGHT_CSS_FILENAME__">',
+          '<link rel="stylesheet" href="/web/highlight-github.css" id="hl-css">',
           '<style>${await _asset(dark ? 'assets/preview/web/highlight-github-dark.css' : 'assets/preview/web/highlight-github.css')}</style>',
         )
         .replaceAll(
-          '<script src="web/katex.min.js"></script>',
+          '<script src="/web/katex.min.js"></script>',
           '<script>${await _asset('assets/preview/web/katex.min.js')}</script>',
         )
         .replaceAll(
-          '<script src="web/auto-render.min.js"></script>',
+          '<script src="/web/auto-render.min.js"></script>',
           '<script>${await _asset('assets/preview/web/auto-render.min.js')}</script>',
         )
         .replaceAll(
-          '<script src="web/highlight.min.js"></script>',
+          '<script src="/web/highlight.min.js"></script>',
           '<script>${await _asset('assets/preview/web/highlight.min.js')}</script>',
         )
         .replaceAll(
-          '<script src="web/languages-dart.min.js"></script>',
+          '<script src="/web/languages-dart.min.js"></script>',
           '<script>${await _asset('assets/preview/web/languages-dart.min.js')}</script>',
         )
         .replaceAll(
-          '<script src="web/mermaid.min.js"></script>',
+          '<script src="/web/mermaid.min.js"></script>',
           '<script>${await _asset('assets/preview/web/mermaid.min.js')}</script>',
         )
-        .replaceAll('/*__BODY_CLASS__*/', dark ? 'theme-dark' : 'theme-light')
-        .replaceAll('/*__INIT_JS__*/', _initJs(mermaidTheme))
-        .replaceAll('__CONTENT__', MarkdownPreviewBuilder.buildBody(markdown));
-  }
-
-  /// 非 Web 平台：使用 `InAppLocalhostServer` 外部引用 JS/CSS。
-  Future<String> _buildHtmlExternal(String markdown) async {
-    final template = await _asset('assets/preview/web/preview_template.html');
-    final dark = widget.darkTheme;
-    final mermaidTheme = dark ? 'dark' : 'default';
-    final baseUrl = LocalAssetServer.instance.baseUrl;
-    return template
-        .replaceAll('/*__BASE_URL__*/', baseUrl)
         .replaceAll(
-          '/*__HIGHLIGHT_CSS_FILENAME__*/',
-          dark ? 'highlight-github-dark.css' : 'highlight-github.css',
+          'var _dark = _params.get(\'dark\') === \'1\';',
+          'var _dark = ${dark ? 'true' : 'false'};',
         )
-        .replaceAll('/*__BODY_CLASS__*/', dark ? 'theme-dark' : 'theme-light')
-        .replaceAll('/*__INIT_JS__*/', _initJs(mermaidTheme))
-        .replaceAll('__CONTENT__', MarkdownPreviewBuilder.buildBody(markdown));
+        .replaceAll(
+          '<div id="content"></div>',
+          '<div id="content">${MarkdownPreviewBuilder.buildBody(markdown)}</div>',
+        );
   }
 
   Future<String> _asset(String name) {
@@ -201,38 +218,60 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
     if (!_webViewSupported) {
       return _buildFallback();
     }
-    return FutureBuilder<String>(
-      future: _htmlFuture,
+    return FutureBuilder<void>(
+      future: _initFuture,
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
+        if (snapshot.connectionState != ConnectionState.done) {
           return const Center(
             child: CircularProgressIndicator(strokeWidth: 2),
           );
         }
-        return InAppWebView(
-          initialData: InAppWebViewInitialData(
-            data: snapshot.data!,
-            mimeType: 'text/html',
-            encoding: 'utf8',
-            baseUrl: WebUri('about:blank'),
-          ),
-          initialSettings: InAppWebViewSettings(
-            javaScriptEnabled: true,
-            domStorageEnabled: true,
-            supportZoom: false,
-            transparentBackground: false,
-          ),
-          onWebViewCreated: (controller) {
-            _webCtrl = controller;
-            controller.addJavaScriptHandler(
-              handlerName: 'linkHandler',
-              callback: (args) {
-                final url = args.isNotEmpty ? args.first as String? : null;
-                if (url != null && url.isNotEmpty) {
-                  widget.onOpenLink?.call(url);
-                }
-              },
+        if (kIsWeb) {
+          if (_inlineHtml == null) {
+            return const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
             );
+          }
+          return _buildWebView(
+            initialData: InAppWebViewInitialData(
+              data: _inlineHtml!,
+              mimeType: 'text/html',
+              encoding: 'utf8',
+              baseUrl: WebUri('about:blank'),
+            ),
+          );
+        }
+        if (_serverFailed) {
+          return _buildFallback();
+        }
+        final url = LocalAssetServer.instance.previewUrl +
+            (widget.darkTheme ? '?dark=1' : '?dark=0');
+        return _buildWebView(
+          initialUrlRequest: URLRequest(url: WebUri(url)),
+        );
+      },
+    );
+  }
+
+  Widget _buildWebView({InAppWebViewInitialData? initialData, URLRequest? initialUrlRequest}) {
+    return InAppWebView(
+      initialData: initialData,
+      initialUrlRequest: initialUrlRequest,
+      initialSettings: InAppWebViewSettings(
+        javaScriptEnabled: true,
+        domStorageEnabled: true,
+        supportZoom: false,
+        transparentBackground: false,
+      ),
+      onWebViewCreated: (controller) {
+        _webCtrl = controller;
+        controller.addJavaScriptHandler(
+          handlerName: 'linkHandler',
+          callback: (args) {
+            final url = args.isNotEmpty ? args.first as String? : null;
+            if (url != null && url.isNotEmpty) {
+              widget.onOpenLink?.call(url);
+            }
           },
         );
       },
@@ -251,56 +290,4 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
       ),
     );
   }
-
-  String _initJs(String mermaidTheme) => '''
-function renderAll() {
-  var el = document.getElementById('content');
-  if (!el) return;
-  if (window.renderMathInElement) {
-    try {
-      renderMathInElement(el, {
-        delimiters: [
-          {left: '\u0024\u0024', right: '\u0024\u0024', display: true},
-          {left: '\u0024', right: '\u0024', display: false}
-        ],
-        throwOnError: false,
-        strict: false
-      });
-    } catch (e) {}
-  }
-  if (window.hljs) {
-    try {
-      document.querySelectorAll('pre code').forEach(function (block) {
-        hljs.highlightElement(block);
-      });
-    } catch (e) {}
-  }
-  if (window.mermaid) {
-    try {
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: '$mermaidTheme',
-        securityLevel: 'loose',
-        fontFamily: 'sans-serif'
-      });
-      mermaid.run({ nodes: document.querySelectorAll('pre.mermaid') });
-    } catch (e) {}
-  }
-}
-function setContent(html) {
-  var el = document.getElementById('content');
-  if (!el) return;
-  el.innerHTML = html;
-  renderAll();
-}
-document.addEventListener('DOMContentLoaded', renderAll);
-document.addEventListener('click', function (e) {
-  var a = e.target;
-  while (a && a.tagName !== 'A') { a = a.parentNode; }
-  if (a && a.getAttribute && a.getAttribute('href')) {
-    var href = a.getAttribute('href');
-    if (window.linkHandler) { window.linkHandler(href); }
-  }
-}, true);
-''';
 }
