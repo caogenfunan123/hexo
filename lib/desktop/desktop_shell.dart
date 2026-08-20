@@ -356,6 +356,65 @@ class DesktopShellState extends State<DesktopShell>
       textController: _doc.contentCtrl,
     );
     aiService.modelManager = aiModelManager;
+    _bus = ShellActionBus(
+    // 导航
+    onNewArticle: _newArticle,
+    onOpenHome: _openHome,
+    onOpenDrafts: _openDrafts,
+    onOpenRemote: _openRemote,
+    onOpenBatchUpload: _openBatchUpload,
+    onOpenPreview: _openPreview,
+    onOpenSettings: _openSettings,
+    onOpenSyncSettings: _openSyncSettings,
+    onOpenLogs: _openLogs,
+    onOpenDashboard: _openDashboard,
+    onOpenHistory: _openHistory,
+    onOpenRss: _openRss,
+    onOpenSync: _openSyncStatus,
+    onOpenThemeMigration: _openThemeMigration,
+    onShowTemplateManager: _showTemplateManager,
+    onShowSnippetManager: _showSnippetManager,
+    onShowConfigEditor: _showConfigEditor,
+    onShowHelp: _showHelpDialog,
+    onOpenRecycleBin: _openRecycleBin,
+    onOpenP2PSync: _openP2PSync,
+    onOpenImageBedManager: _openImageBedManager,
+    onOpenProxySettings: _openProxySettings,
+    onOpenCacheCleanup: _openCacheCleanup,
+    onExportLogs: _exportLogs,
+    onOpenLinkChecker: _openLinkChecker,
+    onOpenBatchTools: _openBatchTools,
+    onShowContentStats: _openContentStats,
+    onShowBackupRestore: _openBackupRestore,
+    onOpenAiPromptTemplates: _openAiPromptTemplates,
+    onShowAgentWorkbench: _showAgentWorkbench,
+    onShowThemeStore: _showThemeStore,
+    onShowAiModelManager: _showAiModelManager,
+    onShowToolLibrary: _showToolLibrary,
+    onShowBlogSiteManager: _showBlogSiteManager,
+    onShowSiteEditor: _showSiteEditor,
+    onShowSiteOperations: _showSiteOperations,
+    onSiteChange: _switchSite,
+    // 布局
+    onToggleLeftPanel: _toggleLeftPanel,
+    onToggleRightDrawer: _toggleRightDrawer,
+    onThemeToggle: _toggleTheme,
+    // 同步 & 发布
+    onSync: _handleSync,
+    onPublish: _handlePublish,
+    // 文件操作
+    onOpenFile: _openFileDialog,
+    onOpenFileZone: _openLocalFileZone,
+    // 侧边栏自定义 & 全部功能
+    onOpenAllFeatures: _openAllFeatures,
+    onOpenCustomizeSidebar: _openSidebarCustomize,
+    // 文章管理
+    onOpenArticle: (a) => _openExistingArticle(a),
+    onRenameArticle: _renameArticle,
+    onMoveArticleVolume: _moveArticleVolume,
+    onExportArticle: _exportArticle,
+    onDeleteArticle: _deleteDraft,
+    );
     _bootstrap();
   }
 
@@ -714,6 +773,9 @@ class DesktopShellState extends State<DesktopShell>
     });
   }
 
+  /// 上次统计哈希，避免每次按键触发全量重建
+  int _lastStatsHash = 0;
+
   void _trackStats() {
     final text = _doc.contentCtrl.text;
     _editor.updateStats(text);
@@ -732,7 +794,11 @@ class DesktopShellState extends State<DesktopShell>
         _centerCursorInFocusMode(line);
       }
     }
-    if (mounted) setState(() {}); // 确保状态栏实时刷新
+    final hash = Object.hash(text.length, sel.start, sel.end, totalLines);
+    if (hash != _lastStatsHash && mounted) {
+      _lastStatsHash = hash;
+      setState(() {}); // 确保状态栏实时刷新
+    }
   }
 
   /// 专注模式下将光标所在行滚动到屏幕中央
@@ -10010,75 +10076,16 @@ $htmlContent
   // 构建
   // ============================================================
 
-  /// 统一回调总线（消除 37+ 参数的回调地狱）
-  ShellActionBus get _bus => ShellActionBus(
-    // 导航
-    onNewArticle: _newArticle,
-    onOpenHome: _openHome,
-    onOpenDrafts: _openDrafts,
-    onOpenRemote: _openRemote,
-    onOpenBatchUpload: _openBatchUpload,
-    onOpenPreview: _openPreview,
-    onOpenSettings: _openSettings,
-    onOpenSyncSettings: _openSyncSettings,
-    onOpenLogs: _openLogs,
-    onOpenDashboard: _openDashboard,
-    onOpenHistory: _openHistory,
-    onOpenRss: _openRss,
-    onOpenSync: _openSyncStatus,
-    onOpenThemeMigration: _openThemeMigration,
-    onShowTemplateManager: _showTemplateManager,
-    onShowSnippetManager: _showSnippetManager,
-    onShowConfigEditor: _showConfigEditor,
-    onShowHelp: _showHelpDialog,
-    onOpenRecycleBin: _openRecycleBin,
-    onOpenP2PSync: _openP2PSync,
-    onOpenImageBedManager: _openImageBedManager,
-    onOpenProxySettings: _openProxySettings,
-    onOpenCacheCleanup: _openCacheCleanup,
-    onExportLogs: _exportLogs,
-    onOpenLinkChecker: _openLinkChecker,
-    onOpenBatchTools: _openBatchTools,
-    onShowContentStats: _openContentStats,
-    onShowBackupRestore: _openBackupRestore,
-    onOpenAiPromptTemplates: _openAiPromptTemplates,
-    onShowAgentWorkbench: _showAgentWorkbench,
-    onShowThemeStore: _showThemeStore,
-    onShowAiModelManager: _showAiModelManager,
-    onShowToolLibrary: _showToolLibrary,
-    onShowBlogSiteManager: _showBlogSiteManager,
-    onShowSiteEditor: _showSiteEditor,
-    onShowSiteOperations: _showSiteOperations,
-    onSiteChange: _switchSite,
-    // 布局
-    onToggleLeftPanel: _toggleLeftPanel,
-    onToggleRightDrawer: _toggleRightDrawer,
-    onThemeToggle: _toggleTheme,
-    // 同步 & 发布
-    onSync: _handleSync,
-    onPublish: _handlePublish,
-    // 文件操作
-    onOpenFile: _openFileDialog,
-    onOpenFileZone: _openLocalFileZone,
-    // 侧边栏自定义 & 全部功能
-    onOpenAllFeatures: _openAllFeatures,
-    onOpenCustomizeSidebar: _openSidebarCustomize,
-    // 文章管理
-    onOpenArticle: (a) => _openExistingArticle(a),
-    onRenameArticle: _renameArticle,
-    onMoveArticleVolume: _moveArticleVolume,
-    onExportArticle: _exportArticle,
-    onDeleteArticle: _deleteDraft,
-  );
+  late final ShellActionBus _bus;
 
   @override
   Widget build(BuildContext context) {
     final ui = context.watch<UiStateController>();
     if (ui.loading) return const Center(child: CircularProgressIndicator());
 
-    final layout = context.watch<LayoutController>();
-    context.watch<EditorController>();
-    context.watch<DocumentController>();
+    final layout = context.read<LayoutController>();
+    context.read<EditorController>();
+    context.read<DocumentController>();
 
     final stackChildren = <Widget>[
       Column(

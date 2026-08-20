@@ -67,7 +67,7 @@ class DraftEncryptionService {
   /// [password] 用户设置的密码
   /// [confirm] 确认密码
   /// 返回 null 表示成功，否则返回错误提示
-  static String? setPassword(String password, String confirm, StorageService storage) {
+  static Future<String?> setPassword(String password, String confirm, StorageService storage) async {
     if (password.length < 8) return '密码至少 8 位';
     if (password != confirm) return '两次输入的密码不一致';
 
@@ -77,29 +77,29 @@ class DraftEncryptionService {
     _passwordHash = hash;
     _salt = salt;
     enabled = true;
-    _persistMeta(storage);
+    await _persistMeta(storage);
     return null;
   }
 
   /// 验证密码（解锁或关闭加密时）
   ///
   /// 返回 null 表示密码正确，否则返回错误提示
-  static String? verifyPassword(String password, StorageService storage) {
+  static Future<String?> verifyPassword(String password, StorageService storage) async {
     final h = _deriveHash(password, _salt);
     if (h != _passwordHash) return '密码错误';
     _password = password;
     enabled = true;
-    _persistMeta(storage);
+    await _persistMeta(storage);
     return null;
   }
 
   /// 修改密码
-  static String? changePassword(String oldPassword, String newPassword, String confirm, StorageService storage) {
-    final verifyResult = verifyPassword(oldPassword, storage);
+  static Future<String?> changePassword(String oldPassword, String newPassword, String confirm, StorageService storage) async {
+    final verifyResult = await verifyPassword(oldPassword, storage);
     if (verifyResult != null) return verifyResult;
     if (newPassword.length < 8) return '新密码至少 8 位';
     if (newPassword != confirm) return '两次输入的新密码不一致';
-    return setPassword(newPassword, confirm, storage);
+    return await setPassword(newPassword, confirm, storage);
   }
 
   /// 关闭加密：将加密的 drafts.json 解密回明文 drafts.json
@@ -200,9 +200,9 @@ class DraftEncryptionService {
       if (text.trim().isEmpty || _password == null) return;
       final enc = SiteEncryptionService.encrypt(text.trim(), _password!);
       await encFile.writeAsString(enc, flush: true);
-      // 删除明文文件，避免明文残留（加密后的数据由 .enc 保管）
+      // 保留明文备份，避免写入失败时数据丢失
       if (await plainFile.exists()) {
-        await plainFile.delete();
+        await plainFile.rename('${plainFile.path}.bak');
       }
     } catch (e) {
       debugPrint('DraftEncryption: encrypt existing error: $e');

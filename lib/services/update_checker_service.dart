@@ -128,21 +128,28 @@ class UpdateCheckerService {
   }
 
   /// 比较两个版本号：a < b 返回负，a == b 返回 0，a > b 返回正
+  ///
+  /// 支持 `X.Y.Z` 与 `X.Y.Z+N`（构建号）格式，构建号参与比较，
+  /// 避免 `1.0.9+10` 与 `1.0.9+11` 被误判为同一版本。
   static int _compareVersions(String a, String b) {
     final pa = _parse(a);
     final pb = _parse(b);
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < pa.length; i++) {
       if (pa[i] != pb[i]) return pa[i].compareTo(pb[i]);
     }
     return 0;
   }
 
   static List<int> _parse(String v) {
-    final parts = v.split('.');
+    final mainPart = v.split('+').first;
+    final parts = mainPart.split('.');
     final nums = <int>[];
     for (int i = 0; i < 3; i++) {
       nums.add(i < parts.length ? (int.tryParse(parts[i]) ?? 0) : 0);
     }
+    // 构建号：1.0.9+10 → 10；无构建号默认 0
+    final build = int.tryParse(v.split('+').last) ?? 0;
+    nums.add(build);
     return nums;
   }
 

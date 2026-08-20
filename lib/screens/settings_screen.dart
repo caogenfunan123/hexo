@@ -69,7 +69,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  static String _cachedVersion = '1.0.9';
+  static String _cachedVersion = '1.0.9+10';
   late TextEditingController _siteNameCtrl;
   late TextEditingController _siteBioCtrl;
   late TextEditingController _quickNoteAnchorCtrl;
@@ -2129,7 +2129,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             FilledButton(
               onPressed: () async {
                 final storage = widget.storage;
-                final err = DraftEncryptionService.setPassword(
+                final err = await DraftEncryptionService.setPassword(
                   pwdCtrl.text,
                   confCtrl.text,
                   storage,
@@ -2191,18 +2191,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: const Text('取消'),
             ),
             FilledButton(
-              onPressed: () {
+              onPressed: () async {
                 final storage = widget.storage;
-                final err = DraftEncryptionService.verifyPassword(
+                final err = await DraftEncryptionService.verifyPassword(
                   pwdCtrl.text,
                   storage,
                 );
                 if (err != null) {
                   errCtrl.text = err;
-                  setState(() {});
+                  if (ctx.mounted) setState(() {});
                   return;
                 }
-                Navigator.pop(ctx, true);
+                if (ctx.mounted) Navigator.pop(ctx, true);
               },
               child: const Text('确认'),
             ),
@@ -2298,9 +2298,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: const Text('取消'),
             ),
             FilledButton(
-              onPressed: () {
+              onPressed: () async {
                 final storage = widget.storage;
-                final err = DraftEncryptionService.changePassword(
+                final err = await DraftEncryptionService.changePassword(
                   oldCtrl.text,
                   newCtrl.text,
                   confCtrl.text,
@@ -2308,10 +2308,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
                 if (err != null) {
                   errCtrl.text = err;
-                  setState(() {});
+                  if (ctx.mounted) setState(() {});
                   return;
                 }
-                Navigator.pop(ctx, true);
+                if (ctx.mounted) Navigator.pop(ctx, true);
               },
               child: const Text('确认'),
             ),

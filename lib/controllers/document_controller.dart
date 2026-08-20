@@ -119,11 +119,26 @@ class DocumentController extends ChangeNotifier {
     TextEditingController? categories,
     TextEditingController? cover,
   }) {
-    if (title != null) _titleCtrl = title;
-    if (content != null) _contentCtrl = content;
-    if (tags != null) _tagsCtrl = tags;
-    if (categories != null) _categoriesCtrl = categories;
-    if (cover != null) _coverCtrl = cover;
+    if (title != null) {
+      _titleCtrl.dispose();
+      _titleCtrl = title;
+    }
+    if (content != null) {
+      _contentCtrl.dispose();
+      _contentCtrl = content;
+    }
+    if (tags != null) {
+      _tagsCtrl.dispose();
+      _tagsCtrl = tags;
+    }
+    if (categories != null) {
+      _categoriesCtrl.dispose();
+      _categoriesCtrl = categories;
+    }
+    if (cover != null) {
+      _coverCtrl.dispose();
+      _coverCtrl = cover;
+    }
     notifyListeners();
   }
 
