@@ -146,9 +146,14 @@ await Navigator.of(context).push<void>(
                       ),
                     ),
                   const SizedBox(height: 12),
-                  MarkdownBody(
+                  SmoothMarkdown(
                     data: a.content.isEmpty ? '*（无内容）*' : a.content,
                     styleSheet: mdStyle,
+                    selectable: false,
+                    plugins: ParserPluginRegistry()
+                      ..register(const MermaidPlugin()),
+                    builderRegistry: BuilderRegistry()
+                      ..register('mermaid', const MermaidBuilder()),
                   ),
                 ],
               ),
@@ -157,7 +162,7 @@ await Navigator.of(context).push<void>(
         ),
       );
       overlay.insert(entry);
-      await Future.delayed(const Duration(milliseconds: 300));
+      await Future.delayed(const Duration(seconds: 2));
       final boundary =
           boundaryKey.currentContext?.findRenderObject()
               as RenderRepaintBoundary?;
