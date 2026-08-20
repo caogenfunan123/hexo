@@ -681,6 +681,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   /// 初始化新功能服务（站点隔离、P2P、模板同步、全文检索）
   Future<void> _initNewServices() async {
+    if (kIsWeb) return;
     try {
       // 异步获取真实应用版本号
       try {
