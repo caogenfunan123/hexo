@@ -7,7 +7,9 @@
 #   ./tools/release.sh --skip-build        # 跳过 SHA256（产物未构建时）
 # 依赖：git、sha256sum、python3（生成 release.json）。
 # 产物路径（可选，存在才计算 SHA256）：
-#   build/app/outputs/flutter-apk/app-release.apk
+#   build/app/outputs/flutter-apk/app-release.apk            (universal)
+#   build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+#   build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
 #   hexo-windows.zip
 #   hexo-linux.tar.gz
 set -euo pipefail
@@ -85,13 +87,18 @@ print(f"更新 pubspec.yaml -> {ver}")
 PY
 
 # ── 3. 计算各平台产物 SHA256 / size ──
+# Android：universal（app-release.apk）+ arm64 + armv7 三个 APK
 declare -A ARTIFACTS=(
-  [android]="build/app/outputs/flutter-apk/app-release.apk"
+  [android_universal]="build/app/outputs/flutter-apk/app-release.apk"
+  [android_arm64]="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
+  [android_armv7]="build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk"
   [windows]="hexo-windows.zip"
   [linux]="hexo-linux.tar.gz"
 )
 
-SHA_ANDROID=""; SIZE_ANDROID=0
+SHA_ANDROID_U=""; SIZE_ANDROID_U=0
+SHA_ANDROID_ARM64=""; SIZE_ANDROID_ARM64=0
+SHA_ANDROID_ARMV7=""; SIZE_ANDROID_ARMV7=0
 SHA_WINDOWS=""; SIZE_WINDOWS=0
 SHA_LINUX=""; SIZE_LINUX=0
 
@@ -102,7 +109,9 @@ if [[ "$SKIP_BUILD" == "0" ]]; then
       sha=$(sha256sum "$f" | awk '{print $1}')
       size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
       case "$key" in
-        android) SHA_ANDROID="$sha"; SIZE_ANDROID="$size" ;;
+        android_universal) SHA_ANDROID_U="$sha"; SIZE_ANDROID_U="$size" ;;
+        android_arm64) SHA_ANDROID_ARM64="$sha"; SIZE_ANDROID_ARM64="$size" ;;
+        android_armv7) SHA_ANDROID_ARMV7="$sha"; SIZE_ANDROID_ARMV7="$size" ;;
         windows) SHA_WINDOWS="$sha"; SIZE_WINDOWS="$size" ;;
         linux) SHA_LINUX="$sha"; SIZE_LINUX="$size" ;;
       esac
@@ -117,11 +126,14 @@ fi
 
 # ── 4. 生成 release.json ──
 python3 - "$NEW_BASE" "$NEW_BUILD_NUM" "$NOTES" "$TAG" \
-  "$SHA_ANDROID" "$SIZE_ANDROID" "$SHA_WINDOWS" "$SIZE_WINDOWS" "$SHA_LINUX" "$SIZE_LINUX" <<'PY'
+  "$SHA_ANDROID_U" "$SIZE_ANDROID_U" \
+  "$SHA_ANDROID_ARM64" "$SIZE_ANDROID_ARM64" \
+  "$SHA_ANDROID_ARMV7" "$SIZE_ANDROID_ARMV7" \
+  "$SHA_WINDOWS" "$SIZE_WINDOWS" "$SHA_LINUX" "$SIZE_LINUX" <<'PY'
 import json, sys, datetime
 
 version, build_num, notes, tag = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-sha_a, size_a, sha_w, size_w, sha_l, size_l = sys.argv[5:]
+sha_au, size_au, sha_a64, size_a64, sha_a7, size_a7, sha_w, size_w, sha_l, size_l = sys.argv[5:]
 
 release = {
     "version": version,
@@ -132,8 +144,25 @@ release = {
     "platforms": {
         "android": {
             "url": f"https://github.com/caogenfunan123/hexo/releases/download/{tag}/app-release.apk",
-            "sha256": sha_a,
-            "size": int(size_a or 0),
+            "sha256": sha_au,
+            "size": int(size_au or 0),
+            "abi": {
+                "arm64": {
+                    "url": f"https://github.com/caogenfunan123/hexo/releases/download/{tag}/app-arm64-v8a-release.apk",
+                    "sha256": sha_a64,
+                    "size": int(size_a64 or 0),
+                },
+                "armv7": {
+                    "url": f"https://github.com/caogenfunan123/hexo/releases/download/{tag}/app-armeabi-v7a-release.apk",
+                    "sha256": sha_a7,
+                    "size": int(size_a7 or 0),
+                },
+                "universal": {
+                    "url": f"https://github.com/caogenfunan123/hexo/releases/download/{tag}/app-release.apk",
+                    "sha256": sha_au,
+                    "size": int(size_au or 0),
+                },
+            },
         },
         "windows": {
             "url": f"https://github.com/caogenfunan123/hexo/releases/download/{tag}/hexo-windows.zip",
