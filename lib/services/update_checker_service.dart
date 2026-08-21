@@ -106,6 +106,8 @@ class UpdateCheckerService {
   static const String repo = 'hexo';
   static const String manifestUrl =
       'https://raw.githubusercontent.com/$owner/$repo/main/release.json';
+  static const String manifestProxyUrl =
+      'https://ghfast.top/https://raw.githubusercontent.com/$owner/$repo/main/release.json';
 
   final String currentVersion;
   final http.Client _client;
@@ -123,10 +125,35 @@ class UpdateCheckerService {
           })
           .timeout(timeout);
       if (res.statusCode != 200) {
+        return await _checkWithProxy(timeout);
+      }
+      return _parseRelease(res.body);
+    } catch (_) {
+      return await _checkWithProxy(timeout);
+    }
+  }
+
+  Future<UpdateCheckResult> _checkWithProxy(Duration timeout) async {
+    try {
+      final res = await _client
+          .get(Uri.parse(manifestProxyUrl), headers: const {
+            'User-Agent': 'tuomo-app',
+          })
+          .timeout(timeout);
+      if (res.statusCode != 200) {
         return UpdateCheckResult(
             hasUpdate: false, currentVersion: currentVersion);
       }
-      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      return _parseRelease(res.body);
+    } catch (_) {
+      return UpdateCheckResult(
+          hasUpdate: false, currentVersion: currentVersion);
+    }
+  }
+
+  UpdateCheckResult _parseRelease(String body) {
+    try {
+      final j = jsonDecode(body) as Map<String, dynamic>;
       final version = j['version']?.toString() ?? '';
       if (version.isEmpty) {
         return UpdateCheckResult(

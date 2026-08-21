@@ -6,34 +6,34 @@
   "publishedAt": "2026-08-20T12:50:00+08:00",
   "platforms": {
     "android": {
-      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/app-release.apk",
+      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/app-release.apk",
       "sha256": "4bc99da43d74bc69149027322af1086d5381c5afccebeaefea0e58c26eb75ee7",
       "size": 80774556,
       "abi": {
         "arm64": {
-          "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/app-arm64-v8a-release.apk",
+          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/app-arm64-v8a-release.apk",
           "sha256": "3d16089a12226cae5bb4bd8fdcbe3f55564b9747fa7cd606cb49acf56bd41952",
           "size": 29449344
         },
         "armv7": {
-          "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/app-armeabi-v7a-release.apk",
+          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/app-armeabi-v7a-release.apk",
           "sha256": "eb45812e2383b9b1d77a82d1475b0922826645a3970005f18b2e8c9a885136cc",
           "size": 27661256
         },
         "universal": {
-          "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/app-release.apk",
+          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/app-release.apk",
           "sha256": "4bc99da43d74bc69149027322af1086d5381c5afccebeaefea0e58c26eb75ee7",
           "size": 80774556
         }
       }
     },
     "windows": {
-      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/hexo-windows.zip",
+      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/hexo-windows.zip",
       "sha256": "69b91a784ed99ced7bc37ae5180a90ae92c71b354ac82926176f7c62fd16ea44",
       "size": 24105435
     },
     "linux": {
-      "url": "https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/hexo-linux.tar.gz",
+      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/hexo-linux.tar.gz",
       "sha256": "a4e1c4f28c787ce2d6d75fa036c032058fc11e155cfccdc83d429ad976146cb1",
       "size": 20895670
     }

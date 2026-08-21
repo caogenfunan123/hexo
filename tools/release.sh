@@ -143,34 +143,34 @@ release = {
     "publishedAt": datetime.datetime.now().astimezone().replace(microsecond=0).isoformat(),
     "platforms": {
         "android": {
-            "url": f"https://github.com/caogenfunan123/hexo/releases/download/{tag}/app-release.apk",
+            "url": f"https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/{tag}/app-release.apk",
             "sha256": sha_au,
             "size": int(size_au or 0),
             "abi": {
                 "arm64": {
-                    "url": f"https://github.com/caogenfunan123/hexo/releases/download/{tag}/app-arm64-v8a-release.apk",
+                    "url": f"https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/{tag}/app-arm64-v8a-release.apk",
                     "sha256": sha_a64,
                     "size": int(size_a64 or 0),
                 },
                 "armv7": {
-                    "url": f"https://github.com/caogenfunan123/hexo/releases/download/{tag}/app-armeabi-v7a-release.apk",
+                    "url": f"https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/{tag}/app-armeabi-v7a-release.apk",
                     "sha256": sha_a7,
                     "size": int(size_a7 or 0),
                 },
                 "universal": {
-                    "url": f"https://github.com/caogenfunan123/hexo/releases/download/{tag}/app-release.apk",
+"url": f"https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/{tag}/app-release.apk",
                     "sha256": sha_au,
                     "size": int(size_au or 0),
                 },
             },
         },
         "windows": {
-            "url": f"https://github.com/caogenfunan123/hexo/releases/download/{tag}/hexo-windows.zip",
+            "url": f"https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/{tag}/hexo-windows.zip",
             "sha256": sha_w,
             "size": int(size_w or 0),
         },
         "linux": {
-            "url": f"https://github.com/caogenfunan123/hexo/releases/download/{tag}/hexo-linux.tar.gz",
+            "url": f"https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/{tag}/hexo-linux.tar.gz",
             "sha256": sha_l,
             "size": int(size_l or 0),
         },
