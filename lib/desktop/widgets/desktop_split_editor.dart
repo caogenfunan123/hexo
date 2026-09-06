@@ -271,45 +271,39 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
     }
   }
 
-  /// 纯源码编辑器 — PureWriter 风格：720px 宽度约束、隐藏滚动条
+  /// 纯源码编辑器 — 占满可用宽度、隐藏滚动条
   Widget _buildSourceEditor(bool isDark, ColorScheme cs) {
     return LayoutBuilder(
       builder: (ctx, constraints) {
         final minLines = constraints.maxHeight.isFinite
             ? ((constraints.maxHeight - 80) / (widget.fontSize * widget.lineHeight)).floor().clamp(1, 50)
             : 15;
-        return Center(
-          child: ConstrainedBox(
-            // PureWriter 借鉴：720px 最大宽度
-            constraints: const BoxConstraints(maxWidth: 720),
-            child: ScrollbarTheme(
-              data: ScrollbarThemeData(
-                thickness: WidgetStateProperty.all(0), // 隐藏滚动条
+        return ScrollbarTheme(
+          data: ScrollbarThemeData(
+            thickness: WidgetStateProperty.all(0), // 隐藏滚动条
+          ),
+          child: TextField(
+            controller: widget.contentController,
+            focusNode: widget.focusNode,
+            minLines: minLines,
+            maxLines: null,
+            expands: constraints.maxHeight.isFinite,
+            keyboardType: TextInputType.multiline,
+            cursorColor: cs.primary,
+            style: TextStyle(
+              fontFamily: widget.fontFamily,
+              height: widget.lineHeight,
+              fontSize: widget.fontSize,
+              color: AppColor.textPrimary(context),
+            ),
+            decoration: InputDecoration(
+              hintText: '支持 Markdown 语法写作...',
+              hintStyle: TextStyle(
+                color: AppColor.borderStrong(context),
+                fontSize: widget.fontSize,
               ),
-              child: TextField(
-                controller: widget.contentController,
-                focusNode: widget.focusNode,
-                minLines: minLines,
-                maxLines: null,
-                expands: constraints.maxHeight.isFinite,
-                keyboardType: TextInputType.multiline,
-                cursorColor: cs.primary,
-                style: TextStyle(
-                  fontFamily: widget.fontFamily,
-                  height: widget.lineHeight,
-                  fontSize: widget.fontSize,
-                  color: AppColor.textPrimary(context),
-                ),
-                decoration: InputDecoration(
-                  hintText: '支持 Markdown 语法写作...',
-                  hintStyle: TextStyle(
-                    color: AppColor.borderStrong(context),
-                    fontSize: widget.fontSize,
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.all(20),
-                ),
-              ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.all(20),
             ),
           ),
         );
