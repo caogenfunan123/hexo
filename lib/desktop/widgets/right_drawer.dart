@@ -113,39 +113,39 @@ class DesktopRightDrawer extends StatelessWidget {
       onTap: () => onTabChange(tab),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-          decoration: BoxDecoration(
-            color: isActive
-                ? cs.primary.withOpacity(0.08)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 14,
-                color: isActive
-                    ? cs.primary
-                    : (AppColor.textMuted(context)),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: isActive
+                  ? cs.primary.withOpacity(0.08)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 16,
                   color: isActive
                       ? cs.primary
-                      : (AppColor.icon(context)),
+                      : (AppColor.textMuted(context)),
                 ),
-              ),
-            ],
+                const SizedBox(width: 5),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                    color: isActive
+                        ? cs.primary
+                        : (AppColor.icon(context)),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
       ),
     );
   }
@@ -205,17 +205,17 @@ class DesktopRightDrawer extends StatelessWidget {
           padding: EdgeInsets.only(left: (item.level - 1) * 16.0),
           child: Material(
             color: Colors.transparent,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(8),
             child: InkWell(
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(8),
               onTap: item.onTap,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 child: Row(
                   children: [
                     Icon(
                       item.level == 1 ? Icons.title : Icons.subdirectory_arrow_right,
-                      size: 12,
+                      size: 14,
                       color: AppColor.iconMuted(context),
                     ),
                     const SizedBox(width: 6),
@@ -223,7 +223,7 @@ class DesktopRightDrawer extends StatelessWidget {
                       child: Text(
                         item.title,
                         style: TextStyle(
-                          fontSize: 12 + (3 - item.level).clamp(0, 2).toDouble(),
+                          fontSize: 13 + (3 - item.level).clamp(0, 2).toDouble(),
                           fontWeight: item.level == 1 ? FontWeight.w600 : FontWeight.w400,
                           color: AppColor.textSecondary(context),
                         ),
@@ -268,7 +268,7 @@ class DesktopRightDrawer extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
             color: AppColor.icon(context),
           ),

@@ -528,10 +528,16 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
               GlobalCupertinoLocalizations.delegate,
             ],
             supportedLocales: AppLocalizations.supportedLocales,
-            theme: AppTheme.lightFromConfig(_designConfig),
-            darkTheme: AppTheme.darkFromConfig(_designConfig),
+            theme: AppTheme.lightFromConfig(
+              _designConfig.copyWith(fontScale: 1.0),
+            ),
+            darkTheme: AppTheme.darkFromConfig(
+              _designConfig.copyWith(fontScale: 1.0),
+            ),
             themeMode: _themeMode,
-            // 桌面全局字号缩放：fontScale 同时作用于主题样式与硬编码小字号
+            // 桌面全局字号缩放：统一经 MediaQuery.textScaler 生效一次，
+            // 主题 fontScale 置 1.0 避免与 textScaler 双重放大（1.1×1.1）导致
+            // 固定高度容器溢出；所有字号（含硬编码小字）统一按 fontScale 线性缩放。
             builder: (context, child) => MediaQuery(
               data: MediaQuery.of(context).copyWith(
                 textScaler: TextScaler.linear(

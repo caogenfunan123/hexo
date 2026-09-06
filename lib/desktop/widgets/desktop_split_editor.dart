@@ -224,7 +224,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
           color: active
               ? cs.primary.withOpacity(isDark ? 0.2 : 0.1)
               : Colors.transparent,
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

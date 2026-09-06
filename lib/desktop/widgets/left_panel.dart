@@ -509,28 +509,28 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
           onTap: onToggle,
           behavior: HitTestBehavior.opaque,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(6, 6, 6, 4),
+            padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
             child: Row(
               children: [
                 Icon(
                   collapsed ? Icons.chevron_right : Icons.expand_more,
-                  size: 14,
+                  size: 16,
                   color: AppColor.iconMuted(context),
                 ),
                 const SizedBox(width: 4),
                 Icon(
                   icon,
-                  size: 12,
+                  size: 14,
                   color: AppColor.iconMuted(context),
                 ),
                 const SizedBox(width: 6),
                 Text(
                   title,
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: AppColor.iconMuted(context),
-                    letterSpacing: 0.8,
+                    letterSpacing: 0.6,
                   ),
                 ),
               ],
@@ -592,17 +592,17 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
         child: InkWell(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(8),
           onTap: onTap,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
             child: Row(
               children: [
                 Icon(
                   icon,
-                  size: 16,
+                  size: 18,
                   color: isPrimary
                       ? cs.primary
                       : isSubtle
@@ -614,7 +614,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                   child: Text(
                     label,
                     style: TextStyle(
-                      fontSize: 12.5,
+                      fontSize: 13.5,
                       fontWeight: isPrimary ? FontWeight.w600 : FontWeight.w400,
                       color: isPrimary
                           ? cs.primary
@@ -700,12 +700,12 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
               ? null
               : () => _showArticleMenu(a),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: Row(
               children: [
                 Icon(
                   Icons.description_outlined,
-                  size: 13,
+                  size: 15,
                   color: AppColor.iconMuted(context),
                 ),
                 const SizedBox(width: 8),
@@ -713,7 +713,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                   child: Text(
                     a.title.isEmpty ? '(无标题)' : a.title,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 13,
                       color: AppColor.textSecondary(context),
                     ),
                     maxLines: 1,
@@ -762,17 +762,17 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
         color: isActive
             ? (cs.primary.withOpacity(0.08))
             : Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
         child: InkWell(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(8),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: Row(
               children: [
                 Icon(
                   icon,
-                  size: 15,
+                  size: 17,
                   color: isDefault
                       ? Colors.amber.shade600
                       : (AppColor.icon(context)),
@@ -785,7 +785,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                       Text(
                         name,
                         style: TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 13.5,
                           fontWeight: FontWeight.w500,
                           color: AppColor.textSecondary(context),
                         ),
@@ -795,7 +795,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                         Text(
                           subtitle,
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 12,
                             color: AppColor.iconMuted(context),
                           ),
                           overflow: TextOverflow.ellipsis,
@@ -816,7 +816,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                     child: Text(
                       '默认',
                       style: TextStyle(
-                        fontSize: 9,
+                        fontSize: 10,
                         fontWeight: FontWeight.w600,
                         color: Colors.amber.shade700,
                       ),

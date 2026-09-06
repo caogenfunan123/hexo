@@ -109,7 +109,7 @@ class DesktopEditorArea extends StatelessWidget {
                       children: [
                         Icon(
                           tab.icon,
-                          size: 14,
+                          size: 15,
                           color: isActive
                               ? cs.primary
                               : (AppColor.textMuted(context)),
@@ -118,7 +118,7 @@ class DesktopEditorArea extends StatelessWidget {
                         Text(
                           tab.title,
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 13,
                             fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
                             color: isActive
                                 ? AppColor.textPrimary(context)
@@ -211,7 +211,7 @@ class DesktopEditorArea extends StatelessWidget {
             Text(
               '创建新文章开始写作，或从左侧面板打开已有内容',
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 14,
                 color: AppColor.textMuted(context),
               ),
             ),
@@ -298,7 +298,7 @@ class DesktopEditorArea extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 13,
                 fontWeight: FontWeight.w500,
                 color: AppColor.textSecondary(context),
               ),
@@ -307,7 +307,7 @@ class DesktopEditorArea extends StatelessWidget {
             Text(
               shortcut,
               style: TextStyle(
-                fontSize: 10,
+                fontSize: 11,
                 color: AppColor.borderStrong(context),
               ),
             ),

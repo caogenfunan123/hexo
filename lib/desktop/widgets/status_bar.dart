@@ -40,7 +40,7 @@ class DesktopStatusBar extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      height: 28,
+      height: 30,
       decoration: BoxDecoration(
         color: AppColor.surfaceRaised(context),
         border: Border(
@@ -173,7 +173,7 @@ class DesktopStatusBar extends StatelessWidget {
           Text(
             isSaved ? '已保存' : '未保存',
             style: TextStyle(
-              fontSize: 10,
+              fontSize: 12,
               color: isSaved
                   ? (isDark ? const Color(0xFF4ADE80) : const Color(0xFF22C55E))
                   : (isDark ? const Color(0xFFFBBF24) : const Color(0xFFF59E0B)),
@@ -197,20 +197,20 @@ class DesktopStatusBar extends StatelessWidget {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10),
-        height: 28,
+        height: 30,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
-              size: 11,
+              size: 14,
               color: active ? cs.primary : AppColor.iconMuted(context),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 5),
             Text(
               label,
               style: TextStyle(
-                fontSize: 10.5,
+                fontSize: 12,
                 fontWeight: active ? FontWeight.w600 : FontWeight.w400,
                 color: active ? cs.primary : AppColor.iconMuted(context),
               ),
@@ -234,17 +234,17 @@ class DesktopStatusBar extends StatelessWidget {
         if (icon != null) ...[
           Icon(
             icon,
-            size: 10,
+            size: 13,
             color: useDark
                 ? Colors.white.withOpacity(0.25)
                 : const Color(0xFFD1D5DB),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 5),
         ],
         Text(
           text,
           style: TextStyle(
-            fontSize: 10,
+            fontSize: 12,
             color: useDark
                 ? Colors.white.withOpacity(0.25)
                 : AppColor.textMuted(context),

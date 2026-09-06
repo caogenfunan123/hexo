@@ -2275,25 +2275,25 @@ class DesktopShellState extends State<DesktopShell>
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF0FDFA),
+                  color: AppColor.surfaceHover(context),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF99F6E4)),
+                  border: Border.all(color: AppColor.border(context)),
                 ),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.info_outline,
-                      size: 14,
-                      color: Color(0xFF0D9488),
+                      size: 15,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         '框架: ${BlogFramework.byId(_editorRepo?.frameworkId ?? '')?.name ?? _editorRepo?.frameworkId ?? '未知'} | '
                         '文件名: ${_doc.articleType == ArticleType.page ? '无日期前缀' : ((_editorRepo?.fileNameRule.postDatePrefix ?? false) ? '自动加日期' : '纯标题')}',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF134E4A),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColor.textSecondary(context),
                         ),
                       ),
                     ),
@@ -2789,26 +2789,26 @@ class DesktopShellState extends State<DesktopShell>
     final c = color ?? cs.onSurface;
     return Material(
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(8),
       child: InkWell(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 icon,
-                size: 15,
+                size: 16,
                 color: c.withOpacity(onTap == null ? 0.3 : 0.7),
               ),
               if (label.isNotEmpty) ...[
-                const SizedBox(width: 3),
+                const SizedBox(width: 4),
                 Text(
                   label,
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: FontWeight.w500,
                     color: c.withOpacity(onTap == null ? 0.3 : 0.7),
                   ),
@@ -10782,14 +10782,10 @@ $htmlContent
                       Container(
                         width: 400,
                         decoration: BoxDecoration(
-                          color: isDark
-                              ? const Color(0xFF1E1E2E)
-                              : const Color(0xFFFAFAFC),
+                          color: AppColor.surfaceRaised(context),
                           border: Border(
                             left: BorderSide(
-                              color: isDark
-                                  ? Colors.white.withOpacity(0.06)
-                                  : const Color(0xFFE5E5EA),
+                              color: AppColor.border(context),
                             ),
                           ),
                         ),

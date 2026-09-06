@@ -56,7 +56,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
             Text(
               '拓墨',
               style: TextStyle(
-                fontSize: 12.5,
+                fontSize: 13.5,
                 fontWeight: FontWeight.w600,
                 color: AppColor.textSecondary(context),
                 letterSpacing: 0.3,
@@ -161,15 +161,15 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
       message: tooltip,
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
         child: InkWell(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(8),
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.all(8),
             child: Icon(
               icon,
-              size: 17,
+              size: 18,
               color: AppColor.icon(context),
             ),
           ),
@@ -186,15 +186,15 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
   }) {
     return Material(
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(8),
       child: InkWell(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Icon(
             icon,
-            size: 15,
+            size: 16,
             color: isClose ? Colors.redAccent : AppColor.icon(context),
           ),
         ),
@@ -208,7 +208,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
         height: 30,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(7),
+          borderRadius: BorderRadius.circular(8),
           color: AppColor.surfaceHover(context),
         ),
         child: Row(
@@ -216,14 +216,14 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
           children: [
             Icon(
               Icons.language,
-              size: 14,
+              size: 15,
               color: AppColor.iconMuted(context),
             ),
             const SizedBox(width: 6),
             Text(
               siteName,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 13,
                 color: AppColor.textSecondary(context),
               ),
             ),
@@ -247,7 +247,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
         height: 30,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(7),
+          borderRadius: BorderRadius.circular(8),
           color: AppColor.surfaceHover(context),
         ),
         child: Row(
@@ -255,14 +255,14 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
           children: [
             Icon(
               Icons.language,
-              size: 14,
+              size: 15,
               color: AppColor.iconMuted(context),
             ),
             const SizedBox(width: 6),
             Text(
               siteName,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 13,
                 color: AppColor.textSecondary(context),
               ),
             ),
@@ -303,7 +303,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
                 child: Text(
                   '默认',
                   style: TextStyle(
-                    fontSize: 9,
+                    fontSize: 10,
                     fontWeight: FontWeight.w600,
                     color: Colors.amber.shade700,
                   ),
