@@ -106,6 +106,10 @@ class BridgedSyntaxController extends TextEditingController {
   final String fontFamily;
   bool _syncing = false;
 
+  // 解析缓存：文本未变化时复用上次结果，避免每帧重绘全量解析
+  String _cacheText = '';
+  List<_HighlightSpan> _cacheSpans = const [];
+
   BridgedSyntaxController({
     required TextEditingController delegate,
     this.colors = MarkdownSyntaxColors.dark,
@@ -206,6 +210,7 @@ class BridgedSyntaxController extends TextEditingController {
 
   /// 解析 Markdown 文本并返回高亮区间
   List<_HighlightSpan> _parseHighlighting(String text) {
+    if (text == _cacheText) return _cacheSpans;
     final spans = <_HighlightSpan>[];
     final lines = text.split('\n');
     var offset = 0;
@@ -377,7 +382,10 @@ class BridgedSyntaxController extends TextEditingController {
     }
 
     spans.sort((a, b) => a.start.compareTo(b.start));
-    return _mergeOverlappingSpans(spans);
+    final result = _mergeOverlappingSpans(spans);
+    _cacheText = text;
+    _cacheSpans = result;
+    return result;
   }
 
   void _highlightFrontmatterLine(String line, int lineStart, List<_HighlightSpan> spans) {
@@ -521,6 +529,10 @@ class MarkdownSyntaxController extends TextEditingController {
   final double fontSize;
   final String fontFamily;
 
+  // 解析缓存：文本未变化时复用上次结果，避免每帧重绘全量解析
+  String _cacheText = '';
+  List<_HighlightSpan> _cacheSpans = const [];
+
   MarkdownSyntaxController({
     super.text,
     this.colors = MarkdownSyntaxColors.dark,
@@ -601,6 +613,7 @@ class MarkdownSyntaxController extends TextEditingController {
 
   /// 解析 Markdown 文本并返回高亮区间
   List<_HighlightSpan> _parseHighlighting(String text) {
+    if (text == _cacheText) return _cacheSpans;
     final spans = <_HighlightSpan>[];
     final lines = text.split('\n');
     var offset = 0;
@@ -775,7 +788,10 @@ class MarkdownSyntaxController extends TextEditingController {
 
     // 排序并合并重叠区间
     spans.sort((a, b) => a.start.compareTo(b.start));
-    return _mergeOverlappingSpans(spans);
+    final result = _mergeOverlappingSpans(spans);
+    _cacheText = text;
+    _cacheSpans = result;
+    return result;
   }
 
   /// Frontmatter 行高亮

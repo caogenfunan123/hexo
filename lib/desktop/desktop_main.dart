@@ -66,7 +66,8 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
 
   // ── 主题 ──
   ThemeMode _themeMode = ThemeMode.system;
-  DesignConfig _designConfig = const DesignConfig();
+  // 桌面默认字号放大 10%，缓解 Windows 小字号发虚
+  DesignConfig _designConfig = const DesignConfig(fontScale: 1.1);
 
   // ── 语言 ──
   Locale _locale = const Locale('zh');
@@ -167,6 +168,23 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
     }
   }
 
+  /// 计算原生窗口背景色（跟随当前主题与设计配置，消除固定白边）
+  Color _nativeBgColor() {
+    final Brightness effectiveBrightness;
+    switch (_themeMode) {
+      case ThemeMode.dark:
+        effectiveBrightness = Brightness.dark;
+      case ThemeMode.light:
+        effectiveBrightness = Brightness.light;
+      case ThemeMode.system:
+        effectiveBrightness =
+            WidgetsBinding.instance.platformDispatcher.platformBrightness;
+    }
+    return effectiveBrightness == Brightness.dark
+        ? Color(_designConfig.darkBgColor)
+        : Color(_designConfig.lightBgColor);
+  }
+
   Future<void> _initWindow() async {
     final windowOptions = WindowOptions(
       size: _windowSize,
@@ -174,7 +192,7 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
       center: _windowPosition == const Offset(100, 80),
       title: 'AI 博客编辑器',
       titleBarStyle: TitleBarStyle.hidden,
-      backgroundColor: Colors.white,
+      backgroundColor: _nativeBgColor(),
       skipTaskbar: false,
     );
 
@@ -470,6 +488,7 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
               ? ThemeMode.system
               : ThemeMode.light;
     });
+    windowManager.setBackgroundColor(_nativeBgColor());
   }
 
   // ============================================================
@@ -512,6 +531,15 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
             theme: AppTheme.lightFromConfig(_designConfig),
             darkTheme: AppTheme.darkFromConfig(_designConfig),
             themeMode: _themeMode,
+            // 桌面全局字号缩放：fontScale 同时作用于主题样式与硬编码小字号
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(
+                  _designConfig.fontScale.clamp(0.9, 1.4),
+                ),
+              ),
+              child: child!,
+            ),
             home: DesktopShell(
               key: DesktopApp.shellKey,
               onToggleAppTheme: _toggleAppTheme,

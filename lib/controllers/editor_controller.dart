@@ -203,7 +203,13 @@ class EditorController extends ChangeNotifier {
   }
 
   // ── 统计 ──
+  // 内容哈希防抖：光标移动/无键帧重复调用不重复 notify，状态栏只在内容真正变化时重建
+  int _lastStatsHash = 0;
+
   void updateStats(String content) {
+    final h = content.hashCode;
+    if (h == _lastStatsHash) return;
+    _lastStatsHash = h;
     _charCount = content.length;
     _wordCount = content.isEmpty
         ? 0

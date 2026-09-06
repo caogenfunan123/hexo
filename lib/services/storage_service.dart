@@ -5,7 +5,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:saf/saf.dart';
 
 import 'web_storage_backend.dart';
@@ -14,6 +13,10 @@ import '../models/app_settings.dart';
 import '../models/article.dart';
 import '../models/repo_config.dart';
 import '../models/template_item.dart';
+
+/// 供 compute 使用的顶层函数：整表草稿 JSON 序列化（纯数据，可跨 isolate）
+String _encodeDraftsJson(List<Map<String, dynamic>> data) =>
+    const JsonEncoder.withIndent('  ').convert(data);
 
 /// 本地 JSON 持久化：桌面端用 path_provider，移动端用 MethodChannel，失败则用临时目录。
 ///
@@ -518,8 +521,9 @@ class StorageService {
   }
 
   Future<void> saveDrafts(List<Article> drafts) async {
-    final plain = const JsonEncoder.withIndent('  ')
-        .convert(drafts.map((e) => e.toJson()).toList());
+    // toJson() 产出纯 JSON 数据，序列化交给后台 isolate，避免阻塞 UI 线程
+    final data = drafts.map((e) => e.toJson()).toList();
+    final plain = await compute(_encodeDraftsJson, data);
     // 加密开启时写入加密文件
     if (draftsEncryptor != null) {
       final enc = draftsEncryptor!(plain);

@@ -7,7 +7,7 @@ library;
 import 'package:flutter/material.dart';
 import '../../../theme/app_color.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'code_highlight.dart';
+import '../../widgets/debounced_markdown_preview.dart';
 
 /// 双栏编辑器模式
 enum SplitEditorMode {
@@ -64,11 +64,29 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
   final ScrollController _previewScrollCtrl = ScrollController();
   bool _syncingScroll = false;
 
+  // Debounced markdown preview state
+  late final DebouncedMarkdownPreviewState _previewState;
+
   @override
   void initState() {
     super.initState();
     _mode = widget.initialMode;
     _sourceScrollCtrl.addListener(_onSourceScroll);
+    _previewState = DebouncedMarkdownPreviewState(
+      debounce: const Duration(milliseconds: 200),
+    );
+    _previewState.updateText(widget.contentController.text);
+    widget.contentController.addListener(_onContentChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant DesktopSplitEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.contentController != widget.contentController) {
+      oldWidget.contentController.removeListener(_onContentChanged);
+      widget.contentController.addListener(_onContentChanged);
+      _previewState.updateText(widget.contentController.text);
+    }
   }
 
   @override
@@ -76,7 +94,14 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
     _sourceScrollCtrl.removeListener(_onSourceScroll);
     _sourceScrollCtrl.dispose();
     _previewScrollCtrl.dispose();
+    widget.contentController.removeListener(_onContentChanged);
+    _previewState.dispose();
     super.dispose();
+  }
+
+  void _onContentChanged() {
+    _previewState.updateText(widget.contentController.text);
+    widget.onChanged?.call();
   }
 
   void _onSourceScroll() {
@@ -269,7 +294,6 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
                 expands: constraints.maxHeight.isFinite,
                 keyboardType: TextInputType.multiline,
                 cursorColor: cs.primary,
-                onChanged: (_) => widget.onChanged?.call(),
                 style: TextStyle(
                   fontFamily: widget.fontFamily,
                   height: widget.lineHeight,
@@ -295,18 +319,6 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
 
   /// 纯预览 — PureWriter 风格：720px 宽度约束
   Widget _buildPreviewOnly(bool isDark, ColorScheme cs) {
-    final text = widget.contentController.text;
-    if (text.isEmpty) {
-      return Center(
-        child: Text(
-          '暂无内容',
-          style: TextStyle(
-            color: AppColor.borderStrong(context),
-            fontSize: widget.fontSize,
-          ),
-        ),
-      );
-    }
     return Center(
       child: ConstrainedBox(
         // PureWriter 借鉴：720px 最大宽度
@@ -320,14 +332,11 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
             child: SingleChildScrollView(
               controller: _previewScrollCtrl,
               padding: const EdgeInsets.all(20),
-              child: widget.customPreview != null
-                  ? widget.customPreview!(context, text)
-                  : Markdown(
-                      data: text,
-                      selectable: true,
-                      styleSheet: widget.styleSheet,
-                      builders: buildHighlightedBuilders(isDark),
-                    ),
+              child: DebouncedMarkdownPreview(
+                state: _previewState,
+                isDark: isDark,
+                styleSheet: widget.styleSheet,
+              ),
             ),
           ),
         ),
@@ -364,13 +373,6 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
                       maxLines: null,
                       keyboardType: TextInputType.multiline,
                       cursorColor: cs.primary,
-                      onChanged: (_) {
-                        widget.onChanged?.call();
-                        // 更新预览区滚动
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          _onSourceScroll();
-                        });
-                      },
                       style: TextStyle(
                         fontFamily: widget.fontFamily,
                         height: widget.lineHeight,
@@ -432,24 +434,11 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
               child: SingleChildScrollView(
                 controller: _previewScrollCtrl,
                 padding: const EdgeInsets.all(16),
-                child: widget.contentController.text.isEmpty
-                    ? Center(
-                        child: Text(
-                          '实时预览',
-                          style: TextStyle(
-                            color: AppColor.borderStrong(context),
-                            fontSize: widget.fontSize,
-                          ),
-                        ),
-                      )
-                    : widget.customPreview != null
-                        ? widget.customPreview!(context, widget.contentController.text)
-                        : Markdown(
-                            data: widget.contentController.text,
-                            selectable: true,
-                            styleSheet: widget.styleSheet,
-                            builders: buildHighlightedBuilders(isDark),
-                          ),
+                child: DebouncedMarkdownPreview(
+                  state: _previewState,
+                  isDark: isDark,
+                  styleSheet: widget.styleSheet,
+                ),
               ),
             ),
           ),

@@ -136,6 +136,32 @@ import 'widgets/command_palette.dart';
 import 'shell_action_bus.dart';
 import '../core/shared_bootstrap.dart';
 
+/// 单个编辑器标签页的会话状态。
+///
+/// 所有编辑器标签共享同一个 `_doc`/`contentCtrl`，本类在切换标签时保存/恢复
+/// 各自的正文、标题、元数据与未保存内容，避免标签间内容互串。
+class _EditorTabSession {
+  Article article;
+  String content;
+  String title;
+  String tags;
+  String categories;
+  String cover;
+  RepoConfig? repo;
+  String lastSavedContent;
+
+  _EditorTabSession({
+    required this.article,
+    required this.content,
+    required this.title,
+    required this.tags,
+    required this.categories,
+    required this.cover,
+    this.repo,
+    required this.lastSavedContent,
+  });
+}
+
 // ============================================================
 // 桌面版 Shell — 完整功能复刻
 // ============================================================
@@ -256,6 +282,17 @@ class DesktopShellState extends State<DesktopShell>
   final Map<String, _PendingSave> _pendingSaveMap = {};
   final Map<String, String> _lastSavedContentMap = {};
   String _lastSavedContent = '';
+
+  // ──────────────────────────────────────────────
+  // 文章打开防抖守卫（防止同一文章被连点多次重复打开）
+  // ──────────────────────────────────────────────
+  String _lastOpenGuardKey = '';
+  DateTime _lastOpenGuardTime = DateTime.fromMillisecondsSinceEpoch(0);
+
+  // ──────────────────────────────────────────────
+  // 标签页会话状态（key = 标签 id，见 _addEditorTab 的 tabId）
+  // ──────────────────────────────────────────────
+  final Map<String, _EditorTabSession> _tabSessions = {};
 
   // ──────────────────────────────────────────────
   // 会话
@@ -773,9 +810,6 @@ class DesktopShellState extends State<DesktopShell>
     });
   }
 
-  /// 上次统计哈希，避免每次按键触发全量重建
-  int _lastStatsHash = 0;
-
   void _trackStats() {
     final text = _doc.contentCtrl.text;
     _editor.updateStats(text);
@@ -794,11 +828,7 @@ class DesktopShellState extends State<DesktopShell>
         _centerCursorInFocusMode(line);
       }
     }
-    final hash = Object.hash(text.length, sel.start, sel.end, totalLines);
-    if (hash != _lastStatsHash && mounted) {
-      _lastStatsHash = hash;
-      setState(() {}); // 确保状态栏实时刷新
-    }
+    // 状态栏通过 ListenableBuilder 监听 _editor/_doc 自刷新，无需整壳 setState
   }
 
   /// 专注模式下将光标所在行滚动到屏幕中央
@@ -1709,16 +1739,35 @@ class DesktopShellState extends State<DesktopShell>
   // ============================================================
 
   void _openExistingArticle(Article a) {
-    _doc.setCurrentArticle(a);
-    _doc.titleCtrl.text = a.title;
-    _doc.contentCtrl.text = a.content;
-    _doc.tagsCtrl.text = a.tags.join(', ');
-    _doc.categoriesCtrl.text = a.categories.join(', ');
-    _doc.coverCtrl.text = a.cover ?? '';
-    _editorRepo =
-        repos.where((r) => r.id == a.repoId).firstOrNull ?? activeRepo;
-    _lastSavedContent = a.content;
-    _doc.markSaved();
+    final tabId = 'editor_${a.id}';
+    final now = DateTime.now();
+    // 300ms 内同一文章重复打开 → 直接忽略（点击防抖）
+    if (tabId == _lastOpenGuardKey &&
+        now.difference(_lastOpenGuardTime) < const Duration(milliseconds: 300)) {
+      return;
+    }
+    _lastOpenGuardKey = tabId;
+    _lastOpenGuardTime = now;
+
+    // 标签已打开：仅切换过去，保留该标签未保存的内容
+    final existingIndex = _editor.openTabs.indexWhere((t) => t.id == tabId);
+    if (existingIndex >= 0) {
+      _switchEditorTab(existingIndex);
+      return;
+    }
+
+    // 首次打开：建立会话并载入
+    _tabSessions[tabId] = _EditorTabSession(
+      article: a,
+      content: a.content,
+      title: a.title,
+      tags: a.tags.join(', '),
+      categories: a.categories.join(', '),
+      cover: a.cover ?? '',
+      repo: repos.where((r) => r.id == a.repoId).firstOrNull ?? activeRepo,
+      lastSavedContent: a.content,
+    );
+    _loadSessionIntoDoc(tabId);
     _startAutoSave();
     _addEditorTab(a);
 
@@ -1726,6 +1775,53 @@ class DesktopShellState extends State<DesktopShell>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _doc.contentFocus.requestFocus();
     });
+  }
+
+  /// 将指定标签的会话内容保存回会话存储（保留未保存改动）
+  void _saveSessionFromDoc(String tabId) {
+    final s = _tabSessions[tabId];
+    if (s == null) return;
+    s.article = _doc.currentArticle;
+    s.title = _doc.titleCtrl.text;
+    s.content = _doc.contentCtrl.text;
+    s.tags = _doc.tagsCtrl.text;
+    s.categories = _doc.categoriesCtrl.text;
+    s.cover = _doc.coverCtrl.text;
+    s.repo = _editorRepo;
+    s.lastSavedContent = _lastSavedContent;
+  }
+
+  /// 把指定标签的会话内容载入共享的 `_doc` 与 shell 状态
+  void _loadSessionIntoDoc(String tabId) {
+    final s = _tabSessions[tabId];
+    if (s == null) return;
+    _doc.setCurrentArticle(s.article);
+    _doc.titleCtrl.text = s.title;
+    _doc.contentCtrl.text = s.content;
+    _doc.tagsCtrl.text = s.tags;
+    _doc.categoriesCtrl.text = s.categories;
+    _doc.coverCtrl.text = s.cover;
+    _editorRepo = s.repo ?? activeRepo;
+    _lastSavedContent = s.lastSavedContent;
+    if (s.content == s.lastSavedContent) {
+      _doc.markSaved();
+    } else {
+      _doc.markUnsaved();
+    }
+    _onContentChanged();
+  }
+
+  /// 切换编辑器标签：先保存当前标签状态，再载入目标标签状态
+  void _switchEditorTab(int index) {
+    final tabs = _editor.openTabs;
+    if (index < 0 || index >= tabs.length) return;
+    if (tabs.isEmpty || _editor.activeTabIndex >= tabs.length) return;
+    final currentId = tabs[_editor.activeTabIndex].id;
+    final nextId = tabs[index].id;
+    if (currentId == nextId) return;
+    _saveSessionFromDoc(currentId);
+    _editor.switchTab(index);
+    _loadSessionIntoDoc(nextId);
   }
 
   Future<void> _deleteDraft(Article a) async {
@@ -1946,6 +2042,16 @@ class DesktopShellState extends State<DesktopShell>
     _doc.markSaved();
     _doc.setSelectedTemplateId(autoTemplateId);
     _startAutoSave();
+    _tabSessions['editor_${_doc.currentArticle.id}'] = _EditorTabSession(
+      article: _doc.currentArticle,
+      content: '',
+      title: '',
+      tags: '',
+      categories: '',
+      cover: '',
+      repo: repo,
+      lastSavedContent: '',
+    );
     _addEditorTab(_doc.currentArticle);
 
     // 自动聚焦到正文编辑区（光标定位到开头）
@@ -1984,11 +2090,24 @@ class DesktopShellState extends State<DesktopShell>
   }
 
   void _closeTab(int index) {
-    if (_editor.openTabs.length <= 1) {
+    final tabs = _editor.openTabs;
+    if (tabs.length <= 1) {
       _editor.closeAllTabs();
       return;
     }
+    if (index < 0 || index >= tabs.length) return;
+    final closingId = tabs[index].id;
+    // 关闭的是当前激活标签：先把未保存内容收回会话，避免丢失
+    if (_editor.activeTabIndex == index) {
+      _saveSessionFromDoc(closingId);
+    }
+    _tabSessions.remove(closingId);
     _editor.closeTab(index);
+    // 关闭后切换到的新激活标签：载入其会话内容
+    final remaining = _editor.openTabs;
+    if (remaining.isNotEmpty && _editor.activeTabIndex < remaining.length) {
+      _loadSessionIntoDoc(remaining[_editor.activeTabIndex].id);
+    }
   }
 
   // ============================================================
@@ -2263,12 +2382,14 @@ class DesktopShellState extends State<DesktopShell>
           ),
           const SizedBox(height: 10),
           // ── 工具栏 ──
-          _editorCard(
-            padding: const EdgeInsets.all(8),
-            child: Wrap(
-              spacing: 2,
-              runSpacing: 2,
-              children: [
+          ListenableBuilder(
+            listenable: _editor,
+            builder: (context, child) => _editorCard(
+              padding: const EdgeInsets.all(8),
+              child: Wrap(
+                spacing: 2,
+                runSpacing: 2,
+                children: [
                 _toolChip(
                   Icons.format_bold,
                   '粗体',
@@ -2371,6 +2492,7 @@ class DesktopShellState extends State<DesktopShell>
                 ),
               ],
             ),
+            ),
           ),
           const SizedBox(height: 10),
           // ── 正文编辑区（双栏 Markdown 编辑器） ──
@@ -2406,37 +2528,42 @@ class DesktopShellState extends State<DesktopShell>
               ),
             ),
           ),
-          if (_editor.editorStatus != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Row(
-                children: [
-                  if (_editor.editorBusy)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: SizedBox(
-                        width: 12,
-                        height: 12,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: cs.primary,
+          ListenableBuilder(
+            listenable: _editor,
+            builder: (context, child) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_editor.editorStatus != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Row(
+                      children: [
+                        if (_editor.editorBusy)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: cs.primary,
+                              ),
+                            ),
+                          ),
+                        Text(
+                          _editor.editorStatus!,
+                          style: TextStyle(
+                            color: _editor.editorBusy ? cs.primary : cs.outline,
+                            fontSize: 12,
+                          ),
                         ),
-                      ),
-                    ),
-                  Text(
-                    _editor.editorStatus!,
-                    style: TextStyle(
-                      color: _editor.editorBusy ? cs.primary : cs.outline,
-                      fontSize: 12,
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 16),
-          // ── 底部操作栏 ──
-          Row(
-            children: [
+                const SizedBox(height: 16),
+                // ── 底部操作栏 ──
+                Row(
+                  children: [
               // 导出下拉菜单
               PopupMenuButton<String>(
                 tooltip: '导出',
@@ -2545,11 +2672,14 @@ class DesktopShellState extends State<DesktopShell>
                   ),
                 ),
               ),
+                ],
+              ),
             ],
           ),
-        ],
-      ),
-    );
+        ),
+      ],
+    ),
+  );
   }
 
   // ── 编辑器辅助组件 ──
@@ -2742,6 +2872,8 @@ class DesktopShellState extends State<DesktopShell>
       selection: TextSelection.collapsed(offset: s + t.length),
     );
     _doc.contentFocus.requestFocus();
+    // 程序化写入同样触发内容变更管线（预览/字数/自动保存）
+    _onContentChanged();
   }
 
   void _insertCodeBlock() {
@@ -2758,6 +2890,7 @@ class DesktopShellState extends State<DesktopShell>
       selection: TextSelection.collapsed(offset: s + 4),
     );
     _doc.contentFocus.requestFocus();
+    _onContentChanged();
   }
 
   Future<void> _insertImage() async {
@@ -2857,6 +2990,7 @@ class DesktopShellState extends State<DesktopShell>
         case 'polish':
           final result = await aiService.polish(settings, text);
           _doc.contentCtrl.text = result;
+          _onContentChanged();
           break;
         case 'continue':
           final result = await aiService.continueWrite(settings, text);
@@ -2964,6 +3098,7 @@ class DesktopShellState extends State<DesktopShell>
             ),
           );
           _doc.contentFocus.requestFocus();
+          _onContentChanged();
           break;
         case 'format':
           final result3 = await aiService.polish(
@@ -2971,6 +3106,7 @@ class DesktopShellState extends State<DesktopShell>
             '请对以下 Markdown 内容进行排版优化：统一标题层级、规范空行、修正列表缩进、对齐表格格式。\n\n$text',
           );
           _doc.contentCtrl.text = result3;
+          _onContentChanged();
           break;
         case 'outline':
           final result = await aiService.generateOutline(settings, text);
@@ -4007,7 +4143,9 @@ class DesktopShellState extends State<DesktopShell>
             }
             _openExistingArticle(
               Article(
-                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                // 用站点 + 远程 id 生成稳定 tab id，避免同一文章每次打开都新建标签
+                id:
+                    'cms_${post.siteId ?? 'cms'}_${post.id ?? post.title.hashCode}',
                 title: post.title,
                 content: post.contentMd,
                 tags: post.tags,
@@ -4092,7 +4230,8 @@ class DesktopShellState extends State<DesktopShell>
           onOpenRemotePost: (post) {
             _openExistingArticle(
               Article(
-                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                // 用远程 id 生成稳定 tab id，避免同一远程文章重复打开
+                id: 'sync_${post.id ?? post.title.hashCode}',
                 title: post.title,
                 content: post.contentMd,
                 tags: post.tags,
@@ -4374,6 +4513,7 @@ class DesktopShellState extends State<DesktopShell>
               oldUrl,
               newUrl,
             );
+            _onContentChanged();
           }
           _showToast('图片URL批量替换完成');
         },
@@ -4392,6 +4532,7 @@ class DesktopShellState extends State<DesktopShell>
         versionSnapshotService: versionSnapshotService,
         onRestore: (content) {
           _doc.contentCtrl.text = content;
+          _onContentChanged();
           _doc.markUnsaved();
           _editor.setEditorStatus('已恢复历史版本');
           _showToast('已恢复历史版本，请保存');
@@ -4822,6 +4963,7 @@ class DesktopShellState extends State<DesktopShell>
               }
             }
           });
+          _onContentChanged();
           storage.saveDrafts(drafts);
           _showToast('批量操作已完成，草稿已保存');
         },
@@ -4905,6 +5047,7 @@ class DesktopShellState extends State<DesktopShell>
               acceptedText +
               fullText.substring(end);
           _doc.contentCtrl.text = newText;
+          _onContentChanged();
           _doc.markUnsaved();
           _editor.setEditorStatus('已接受AI选区编辑');
           _showToast('已应用AI选区编辑');
@@ -4977,6 +5120,7 @@ class DesktopShellState extends State<DesktopShell>
                       label: const Text('全部接受'),
                       onPressed: () {
                         _doc.contentCtrl.text = modified;
+                        _onContentChanged();
                         _doc.markUnsaved();
                         _editor.setEditorStatus('已接受AI修改');
                         Navigator.pop(ctx);
@@ -5071,6 +5215,7 @@ class DesktopShellState extends State<DesktopShell>
                         label: const Text('接受修改'),
                         onPressed: () {
                           _doc.contentCtrl.text = modified;
+                          _onContentChanged();
                           _doc.markUnsaved();
                           _editor.setEditorStatus('已接受AI修改');
                           Navigator.pop(ctx);
@@ -7545,6 +7690,7 @@ class DesktopShellState extends State<DesktopShell>
         selection: TextSelection.collapsed(offset: s + l.length + body.length),
       );
       _doc.contentFocus.requestFocus();
+      _onContentChanged();
       return;
     }
     final sel2 = txt.substring(sel.start, sel.end);
@@ -7555,6 +7701,7 @@ class DesktopShellState extends State<DesktopShell>
       ),
     );
     _doc.contentFocus.requestFocus();
+    _onContentChanged();
   }
 
   /// 插入 Markdown 标题（对应手机版 _insertHeading）
@@ -7570,6 +7717,7 @@ class DesktopShellState extends State<DesktopShell>
       selection: TextSelection.collapsed(offset: s + prefix.length),
     );
     _doc.contentFocus.requestFocus();
+    _onContentChanged();
   }
 
   /// 插入列表标记（对应手机版 _insertList）
@@ -7587,6 +7735,7 @@ class DesktopShellState extends State<DesktopShell>
         selection: TextSelection.collapsed(offset: sel.start + lines.length),
       );
       _doc.contentFocus.requestFocus();
+      _onContentChanged();
       return;
     }
     _insertText('\n$marker');
@@ -10092,12 +10241,15 @@ $htmlContent
     context.read<DocumentController>();
 
     final stackChildren = <Widget>[
-      Column(
-        children: [
-          _buildTopBar(layout),
-          _buildMainArea(layout),
-          _buildBottomBar(layout),
-        ],
+      ColoredBox(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: Column(
+          children: [
+            _buildTopBar(layout),
+            _buildMainArea(layout),
+            _buildBottomBar(layout),
+          ],
+        ),
       ),
     ];
 
@@ -10194,14 +10346,17 @@ $htmlContent
         if (!layout.leftPanelExpanded) _collapseToggle(),
 
         Expanded(
-          child: DesktopEditorArea(
-            tabs: _editor.openTabs,
-            activeIndex: _editor.activeTabIndex,
-            onTabChange: (i) => _editor.switchTab(i),
-            onTabClose: _closeTab,
-            onNewArticle: _newArticle,
-            onSync: _handleSync,
-            onSettings: _openSettings,
+          child: ListenableBuilder(
+            listenable: _editor,
+            builder: (context, child) => DesktopEditorArea(
+              tabs: _editor.openTabs,
+              activeIndex: _editor.activeTabIndex,
+              onTabChange: _switchEditorTab,
+              onTabClose: _closeTab,
+              onNewArticle: _newArticle,
+              onSync: _handleSync,
+              onSettings: _openSettings,
+            ),
           ),
         ),
 
@@ -10257,21 +10412,27 @@ $htmlContent
   /// 底部状态栏
   Widget _buildBottomBar(LayoutController layout) {
     if (layout.workMode == WorkMode.focus) return const SizedBox.shrink();
-    // 计算阅读时间
-    final charCount = _editor.charCount;
-    final readMin = charCount > 0 ? (charCount / 400).ceil().clamp(1, 120) : 0;
-    return DesktopStatusBar(
-      workMode: layout.workMode,
-      onModeChange: _switchWorkMode,
-      editorStatus: _editor.editorStatus,
-      cursorPosition: (_editor.cursorPos.line, _editor.cursorPos.column),
-      wordCount: _editor.wordCount,
-      charCount: charCount,
-      siteName: activeRepo?.name ?? settings.siteName,
-      isSyncing: false,
-      isSaved: !_doc.hasUnsavedChanges,
-      lineCount: _editor.cursorPos.totalLines,
-      readTime: readMin > 0 ? '约${readMin}分钟' : '',
+    // 状态栏仅订阅 _editor/_doc 变化，独立重建，不再依赖整壳 setState
+    return ListenableBuilder(
+      listenable: Listenable.merge([_editor, _doc]),
+      builder: (context, child) {
+        // 计算阅读时间
+        final charCount = _editor.charCount;
+        final readMin = charCount > 0 ? (charCount / 400).ceil().clamp(1, 120) : 0;
+        return DesktopStatusBar(
+          workMode: layout.workMode,
+          onModeChange: _switchWorkMode,
+          editorStatus: _editor.editorStatus,
+          cursorPosition: (_editor.cursorPos.line, _editor.cursorPos.column),
+          wordCount: _editor.wordCount,
+          charCount: charCount,
+          siteName: activeRepo?.name ?? settings.siteName,
+          isSyncing: false,
+          isSaved: !_doc.hasUnsavedChanges,
+          lineCount: _editor.cursorPos.totalLines,
+          readTime: readMin > 0 ? '约$readMin分钟' : '',
+        );
+      },
     );
   }
 
@@ -10682,20 +10843,23 @@ $htmlContent
                               ),
                             ),
                             Expanded(
-                              child: MarkdownPreviewSmooth(
-                                markdown: _doc.contentCtrl.text,
-                                darkTheme: isDark,
-                                onOpenLink: (url) async {
-                                  final uri = Uri.tryParse(url);
-                                  if (uri != null &&
-                                      (uri.scheme == 'http' ||
-                                          uri.scheme == 'https')) {
-                                    await launchUrl(
-                                      uri,
-                                      mode: LaunchMode.externalApplication,
-                                    );
-                                  }
-                                },
+                              child: ListenableBuilder(
+                                listenable: _doc.contentCtrl,
+                                builder: (context, _) => MarkdownPreviewSmooth(
+                                  markdown: _doc.contentCtrl.text,
+                                  darkTheme: isDark,
+                                  onOpenLink: (url) async {
+                                    final uri = Uri.tryParse(url);
+                                    if (uri != null &&
+                                        (uri.scheme == 'http' ||
+                                            uri.scheme == 'https')) {
+                                      await launchUrl(
+                                        uri,
+                                        mode: LaunchMode.externalApplication,
+                                      );
+                                    }
+                                  },
+                                ),
                               ),
                             ),
                           ],
