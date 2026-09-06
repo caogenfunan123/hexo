@@ -1,7 +1,7 @@
 name: hexo
 description: 拓墨 - AI Markdown 写作与静态博客发布工具 - 全平台 (Android / iOS / Web / 桌面)
 publish_to: 'none'
-version: 1.0.11+12
+version: 1.0.12+13
 
 environment:
   sdk: '>=3.10.7 <4.0.0'

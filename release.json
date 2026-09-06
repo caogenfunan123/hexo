@@ -1,39 +1,39 @@
 {
-  "version": "1.0.11",
-  "build": 12,
+  "version": "1.0.12",
+  "build": 13,
   "name": "Hexo 写作系统",
-  "notes": "★ 修复：桌面版打字卡顿——预览 200ms 防抖、语法高亮全文解析缓存、状态栏局部刷新\n★ 修复：自动保存全量序列化移出 UI 线程，长文档不再周期性掉帧\n★ 修复：窗口四周白边框跟随主题，切换深浅色无白缝\n★ 修复：预览区空白/黑屏——缺 WebView2 时显示兜底卡片，可一键在浏览器打开\n★ 修复：全局字号缩放（fontScale 真正作用于硬编码小字），默认放大 10%\n★ 修复：草稿点击防抖，双击不再重复开标签\n★ 修复：多标签内容互串——每标签独立会话快照，切走未保存改动保留\n★ 修复：AI 润色/重写/续写后预览与字数即时刷新，并触发自动保存\n★ 修复：光标移动不再重建状态栏，减少无效重建",
-  "publishedAt": "2026-09-06T09:58:43+00:00",
+  "notes": "桌面端界面与安卓端对齐美化：统一字号/圆角/surface色系、修复双重字号缩放、收敛硬编码色；草稿/多标签/AI 编辑完善",
+  "publishedAt": "2026-09-06T10:44:45+00:00",
   "platforms": {
     "android": {
-      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.11/app-release.apk",
+      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.12/app-release.apk",
       "sha256": "",
       "size": 0,
       "abi": {
         "arm64": {
-          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.11/app-arm64-v8a-release.apk",
+          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.12/app-arm64-v8a-release.apk",
           "sha256": "",
           "size": 0
         },
         "armv7": {
-          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.11/app-armeabi-v7a-release.apk",
+          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.12/app-armeabi-v7a-release.apk",
           "sha256": "",
           "size": 0
         },
         "universal": {
-          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.11/app-release.apk",
+          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.12/app-release.apk",
           "sha256": "",
           "size": 0
         }
       }
     },
     "windows": {
-      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.11/hexo-windows.zip",
+      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.12/hexo-windows.zip",
       "sha256": "",
       "size": 0
     },
     "linux": {
-      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.11/hexo-linux.tar.gz",
+      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.12/hexo-linux.tar.gz",
       "sha256": "",
       "size": 0
     }
