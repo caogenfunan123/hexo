@@ -66,6 +66,9 @@ class UiSettings {
   // 桌面侧边栏折叠的分组 key 集合（保持上次折叠状态）
   final List<String> collapsedLeftSections;
 
+  // 用户是否显式设置过分组折叠（区分"未设置"与"全部展开"的空列表）
+  final bool collapsedLeftSectionsSet;
+
   // 桌面左侧面板整体是否收起（持久化折叠状态）
   final bool leftPanelCollapsed;
 
@@ -108,6 +111,7 @@ class UiSettings {
     this.appMode = AppMode.simple,
     this.simpleModeExtras = const [],
     this.collapsedLeftSections = const [],
+    this.collapsedLeftSectionsSet = false,
     this.leftPanelCollapsed = false,
     this.navCustom = const NavCustomConfig(),
     this.collapsedSettingsSections = const [],
@@ -143,6 +147,7 @@ class UiSettings {
     AppMode? appMode,
     List<String>? simpleModeExtras,
     List<String>? collapsedLeftSections,
+    bool? collapsedLeftSectionsSet,
     bool? leftPanelCollapsed,
     NavCustomConfig? navCustom,
     List<String>? collapsedSettingsSections,
@@ -174,6 +179,7 @@ class UiSettings {
       appMode: appMode ?? this.appMode,
       simpleModeExtras: simpleModeExtras ?? this.simpleModeExtras,
       collapsedLeftSections: collapsedLeftSections ?? this.collapsedLeftSections,
+      collapsedLeftSectionsSet: collapsedLeftSectionsSet ?? this.collapsedLeftSectionsSet,
       leftPanelCollapsed: leftPanelCollapsed ?? this.leftPanelCollapsed,
       navCustom: navCustom ?? this.navCustom,
       collapsedSettingsSections: collapsedSettingsSections ?? this.collapsedSettingsSections,
@@ -207,6 +213,7 @@ class UiSettings {
     'appMode': appMode.name,
     'simpleModeExtras': simpleModeExtras,
     'collapsedLeftSections': collapsedLeftSections,
+    'collapsedLeftSectionsSet': collapsedLeftSectionsSet,
     'leftPanelCollapsed': leftPanelCollapsed,
     'navCustom': navCustom.toJson(),
     'collapsedSettingsSections': collapsedSettingsSections,
@@ -252,6 +259,7 @@ class UiSettings {
     appMode: AppMode.fromKey(j['appMode']),
     simpleModeExtras: _parseList(j['simpleModeExtras'], const []),
     collapsedLeftSections: _parseList(j['collapsedLeftSections'], const []),
+    collapsedLeftSectionsSet: j['collapsedLeftSectionsSet'] == true,
     leftPanelCollapsed: j['leftPanelCollapsed'] == true,
     navCustom: j['navCustom'] is Map
         ? NavCustomConfig.fromJson(Map<String, dynamic>.from(j['navCustom'] as Map))

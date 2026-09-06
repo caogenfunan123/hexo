@@ -128,7 +128,9 @@ class SpellCheckPanel extends StatelessWidget {
                 result: result,
                 onTap: () => onJumpToOffset?.call(result.offset),
                 onReplace: (suggestion) {
-                  onReplace?.call(result);
+                  onReplace?.call(
+                    result.copyWith(suggestions: [suggestion]),
+                  );
                 },
                 isDark: isDark,
                 cs: cs,

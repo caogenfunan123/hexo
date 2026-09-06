@@ -152,6 +152,7 @@ class _EditorTabSession {
   String cover;
   RepoConfig? repo;
   String lastSavedContent;
+  String lastSavedTitle;
 
   _EditorTabSession({
     required this.article,
@@ -162,6 +163,7 @@ class _EditorTabSession {
     required this.cover,
     this.repo,
     required this.lastSavedContent,
+    required this.lastSavedTitle,
   });
 }
 
@@ -284,8 +286,10 @@ class DesktopShellState extends State<DesktopShell>
   final Map<String, Timer> _debounceTimers = {};
   final Map<String, _PendingSave> _pendingSaveMap = {};
   final Map<String, String> _lastSavedContentMap = {};
+
   String _lastSavedContent = '';
 
+  String _lastSavedTitle = '';
   // ──────────────────────────────────────────────
   // 文章打开防抖守卫（防止同一文章被连点多次重复打开）
   // ──────────────────────────────────────────────
@@ -335,8 +339,12 @@ class DesktopShellState extends State<DesktopShell>
         : Colors.white;
   }
 
-  /// 非纯白模式下卡片背景（半透明白浮层，保证原文字色可读）
-  Color get _deskCardBg => Colors.white.withOpacity(0.82);
+  /// 非纯白模式下卡片背景（半透明浮层，与文字色反色保证可读）
+  Color get _deskCardBg {
+    final white = _deskTextColor.computeLuminance() < 0.5;
+    return (white ? Colors.white : const Color(0xFF111827))
+        .withOpacity(0.82);
+  }
 
   /// 异步计算壁纸平均亮度（0=纯黑 ~ 1=纯白），用于自动适配字色
   Future<void> _refreshWallpaperBrightness() async {
@@ -356,6 +364,7 @@ class DesktopShellState extends State<DesktopShell>
         format: ui.ImageByteFormat.rawRgba,
       );
       frame.image.dispose();
+      codec.dispose();
       if (data != null) {
         final bytesData = data.buffer.asUint8List();
         var sum = 0.0;
@@ -871,7 +880,8 @@ class DesktopShellState extends State<DesktopShell>
 
   void _onContentChanged() {
     final current = _doc.contentCtrl.text;
-    if (current == _lastSavedContent) {
+    final title = _doc.titleCtrl.text;
+    if (current == _lastSavedContent && title == _lastSavedTitle) {
       _doc.markSaved();
       return;
     }
@@ -885,7 +895,6 @@ class DesktopShellState extends State<DesktopShell>
     _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
     // 每草稿独立防抖，杜绝多草稿相互阻塞
     final articleId = _doc.currentArticle.id;
-    final title = _doc.titleCtrl.text;
     _debounceTimers[articleId]?.cancel();
     // 闭包捕获当时的 articleId/content/title，触发时校验仍是该文章才保存，
     // 防止切文章后旧文章的防抖把新内容误存到旧文章、或旧改动静默丢失
@@ -925,11 +934,14 @@ class DesktopShellState extends State<DesktopShell>
   }
 
   /// 专注模式下将光标所在行滚动到屏幕中央
+  /// 正文上方固定头部（padding 64 + 标题 32×1.3 + 间距28 + 分隔线1 + 间距28）
+  static const double _focusHeaderOffset = 64 + 41.6 + 28 + 1 + 28;
   void _centerCursorInFocusMode(int line) {
     if (!_focusScrollCtrl.hasClients) return;
     final lineHeight = _editor.editorFontSize * _editor.editorLineHeight;
     final viewportHeight = _focusScrollCtrl.position.viewportDimension;
-    final targetY = (line - 1) * lineHeight - viewportHeight / 2 + lineHeight;
+    final targetY =
+        _focusHeaderOffset + (line - 1) * lineHeight - viewportHeight / 2 + lineHeight;
     if (targetY < 0) return;
     _focusScrollCtrl.animateTo(
       targetY.clamp(0, _focusScrollCtrl.position.maxScrollExtent),
@@ -945,8 +957,9 @@ class DesktopShellState extends State<DesktopShell>
   }) async {
     final aid = articleId ?? _doc.currentArticle.id;
     final c = content ?? _doc.contentCtrl.text;
-    if (c.isEmpty || c == _lastSavedContentMap[aid]) return;
     final t = title ?? _doc.titleCtrl.text;
+    final prevC = _lastSavedContentMap[aid];
+    if (c.isEmpty || (c == prevC && t == _lastSavedTitle)) return;
     try {
       await sessionService.saveAutoSnapshot(
         articleId: aid,
@@ -957,6 +970,7 @@ class DesktopShellState extends State<DesktopShell>
         cover: _doc.coverCtrl.text,
       );
       _lastSavedContent = c;
+      _lastSavedTitle = t;
       _lastSavedContentMap[aid] = c;
       if (articleId == null) {
         _doc.markSaved();
@@ -1245,6 +1259,8 @@ class DesktopShellState extends State<DesktopShell>
       }
     }
     _lastSavedContent = a.content;
+    _lastSavedTitle = a.title;
+    _lastSavedContentMap[a.id] = a.content;
     _doc.markSaved();
     // 创建版本快照
     versionSnapshotService.createSnapshot(a.id, a.title, a.content);
@@ -1508,6 +1524,8 @@ class DesktopShellState extends State<DesktopShell>
       _doc.setCurrentArticle(pub);
       _editor.setEditorStatus('已发布');
       _lastSavedContent = pub.content;
+      _lastSavedTitle = pub.title;
+      _lastSavedContentMap[pub.id] = pub.content;
       _doc.markSaved();
       await _saveDraft(pub.copyWith(isDraft: false, published: true));
       await _refreshRemote();
@@ -1570,6 +1588,8 @@ class DesktopShellState extends State<DesktopShell>
       _doc.setCurrentArticle(pub);
       _editor.setEditorStatus('已发布到 ${adapter.config.type.displayName}');
       _lastSavedContent = a.content;
+      _lastSavedTitle = a.title;
+      _lastSavedContentMap[a.id] = a.content;
       _doc.markSaved();
       await _saveDraft(pub);
       await cmsDraftService.saveDraft(result);
@@ -1867,6 +1887,7 @@ class DesktopShellState extends State<DesktopShell>
       cover: a.cover ?? '',
       repo: repos.where((r) => r.id == a.repoId).firstOrNull ?? activeRepo,
       lastSavedContent: a.content,
+      lastSavedTitle: a.title,
     );
     _loadSessionIntoDoc(tabId);
     _startAutoSave();
@@ -1890,6 +1911,7 @@ class DesktopShellState extends State<DesktopShell>
     s.cover = _doc.coverCtrl.text;
     s.repo = _editorRepo;
     s.lastSavedContent = _lastSavedContent;
+    s.lastSavedTitle = _lastSavedTitle;
   }
 
   /// 把指定标签的会话内容载入共享的 `_doc` 与 shell 状态
@@ -1904,7 +1926,9 @@ class DesktopShellState extends State<DesktopShell>
     _doc.coverCtrl.text = s.cover;
     _editorRepo = s.repo ?? activeRepo;
     _lastSavedContent = s.lastSavedContent;
-    if (s.content == s.lastSavedContent) {
+    _lastSavedTitle = s.lastSavedTitle;
+    _lastCursorLine = 0;
+    if (s.content == s.lastSavedContent && s.title == s.lastSavedTitle) {
       _doc.markSaved();
     } else {
       _doc.markUnsaved();
@@ -2140,6 +2164,8 @@ class DesktopShellState extends State<DesktopShell>
     _doc.categoriesCtrl.text = '';
     _doc.coverCtrl.text = '';
     _lastSavedContent = '';
+    _lastSavedTitle = '';
+    _lastCursorLine = 0;
     _doc.markSaved();
     _doc.setSelectedTemplateId(autoTemplateId);
     _startAutoSave();
@@ -2152,6 +2178,7 @@ class DesktopShellState extends State<DesktopShell>
       cover: '',
       repo: repo,
       lastSavedContent: '',
+      lastSavedTitle: '',
     );
     _addEditorTab(_doc.currentArticle);
 
@@ -2196,7 +2223,21 @@ class DesktopShellState extends State<DesktopShell>
   void _closeTab(int index) {
     final tabs = _editor.openTabs;
     if (tabs.length <= 1) {
+      // 关闭最后一个标签：清理会话与文档状态，进入空态
+      _tabSessions.clear();
+      _debounceTimers.forEach((_, t) => t.cancel());
+      _debounceTimers.clear();
+      _pendingSaveMap.clear();
+      _lastSavedContentMap.clear();
       _editor.closeAllTabs();
+      _doc.titleCtrl.text = '';
+      _doc.contentCtrl.text = '';
+      _doc.tagsCtrl.text = '';
+      _doc.categoriesCtrl.text = '';
+      _doc.coverCtrl.text = '';
+      _lastSavedContent = '';
+      _lastSavedTitle = '';
+      _doc.markSaved();
       return;
     }
     if (index < 0 || index >= tabs.length) return;
@@ -5844,6 +5885,8 @@ class DesktopShellState extends State<DesktopShell>
         _doc.setCurrentArticle(pub);
         _editor.setEditorStatus('已发布');
         _lastSavedContent = pub.content;
+        _lastSavedTitle = pub.title;
+        _lastSavedContentMap[pub.id] = pub.content;
         _doc.markSaved();
         await _saveDraft(pub.copyWith(isDraft: false, published: true));
         await _refreshRemote();
@@ -10419,10 +10462,12 @@ $htmlContent
 
   void _toggleRightDrawer() => _layout.toggleRightDrawer();
 
-  /// Escape 键处理：关闭抽屉 → 退出专注模式 → 退出源码模式
+  /// Escape 键处理：关闭抽屉 → 关闭极简预览 → 退出专注模式 → 退出源码模式
   void _handleEscape() {
     if (_layout.rightDrawerOpen) {
       _layout.closeRightDrawer();
+    } else if (_focusPreviewOpen) {
+      setState(() => _focusPreviewOpen = false);
     } else if (_layout.workMode == WorkMode.focus ||
         _layout.workMode == WorkMode.source) {
       _switchWorkMode(WorkMode.workspace);
@@ -10441,15 +10486,21 @@ $htmlContent
     _layout.switchWorkMode(mode);
     switch (mode) {
       case WorkMode.workspace:
-        _layout.expandLeftPanel();
+        // 保留当前左面板折叠状态（尊重持久化偏好，不再强制展开）
         _layout.closeRightDrawer();
         break;
       case WorkMode.focus:
         _layout.collapseLeftPanel();
         _layout.closeRightDrawer();
+        if (_focusShowToolbar || _focusPreviewOpen) {
+          setState(() {
+            _focusShowToolbar = false;
+            _focusPreviewOpen = false;
+          });
+        }
         break;
       case WorkMode.source:
-        _layout.expandLeftPanel();
+        // 保留当前左面板折叠状态
         _layout.closeRightDrawer();
         break;
     }
@@ -10491,7 +10542,7 @@ $htmlContent
     final ui = context.watch<UiStateController>();
     if (ui.loading) return const Center(child: CircularProgressIndicator());
 
-    final layout = context.read<LayoutController>();
+    final layout = context.watch<LayoutController>();
     context.read<EditorController>();
     context.read<DocumentController>();
 
@@ -10544,6 +10595,7 @@ $htmlContent
   /// 全局快捷键：Ctrl+Shift+E 在极简写作模式与完整编辑模式间切换
   KeyEventResult _handleGlobalKeyEvent(FocusNode node, KeyEvent event) {
     if (event is KeyDownEvent &&
+        !event.repeat &&
         event.logicalKey == LogicalKeyboardKey.keyE &&
         HardwareKeyboard.instance.isControlPressed &&
         HardwareKeyboard.instance.isShiftPressed) {
@@ -10608,10 +10660,14 @@ $htmlContent
             simpleModeExtras: settings.ui.simpleModeExtras,
             navCustom: settings.ui.navCustom,
             collapsedSections: settings.ui.collapsedLeftSections,
+            collapsedLeftSectionsSet: settings.ui.collapsedLeftSectionsSet,
             onCollapsedSectionsChanged: (keys) {
               _updateSettings(
                 settings.copyWith(
-                  ui: settings.ui.copyWith(collapsedLeftSections: keys),
+                  ui: settings.ui.copyWith(
+                    collapsedLeftSections: keys,
+                    collapsedLeftSectionsSet: true,
+                  ),
                 ),
               );
             },
@@ -10882,12 +10938,14 @@ $htmlContent
   void _onFocusMoreSelected(String value) {
     switch (value) {
       case 'meta':
+        if (_focusPreviewOpen) setState(() => _focusPreviewOpen = false);
         _openRightDrawer(RightDrawerTab.frontMatter);
         break;
       case 'toolbar':
         setState(() => _focusShowToolbar = !_focusShowToolbar);
         break;
       case 'ai':
+        if (_focusPreviewOpen) setState(() => _focusPreviewOpen = false);
         _openRightDrawer(RightDrawerTab.aiChat);
         break;
       case 'publish':
@@ -10918,30 +10976,44 @@ $htmlContent
     final sel = state.textEditingValue.selection;
     final hasSelection = sel.isValid && !sel.isCollapsed;
     final chips = <Widget>[
-      if (hasSelection)
+      if (hasSelection) ...[
         _miniToolbarChip(
           Icons.format_bold,
           '粗体',
           () => _wrap('**', '**', p: '粗体'),
         ),
-      if (hasSelection)
         _miniToolbarChip(
           Icons.format_italic,
           '斜体',
           () => _wrap('*', '*', p: '斜体'),
         ),
-      if (hasSelection)
         _miniToolbarChip(
           Icons.link,
           '链接',
           () => _wrap('[', '](https://)', p: '链接文字'),
         ),
-      if (hasSelection)
         _miniToolbarChip(
           Icons.format_quote,
           '引用',
           () => _wrap('\n> ', '\n', p: '引用'),
         ),
+      ],
+      if (!hasSelection) ...[
+        _miniToolbarChip(
+          Icons.content_paste,
+          '粘贴',
+          () async {
+            final data = await Clipboard.getData(Clipboard.kTextPlain);
+            final text = data?.text;
+            if (text != null && text.isNotEmpty) _insertText(text);
+          },
+        ),
+        _miniToolbarChip(
+          Icons.select_all,
+          '全选',
+          () => state.selectAll(SelectionChangedCause.toolbar),
+        ),
+      ],
     ];
     return AdaptiveTextSelectionToolbar(
       anchors: state.contextMenuAnchors,
@@ -11223,9 +11295,17 @@ $htmlContent
                   ),
                   Expanded(
                     child: ListenableBuilder(
-                      listenable: _doc.contentCtrl,
-                      builder: (context, _) => MarkdownPreviewSmooth(
-                        markdown: _doc.contentCtrl.text,
+                      listenable: Listenable.merge([
+                        _doc.contentCtrl,
+                        _doc.titleCtrl,
+                      ]),
+                      builder: (context, _) {
+                        final t = _doc.titleCtrl.text.trim();
+                        final body = _doc.contentCtrl.text;
+                        return MarkdownPreviewSmooth(
+                          markdown: t.isEmpty
+                              ? body
+                              : '# $t\n\n$body',
                         darkTheme: isDark,
                         onOpenLink: (url) async {
                           final uri = Uri.tryParse(url);
@@ -11254,36 +11334,15 @@ $htmlContent
             bottom: 0,
             child: _buildRightDrawer(_layout),
           ),
-        // ── 底部打字机状态指示 ──
-        Positioned(
-          bottom: 12,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.keyboard_double_arrow_down,
-                    size: 10,
-                    color: mutedColor,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '打字机模式 · 光标居中',
-                    style: TextStyle(fontSize: 9, color: mutedColor),
-                  ),
-                ],
-              ),
-            ),
+        // ── 右侧抽屉（元数据 / AI，与预览互斥） ──
+        if (!_focusPreviewOpen &&
+            context.watch<LayoutController>().rightDrawerOpen)
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
+            child: _buildRightDrawer(_layout),
           ),
-        ),
       ],
     );
   }

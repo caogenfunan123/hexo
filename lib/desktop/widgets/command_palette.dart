@@ -92,6 +92,7 @@ class _CommandPaletteState extends State<CommandPalette> {
       return;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      if (_filtered.isEmpty) return;
       setState(() {
         _selectedIndex = (_selectedIndex + 1).clamp(0, _filtered.length - 1);
       });
@@ -99,6 +100,7 @@ class _CommandPaletteState extends State<CommandPalette> {
       return;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      if (_filtered.isEmpty) return;
       setState(() {
         _selectedIndex = (_selectedIndex - 1).clamp(0, _filtered.length - 1);
       });

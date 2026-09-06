@@ -33,6 +33,10 @@ class DesktopLeftPanel extends StatefulWidget {
 
   // 折叠状态持久化（保持上次状态）
   final List<String> collapsedSections;
+
+  // 用户是否显式设置过分组折叠（区分空列表=全部展开）
+  final bool collapsedLeftSectionsSet;
+
   final ValueChanged<List<String>>? onCollapsedSectionsChanged;
 
   // 统一回调总线
@@ -51,6 +55,7 @@ class DesktopLeftPanel extends StatefulWidget {
     this.simpleModeExtras = const [],
     this.navCustom = const NavCustomConfig(),
     this.collapsedSections = const [],
+    this.collapsedLeftSectionsSet = false,
     this.onCollapsedSectionsChanged,
   });
 
@@ -80,7 +85,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
   void initState() {
     super.initState();
     _collapsedSections =
-        (widget.collapsedSections.isNotEmpty
+        (widget.collapsedLeftSectionsSet || widget.collapsedSections.isNotEmpty
                 ? widget.collapsedSections
                 : _sectionKeys)
             .toSet();

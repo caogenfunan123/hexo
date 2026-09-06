@@ -21,6 +21,20 @@ class SpellCheckResult {
     this.suggestions = const [],
     this.severity = SpellCheckSeverity.warning,
   });
+
+  SpellCheckResult copyWith({
+    List<String>? suggestions,
+    SpellCheckSeverity? severity,
+  }) {
+    return SpellCheckResult(
+      word: word,
+      offset: offset,
+      length: length,
+      line: line,
+      suggestions: suggestions ?? this.suggestions,
+      severity: severity ?? this.severity,
+    );
+  }
 }
 
 enum SpellCheckSeverity { warning, error, info }

@@ -127,6 +127,12 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
 
   FrontMatterData get _data => FrontMatterData.parse(widget.contentController.text);
 
+  /// 卡片整体明暗：优先按传入 background 亮度判定，避免自定义底色与主题语义冲突
+  bool get _cardIsDark {
+    final bg = widget.background ?? AppColor.surfaceBase(context);
+    return bg.computeLuminance() < 0.5;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -168,26 +174,28 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
     final data = _data;
 
     if (data.hasData) {
-      // 更新现有 YAML 块
-      final newFields = Map<String, String>.from(data.fields);
-      if (value.isEmpty) {
-        newFields.remove(key);
+      // 原位行级替换，保留未编辑字段的原始格式（列表/注释/多行）
+      final prefix = fullText.substring(0, data.startOffset);
+      final rest = fullText.substring(data.endOffset);
+      final newBlock = _rewriteYamlBlock(
+        data.rawYaml,
+        key,
+        value,
+        remove: value.isEmpty,
+      );
+      if (newBlock.trim().isEmpty) {
+        // 所有字段都被删除：移除整个 YAML 块
+        widget.contentController.text = prefix + rest;
+        widget.contentController.selection = TextSelection.collapsed(
+          offset: prefix.length.clamp(0, fullText.length),
+        );
       } else {
-        newFields[key] = value;
+        final newText = '$prefix---\n$newBlock\n---\n$rest';
+        widget.contentController.text = newText;
+        widget.contentController.selection = TextSelection.collapsed(
+          offset: (prefix.length + newBlock.length + 8).clamp(0, newText.length),
+        );
       }
-      final newData = FrontMatterData(
-        rawYaml: '',
-        fields: newFields,
-        startOffset: data.startOffset,
-        endOffset: data.endOffset,
-      );
-      final newYaml = newData.toYamlBlock();
-      final newText = newYaml + '\n' + fullText.substring(data.endOffset);
-      widget.contentController.text = newText;
-      // 恢复光标位置
-      widget.contentController.selection = TextSelection.collapsed(
-        offset: newYaml.length.clamp(0, newText.length),
-      );
     } else if (value.isNotEmpty) {
       // 创建新的 YAML 块
       final newYaml = '---\n$key: $value\n---\n';
@@ -199,6 +207,56 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
 
     _isUpdating = false;
     widget.onChanged?.call();
+  }
+
+  /// 在原 YAML 块内替换单个顶级字段，其余行原样保留。
+  /// 支持列表值（多行 value 拆分写入，续行带缩进）。
+  String _rewriteYamlBlock(
+    String yamlBlock,
+    String key,
+    String newValue, {
+    required bool remove,
+  }) {
+    final lines = yamlBlock.split('\n');
+    final keyPattern = RegExp('^$key:');
+    int? keyIdx;
+    for (var i = 0; i < lines.length; i++) {
+      if (keyPattern.hasMatch(lines[i])) {
+        keyIdx = i;
+        break;
+      }
+    }
+
+    // 该 key 占用行区间：本身 + 后续缩进续行（列表项/多行值）
+    int startIdx = keyIdx ?? lines.length;
+    int endIdx;
+    if (keyIdx != null) {
+      endIdx = keyIdx + 1;
+      while (endIdx < lines.length &&
+          (lines[endIdx].startsWith(' ') || lines[endIdx].startsWith('\t'))) {
+        endIdx++;
+      }
+    } else {
+      endIdx = lines.length;
+    }
+
+    final before = lines.sublist(0, startIdx);
+    final after = lines.sublist(endIdx);
+    if (remove) return [...before, ...after].join('\n');
+
+    final valueLines = newValue.split('\n');
+    final newLines = <String>[];
+    for (var i = 0; i < valueLines.length; i++) {
+      final v = valueLines[i];
+      if (i == 0) {
+        newLines.add('$key: $v');
+      } else {
+        newLines.add(
+          v.startsWith(' ') || v.startsWith('\t') ? v : '  $v',
+        );
+      }
+    }
+    return [...before, ...newLines, ...after].join('\n');
   }
 
   String _formatDate(DateTime date) {
@@ -235,7 +293,7 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = widget.isDark;
+    final isDark = _cardIsDark;
     final data = _data;
 
     // 如果没有 frontmatter 且未展开，显示一个小提示

@@ -85,19 +85,18 @@ class DesktopRightDrawer extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _tabButton(context, RightDrawerTab.outline, Icons.list_alt, '大纲', cs),
-          _tabButton(context, RightDrawerTab.frontMatter, Icons.tune, '属性', cs),
-          _tabButton(context, RightDrawerTab.snippets, Icons.content_paste, '片段', cs),
-          _tabButton(context, RightDrawerTab.aiChat, Icons.auto_awesome, 'AI', cs),
-          _tabButton(context, RightDrawerTab.syncLog, Icons.sync, '日志', cs),
-          const Spacer(),
+          Expanded(child: _tabButton(context, RightDrawerTab.outline, Icons.list_alt, '大纲', cs)),
+          Expanded(child: _tabButton(context, RightDrawerTab.frontMatter, Icons.tune, '属性', cs)),
+          Expanded(child: _tabButton(context, RightDrawerTab.snippets, Icons.content_paste, '片段', cs)),
+          Expanded(child: _tabButton(context, RightDrawerTab.aiChat, Icons.auto_awesome, 'AI', cs)),
+          Expanded(child: _tabButton(context, RightDrawerTab.syncLog, Icons.sync, '日志', cs)),
           GestureDetector(
             onTap: onClose,
             child: Padding(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(6),
               child: Icon(
                 Icons.close,
-                size: 15,
+                size: 14,
                 color: AppColor.textMuted(context),
               ),
             ),
@@ -112,10 +111,10 @@ class DesktopRightDrawer extends StatelessWidget {
     return GestureDetector(
       onTap: () => onTabChange(tab),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
             decoration: BoxDecoration(
               color: isActive
                   ? cs.primary.withOpacity(0.08)
@@ -127,16 +126,16 @@ class DesktopRightDrawer extends StatelessWidget {
               children: [
                 Icon(
                   icon,
-                  size: 16,
+                  size: 15,
                   color: isActive
                       ? cs.primary
                       : (AppColor.textMuted(context)),
                 ),
-                const SizedBox(width: 5),
+                const SizedBox(width: 3),
                 Text(
                   label,
                   style: TextStyle(
-                    fontSize: 12.5,
+                    fontSize: 11,
                     fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
                     color: isActive
                         ? cs.primary

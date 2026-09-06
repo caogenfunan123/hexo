@@ -341,7 +341,7 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
       const SingleActivator(LogicalKeyboardKey.keyE, control: true): () => _invokeShell('toggleRightDrawer'),
       // 工作模式
       const SingleActivator(LogicalKeyboardKey.keyF, control: true, shift: true): () => _invokeShell('focusMode'),
-      const SingleActivator(LogicalKeyboardKey.keyE, control: true, shift: true): () => _invokeShell('sourceMode'),
+      const SingleActivator(LogicalKeyboardKey.keyY, control: true, shift: true): () => _invokeShell('sourceMode'),
       const SingleActivator(LogicalKeyboardKey.keyW, control: true, shift: true): () => _invokeShell('workspaceMode'),
       // 编辑操作 — Ctrl+B/I 由 Flutter TextField 原生处理，不在全局注册
       const SingleActivator(LogicalKeyboardKey.keyF, control: true): () => _invokeShell('find'),

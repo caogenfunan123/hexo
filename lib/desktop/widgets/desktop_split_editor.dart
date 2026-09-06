@@ -277,9 +277,10 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
   Widget _buildSourceEditor(bool isDark, ColorScheme cs) {
     return LayoutBuilder(
       builder: (ctx, constraints) {
-        final minLines = constraints.maxHeight.isFinite
-            ? ((constraints.maxHeight - 80) / (widget.fontSize * widget.lineHeight)).floor().clamp(1, 50)
-            : 15;
+        final expands = constraints.maxHeight.isFinite;
+        final minLines = expands
+            ? null
+            : ((constraints.maxHeight - 80) / (widget.fontSize * widget.lineHeight)).floor().clamp(1, 50);
         return ScrollbarTheme(
           data: ScrollbarThemeData(
             thickness: WidgetStateProperty.all(0), // 隐藏滚动条
@@ -289,7 +290,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
             focusNode: widget.focusNode,
             minLines: minLines,
             maxLines: null,
-            expands: constraints.maxHeight.isFinite,
+            expands: expands,
             keyboardType: TextInputType.multiline,
             cursorColor: cs.primary,
             style: TextStyle(
@@ -344,8 +345,13 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
   Widget _buildSplitView(bool isDark, ColorScheme cs) {
     final sepColor = AppColor.border(context);
 
-    return Row(
-      children: [
+    return LayoutBuilder(
+      builder: (ctx, constraints) {
+        final totalWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : 800.0;
+        return Row(
+          children: [
         // 左栏：源码编辑
         Expanded(
           flex: (_splitRatio * 100).round(),
@@ -394,7 +400,6 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
         // 分隔线（可拖拽）
         GestureDetector(
           onHorizontalDragUpdate: (details) {
-            final totalWidth = MediaQuery.of(context).size.width;
             setState(() {
               _splitRatio += details.delta.dx / totalWidth;
               _splitRatio = _splitRatio.clamp(0.3, 0.7);
@@ -440,6 +445,8 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
           ),
         ),
       ],
+        );
+      },
     );
   }
 }

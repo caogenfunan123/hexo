@@ -4,32 +4,64 @@ library;
 
 /// Markdown 格式化操作
 class MarkdownFormatter {
-  /// 格式化完整文档
+  /// 格式化完整文档（围栏代码块内部原样保留）
   static String formatDocument(String text) {
-    var result = text;
+    var result = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 
-    // 1. 统一换行符
-    result = result.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    // 按围栏代码块切段：外部段应用格式化，内部段原样保留
+    final parts = <String>[];
+    final inFenceParts = <bool>[];
+    final lines = result.split('\n');
+    final buf = StringBuffer();
+    var inFence = false;
 
-    // 2. 中英文之间添加空格
-    result = _addChineseEnglishSpace(result);
+    void flush() {
+      if (buf.isEmpty) return;
+      parts.add(buf.toString());
+      inFenceParts.add(inFence);
+      buf.clear();
+    }
 
-    // 3. 格式化表格
-    result = _formatTables(result);
+    for (final line in lines) {
+      if (line.trimLeft().startsWith('```')) {
+        flush();
+        buf.writeln(line);
+        flush();
+        inFence = !inFence;
+      } else {
+        buf.writeln(line);
+      }
+    }
+    flush();
 
-    // 4. 确保文档末尾有换行
+    final sb = StringBuffer();
+    for (var i = 0; i < parts.length; i++) {
+      sb.write(inFenceParts[i] ? parts[i] : _formatSegment(parts[i]));
+    }
+    result = sb.toString();
+
+    // 确保文档末尾有换行
     if (!result.endsWith('\n')) {
       result += '\n';
     }
+    return result;
+  }
 
-    // 5. 移除多余空行（超过 2 个连续空行合并为 1 个）
+  /// 格式化一段围栏外的文本
+  static String _formatSegment(String seg) {
+    var result = seg;
+
+    // 1. 中英文之间添加空格
+    result = _addChineseEnglishSpace(result);
+
+    // 2. 格式化表格
+    result = _formatTables(result);
+
+    // 3. 移除多余空行（超过 2 个连续空行合并为 1 个）
     result = result.replaceAll(RegExp(r'\n{3,}'), '\n\n');
 
-    // 6. 标题前后确保有空行
+    // 4. 标题前后确保有空行
     result = result.replaceAll(RegExp(r'([^\n])\n(#{1,6}\s)', multiLine: true), r'$1\n\n$2');
-
-    // 7. 代码块前后确保有空行
-    result = result.replaceAll(RegExp(r'([^\n])\n(```)', multiLine: true), r'$1\n\n$2');
 
     return result;
   }
