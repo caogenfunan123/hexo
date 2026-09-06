@@ -1,41 +1,41 @@
 {
-  "version": "1.0.10",
-  "build": 11,
-  "name": "Hexo 拓墨",
-  "notes": "★ 新增：APK 按架构拆分（arm64-v8a / armeabi-v7a / universal），arm64 包体积从 77MB 降至 28MB\n★ 新增：R8 压缩 + shrinkResources 开启，进一步减小安装包体积\n★ 新增：官网下载页支持按设备架构选择 APK（arm64 推荐 / armv7 / 全架构）\n★ 新增：客户端自动检测设备 ABI 下载对应架构 APK\n★ 修复：移除 abiFilters 保证 universal 包仍包含 x86/x86_64 架构兼容\n★ 修复：补充 Flutter 引擎 proguard keep 规则，消除 R8 混淆风险\n★ 修复：desktop_shell 11683 行重构，_bus late final 缓存替代重复创建\n★ 修复：加密服务 async/await 正确性、ToolSchemaValidator UPDATE 正则、PathUtil Unix 路径保留前导 / 等 23 个代码审查问题",
-  "publishedAt": "2026-08-20T12:50:00+08:00",
+  "version": "1.0.11",
+  "build": 12,
+  "name": "Hexo 写作系统",
+  "notes": "★ 修复：桌面版打字卡顿——预览 200ms 防抖、语法高亮全文解析缓存、状态栏局部刷新\n★ 修复：自动保存全量序列化移出 UI 线程，长文档不再周期性掉帧\n★ 修复：窗口四周白边框跟随主题，切换深浅色无白缝\n★ 修复：预览区空白/黑屏——缺 WebView2 时显示兜底卡片，可一键在浏览器打开\n★ 修复：全局字号缩放（fontScale 真正作用于硬编码小字），默认放大 10%\n★ 修复：草稿点击防抖，双击不再重复开标签\n★ 修复：多标签内容互串——每标签独立会话快照，切走未保存改动保留\n★ 修复：AI 润色/重写/续写后预览与字数即时刷新，并触发自动保存\n★ 修复：光标移动不再重建状态栏，减少无效重建",
+  "publishedAt": "2026-09-06T09:58:43+00:00",
   "platforms": {
     "android": {
-      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/app-release.apk",
-      "sha256": "4bc99da43d74bc69149027322af1086d5381c5afccebeaefea0e58c26eb75ee7",
-      "size": 80774556,
+      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.11/app-release.apk",
+      "sha256": "",
+      "size": 0,
       "abi": {
         "arm64": {
-          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/app-arm64-v8a-release.apk",
-          "sha256": "3d16089a12226cae5bb4bd8fdcbe3f55564b9747fa7cd606cb49acf56bd41952",
-          "size": 29449344
+          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.11/app-arm64-v8a-release.apk",
+          "sha256": "",
+          "size": 0
         },
         "armv7": {
-          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/app-armeabi-v7a-release.apk",
-          "sha256": "eb45812e2383b9b1d77a82d1475b0922826645a3970005f18b2e8c9a885136cc",
-          "size": 27661256
+          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.11/app-armeabi-v7a-release.apk",
+          "sha256": "",
+          "size": 0
         },
         "universal": {
-          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/app-release.apk",
-          "sha256": "4bc99da43d74bc69149027322af1086d5381c5afccebeaefea0e58c26eb75ee7",
-          "size": 80774556
+          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.11/app-release.apk",
+          "sha256": "",
+          "size": 0
         }
       }
     },
     "windows": {
-      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/hexo-windows.zip",
-      "sha256": "69b91a784ed99ced7bc37ae5180a90ae92c71b354ac82926176f7c62fd16ea44",
-      "size": 24105435
+      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.11/hexo-windows.zip",
+      "sha256": "",
+      "size": 0
     },
     "linux": {
-      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.10/hexo-linux.tar.gz",
-      "sha256": "a4e1c4f28c787ce2d6d75fa036c032058fc11e155cfccdc83d429ad976146cb1",
-      "size": 20895670
+      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.11/hexo-linux.tar.gz",
+      "sha256": "",
+      "size": 0
     }
   }
 }
