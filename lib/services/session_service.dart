@@ -130,13 +130,17 @@ class SessionService {
     final dir = await _autoSaveDirectory();
     if (!await dir.exists()) return [];
 
+    // 与 saveAutoSnapshot 一致的消毒规则，前缀匹配（id 可能含下划线，不能用 split）
+    final safeId = articleId
+        .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1f]'), '_')
+        .replaceAll(RegExp(r'\s+'), '_');
+
     final result = <AutoSaveSnapshot>[];
     await for (final entity in dir.list()) {
       if (entity is File && entity.path.endsWith('.md')) {
         final name = entity.path.split('/').last.replaceAll('.md', '');
-        final parts = name.split('_');
-        if (parts.length >= 2 && parts[0] == articleId) {
-          final ts = int.tryParse(parts.last) ?? 0;
+        if (name.startsWith('${safeId}_')) {
+          final ts = int.tryParse(name.substring(safeId.length + 1)) ?? 0;
           result.add(AutoSaveSnapshot(
             path: entity.path,
             articleId: articleId,

@@ -111,6 +111,16 @@ class DocumentController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 发布/同步成功后仅更新文章的远程元数据，保留编辑器当前内容
+  /// （发布期间用户可能继续编辑，不能像 setCurrentArticle 那样覆盖文本域）
+  void updateCurrentArticleMeta(Article article) {
+    _currentArticle = article;
+    _lastSavedContent = article.content;
+    _hasUnsavedChanges = _contentCtrl.text != article.content ||
+        _titleCtrl.text != article.title;
+    notifyListeners();
+  }
+
   /// 更新 TextEditingController 引用（用于切换草稿等场景）
   void updateContentControllers({
     TextEditingController? title,

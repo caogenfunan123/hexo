@@ -474,7 +474,9 @@ class AiChatPanelState extends State<AiChatPanel> {
           .map((m) => ChatMessage.fromContextMap(m))
           .where((m) => m.showInUi)
           .toList();
-      setState(() => _messages.addAll(uiMessages));
+      if (mounted) {
+        setState(() => _messages.addAll(uiMessages));
+      }
 
       // 重新解析已有 assistant 消息中的文件操作
       for (int i = 0; i < _messages.length; i++) {
@@ -495,17 +497,24 @@ class AiChatPanelState extends State<AiChatPanel> {
 
   /// 保存完整对话上下文到本地文件（含工具调用上下文）。
   /// 落盘前对工具参数中的敏感凭据（token/key/secret）脱敏，避免明文泄漏。
+  /// 串行化历史写入：链式 Future 防止并发写坏 JSON
+  Future<void> _historyWriteQueue = Future.value();
+
   Future<void> _saveHistory() async {
     final storage = widget.storageService;
     if (storage == null) return;
-    try {
-      final root = (await storage.root).path;
-      final file = File('$root/$_chatFileKey');
-      final context = widget.dispatcher.chatHistory;
-      final sanitized = context.map(_sanitizeHistoryMessage).toList();
-      final json = jsonEncode({'context': sanitized});
-      await file.writeAsString(json);
-    } catch (e) { debugPrint('AiChat: stream close failed: $e'); }
+    final task = _historyWriteQueue.then((_) async {
+      try {
+        final root = (await storage.root).path;
+        final file = File('$root/$_chatFileKey');
+        final context = widget.dispatcher.chatHistory;
+        final sanitized = context.map(_sanitizeHistoryMessage).toList();
+        final json = jsonEncode({'context': sanitized});
+        await file.writeAsString(json);
+      } catch (e) { debugPrint('AiChat: stream close failed: $e'); }
+    });
+    _historyWriteQueue = task.catchError((_) {});
+    await task;
   }
 
   /// 对单条历史消息中的敏感凭据字段做脱敏（保留结构供上下文恢复）。
@@ -641,7 +650,11 @@ class AiChatPanelState extends State<AiChatPanel> {
 
   Future<void> sendMessage([String? text]) async {
     final msg = text ?? _chatCtrl.text.trim();
-    if (msg.isEmpty || _busy) return;
+    if (msg.isEmpty) return;
+    // 正在生成时外部注入的新消息不得静默丢弃：先取消当前流再发送
+    if (_busy) {
+      _cancelStream();
+    }
     _chatCtrl.clear();
 
     // 添加用户消息到 UI（dispatcher 在 dispatchStream 内部也添加）
@@ -1139,11 +1152,14 @@ class AiChatPanelState extends State<AiChatPanel> {
       }
     }
 
-    setState(() {
-      _writeBusy = false;
-      _status = null;
-    });
+    if (mounted) {
+      setState(() {
+        _writeBusy = false;
+        _status = null;
+      });
+    }
 
+    if (!mounted) return;
     if (fail == 0) {
       _addAssistantMessage('✅ 已成功写入 $success 个文件到仓库。\n\n请推送远端构建测试。');
     } else {
@@ -1159,6 +1175,9 @@ class AiChatPanelState extends State<AiChatPanel> {
     _unsubscribeToolsExecuted = null;
     widget.dispatcher.onToolConfirm = null;
     _streamSub?.cancel();
+    // 面板卸载时取消共享 dispatcher 的进行中请求，避免工具副作用继续执行
+    // 以及旧请求回执串入新会话历史
+    widget.dispatcher.cancelCurrent();
     _chatCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();

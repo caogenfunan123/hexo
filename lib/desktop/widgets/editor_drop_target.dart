@@ -107,14 +107,22 @@ class _EditorDropTargetState extends State<EditorDropTarget> {
           }
         }
       } else if (_isMarkdownFile(dropFile.path)) {
-        final content = await file.readAsString();
-        widget.onMarkdownInserted?.call(content);
+        try {
+          final content = await file.readAsString();
+          widget.onMarkdownInserted?.call(content);
+        } catch (_) {
+          // 文件被占用/读取失败时忽略，避免未处理异常
+        }
       } else if (_isTextFile(dropFile.path)) {
-        final content = await file.readAsString();
-        // 文本文件默认作为代码块插入
-        final ext = dropFile.path.split('.').last;
-        final codeBlock = '\n```$ext\n$content\n```\n';
-        widget.onMarkdownInserted?.call(codeBlock);
+        try {
+          final content = await file.readAsString();
+          // 文本文件默认作为代码块插入
+          final ext = dropFile.path.split('.').last;
+          final codeBlock = '\n```$ext\n$content\n```\n';
+          widget.onMarkdownInserted?.call(codeBlock);
+        } catch (_) {
+          // 文件被占用/读取失败时忽略，避免未处理异常
+        }
       } else {
         // 无扩展名/未知类型文件：按纯文本尝试插入，避免静默丢弃
         try {

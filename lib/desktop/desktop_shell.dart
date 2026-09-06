@@ -255,6 +255,7 @@ class DesktopShellState extends State<DesktopShell>
   List<SnippetItem> snippets = [];
   bool loading = true;
   bool busy = false;
+  bool _autoSyncing = false;
   String? error;
 
   // ──────────────────────────────────────────────
@@ -592,12 +593,13 @@ class DesktopShellState extends State<DesktopShell>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (!settings.draftSyncEnabled) return;
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
-      // 三重落盘：APP 转入后台时强制冲刷所有等待中的保存任务
+      // 三重落盘：APP 转入后台时强制冲刷所有等待中的保存任务（不依赖云同步开关）
       _flushAllPendingSaves();
-      _autoSyncToCloud();
+      if (settings.draftSyncEnabled) {
+        _autoSyncToCloud();
+      }
     } else if (state == AppLifecycleState.resumed) {
       _autoPullFromCloud();
     }
@@ -871,10 +873,22 @@ class DesktopShellState extends State<DesktopShell>
 
   /// 冲刷所有等待中的保存任务（三重落盘：文本变更 / 页面切换 / APP 转入后台）
   void _flushAllPendingSaves() {
+    // 1) 仍在排队中的防抖任务：立即取消并保存
     for (final entry in _debounceTimers.entries) {
       entry.value.cancel();
       final pending = _pendingSaveMap[entry.key];
       if (pending != null && pending.content.isNotEmpty) {
+        _autoSaveSnapshot(
+          articleId: pending.articleId,
+          content: pending.content,
+          title: pending.title,
+        );
+      }
+    }
+    // 2) 已切走文章挂起在 pending 中的内容：之前被 clear 直接丢弃，这里真正落盘
+    final leftover = Map<String, _PendingSave>.from(_pendingSaveMap);
+    for (final pending in leftover.values) {
+      if (pending.content.isNotEmpty) {
         _autoSaveSnapshot(
           articleId: pending.articleId,
           content: pending.content,
@@ -890,8 +904,15 @@ class DesktopShellState extends State<DesktopShell>
     final current = _doc.contentCtrl.text;
     final title = _doc.titleCtrl.text;
     final articleId = _doc.currentArticle.id;
+    // 元数据（标签/分类/封面）变化同样视为未保存，不能仅比较正文+标题
+    final metaChanged =
+        _doc.tagsCtrl.text != _doc.currentArticle.tags.join(', ') ||
+            _doc.categoriesCtrl.text !=
+                _doc.currentArticle.categories.join(', ') ||
+            _doc.coverCtrl.text != (_doc.currentArticle.cover ?? '');
     if (current == _lastSavedContentMap[articleId] &&
-        title == _lastSavedTitleMap[articleId]) {
+        title == _lastSavedTitleMap[articleId] &&
+        !metaChanged) {
       _doc.markSaved();
       return;
     }
@@ -918,6 +939,20 @@ class DesktopShellState extends State<DesktopShell>
         return;
       }
       _autoSaveSnapshot(articleId: articleId, content: current, title: title);
+      // 元数据（标签/分类/封面）变化也要落盘：content/title 未变时 force 保存
+      final metaChangedNow =
+          _doc.tagsCtrl.text != _doc.currentArticle.tags.join(', ') ||
+              _doc.categoriesCtrl.text !=
+                  _doc.currentArticle.categories.join(', ') ||
+              _doc.coverCtrl.text != (_doc.currentArticle.cover ?? '');
+      if (metaChangedNow) {
+        _autoSaveSnapshot(
+          articleId: articleId,
+          content: current,
+          title: title,
+          force: true,
+        );
+      }
       // 仍是当前文章的后台快照保存，主动刷新保存状态栏
       if (current == _doc.contentCtrl.text && title == _doc.titleCtrl.text) {
         _doc.markSaved();
@@ -983,13 +1018,17 @@ class DesktopShellState extends State<DesktopShell>
     String? articleId,
     String? content,
     String? title,
+    bool force = false,
   }) async {
     final aid = articleId ?? _doc.currentArticle.id;
     final c = content ?? _doc.contentCtrl.text;
     final t = title ?? _doc.titleCtrl.text;
     final prevC = _lastSavedContentMap[aid];
     final prevT = _lastSavedTitleMap[aid];
-    if (c.isEmpty || (c == prevC && t == prevT)) return;
+    if (!force &&
+        ((c.isEmpty && t.isEmpty) || (c == prevC && t == prevT))) {
+      return;
+    }
     try {
       await sessionService.saveAutoSnapshot(
         articleId: aid,
@@ -1012,7 +1051,13 @@ class DesktopShellState extends State<DesktopShell>
       await sessionService.cleanupSnapshots(aid);
       // 仅当保存的是当前激活文章且内容一致时才落草稿，避免后台保存污染其他文章
       if (aid == _doc.currentArticle.id && _doc.contentCtrl.text == c) {
-        await _saveDraft(_collect(draft: true));
+        final currentArticle = _doc.currentArticle;
+        await _saveDraft(
+          _collect(draft: true).copyWith(
+            isDraft: currentArticle.isDraft,
+            published: currentArticle.published,
+          ),
+        );
       }
       if (mounted) _showToast('草稿已自动保存');
     } catch (e) {
@@ -1039,27 +1084,31 @@ class DesktopShellState extends State<DesktopShell>
   }
 
   Future<void> _autoSyncToCloud() async {
-    if (busy) return;
+    if (busy || _autoSyncing) return;
     final backend = cloudSyncService.configuredBackends.firstOrNull;
     if (backend == null) return;
+    _autoSyncing = true;
     try {
       await cloudSyncService.pushDrafts(backend, drafts);
       await cloudSyncService.pushSyncMappings(backend, syncService);
     } catch (e) {
       debugPrint('Cloud push drafts error: $e');
+    } finally {
+      _autoSyncing = false;
     }
   }
 
   Future<void> _autoPullFromCloud() async {
-    if (busy) return;
+    if (busy || _autoSyncing) return;
     final backend = cloudSyncService.configuredBackends.firstOrNull;
     if (backend == null) return;
+    _autoSyncing = true;
     try {
       final pulled = await cloudSyncService.pullDrafts(
         backend,
         existingDrafts: drafts,
       );
-      if (pulled.isNotEmpty) {
+      if (pulled.isNotEmpty && mounted) {
         setState(() {
           drafts = pulled..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
         });
@@ -1068,6 +1117,8 @@ class DesktopShellState extends State<DesktopShell>
       await cloudSyncService.pullSyncMappings(backend, syncService);
     } catch (e) {
       debugPrint('Cloud pull drafts error: $e');
+    } finally {
+      _autoSyncing = false;
     }
   }
 
@@ -1559,13 +1610,21 @@ class DesktopShellState extends State<DesktopShell>
         a,
         templates: templates,
       );
-      _doc.setCurrentArticle(pub);
-      _editor.setEditorStatus('已发布');
+      // 发布期间用户可能继续编辑，此时不得用发布快照覆盖编辑器内容
+      final userEdited = _doc.contentCtrl.text != a.content ||
+          _doc.titleCtrl.text != a.title;
+      if (userEdited) {
+        _doc.updateCurrentArticleMeta(pub);
+        _editor.setEditorStatus('已发布');
+      } else {
+        _doc.setCurrentArticle(pub);
+        _editor.setEditorStatus('已发布');
+        _doc.markSaved();
+      }
       _lastSavedContent = pub.content;
       _lastSavedTitle = pub.title;
       _lastSavedContentMap[pub.id] = pub.content;
       _lastSavedTitleMap[pub.id] = pub.title;
-      _doc.markSaved();
       await _saveDraft(pub.copyWith(isDraft: false, published: true));
       await _refreshRemote();
       // 触发全部部署钩子（Cloudflare / Vercel / Netlify 等）
@@ -1624,13 +1683,20 @@ class DesktopShellState extends State<DesktopShell>
         remotePath: result.link,
         remoteSha: result.id?.toString(),
       );
-      _doc.setCurrentArticle(pub);
+      // 发布期间用户可能继续编辑，此时不得用发布快照覆盖编辑器内容
+      final userEdited = _doc.contentCtrl.text != a.content ||
+          _doc.titleCtrl.text != a.title;
+      if (userEdited) {
+        _doc.updateCurrentArticleMeta(pub);
+      } else {
+        _doc.setCurrentArticle(pub);
+        _doc.markSaved();
+      }
       _editor.setEditorStatus('已发布到 ${adapter.config.type.displayName}');
       _lastSavedContent = a.content;
       _lastSavedTitle = a.title;
       _lastSavedContentMap[a.id] = a.content;
       _lastSavedTitleMap[a.id] = a.title;
-      _doc.markSaved();
       await _saveDraft(pub);
       await cmsDraftService.saveDraft(result);
       if (result.id != null) {
@@ -1920,6 +1986,13 @@ class DesktopShellState extends State<DesktopShell>
     }
 
     // 首次打开：建立会话并载入
+    // 先保存当前激活标签的未保存会话，避免切走后编辑丢失
+    if (_editor.openTabs.isNotEmpty) {
+      final currentId = _editor.openTabs[_editor.activeTabIndex].id;
+      if (currentId != tabId && _tabSessions.containsKey(currentId)) {
+        _saveSessionFromDoc(currentId);
+      }
+    }
     _tabSessions[tabId] = _EditorTabSession(
       article: a,
       content: a.content,
@@ -3154,7 +3227,27 @@ class DesktopShellState extends State<DesktopShell>
 
   void _autoSelectTemplate() {
     if (_editorRepo == null) return;
-    final id = TemplateResolver.resolvePostTemplateId(_editorRepo!, templates);
+    final isPage = _doc.articleType == ArticleType.page;
+    // 当前选中模板与文章类型不匹配时先清除，
+    // 避免 Dropdown value 不在过滤后 items 中触发断言崩溃
+    final cur = _doc.selectedTemplateId;
+    if (cur != null && cur.isNotEmpty) {
+      TemplateItem? t;
+      for (final x in templates) {
+        if (x.id == cur) {
+          t = x;
+          break;
+        }
+      }
+      if (t != null && t.isPost == isPage) {
+        // 类型匹配，无需重选
+        return;
+      }
+      if (t != null) _doc.setSelectedTemplateId(null);
+    }
+    final id = isPage
+        ? TemplateResolver.resolvePageTemplateId(_editorRepo!, templates)
+        : TemplateResolver.resolvePostTemplateId(_editorRepo!, templates);
     if (id != null) _doc.setSelectedTemplateId(id);
   }
 
@@ -3577,14 +3670,14 @@ class DesktopShellState extends State<DesktopShell>
                   },
                   child: const Text('全部替换'),
                 ),
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('关闭'),
-                ),
-              ],
-            );
-          },
-        ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('关闭'),
+              ),
+            ],
+          );
+        },
+      ),
       );
     } finally {
       findCtrl.dispose();
@@ -4932,7 +5025,7 @@ class DesktopShellState extends State<DesktopShell>
     return dp;
   }
 
-  void _openProxySettings() {
+  Future<void> _openProxySettings() async {
     final hostCtrl = TextEditingController(text: settings.proxyHost);
     final portCtrl = TextEditingController(text: settings.proxyPort.toString());
     final userCtrl = TextEditingController(text: settings.proxyUsername);
@@ -4941,7 +5034,7 @@ class DesktopShellState extends State<DesktopShell>
     bool applyToAi = settings.proxyApplyToAi;
 
     try {
-      showDialog(
+      await showDialog(
         context: context,
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, setDialogState) => AlertDialog(
@@ -5112,12 +5205,12 @@ class DesktopShellState extends State<DesktopShell>
                 // 清理临时文件
                 final tmpDir = Directory('${rootDir.path}/tmp');
                 if (await tmpDir.exists()) await tmpDir.delete(recursive: true);
-                if (mounted) {
+                if (ctx.mounted) {
                   Navigator.pop(ctx);
                   _showToast('缓存已清理');
                 }
               } catch (e) {
-                if (mounted) {
+                if (ctx.mounted) {
                   Navigator.pop(ctx);
                   _showToast('清理失败: $e');
                 }
@@ -5894,13 +5987,20 @@ class DesktopShellState extends State<DesktopShell>
       try {
         final a = _collect(draft: false);
         final pub = await github.upsertArticle(repo, a, templates: templates);
-        _doc.setCurrentArticle(pub);
+        // 发布期间用户可能继续编辑，此时不得用发布快照覆盖编辑器内容
+        final userEdited = _doc.contentCtrl.text != a.content ||
+            _doc.titleCtrl.text != a.title;
+        if (userEdited) {
+          _doc.updateCurrentArticleMeta(pub);
+        } else {
+          _doc.setCurrentArticle(pub);
+          _doc.markSaved();
+        }
         _editor.setEditorStatus('已发布');
         _lastSavedContent = pub.content;
         _lastSavedTitle = pub.title;
         _lastSavedContentMap[pub.id] = pub.content;
         _lastSavedTitleMap[pub.id] = pub.title;
-        _doc.markSaved();
         await _saveDraft(pub.copyWith(isDraft: false, published: true));
         await _refreshRemote();
         logService.add('发布成功', '已发布到 ${repo.fullName}: ${pub.title}');
@@ -6047,7 +6147,7 @@ class DesktopShellState extends State<DesktopShell>
     }
   }
 
-  void _openGlobalSearch() {
+  Future<void> _openGlobalSearch() async {
     final searchCtrl = TextEditingController();
     String query = '';
     String filterStatus = 'all'; // all, draft, published
@@ -6101,7 +6201,7 @@ class DesktopShellState extends State<DesktopShell>
     }
 
     try {
-      showDialog(
+      await showDialog(
         context: context,
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, setDialogState) => AlertDialog(
@@ -6388,12 +6488,12 @@ class DesktopShellState extends State<DesktopShell>
     );
   }
 
-  void _showSnippetManager() {
+  Future<void> _showSnippetManager() async {
     final nameCtrl = TextEditingController();
     final contentCtrl = TextEditingController();
     String category = '自定义';
     try {
-      showDialog(
+      await showDialog(
         context: context,
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, setDialogState) => AlertDialog(
@@ -7498,9 +7598,17 @@ class DesktopShellState extends State<DesktopShell>
   // 全局操作入口（由 desktop_main 快捷键/托盘/拖拽调用）
   // ============================================================
 
+  /// 窗口关闭/托盘退出前强制冲刷所有待保存内容（由 desktop_main 调用）
+  void flushAllPendingSaves() {
+    _flushAllPendingSaves();
+    for (final t in _debounceTimers.values) {
+      t.cancel();
+    }
+    _debounceTimers.clear();
+  }
+
   /// GlobalKey 调用的统一入口
-  void handleGlobalAction(String action) {
-    switch (action) {
+  void handleGlobalAction(String action) {    switch (action) {
       case 'save':
         _saveLocal();
         break;
@@ -7726,7 +7834,8 @@ class DesktopShellState extends State<DesktopShell>
   void openExternalFile(String fileName, String content, String filePath) {
     _addRecentFile(filePath, fileName);
     final article = Article(
-      id: 'external_${DateTime.now().millisecondsSinceEpoch}',
+      // 稳定 id：同一路径重复打开复用同一标签，避免生成多个独立标签
+      id: 'external_${filePath.hashCode}',
       title: fileName,
       content: content,
       createdAt: DateTime.now(),
@@ -8803,11 +8912,11 @@ class DesktopShellState extends State<DesktopShell>
   // 4. 自定义 CSS 编辑器
   // ──────────────────────────────────────────────
 
-  void _showCustomCssEditor() {
+  Future<void> _showCustomCssEditor() async {
     final cssCtrl = TextEditingController(text: _editor.customCss);
 
     try {
-      showDialog(
+      await showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Row(
@@ -8937,12 +9046,19 @@ class DesktopShellState extends State<DesktopShell>
     'shortcutEditor': '快捷键设置',
   };
 
-  void _showShortcutEditor() {
+  Future<void> _showShortcutEditor() async {
     // 合并默认快捷键和自定义快捷键
     final shortcuts = Map<String, String>.from(_defaultShortcuts);
     shortcuts.addAll(_editor.customShortcuts);
 
-    showDialog(
+    // 预创建控制器并在对话框关闭后统一 dispose，避免 itemBuilder 内泄漏
+    final ctrls = <String, TextEditingController>{};
+    for (final entry in shortcuts.entries) {
+      ctrls[entry.key] = TextEditingController(text: entry.value);
+    }
+
+    try {
+      await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
@@ -8977,9 +9093,8 @@ class DesktopShellState extends State<DesktopShell>
                     child: ListView(
                       children: shortcuts.entries.map((entry) {
                         final action = entry.key;
-                        final shortcut = entry.value;
                         final label = _actionLabels[action] ?? action;
-                        final ctrl = TextEditingController(text: shortcut);
+                        final ctrl = ctrls[action]!;
 
                         return ListTile(
                           dense: true,
@@ -8995,7 +9110,7 @@ class DesktopShellState extends State<DesktopShell>
                               style: TextStyle(
                                 fontFamily: 'monospace',
                                 fontSize: 12,
-                                color: shortcut.isEmpty ? Colors.grey : null,
+                                color: ctrl.text.isEmpty ? Colors.grey : null,
                               ),
                               decoration: InputDecoration(
                                 hintText: '未设置',
@@ -9056,6 +9171,11 @@ class DesktopShellState extends State<DesktopShell>
         },
       ),
     );
+    } finally {
+      for (final c in ctrls.values) {
+        c.dispose();
+      }
+    }
   }
 
   // ──────────────────────────────────────────────
@@ -10741,6 +10861,8 @@ $htmlContent
         dispatcher: aiDispatcher,
         selfChecker: aiSelfChecker,
         sessionType: AiSessionType.article,
+        // 按文章隔离 AI 会话历史，避免切文章后旧上下文串入新文章
+        historyKey: 'article_${_doc.currentArticle.id}',
         blogFramework: effectiveRepo?.frameworkId,
         postsPath: effectiveRepo?.postsPath,
         pagesPath: effectiveRepo?.pagesPath,

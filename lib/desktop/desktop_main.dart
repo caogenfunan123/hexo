@@ -243,6 +243,7 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
   void onWindowClose() async {
     await _saveLayout();
     // 关闭前强制落盘所有未保存内容
+    DesktopApp.shellKey.currentState?.flushAllPendingSaves();
     await _editorCtrl.onBeforeClose();
     // 最小化到托盘而不是关闭
     if (_isTrayReady) {
@@ -277,6 +278,7 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
         }),
         MenuSeparator(),
         MenuItemLabel(label: '退出', onClicked: (_) async {
+          DesktopApp.shellKey.currentState?.flushAllPendingSaves();
           await _editorCtrl.onBeforeClose();
           await _systemTray.destroy();
           await windowManager.destroy();
@@ -314,7 +316,14 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
     for (final entry in customShortcuts.entries) {
       final action = entry.key;
       final shortcutStr = entry.value;
-      if (shortcutStr.isEmpty) continue;
+      // 清空快捷键 = 禁用该动作的默认绑定
+      if (shortcutStr.isEmpty) {
+        final defaultActivator = _defaultActivators[action];
+        if (defaultActivator != null) {
+          newShortcuts.remove(defaultActivator);
+        }
+        continue;
+      }
 
       final activator = _parseShortcut(shortcutStr);
       if (activator == null) continue;
@@ -328,6 +337,27 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
     _shortcuts = newShortcuts;
     if (mounted) setState(() {});
   }
+
+  /// 默认动作 → 默认快捷键映射（用于「清空自定义快捷键 = 禁用默认绑定」）
+  static const Map<String, ShortcutActivator> _defaultActivators = {
+    'save': SingleActivator(LogicalKeyboardKey.keyS, control: true),
+    'publish': SingleActivator(LogicalKeyboardKey.keyP, control: true),
+    'new': SingleActivator(LogicalKeyboardKey.keyN, control: true),
+    'openFile': SingleActivator(LogicalKeyboardKey.keyO, control: true),
+    'saveAs': SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true),
+    'focus': SingleActivator(LogicalKeyboardKey.keyF, control: true, shift: true),
+    'toggleLeft': SingleActivator(LogicalKeyboardKey.keyL, control: true),
+    'preview': SingleActivator(LogicalKeyboardKey.keyE, control: true),
+    'commandPalette': SingleActivator(LogicalKeyboardKey.keyP, control: true, shift: true),
+    'bold': SingleActivator(LogicalKeyboardKey.keyB, control: true),
+    'italic': SingleActivator(LogicalKeyboardKey.keyI, control: true),
+    'strikethrough': SingleActivator(LogicalKeyboardKey.keyX, control: true, shift: true),
+    'link': SingleActivator(LogicalKeyboardKey.keyK, control: true),
+    'h1': SingleActivator(LogicalKeyboardKey.digit1, control: true),
+    'h2': SingleActivator(LogicalKeyboardKey.digit2, control: true),
+    'h3': SingleActivator(LogicalKeyboardKey.digit3, control: true),
+    'pasteImage': SingleActivator(LogicalKeyboardKey.keyV, control: true, shift: true),
+  };
 
   /// 默认快捷键绑定（不可被覆盖的硬编码映射）
   void _addDefaultBindings(Map<ShortcutActivator, VoidCallback> bindings) {
@@ -345,12 +375,19 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
       const SingleActivator(LogicalKeyboardKey.keyF, control: true, shift: true): () => _invokeShell('focusMode'),
       const SingleActivator(LogicalKeyboardKey.keyY, control: true, shift: true): () => _invokeShell('sourceMode'),
       const SingleActivator(LogicalKeyboardKey.keyW, control: true, shift: true): () => _invokeShell('workspaceMode'),
-      // 编辑操作 — Ctrl+B/I 由 Flutter TextField 原生处理，不在全局注册
+      // 编辑操作
+      const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _invokeShell('bold'),
+      const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _invokeShell('italic'),
+      const SingleActivator(LogicalKeyboardKey.keyX, control: true, shift: true): () => _invokeShell('strikethrough'),
+      const SingleActivator(LogicalKeyboardKey.keyK, control: true): () => _invokeShell('link'),
+      const SingleActivator(LogicalKeyboardKey.digit1, control: true): () => _invokeShell('h1'),
+      const SingleActivator(LogicalKeyboardKey.digit2, control: true): () => _invokeShell('h2'),
+      const SingleActivator(LogicalKeyboardKey.digit3, control: true): () => _invokeShell('h3'),
+      const SingleActivator(LogicalKeyboardKey.keyV, control: true, shift: true): () => _invokeShell('pasteImage'),
       const SingleActivator(LogicalKeyboardKey.keyF, control: true): () => _invokeShell('find'),
       const SingleActivator(LogicalKeyboardKey.keyH, control: true): () => _invokeShell('replace'),
       // 命令面板
       const SingleActivator(LogicalKeyboardKey.keyP, control: true, shift: true): () => _invokeShell('commandPalette'),
-      const SingleActivator(LogicalKeyboardKey.keyK, control: true): () => _invokeShell('commandPalette'),
       // 窗口
       const SingleActivator(LogicalKeyboardKey.escape): () => _invokeShell('escape'),
     });
