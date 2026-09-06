@@ -295,6 +295,11 @@ class DesktopShellState extends State<DesktopShell>
   final Map<String, _EditorTabSession> _tabSessions = {};
 
   // ──────────────────────────────────────────────
+  // 文章属性（front matter）面板是否展开
+  // ──────────────────────────────────────────────
+  bool _frontMatterExpanded = false;
+
+  // ──────────────────────────────────────────────
   // 会话
   // ──────────────────────────────────────────────
   bool _sessionRestored = false;
@@ -2158,16 +2163,13 @@ class DesktopShellState extends State<DesktopShell>
               ),
             ),
           const SizedBox(height: 8),
-          // ── 文章类型切换 ──
+          // ── 文章类型切换（紧凑） ──
           Row(
             children: [
               Expanded(
                 child: _editorTypeToggle(
                   icon: Icons.article_outlined,
                   label: '博文',
-                  subtitle: _editorRepo != null
-                      ? '${_editorRepo!.postsPath}'
-                      : '文章目录',
                   active: _doc.articleType == ArticleType.post,
                   onTap: () {
                     _doc.setArticleType(ArticleType.post);
@@ -2180,9 +2182,6 @@ class DesktopShellState extends State<DesktopShell>
                 child: _editorTypeToggle(
                   icon: Icons.web_outlined,
                   label: '页面',
-                  subtitle: _editorRepo != null
-                      ? '${_editorRepo!.pagesPath}'
-                      : '页面目录',
                   active: _doc.articleType == ArticleType.page,
                   onTap: () {
                     _doc.setArticleType(ArticleType.page);
@@ -2192,115 +2191,6 @@ class DesktopShellState extends State<DesktopShell>
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          // ── 模板选择器 ──
-          if (templates.isNotEmpty)
-            _editorCard(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      value: _doc.selectedTemplateId,
-                      decoration: InputDecoration(
-                        labelText:
-                            '模板 (${_doc.articleType == ArticleType.post ? '博文' : '页面'})',
-                        prefixIcon: const Icon(
-                          Icons.view_quilt_outlined,
-                          size: 18,
-                        ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      items: [
-                        const DropdownMenuItem<String>(
-                          value: null,
-                          child: Text('无模板', style: TextStyle(fontSize: 13)),
-                        ),
-                        ...templates
-                            .where(
-                              (t) =>
-                                  t.isPost ==
-                                  (_doc.articleType == ArticleType.post),
-                            )
-                            .map(
-                              (t) => DropdownMenuItem<String>(
-                                value: t.id,
-                                child: Text(
-                                  '${t.isBuiltin ? "[内置] " : ""}${t.name}',
-                                  style: const TextStyle(fontSize: 13),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                      ],
-                      onChanged: (v) => _doc.setSelectedTemplateId(v),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '设为本仓库默认模板',
-                    onPressed:
-                        _editorRepo != null && _doc.selectedTemplateId != null
-                        ? () => _setAsRepoDefault(_doc.selectedTemplateId!)
-                        : null,
-                    icon: const Icon(Icons.bookmark_add_outlined, size: 18),
-                    constraints: const BoxConstraints(),
-                    padding: const EdgeInsets.all(4),
-                  ),
-                  IconButton(
-                    tooltip: '管理模板',
-                    onPressed: () => _showTemplateManager(),
-                    icon: const Icon(Icons.settings_outlined, size: 18),
-                    constraints: const BoxConstraints(),
-                    padding: const EdgeInsets.all(4),
-                  ),
-                  IconButton(
-                    tooltip: 'AI 修复模板与框架',
-                    onPressed: _showAiTemplateChat,
-                    icon: const Icon(Icons.auto_fix_high, size: 18),
-                    constraints: const BoxConstraints(),
-                    padding: const EdgeInsets.all(4),
-                  ),
-                ],
-              ),
-            ),
-          // ── 框架信息 ──
-          if (_editorRepo != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColor.surfaceHover(context),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColor.border(context)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      size: 15,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        '框架: ${BlogFramework.byId(_editorRepo?.frameworkId ?? '')?.name ?? _editorRepo?.frameworkId ?? '未知'} | '
-                        '文件名: ${_doc.articleType == ArticleType.page ? '无日期前缀' : ((_editorRepo?.fileNameRule.postDatePrefix ?? false) ? '自动加日期' : '纯标题')}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColor.textSecondary(context),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           const SizedBox(height: 8),
           // ── 标题 ──
           _editorCard(
@@ -2315,6 +2205,7 @@ class DesktopShellState extends State<DesktopShell>
               style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
               onChanged: (_) {
                 _onContentChanged();
+                _doc.refreshUi();
                 // 更新打字机光标位置
                 final text = _doc.contentCtrl.text;
                 final cursorPos = _doc.contentCtrl.selection.baseOffset;
@@ -2326,58 +2217,6 @@ class DesktopShellState extends State<DesktopShell>
                 final totalLines = '\n'.allMatches(text).length + 1;
                 _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
               },
-            ),
-          ),
-          const SizedBox(height: 8),
-          // ── 标签 & 分类 ──
-          Row(
-            children: [
-              Expanded(
-                child: _editorCard(
-                  child: TextField(
-                    controller: _doc.tagsCtrl,
-                    decoration: const InputDecoration(
-                      labelText: '标签',
-                      prefixIcon: Icon(Icons.tag, size: 18),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      isDense: true,
-                    ),
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _editorCard(
-                  child: TextField(
-                    controller: _doc.categoriesCtrl,
-                    decoration: const InputDecoration(
-                      labelText: '分类',
-                      prefixIcon: Icon(Icons.folder_outlined, size: 18),
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      isDense: true,
-                    ),
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // ── 封面图 ──
-          _editorCard(
-            child: TextField(
-              controller: _doc.coverCtrl,
-              decoration: const InputDecoration(
-                labelText: '封面图 URL（可选）',
-                prefixIcon: Icon(Icons.image_outlined, size: 19),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                isDense: true,
-              ),
-              style: const TextStyle(fontSize: 13),
             ),
           ),
           const SizedBox(height: 10),
@@ -2494,6 +2333,9 @@ class DesktopShellState extends State<DesktopShell>
             ),
             ),
           ),
+          const SizedBox(height: 10),
+          // ── 文章属性（front matter，可折叠） ──
+          _buildFrontMatterPanel(templates),
           const SizedBox(height: 10),
           // ── 正文编辑区（双栏 Markdown 编辑器） ──
           _editorCard(
@@ -2709,7 +2551,6 @@ class DesktopShellState extends State<DesktopShell>
   Widget _editorTypeToggle({
     required IconData icon,
     required String label,
-    required String subtitle,
     required bool active,
     required VoidCallback onTap,
   }) {
@@ -2718,12 +2559,12 @@ class DesktopShellState extends State<DesktopShell>
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: active
               ? cs.primary.withOpacity(0.08)
               : (AppColor.surfaceBase(context)),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: active
                 ? cs.primary
@@ -2734,47 +2575,322 @@ class DesktopShellState extends State<DesktopShell>
           ),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
-              size: 18,
+              size: 15,
               color: active
                   ? cs.primary
                   : (isDark
                         ? Colors.white.withOpacity(0.4)
                         : const Color(0xFF9CA3AF)),
             ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: active
+                    ? cs.primary
+                    : (isDark
+                          ? Colors.white.withOpacity(0.8)
+                           : const Color(0xFF374151)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 折叠态摘要：title · tags · categories · cover · template
+  String _frontMatterSummary() {
+    final parts = <String>[];
+    final t = _doc.titleCtrl.text.trim();
+    if (t.isNotEmpty) parts.add('title: $t');
+    final tags = _doc.tagsCtrl.text.trim();
+    if (tags.isNotEmpty) {
+      final ts = tags
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .join(', ');
+      parts.add('tags: [$ts]');
+    }
+    final cats = _doc.categoriesCtrl.text.trim();
+    if (cats.isNotEmpty) {
+      final cs2 = cats
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .join(', ');
+      parts.add('categories: [$cs2]');
+    }
+    final cover = _doc.coverCtrl.text.trim();
+    if (cover.isNotEmpty) parts.add('cover: $cover');
+    final tmpl = _doc.selectedTemplateId;
+    if (tmpl != null && tmpl.isNotEmpty) parts.add('template: $tmpl');
+    return parts.isEmpty ? '未设置元数据' : parts.join('  ');
+  }
+
+  /// 文章属性面板：折叠态显示 YAML 摘要，展开态编辑全部元数据。
+  Widget _buildFrontMatterPanel(List<TemplateItem> templates) {
+    final cs = Theme.of(context).colorScheme;
+    return ListenableBuilder(
+      listenable: _doc,
+      builder: (context, _) => _editorCard(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            InkWell(
+              onTap: () => setState(
+                () => _frontMatterExpanded = !_frontMatterExpanded,
+              ),
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.data_object, size: 15, color: cs.primary),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Front Matter',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColor.textSecondary(context),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _frontMatterSummary(),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontFamily: 'monospace',
+                          color: AppColor.textSecondary(context),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      _frontMatterExpanded
+                          ? Icons.keyboard_arrow_up
+                          : Icons.keyboard_arrow_down,
+                      size: 18,
+                      color: AppColor.textSecondary(context),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (_frontMatterExpanded) ...[
+              const Divider(height: 8),
+              const SizedBox(height: 4),
+              // ── 类型 + 模板 ──
+              Row(
+                children: [
+                  _fmTypePill('博文', ArticleType.post, Icons.article_outlined),
+                  const SizedBox(width: 6),
+                  _fmTypePill('页面', ArticleType.page, Icons.web_outlined),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: _doc.selectedTemplateId,
+                      decoration: InputDecoration(
+                        labelText: '模板',
+                        prefixIcon: const Icon(
+                          Icons.view_quilt_outlined,
+                          size: 16,
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: null,
+                          child: Text(
+                            '无模板',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        ...templates
+                            .where(
+                              (t) =>
+                                  t.isPost ==
+                                  (_doc.articleType == ArticleType.post),
+                            )
+                            .map(
+                              (t) => DropdownMenuItem<String>(
+                                value: t.id,
+                                child: Text(
+                                  '${t.isBuiltin ? "[内置] " : ""}${t.name}',
+                                  style: const TextStyle(fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                      ],
+                      onChanged: (v) => _doc.setSelectedTemplateId(v),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '设为本仓库默认模板',
+                    onPressed: _editorRepo != null && _doc.selectedTemplateId != null
+                        ? () => _setAsRepoDefault(_doc.selectedTemplateId!)
+                        : null,
+                    icon: const Icon(Icons.bookmark_add_outlined, size: 16),
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.all(2),
+                  ),
+                  IconButton(
+                    tooltip: '管理模板',
+                    onPressed: () => _showTemplateManager(),
+                    icon: const Icon(Icons.settings_outlined, size: 16),
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.all(2),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              _fmFieldRow(
+                key: 'tags',
+                icon: Icons.tag,
+                ctrl: _doc.tagsCtrl,
+                hint: '逗号分隔',
+              ),
+              _fmFieldRow(
+                key: 'categories',
+                icon: Icons.folder_outlined,
+                ctrl: _doc.categoriesCtrl,
+                hint: '逗号分隔',
+              ),
+              _fmFieldRow(
+                key: 'cover',
+                icon: Icons.image_outlined,
+                ctrl: _doc.coverCtrl,
+                hint: '图床链接',
+              ),
+              if (_editorRepo != null) ...[
+                const SizedBox(height: 4),
                 Text(
-                  label,
+                  '框架: ${BlogFramework.byId(_editorRepo!.frameworkId)?.name ?? _editorRepo!.frameworkId} | '
+                  '文件名: ${_doc.articleType == ArticleType.page ? '无日期前缀' : (_editorRepo!.fileNameRule.postDatePrefix ? '自动加日期' : '纯标题')}',
                   style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: active
-                        ? cs.primary
-                        : (isDark
-                              ? Colors.white.withOpacity(0.8)
-                              : const Color(0xFF374151)),
+                    fontSize: 11,
+                    color: AppColor.textSecondary(context),
                   ),
                 ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _fmTypePill(String label, ArticleType type, IconData icon) {
+    final cs = Theme.of(context).colorScheme;
+    final active = _doc.articleType == type;
+    return GestureDetector(
+      onTap: () {
+        _doc.setArticleType(type);
+        _autoSelectTemplate();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: active ? cs.primary.withOpacity(0.1) : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: active ? cs.primary : AppColor.border(context),
+            width: active ? 1.2 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 13,
+              color: active ? cs.primary : AppColor.textSecondary(context),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: active ? cs.primary : AppColor.textSecondary(context),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _fmFieldRow({
+    required String key,
+    required IconData icon,
+    required TextEditingController ctrl,
+    required String hint,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 96,
+            child: Row(
+              children: [
+                Icon(icon, size: 13, color: cs.primary),
+                const SizedBox(width: 5),
                 Text(
-                  subtitle,
+                  '$key:',
                   style: TextStyle(
-                    fontSize: 10,
-                    color: active
-                        ? cs.primary.withOpacity(0.7)
-                        : (isDark
-                              ? Colors.white.withOpacity(0.4)
-                              : const Color(0xFF9CA3AF)),
+                    fontSize: 12.5,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w600,
+                    color: cs.primary,
                   ),
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+          Expanded(
+            child: TextField(
+              controller: ctrl,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontFamily: 'monospace',
+              ),
+              decoration: InputDecoration(
+                hintText: hint,
+                isDense: true,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: cs.primary, width: 1),
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 4),
+              ),
+              onChanged: (_) {
+                _onContentChanged();
+                _doc.refreshUi();
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

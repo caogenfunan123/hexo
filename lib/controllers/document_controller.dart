@@ -187,6 +187,11 @@ class DocumentController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 外部修改元数据 controller 后手动刷新 UI（如 front matter 面板摘要）。
+  void refreshUi() {
+    notifyListeners();
+  }
+
   // ── 清理 ──
   @override
   void dispose() {
