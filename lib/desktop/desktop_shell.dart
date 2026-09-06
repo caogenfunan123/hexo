@@ -6,6 +6,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -129,6 +130,7 @@ import 'widgets/desktop_split_editor.dart';
 import 'widgets/frontmatter_card.dart';
 import '../screens/home_screen.dart';
 import '../models/ui_settings.dart';
+import '../models/editor_theme.dart' as editor_theme_model;
 import 'widgets/markdown_syntax_highlighter.dart';
 import 'widgets/editor_drop_target.dart';
 import 'widgets/spell_check_panel.dart';
@@ -300,6 +302,84 @@ class DesktopShellState extends State<DesktopShell>
   bool _frontMatterExpanded = false;
 
   // ──────────────────────────────────────────────
+  // 编辑器壁纸（对应 settings.ui.editorTheme，桌面写作界面背景）
+  // ──────────────────────────────────────────────
+  double _wallpaperBrightness = 1.0;
+
+  editor_theme_model.EditorTheme get _deskEditorTheme =>
+      settings.ui.editorTheme;
+
+  /// 是否启用自定义壁纸背景
+  bool get _deskUseWallpaper =>
+      _deskEditorTheme.bgMode == 2 &&
+      _deskEditorTheme.wallpaperPath.isNotEmpty;
+
+  /// 编辑器背景底色：纯黑 / 纯白（壁纸模式仅作兜底）
+  Color get _deskBgColor =>
+      _deskEditorTheme.bgMode == 1 ? const Color(0xFF000000) : Colors.white;
+
+  /// 写作界面是否启用非纯白背景（壁纸 / 纯黑）
+  bool get _deskCustomBg => _deskEditorTheme.bgMode != 0;
+
+  /// 正文文字颜色：强制黑白 > 自动适配背景亮度
+  Color get _deskTextColor {
+    final m = _deskEditorTheme.forceTextMode;
+    if (m == 1) return Colors.black;
+    if (m == 2) return Colors.white;
+    if (_deskUseWallpaper) {
+      return _wallpaperBrightness > 0.5 ? Colors.black : Colors.white;
+    }
+    return _deskBgColor.computeLuminance() > 0.5
+        ? Colors.black
+        : Colors.white;
+  }
+
+  /// 非纯白模式下卡片背景（半透明白浮层，保证原文字色可读）
+  Color get _deskCardBg => Colors.white.withOpacity(0.82);
+
+  /// 异步计算壁纸平均亮度（0=纯黑 ~ 1=纯白），用于自动适配字色
+  Future<void> _refreshWallpaperBrightness() async {
+    if (!_deskUseWallpaper) {
+      _wallpaperBrightness = 1.0;
+      return;
+    }
+    try {
+      final bytes = await File(_deskEditorTheme.wallpaperPath).readAsBytes();
+      final codec = await ui.instantiateImageCodec(
+        bytes,
+        targetWidth: 32,
+        targetHeight: 32,
+      );
+      final frame = await codec.getNextFrame();
+      final data = await frame.image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      );
+      frame.image.dispose();
+      if (data != null) {
+        final bytesData = data.buffer.asUint8List();
+        var sum = 0.0;
+        final step = bytesData.length ~/ 4;
+        for (
+          var i = 0;
+          i + 2 < bytesData.length;
+          i += 4 * (step > 400 ? step ~/ 400 : 1)
+        ) {
+          final r = bytesData[i] / 255;
+          final g = bytesData[i + 1] / 255;
+          final b = bytesData[i + 2] / 255;
+          sum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        }
+        final count =
+            (bytesData.length / (4 * (step > 400 ? step ~/ 400 : 1))).ceil();
+        if (count > 0) sum /= count;
+        _wallpaperBrightness = sum.clamp(0.0, 1.0);
+      }
+    } catch (_) {
+      // 读取失败保持默认
+    }
+  }
+
+  // ──────────────────────────────────────────────
   // 会话
   // ──────────────────────────────────────────────
   bool _sessionRestored = false;
@@ -378,6 +458,7 @@ class DesktopShellState extends State<DesktopShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _refreshWallpaperBrightness();
     syncService = SyncService(logService);
     cloudSyncService = CloudSyncService(logService);
     recycleBinService = RecycleBinService();
@@ -1655,12 +1736,20 @@ class DesktopShellState extends State<DesktopShell>
   Future<void> _updateSettings(AppSettings s) async {
     final oldDc = settings.ui.designConfig;
     final oldLang = settings.language;
+    final oldEt = settings.ui.editorTheme;
     setState(() => settings = s);
     storage.setCustomRoot(s.storageRootDir);
     storage.setExternalSafUri(s.externalSafUri);
     _updateSiteManager();
     _startAutoSync();
     await storage.saveSettings(s);
+    // 编辑器主题变化：异步刷新壁纸亮度以适配字色
+    if (oldEt.bgMode != s.ui.editorTheme.bgMode ||
+        oldEt.wallpaperPath != s.ui.editorTheme.wallpaperPath ||
+        oldEt.forceTextMode != s.ui.editorTheme.forceTextMode) {
+      await _refreshWallpaperBrightness();
+      if (mounted) setState(() {});
+    }
     // 如果 DesignConfig 发生变化，通知 DesktopApp 重建主题
     if (widget.onDesignConfigChanged != null && oldDc != s.ui.designConfig) {
       widget.onDesignConfigChanged!(s.ui.designConfig);
@@ -2122,21 +2211,38 @@ class DesktopShellState extends State<DesktopShell>
   Widget _buildEmbeddedEditor() {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Front-matter 结构化编辑面板 ──
-          FrontMatterCard(
-            contentController: _doc.contentCtrl,
-            onChanged: _onContentChanged,
-            isDark: isDark,
-          ),
-          const SizedBox(height: 8),
-          // ── 仓库选择器 ──
-          if (repos.isNotEmpty)
-            _editorCard(
+
+    // 背景层：自定义壁纸 / 纯色（写作界面全屏背景）
+    final Widget bgLayer;
+    if (_deskUseWallpaper) {
+      bgLayer = Image.file(
+        File(_deskEditorTheme.wallpaperPath),
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => ColoredBox(color: _deskBgColor),
+      );
+    } else {
+      bgLayer = ColoredBox(color: _deskBgColor);
+    }
+
+    return Stack(
+      children: [
+        Positioned.fill(child: bgLayer),
+        SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Front-matter 结构化编辑面板 ──
+              FrontMatterCard(
+                contentController: _doc.contentCtrl,
+                onChanged: _onContentChanged,
+                isDark: isDark,
+                background: _deskCustomBg ? _deskCardBg : null,
+              ),
+              const SizedBox(height: 8),
+              // ── 仓库选择器 ──
+              if (repos.isNotEmpty)
+                _editorCard(
               child: DropdownButtonFormField<String>(
                 value: _editorRepo?.id,
                 decoration: const InputDecoration(
@@ -2340,6 +2446,7 @@ class DesktopShellState extends State<DesktopShell>
           // ── 正文编辑区（双栏 Markdown 编辑器） ──
           _editorCard(
             padding: EdgeInsets.zero,
+            transparent: true,
             child: SizedBox(
               height: 600, // 给编辑器一个固定高度
               child: DesktopSplitEditor(
@@ -2363,6 +2470,7 @@ class DesktopShellState extends State<DesktopShell>
                 fontFamily: 'monospace',
                 isDark: isDark,
                 colorScheme: cs,
+                editorTextColor: _deskCustomBg ? _deskTextColor : null,
                 initialMode: _splitEditorMode,
                 onModeChanged: (mode) {
                   setState(() => _splitEditorMode = mode);
@@ -2521,13 +2629,22 @@ class DesktopShellState extends State<DesktopShell>
         ),
       ],
     ),
+      ),
+    ],
   );
   }
 
   // ── 编辑器辅助组件 ──
 
-  Widget _editorCard({required Widget child, EdgeInsetsGeometry? padding}) {
+  Widget _editorCard({
+    required Widget child,
+    EdgeInsetsGeometry? padding,
+    bool transparent = false,
+  }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = transparent
+        ? Colors.transparent
+        : (_deskCustomBg ? _deskCardBg : AppColor.surfaceBase(context));
     return Card(
       elevation: 0,
       shadowColor: Colors.transparent,
@@ -2539,7 +2656,7 @@ class DesktopShellState extends State<DesktopShell>
               : Colors.black.withOpacity(0.05),
         ),
       ),
-      color: AppColor.surfaceBase(context),
+      color: cardColor,
       margin: EdgeInsets.zero,
       child: Padding(
         padding: padding ?? const EdgeInsets.all(12),
@@ -2563,7 +2680,7 @@ class DesktopShellState extends State<DesktopShell>
         decoration: BoxDecoration(
           color: active
               ? cs.primary.withOpacity(0.08)
-              : (AppColor.surfaceBase(context)),
+              : (_deskCustomBg ? _deskCardBg : AppColor.surfaceBase(context)),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: active

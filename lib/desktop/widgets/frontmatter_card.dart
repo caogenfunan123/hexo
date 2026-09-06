@@ -101,12 +101,14 @@ class FrontMatterCard extends StatefulWidget {
   final TextEditingController contentController;
   final VoidCallback? onChanged;
   final bool isDark;
+  final Color? background;
 
   const FrontMatterCard({
     super.key,
     required this.contentController,
     this.onChanged,
     this.isDark = false,
+    this.background,
   });
 
   @override
@@ -272,7 +274,7 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: AppColor.surfaceBase(context),
+        color: widget.background ?? AppColor.surfaceBase(context),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDark

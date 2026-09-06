@@ -33,6 +33,7 @@ class DesktopSplitEditor extends StatefulWidget {
   final Widget Function(BuildContext, String)? customPreview;
   final SplitEditorMode initialMode;
   final ValueChanged<SplitEditorMode>? onModeChanged;
+  final Color? editorTextColor;
 
   const DesktopSplitEditor({
     super.key,
@@ -48,6 +49,7 @@ class DesktopSplitEditor extends StatefulWidget {
     this.customPreview,
     this.initialMode = SplitEditorMode.sourceOnly,
     this.onModeChanged,
+    this.editorTextColor,
   });
 
   @override
@@ -292,16 +294,16 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
             cursorColor: cs.primary,
             style: TextStyle(
               fontFamily: widget.fontFamily,
-              height: widget.lineHeight,
-              fontSize: widget.fontSize,
-              color: AppColor.textPrimary(context),
-            ),
-            decoration: InputDecoration(
-              hintText: '支持 Markdown 语法写作...',
-              hintStyle: TextStyle(
-                color: AppColor.borderStrong(context),
-                fontSize: widget.fontSize,
-              ),
+                  height: widget.lineHeight,
+                  fontSize: widget.fontSize,
+                  color: widget.editorTextColor ?? AppColor.textPrimary(context),
+                ),
+                decoration: InputDecoration(
+                  hintText: '支持 Markdown 语法写作...',
+                  hintStyle: TextStyle(
+                    color: (widget.editorTextColor ?? AppColor.textPrimary(context)).withOpacity(0.35),
+                    fontSize: widget.fontSize,
+                  ),
               border: InputBorder.none,
               contentPadding: const EdgeInsets.all(20),
             ),
@@ -371,12 +373,12 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
                         fontFamily: widget.fontFamily,
                         height: widget.lineHeight,
                         fontSize: widget.fontSize,
-                        color: AppColor.textPrimary(context),
+                        color: widget.editorTextColor ?? AppColor.textPrimary(context),
                       ),
                       decoration: InputDecoration(
                         hintText: '支持 Markdown 语法写作...',
                         hintStyle: TextStyle(
-                          color: AppColor.borderStrong(context),
+                          color: (widget.editorTextColor ?? AppColor.textPrimary(context)).withOpacity(0.35),
                           fontSize: widget.fontSize,
                         ),
                         border: InputBorder.none,
