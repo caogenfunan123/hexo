@@ -66,6 +66,9 @@ class UiSettings {
   // 桌面侧边栏折叠的分组 key 集合（保持上次折叠状态）
   final List<String> collapsedLeftSections;
 
+  // 桌面左侧面板整体是否收起（持久化折叠状态）
+  final bool leftPanelCollapsed;
+
   // 侧边栏自定义导航配置（显隐偏好 + 置顶顺序）
   final NavCustomConfig navCustom;
 
@@ -105,6 +108,7 @@ class UiSettings {
     this.appMode = AppMode.simple,
     this.simpleModeExtras = const [],
     this.collapsedLeftSections = const [],
+    this.leftPanelCollapsed = false,
     this.navCustom = const NavCustomConfig(),
     this.collapsedSettingsSections = const [],
     this.quickNoteAnchor = '',
@@ -139,6 +143,7 @@ class UiSettings {
     AppMode? appMode,
     List<String>? simpleModeExtras,
     List<String>? collapsedLeftSections,
+    bool? leftPanelCollapsed,
     NavCustomConfig? navCustom,
     List<String>? collapsedSettingsSections,
     String? quickNoteAnchor,
@@ -169,6 +174,7 @@ class UiSettings {
       appMode: appMode ?? this.appMode,
       simpleModeExtras: simpleModeExtras ?? this.simpleModeExtras,
       collapsedLeftSections: collapsedLeftSections ?? this.collapsedLeftSections,
+      leftPanelCollapsed: leftPanelCollapsed ?? this.leftPanelCollapsed,
       navCustom: navCustom ?? this.navCustom,
       collapsedSettingsSections: collapsedSettingsSections ?? this.collapsedSettingsSections,
       quickNoteAnchor: quickNoteAnchor ?? this.quickNoteAnchor,
@@ -201,6 +207,7 @@ class UiSettings {
     'appMode': appMode.name,
     'simpleModeExtras': simpleModeExtras,
     'collapsedLeftSections': collapsedLeftSections,
+    'leftPanelCollapsed': leftPanelCollapsed,
     'navCustom': navCustom.toJson(),
     'collapsedSettingsSections': collapsedSettingsSections,
     'quickNoteAnchor': quickNoteAnchor,
@@ -245,6 +252,7 @@ class UiSettings {
     appMode: AppMode.fromKey(j['appMode']),
     simpleModeExtras: _parseList(j['simpleModeExtras'], const []),
     collapsedLeftSections: _parseList(j['collapsedLeftSections'], const []),
+    leftPanelCollapsed: j['leftPanelCollapsed'] == true,
     navCustom: j['navCustom'] is Map
         ? NavCustomConfig.fromJson(Map<String, dynamic>.from(j['navCustom'] as Map))
         : const NavCustomConfig(),

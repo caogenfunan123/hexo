@@ -129,6 +129,7 @@ import 'widgets/editor_themes.dart';
 import 'widgets/desktop_split_editor.dart';
 import 'widgets/frontmatter_card.dart';
 import '../screens/home_screen.dart';
+import 'package:window_manager/window_manager.dart';
 import '../models/ui_settings.dart';
 import '../models/editor_theme.dart' as editor_theme_model;
 import 'widgets/markdown_syntax_highlighter.dart';
@@ -398,6 +399,12 @@ class DesktopShellState extends State<DesktopShell>
 
   // ── 新功能：命令面板 ──
   bool _showCommandPalette = false;
+
+  // ── 极简写作模式（改造 focus）：更多菜单展开的格式化工具栏 ──
+  bool _focusShowToolbar = false;
+
+  // 极简写作模式：内嵌预览面板开关（与右抽屉互斥）
+  bool _focusPreviewOpen = false;
 
   // ── 新功能：源码语法高亮 ──
   BridgedSyntaxController? _sourceSyntaxCtrl;
@@ -2148,6 +2155,9 @@ class DesktopShellState extends State<DesktopShell>
     );
     _addEditorTab(_doc.currentArticle);
 
+    // 新文章默认进入极简写作模式（对齐手机端清爽体验）
+    _switchWorkMode(WorkMode.focus);
+
     // 自动聚焦到正文编辑区（光标定位到开头）
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _doc.contentFocus.requestFocus();
@@ -2335,108 +2345,9 @@ class DesktopShellState extends State<DesktopShell>
                 spacing: 2,
                 runSpacing: 2,
                 children: [
-                _toolChip(
-                  Icons.format_bold,
-                  '粗体',
-                  () => _wrap('**', '**', p: '粗体'),
-                ),
-                _toolChip(
-                  Icons.format_italic,
-                  '斜体',
-                  () => _wrap('*', '*', p: '斜体'),
-                ),
-                _toolChip(Icons.code, '行内码', () => _wrap('`', '`', p: 'code')),
-                _toolChip(Icons.code_off, '代码块', _insertCodeBlock),
-                _toolChip(Icons.title, 'H1', () => _insertHeading(1)),
-                _toolChip(Icons.title, 'H2', () => _insertHeading(2)),
-                _toolChip(
-                  Icons.format_list_bulleted,
-                  '列表',
-                  () => _insertList('- '),
-                ),
-                _toolChip(Icons.format_quote, '引用', () => _insertList('> ')),
-                _toolChip(
-                  Icons.link,
-                  '链接',
-                  () => _wrap('[', '](https://)', p: '链接文字'),
-                ),
-                _toolChip(
-                  Icons.grid_on,
-                  '表格',
-                  () => _insertText(
-                    '\n| 列1 | 列2 |\n| --- | --- |\n| 值1 | 值2 |\n',
-                  ),
-                ),
-                _toolChip(
-                  Icons.horizontal_rule,
-                  '分割线',
-                  () => _insertText('\n---\n'),
-                ),
-                _toolChip(
-                  Icons.format_strikethrough,
-                  '删除线',
-                  () => _wrap('~~', '~~', p: '删除文字'),
-                ),
-                _toolChip(Icons.checklist, '任务', () => _insertList('- [ ] ')),
-                _toolChip(
-                  Icons.more_horiz,
-                  'more',
-                  () => _insertText('\n<!--more-->\n'),
-                ),
-                _toolChip(
-                  Icons.image_outlined,
-                  '图床',
-                  _editor.editorBusy ? null : _insertImage,
-                ),
-                _toolChip(
-                  Icons.collections_outlined,
-                  '批量图床',
-                  _editor.editorBusy ? null : _batchInsertImages,
-                ),
-                _toolChip(
-                  Icons.auto_awesome,
-                  'AI润色',
-                  _editor.editorBusy ? null : () => _aiAction('polish'),
-                  color: Colors.purple,
-                ),
-                _toolChip(
-                  Icons.edit_note,
-                  'AI续写',
-                  _editor.editorBusy ? null : () => _aiAction('continue'),
-                  color: Colors.purple,
-                ),
-                _toolChip(
-                  Icons.summarize_outlined,
-                  'AI摘要',
-                  _editor.editorBusy ? null : () => _aiAction('summary'),
-                  color: Colors.purple,
-                ),
-                _toolChip(
-                  Icons.developer_mode,
-                  'AI代码',
-                  _editor.editorBusy ? null : () => _aiAction('code'),
-                  color: Colors.purple,
-                ),
-                _toolChip(
-                  Icons.sync_alt,
-                  'AI改写',
-                  _editor.editorBusy ? null : () => _aiAction('rewrite'),
-                  color: Colors.purple,
-                ),
-                _toolChip(
-                  Icons.auto_fix_high,
-                  'AI排版',
-                  _editor.editorBusy ? null : () => _aiAction('format'),
-                  color: Colors.deepPurple,
-                ),
-                _toolChip(
-                  Icons.chat,
-                  'AI对话',
-                  () => _showAgentWorkbench(),
-                  color: Colors.deepPurple,
-                ),
-              ],
-            ),
+                  ..._buildToolChips(),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 10),
@@ -3010,6 +2921,94 @@ class DesktopShellState extends State<DesktopShell>
         ],
       ),
     );
+  }
+
+  /// 完整格式化工具栏 chip 集合（工作台模式常驻、极简模式展开共用）
+  List<Widget> _buildToolChips() {
+    return [
+      _toolChip(Icons.format_bold, '粗体', () => _wrap('**', '**', p: '粗体')),
+      _toolChip(Icons.format_italic, '斜体', () => _wrap('*', '*', p: '斜体')),
+      _toolChip(Icons.code, '行内码', () => _wrap('`', '`', p: 'code')),
+      _toolChip(Icons.code_off, '代码块', _insertCodeBlock),
+      _toolChip(Icons.title, 'H1', () => _insertHeading(1)),
+      _toolChip(Icons.title, 'H2', () => _insertHeading(2)),
+      _toolChip(
+        Icons.format_list_bulleted,
+        '列表',
+        () => _insertList('- '),
+      ),
+      _toolChip(Icons.format_quote, '引用', () => _insertList('> ')),
+      _toolChip(
+        Icons.link,
+        '链接',
+        () => _wrap('[', '](https://)', p: '链接文字'),
+      ),
+      _toolChip(
+        Icons.grid_on,
+        '表格',
+        () => _insertText('\n| 列1 | 列2 |\n| --- | --- |\n| 值1 | 值2 |\n'),
+      ),
+      _toolChip(Icons.horizontal_rule, '分割线', () => _insertText('\n---\n')),
+      _toolChip(
+        Icons.format_strikethrough,
+        '删除线',
+        () => _wrap('~~', '~~', p: '删除文字'),
+      ),
+      _toolChip(Icons.checklist, '任务', () => _insertList('- [ ] ')),
+      _toolChip(Icons.more_horiz, 'more', () => _insertText('\n<!--more-->\n')),
+      _toolChip(
+        Icons.image_outlined,
+        '图床',
+        _editor.editorBusy ? null : _insertImage,
+      ),
+      _toolChip(
+        Icons.collections_outlined,
+        '批量图床',
+        _editor.editorBusy ? null : _batchInsertImages,
+      ),
+      _toolChip(
+        Icons.auto_awesome,
+        'AI润色',
+        _editor.editorBusy ? null : () => _aiAction('polish'),
+        color: Colors.purple,
+      ),
+      _toolChip(
+        Icons.edit_note,
+        'AI续写',
+        _editor.editorBusy ? null : () => _aiAction('continue'),
+        color: Colors.purple,
+      ),
+      _toolChip(
+        Icons.summarize_outlined,
+        'AI摘要',
+        _editor.editorBusy ? null : () => _aiAction('summary'),
+        color: Colors.purple,
+      ),
+      _toolChip(
+        Icons.developer_mode,
+        'AI代码',
+        _editor.editorBusy ? null : () => _aiAction('code'),
+        color: Colors.purple,
+      ),
+      _toolChip(
+        Icons.sync_alt,
+        'AI改写',
+        _editor.editorBusy ? null : () => _aiAction('rewrite'),
+        color: Colors.purple,
+      ),
+      _toolChip(
+        Icons.auto_fix_high,
+        'AI排版',
+        _editor.editorBusy ? null : () => _aiAction('format'),
+        color: Colors.deepPurple,
+      ),
+      _toolChip(
+        Icons.chat,
+        'AI对话',
+        () => _showAgentWorkbench(),
+        color: Colors.deepPurple,
+      ),
+    ];
   }
 
   Widget _toolChip(
@@ -10407,6 +10406,15 @@ $htmlContent
     if (_layout.leftPanelExpanded && _layout.workMode == WorkMode.focus) {
       _layout.switchWorkMode(WorkMode.workspace);
     }
+    // 持久化左面板折叠状态（重启恢复）
+    final collapsed = !_layout.leftPanelExpanded;
+    if (settings.ui.leftPanelCollapsed != collapsed) {
+      _updateSettings(
+        settings.copyWith(
+          ui: settings.ui.copyWith(leftPanelCollapsed: collapsed),
+        ),
+      );
+    }
   }
 
   void _toggleRightDrawer() => _layout.toggleRightDrawer();
@@ -10464,6 +10472,20 @@ $htmlContent
 
   late final ShellActionBus _bus;
 
+  // 左面板折叠状态恢复标记（首次依赖就绪时执行一次）
+  bool _leftPanelRestored = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_leftPanelRestored) {
+      _leftPanelRestored = true;
+      if (settings.ui.leftPanelCollapsed && _layout.leftPanelExpanded) {
+        _layout.collapseLeftPanel();
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ui = context.watch<UiStateController>();
@@ -10513,7 +10535,26 @@ $htmlContent
         ),
       );
     }
-    return Stack(children: stackChildren);
+    return Focus(
+      onKeyEvent: _handleGlobalKeyEvent,
+      child: Stack(children: stackChildren),
+    );
+  }
+
+  /// 全局快捷键：Ctrl+Shift+E 在极简写作模式与完整编辑模式间切换
+  KeyEventResult _handleGlobalKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.keyE &&
+        HardwareKeyboard.instance.isControlPressed &&
+        HardwareKeyboard.instance.isShiftPressed) {
+      _switchWorkMode(
+        _layout.workMode == WorkMode.focus
+            ? WorkMode.workspace
+            : WorkMode.focus,
+      );
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   /// 顶部标题栏
@@ -10675,8 +10716,10 @@ $htmlContent
 
   Widget _focusModeTitleBar() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
+    final siteName = activeRepo?.name ?? settings.siteName;
     return Container(
-      height: 36,
+      height: 44,
       decoration: BoxDecoration(
         color: AppColor.surfaceRaised(context),
         border: Border(
@@ -10687,162 +10730,243 @@ $htmlContent
           ),
         ),
       ),
-      child: Row(
-        children: [
-          const SizedBox(width: 12),
-          Icon(
-            Icons.visibility,
-            size: 14,
-            color: isDark
-                ? Colors.white.withOpacity(0.4)
-                : const Color(0xFF9CA3AF),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '专注模式',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: isDark
-                  ? Colors.white.withOpacity(0.4)
-                  : const Color(0xFF9CA3AF),
-              letterSpacing: 0.5,
+      child: GestureDetector(
+        onPanStart: (_) => windowManager.startDragging(),
+        child: Row(
+          children: [
+            const SizedBox(width: 4),
+            _minimalBarButton(
+              Icons.menu,
+              '菜单',
+              () => _toggleLeftPanel(),
+              isDark,
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _doc.titleCtrl.text.isNotEmpty ? _doc.titleCtrl.text : '未命名文章',
+            const SizedBox(width: 8),
+            Text(
+              '拓墨',
               style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: isDark
-                    ? Colors.white.withOpacity(0.6)
-                    : const Color(0xFF6B7280),
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: AppColor.textSecondary(context),
+                letterSpacing: 0.3,
               ),
-              overflow: TextOverflow.ellipsis,
             ),
-          ),
-          _focusToolbarButton(Icons.save_outlined, '保存草稿', _saveLocal, isDark),
-          _focusToolbarButton(
-            Icons.send_outlined,
-            '发布',
-            _handlePublish,
-            isDark,
-          ),
-          _focusToolbarButton(
-            Icons.image_outlined,
-            '插入图片',
-            _insertImage,
-            isDark,
-          ),
-          _focusToolbarButton(
-            Icons.visibility_outlined,
-            '切换预览',
-            () => _layout.toggleRightDrawer(),
-            isDark,
-            active: context.watch<LayoutController>().rightDrawerOpen,
-          ),
-          PopupMenuButton<String>(
-            tooltip: '导出',
-            offset: const Offset(0, 36),
-            enabled: !_editor.editorBusy,
-            color: AppColor.surfaceOverlay(context),
-            icon: Icon(
-              Icons.file_download_outlined,
-              size: 16,
-              color: AppColor.icon(context),
-            ),
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                value: 'html',
+            if (siteName.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Flexible(
                 child: Text(
-                  '导出 HTML',
+                  siteName,
                   style: TextStyle(
-                    fontSize: 13,
-                    color: AppColor.textSecondary(context),
+                    fontSize: 12,
+                    color: isDark
+                        ? Colors.white.withOpacity(0.4)
+                        : const Color(0xFF9CA3AF),
                   ),
-                ),
-              ),
-              PopupMenuItem(
-                value: 'pdf',
-                child: Text(
-                  '导出 PDF',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColor.textSecondary(context),
-                  ),
-                ),
-              ),
-              PopupMenuItem(
-                value: 'md',
-                child: Text(
-                  '导出 Markdown',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColor.textSecondary(context),
-                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
-            onSelected: (v) {
-              switch (v) {
-                case 'html':
-                  _exportHtml();
-                  break;
-                case 'pdf':
-                  _exportPdf();
-                  break;
-                case 'md':
-                  _saveMdBackup();
-                  break;
-              }
-            },
-          ),
-          Container(
-            width: 1,
-            height: 18,
-            color: isDark
-                ? Colors.white.withOpacity(0.06)
-                : const Color(0xFFE5E5EA),
-          ),
-          _focusToolbarButton(
-            Icons.close_fullscreen,
-            '退出专注模式',
-            () => _switchWorkMode(WorkMode.workspace),
-            isDark,
-          ),
-          const SizedBox(width: 8),
-        ],
+            const Spacer(),
+            _minimalBarButton(Icons.check, '保存', _saveLocal, isDark),
+            _minimalBarButton(
+              Icons.visibility_outlined,
+              '预览',
+              _toggleFocusPreview,
+              isDark,
+              active: _focusPreviewOpen,
+            ),
+            PopupMenuButton<String>(
+              tooltip: '更多',
+              offset: const Offset(0, 44),
+              color: AppColor.surfaceOverlay(context),
+              icon: Icon(
+                Icons.more_vert,
+                size: 18,
+                color: AppColor.icon(context),
+              ),
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'meta',
+                  child: _focusMoreItem(
+                    Icons.article_outlined,
+                    '文章元数据',
+                    isDark,
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'toolbar',
+                  child: _focusMoreItem(
+                    Icons.format_bold,
+                    '格式化工具栏',
+                    isDark,
+                    trailing: _focusShowToolbar
+                        ? Icon(Icons.check, size: 16, color: cs.primary)
+                        : null,
+                  ),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  value: 'ai',
+                  child: _focusMoreItem(
+                    Icons.auto_awesome,
+                    'AI 对话',
+                    isDark,
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'publish',
+                  child: _focusMoreItem(
+                    Icons.send_outlined,
+                    '一键发布',
+                    isDark,
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'sync',
+                  child: _focusMoreItem(Icons.sync, '同步', isDark),
+                ),
+                PopupMenuItem(
+                  value: 'theme',
+                  child: _focusMoreItem(
+                    isDark ? Icons.light_mode : Icons.dark_mode_outlined,
+                    '切换主题',
+                    isDark,
+                  ),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  value: 'full',
+                  child: _focusMoreItem(
+                    Icons.space_dashboard_outlined,
+                    '切换到完整编辑模式',
+                    isDark,
+                  ),
+                ),
+              ],
+              onSelected: _onFocusMoreSelected,
+            ),
+            const SizedBox(width: 4),
+            Container(
+              width: 1,
+              height: 20,
+              color: isDark
+                  ? Colors.white.withOpacity(0.06)
+                  : const Color(0xFFE5E5EA),
+            ),
+            const SizedBox(width: 2),
+            _minimalBarButton(
+              Icons.minimize,
+              '最小化',
+              () => windowManager.minimize(),
+              isDark,
+            ),
+            _minimalBarButton(
+              Icons.crop_square,
+              '最大化',
+              () => windowManager.maximize(),
+              isDark,
+            ),
+            _minimalBarButton(
+              Icons.close,
+              '关闭',
+              () => windowManager.close(),
+              isDark,
+              isClose: true,
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _focusToolbarButton(
+  void _onFocusMoreSelected(String value) {
+    switch (value) {
+      case 'meta':
+        _openRightDrawer(RightDrawerTab.frontMatter);
+        break;
+      case 'toolbar':
+        setState(() => _focusShowToolbar = !_focusShowToolbar);
+        break;
+      case 'ai':
+        _openRightDrawer(RightDrawerTab.aiChat);
+        break;
+      case 'publish':
+        _handlePublish();
+        break;
+      case 'sync':
+        _handleSync();
+        break;
+      case 'theme':
+        _toggleTheme();
+        break;
+      case 'full':
+        _switchWorkMode(WorkMode.workspace);
+        break;
+    }
+  }
+
+  /// 极简写作模式：切换内嵌预览面板（与右抽屉互斥）
+  void _toggleFocusPreview() {
+    setState(() {
+      _focusPreviewOpen = !_focusPreviewOpen;
+      if (_focusPreviewOpen) _layout.closeRightDrawer();
+    });
+  }
+
+  /// 极简写作模式：正文选区悬浮工具条（Obsidian/Notion 风格，选中即弹出）
+  Widget _focusContextMenu(BuildContext context, EditableTextState state) {
+    final sel = state.textEditingValue.selection;
+    final hasSelection = sel.isValid && !sel.isCollapsed;
+    final chips = <Widget>[
+      if (hasSelection)
+        _miniToolbarChip(
+          Icons.format_bold,
+          '粗体',
+          () => _wrap('**', '**', p: '粗体'),
+        ),
+      if (hasSelection)
+        _miniToolbarChip(
+          Icons.format_italic,
+          '斜体',
+          () => _wrap('*', '*', p: '斜体'),
+        ),
+      if (hasSelection)
+        _miniToolbarChip(
+          Icons.link,
+          '链接',
+          () => _wrap('[', '](https://)', p: '链接文字'),
+        ),
+      if (hasSelection)
+        _miniToolbarChip(
+          Icons.format_quote,
+          '引用',
+          () => _wrap('\n> ', '\n', p: '引用'),
+        ),
+    ];
+    return AdaptiveTextSelectionToolbar(
+      anchors: state.contextMenuAnchors,
+      children: chips,
+    );
+  }
+
+  Widget _miniToolbarChip(
     IconData icon,
-    String tooltip,
+    String label,
     VoidCallback onTap,
-    bool isDark, {
-    bool active = false,
-  }) {
+  ) {
     return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: active ? Colors.white.withOpacity(0.1) : Colors.transparent,
-        borderRadius: BorderRadius.circular(5),
+      message: label,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
         child: InkWell(
-          borderRadius: BorderRadius.circular(5),
           onTap: onTap,
+          borderRadius: BorderRadius.circular(6),
           child: Padding(
             padding: const EdgeInsets.all(6),
             child: Icon(
               icon,
               size: 16,
-              color: active
-                  ? Theme.of(context).colorScheme.primary
-                  : (isDark
-                        ? Colors.white.withOpacity(0.5)
-                        : const Color(0xFF6B7280)),
+              color: Theme.of(context).colorScheme.primary,
             ),
           ),
         ),
@@ -10850,301 +10974,317 @@ $htmlContent
     );
   }
 
+  Widget _minimalBarButton(
+    IconData icon,
+    String tooltip,
+    VoidCallback onTap,
+    bool isDark, {
+    bool active = false,
+    bool isClose = false,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Icon(
+              icon,
+              size: 18,
+              color: isClose
+                  ? Colors.redAccent
+                  : (active
+                        ? Theme.of(context).colorScheme.primary
+                        : AppColor.icon(context)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _focusMoreItem(
+    IconData icon,
+    String label,
+    bool isDark, {
+    Widget? trailing,
+  }) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: 16,
+          color: isDark
+              ? Colors.white.withOpacity(0.6)
+              : const Color(0xFF6B7280),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: AppColor.textSecondary(context),
+            ),
+          ),
+        ),
+        if (trailing != null) trailing,
+      ],
+    );
+  }
+
   Widget _buildFocusEditor() {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    // 对标 MarkText 专注模式：两侧纯黑遮罩 + 内容居中 + 当前行高亮
-    return Container(
-      color: AppColor.surfaceBase(context),
-      child: Stack(
-        children: [
-          // 主编辑区
-          Column(
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    const Spacer(),
-                    // 编辑区容器
-                    Expanded(
-                      flex: 3,
-                      child: Container(
-                        color: AppColor.surfaceBase(context),
-                        child: SingleChildScrollView(
-                          controller: _focusScrollCtrl,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 60,
-                            vertical: 40,
-                          ),
-                          child: Container(
-                            constraints: const BoxConstraints(maxWidth: 800),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                // 标题输入
-                                TextField(
-                                  controller: _doc.titleCtrl,
-                                  style: TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w700,
-                                    height: 1.3,
-                                    color: isDark
-                                        ? Colors.white
-                                        : const Color(0xFF1F2937),
-                                    fontFamily: _resolveFontFamily(
-                                      _editor.editorFontFamily,
-                                    ),
-                                  ),
-                                  cursorColor: cs.primary,
-                                  decoration: InputDecoration(
-                                    hintText: '在此输入标题...',
-                                    hintStyle: TextStyle(
-                                      fontSize: 32,
-                                      fontWeight: FontWeight.w700,
-                                      color: isDark
-                                          ? Colors.white.withOpacity(0.15)
-                                          : const Color(0xFFD1D5DB),
-                                    ),
-                                    border: InputBorder.none,
-                                  ),
-                                  onChanged: (_) => _onContentChanged(),
-                                ),
-                                const SizedBox(height: 24),
-                                // 文章元信息
-                                Row(
-                                  children: [
-                                    _focusMetaChip(
-                                      Icons.person_outline,
-                                      '作者',
-                                      _editorRepo?.owner ?? '未设置',
-                                      isDark,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    _focusMetaChip(
-                                      Icons.calendar_today,
-                                      '日期',
-                                      DateTime.now().toLocal().toString().split(
-                                        ' ',
-                                      )[0],
-                                      isDark,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    _focusMetaChip(
-                                      Icons.text_fields,
-                                      '字数',
-                                      '${_editor.wordCount} 词',
-                                      isDark,
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 24),
-                                Container(
-                                  height: 1,
-                                  color: isDark
-                                      ? Colors.white.withOpacity(0.06)
-                                      : const Color(0xFFE5E7EB),
-                                ),
-                                const SizedBox(height: 24),
-                                // 内容编辑区（带当前行高亮效果）
-                                Stack(
-                                  children: [
-                                    // 当前行高亮背景
-                                    Positioned(
-                                      top:
-                                          (_lastCursorLine - 1) *
-                                          (_editor.editorFontSize *
-                                              _editor.editorLineHeight),
-                                      left: 0,
-                                      right: 0,
-                                      height:
-                                          _editor.editorFontSize *
-                                          _editor.editorLineHeight,
-                                      child: Container(
-                                        color: cs.primary.withOpacity(
-                                          isDark ? 0.08 : 0.05,
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(
-                                      height:
-                                          _doc.contentCtrl.text
-                                                  .split('\n')
-                                                  .length *
-                                              (_editor.editorFontSize *
-                                                  _editor.editorLineHeight) +
-                                          600,
-                                      child: TextField(
-                                        controller: _doc.contentCtrl,
-                                        maxLines: null,
-                                        expands: true,
-                                        focusNode: _doc.contentFocus,
-                                        cursorColor: cs.primary,
-                                        style: TextStyle(
-                                          fontSize: _editor.editorFontSize,
-                                          height: _editor.editorLineHeight,
-                                          color: isDark
-                                              ? Colors.white.withOpacity(0.9)
-                                              : const Color(0xFF374151),
-                                          fontFamily: _resolveFontFamily(
-                                            _editor.editorFontFamily,
-                                          ),
-                                        ),
-                                        decoration: InputDecoration(
-                                          border: InputBorder.none,
-                                          hintText: '开始写作...',
-                                          hintStyle: TextStyle(
-                                            fontSize: _editor.editorFontSize,
-                                            color: isDark
-                                                ? Colors.white.withOpacity(0.15)
-                                                : const Color(0xFFD1D5DB),
-                                          ),
-                                        ),
-                                        onChanged: (_) => _onContentChanged(),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+
+    // 背景层：自定义壁纸 / 纯色（写作界面全屏背景，对标手机端 _buildEditorBackground）
+    final Widget bgLayer;
+    if (_deskUseWallpaper) {
+      bgLayer = Image.file(
+        File(_deskEditorTheme.wallpaperPath),
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => ColoredBox(color: _deskBgColor),
+      );
+    } else {
+      bgLayer = ColoredBox(color: _deskBgColor);
+    }
+
+    final textColor = _deskCustomBg
+        ? _deskTextColor
+        : (isDark ? Colors.white : const Color(0xFF1F2937));
+    final mutedColor = textColor.withOpacity(0.35);
+
+    return Stack(
+      children: [
+        Positioned.fill(child: bgLayer),
+        // ── 主编辑区：只有「标题输入 + 正文」，大留白 ──
+        SingleChildScrollView(
+          controller: _focusScrollCtrl,
+          padding: const EdgeInsets.symmetric(horizontal: 80, vertical: 64),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 860),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 标题输入
+                  TextField(
+                    controller: _doc.titleCtrl,
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w700,
+                      height: 1.3,
+                      color: textColor,
+                      fontFamily: _resolveFontFamily(
+                        _editor.editorFontFamily,
                       ),
                     ),
-                    // 右侧预览面板（可选）
-                    if (context.watch<LayoutController>().rightDrawerOpen)
-                      Container(
-                        width: 400,
-                        decoration: BoxDecoration(
-                          color: AppColor.surfaceRaised(context),
-                          border: Border(
-                            left: BorderSide(
-                              color: AppColor.border(context),
-                            ),
-                          ),
-                        ),
-                        child: Column(
-                          children: [
-                            Container(
-                              height: 36,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  bottom: BorderSide(
-                                    color: isDark
-                                        ? Colors.white.withOpacity(0.06)
-                                        : const Color(0xFFE5E5EA),
-                                  ),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.visibility,
-                                    size: 14,
-                                    color: isDark
-                                        ? Colors.white.withOpacity(0.4)
-                                        : const Color(0xFF9CA3AF),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    '实时预览',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: isDark
-                                          ? Colors.white.withOpacity(0.4)
-                                          : const Color(0xFF9CA3AF),
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  GestureDetector(
-                                    onTap: () => _layout.closeRightDrawer(),
-                                    child: Icon(
-                                      Icons.close,
-                                      size: 14,
-                                      color: isDark
-                                          ? Colors.white.withOpacity(0.4)
-                                          : const Color(0xFF9CA3AF),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Expanded(
-                              child: ListenableBuilder(
-                                listenable: _doc.contentCtrl,
-                                builder: (context, _) => MarkdownPreviewSmooth(
-                                  markdown: _doc.contentCtrl.text,
-                                  darkTheme: isDark,
-                                  onOpenLink: (url) async {
-                                    final uri = Uri.tryParse(url);
-                                    if (uri != null &&
-                                        (uri.scheme == 'http' ||
-                                            uri.scheme == 'https')) {
-                                      await launchUrl(
-                                        uri,
-                                        mode: LaunchMode.externalApplication,
-                                      );
-                                    }
-                                  },
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      const Spacer(),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          // 底部打字机状态指示
-          Positioned(
-            bottom: 12,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: (isDark ? Colors.white : Colors.black).withOpacity(
-                    0.06,
+                    cursorColor: cs.primary,
+                    decoration: InputDecoration(
+                      hintText: '在此输入标题...',
+                      hintStyle: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w700,
+                        color: mutedColor,
+                      ),
+                      border: InputBorder.none,
+                    ),
+                    onChanged: (_) => _onContentChanged(),
                   ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.keyboard_double_arrow_down,
-                      size: 10,
-                      color: isDark
-                          ? Colors.white.withOpacity(0.2)
-                          : Colors.black.withOpacity(0.2),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '打字机模式 · 光标居中',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: isDark
-                            ? Colors.white.withOpacity(0.2)
-                            : Colors.black.withOpacity(0.2),
+                  const SizedBox(height: 28),
+                  Container(
+                    height: 1,
+                    color: mutedColor.withOpacity(0.6),
+                  ),
+                  const SizedBox(height: 28),
+                  // 正文编辑区（带当前行高亮）
+                  Stack(
+                    children: [
+                      Positioned(
+                        top:
+                            (_lastCursorLine - 1) *
+                            (_editor.editorFontSize * _editor.editorLineHeight),
+                        left: 0,
+                        right: 0,
+                        height:
+                            _editor.editorFontSize * _editor.editorLineHeight,
+                        child: Container(
+                          color: cs.primary.withOpacity(isDark ? 0.08 : 0.05),
+                        ),
+                      ),
+                      SizedBox(
+                        height:
+                            _doc.contentCtrl.text.split('\n').length *
+                                (_editor.editorFontSize *
+                                    _editor.editorLineHeight) +
+                            600,
+                        child: TextField(
+                          controller: _doc.contentCtrl,
+                          maxLines: null,
+                          expands: true,
+                          focusNode: _doc.contentFocus,
+                          cursorColor: cs.primary,
+                          style: TextStyle(
+                            fontSize: _editor.editorFontSize,
+                            height: _editor.editorLineHeight,
+                            color: textColor,
+                            fontFamily: _resolveFontFamily(
+                              _editor.editorFontFamily,
+                            ),
+                          ),
+                          decoration: InputDecoration(
+                            border: InputBorder.none,
+                            hintText: '开始写作...',
+                            hintStyle: TextStyle(
+                              fontSize: _editor.editorFontSize,
+                              color: mutedColor,
+                            ),
+                          ),
+                          contextMenuBuilder: _focusContextMenu,
+                          onChanged: (_) => _onContentChanged(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // ── 格式化工具栏（更多菜单展开） ──
+                  if (_focusShowToolbar) ...[
+                    const SizedBox(height: 20),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: (_deskCustomBg
+                                ? _deskCardBg
+                                : AppColor.surfaceBase(context))
+                            .withOpacity(0.92),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColor.border(context),
+                        ),
+                      ),
+                      child: Wrap(
+                        spacing: 2,
+                        runSpacing: 2,
+                        children: [..._buildToolChips()],
                       ),
                     ),
                   ],
-                ),
+                ],
               ),
             ),
           ),
-        ],
-      ),
+        ),
+        // ── 右侧预览面板（极简标题栏「预览」打开） ──
+        if (_focusPreviewOpen)
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
+            child: Container(
+              width: 400,
+              decoration: BoxDecoration(
+                color: AppColor.surfaceRaised(context),
+                border: Border(
+                  left: BorderSide(color: AppColor.border(context)),
+                ),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    height: 36,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: isDark
+                              ? Colors.white.withOpacity(0.06)
+                              : const Color(0xFFE5E5EA),
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.visibility, size: 14, color: mutedColor),
+                        const SizedBox(width: 6),
+                        Text(
+                          '实时预览',
+                          style: TextStyle(fontSize: 11, color: mutedColor),
+                        ),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: _toggleFocusPreview,
+                          child: Icon(Icons.close, size: 14, color: mutedColor),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: ListenableBuilder(
+                      listenable: _doc.contentCtrl,
+                      builder: (context, _) => MarkdownPreviewSmooth(
+                        markdown: _doc.contentCtrl.text,
+                        darkTheme: isDark,
+                        onOpenLink: (url) async {
+                          final uri = Uri.tryParse(url);
+                          if (uri != null &&
+                              (uri.scheme == 'http' ||
+                                  uri.scheme == 'https')) {
+                            await launchUrl(
+                              uri,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        // ── 右侧抽屉（元数据 / AI，与预览互斥） ──
+        if (!_focusPreviewOpen &&
+            context.watch<LayoutController>().rightDrawerOpen)
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
+            child: _buildRightDrawer(_layout),
+          ),
+        // ── 底部打字机状态指示 ──
+        Positioned(
+          bottom: 12,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: (isDark ? Colors.white : Colors.black).withOpacity(0.06),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.keyboard_double_arrow_down,
+                    size: 10,
+                    color: mutedColor,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '打字机模式 · 光标居中',
+                    style: TextStyle(fontSize: 9, color: mutedColor),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -11358,46 +11498,6 @@ $htmlContent
           ),
         ),
       ),
-    );
-  }
-
-  Widget _focusMetaChip(
-    IconData icon,
-    String label,
-    String value,
-    bool isDark,
-  ) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          icon,
-          size: 12,
-          color: isDark
-              ? Colors.white.withOpacity(0.3)
-              : const Color(0xFF9CA3AF),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          '$label: ',
-          style: TextStyle(
-            fontSize: 11,
-            color: isDark
-                ? Colors.white.withOpacity(0.3)
-                : const Color(0xFF9CA3AF),
-          ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            color: isDark
-                ? Colors.white.withOpacity(0.6)
-                : const Color(0xFF6B7280),
-          ),
-        ),
-      ],
     );
   }
 
