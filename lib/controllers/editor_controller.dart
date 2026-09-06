@@ -183,6 +183,9 @@ class EditorController extends ChangeNotifier {
       _openTabs.removeAt(index);
       if (_openTabs.isEmpty) {
         _activeTabIndex = 0;
+      } else if (index < _activeTabIndex) {
+        // 关闭的是激活标签左侧的标签，激活索引需左移保持指向同一标签
+        _activeTabIndex--;
       } else if (_activeTabIndex >= _openTabs.length) {
         _activeTabIndex = _openTabs.length - 1;
       }

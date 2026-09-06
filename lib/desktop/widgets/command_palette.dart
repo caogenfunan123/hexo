@@ -44,6 +44,7 @@ class CommandPalette extends StatefulWidget {
 class _CommandPaletteState extends State<CommandPalette> {
   final _searchCtrl = TextEditingController();
   final _focusNode = FocusNode();
+  final _keyboardFocusNode = FocusNode();
   final _scrollCtrl = ScrollController();
   int _selectedIndex = 0;
   List<CommandItem> _filtered = [];
@@ -61,6 +62,7 @@ class _CommandPaletteState extends State<CommandPalette> {
     _searchCtrl.removeListener(_onSearch);
     _searchCtrl.dispose();
     _focusNode.dispose();
+    _keyboardFocusNode.dispose();
     _scrollCtrl.dispose();
     super.dispose();
   }
@@ -85,32 +87,33 @@ class _CommandPaletteState extends State<CommandPalette> {
     _filtered[index].onExecute();
   }
 
-  void _handleKey(KeyEvent event) {
-    if (event is! KeyDownEvent) return;
+  KeyEventResult _handleKey(KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
     if (event.logicalKey == LogicalKeyboardKey.escape) {
       widget.onClose();
-      return;
+      return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-      if (_filtered.isEmpty) return;
+      if (_filtered.isEmpty) return KeyEventResult.handled;
       setState(() {
         _selectedIndex = (_selectedIndex + 1).clamp(0, _filtered.length - 1);
       });
       _scrollToSelected();
-      return;
+      return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-      if (_filtered.isEmpty) return;
+      if (_filtered.isEmpty) return KeyEventResult.handled;
       setState(() {
         _selectedIndex = (_selectedIndex - 1).clamp(0, _filtered.length - 1);
       });
       _scrollToSelected();
-      return;
+      return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.enter) {
       _execute(_selectedIndex);
-      return;
+      return KeyEventResult.handled;
     }
+    return KeyEventResult.ignored;
   }
 
   void _scrollToSelected() {
@@ -155,7 +158,7 @@ class _CommandPaletteState extends State<CommandPalette> {
                 ],
               ),
               child: KeyboardListener(
-                focusNode: _focusNode,
+                focusNode: _keyboardFocusNode,
                 onKeyEvent: _handleKey,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,

@@ -197,6 +197,8 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
     );
 
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
+      // 拦截系统关闭事件，交由 onWindowClose 决定是隐藏到托盘还是销毁
+      await windowManager.setPreventClose(true);
       await windowManager.show();
       await windowManager.focus();
       if (!(_windowPosition == const Offset(100, 80))) {

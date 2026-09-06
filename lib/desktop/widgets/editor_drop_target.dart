@@ -115,6 +115,16 @@ class _EditorDropTargetState extends State<EditorDropTarget> {
         final ext = dropFile.path.split('.').last;
         final codeBlock = '\n```$ext\n$content\n```\n';
         widget.onMarkdownInserted?.call(codeBlock);
+      } else {
+        // 无扩展名/未知类型文件：按纯文本尝试插入，避免静默丢弃
+        try {
+          final content = await file.readAsString();
+          final ext = dropFile.path.split('.').last;
+          final codeBlock = '\n```$ext\n$content\n```\n';
+          widget.onMarkdownInserted?.call(codeBlock);
+        } catch (_) {
+          // 二进制等不可读文件跳过
+        }
       }
     }
 

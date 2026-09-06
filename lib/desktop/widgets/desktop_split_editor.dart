@@ -256,10 +256,9 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
   }
 
   Widget _buildEditorBody(bool isDark, ColorScheme cs) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 200),
-      child: _buildEditorBodyContent(isDark, cs),
-    );
+    // 直接用 switch 构建单一子树：AnimatedSwitcher 过渡期间新旧两个
+    // TextField 会同时挂载同一个 focusNode，触发 FocusNode 二次 attach 崩溃
+    return _buildEditorBodyContent(isDark, cs);
   }
 
   Widget _buildEditorBodyContent(bool isDark, ColorScheme cs) {

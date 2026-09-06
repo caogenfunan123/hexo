@@ -97,6 +97,7 @@ import '../screens/p2p_sync_screen.dart';
 import '../widgets/ai_chat_panel.dart';
 import '../widgets/markdown_preview_smooth.dart';
 import 'widgets/ai_selection_edit_dialog.dart';
+import 'widgets/markdown_formatter.dart';
 
 // ── 新功能集成（桌面版） ──
 import '../theme/app_color.dart';
@@ -277,6 +278,8 @@ class DesktopShellState extends State<DesktopShell>
   String? _workspaceFolder;
   final ScrollController _focusScrollCtrl = ScrollController();
   int _lastCursorLine = 0;
+  /// 专注模式当前光标行（驱动行高亮条局部刷新，避免整壳重建）
+  final ValueNotifier<int> _focusCursorLine = ValueNotifier(1);
 
   // ──────────────────────────────────────────────
   // 自动保存 Timer（涉及 Storage 操作，保留在 Shell 层）
@@ -286,6 +289,7 @@ class DesktopShellState extends State<DesktopShell>
   final Map<String, Timer> _debounceTimers = {};
   final Map<String, _PendingSave> _pendingSaveMap = {};
   final Map<String, String> _lastSavedContentMap = {};
+  final Map<String, String> _lastSavedTitleMap = {};
 
   String _lastSavedContent = '';
 
@@ -494,6 +498,8 @@ class DesktopShellState extends State<DesktopShell>
       scrollController: _focusScrollCtrl,
       textController: _doc.contentCtrl,
     );
+    // 纯光标移动（方向键/点击）不触发 onChanged，此处监听 selection 刷新专注模式行高亮
+    _doc.contentCtrl.addListener(_onCursorSelectionChanged);
     aiService.modelManager = aiModelManager;
     _bus = ShellActionBus(
     // 导航
@@ -562,8 +568,10 @@ class DesktopShellState extends State<DesktopShell>
     WidgetsBinding.instance.removeObserver(this);
     _stopAutoSave();
     _stopAutoSync();
+    _doc.contentCtrl.removeListener(_onCursorSelectionChanged);
     _typewriterCtrl.dispose();
     _focusScrollCtrl.dispose();
+    _focusCursorLine.dispose();
     _orientationManager.dispose();
     searchIsolate?.cancel();
     p2pSyncService.dispose();
@@ -881,7 +889,9 @@ class DesktopShellState extends State<DesktopShell>
   void _onContentChanged() {
     final current = _doc.contentCtrl.text;
     final title = _doc.titleCtrl.text;
-    if (current == _lastSavedContent && title == _lastSavedTitle) {
+    final articleId = _doc.currentArticle.id;
+    if (current == _lastSavedContentMap[articleId] &&
+        title == _lastSavedTitleMap[articleId]) {
       _doc.markSaved();
       return;
     }
@@ -894,7 +904,6 @@ class DesktopShellState extends State<DesktopShell>
     final totalLines = '\n'.allMatches(current).length + 1;
     _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
     // 每草稿独立防抖，杜绝多草稿相互阻塞
-    final articleId = _doc.currentArticle.id;
     _debounceTimers[articleId]?.cancel();
     // 闭包捕获当时的 articleId/content/title，触发时校验仍是该文章才保存，
     // 防止切文章后旧文章的防抖把新内容误存到旧文章、或旧改动静默丢失
@@ -909,6 +918,10 @@ class DesktopShellState extends State<DesktopShell>
         return;
       }
       _autoSaveSnapshot(articleId: articleId, content: current, title: title);
+      // 仍是当前文章的后台快照保存，主动刷新保存状态栏
+      if (current == _doc.contentCtrl.text && title == _doc.titleCtrl.text) {
+        _doc.markSaved();
+      }
     });
   }
 
@@ -927,10 +940,26 @@ class DesktopShellState extends State<DesktopShell>
       // 打字机滚动：专注模式下光标始终在屏幕中间
       if (_layout.workMode == WorkMode.focus && line != _lastCursorLine) {
         _lastCursorLine = line;
+        _focusCursorLine.value = line;
         _centerCursorInFocusMode(line);
       }
     }
     // 状态栏通过 ListenableBuilder 监听 _editor/_doc 自刷新，无需整壳 setState
+  }
+
+  /// 纯光标移动（方向键/点击/拖动选择）时刷新专注模式行高亮与打字机居中
+  void _onCursorSelectionChanged() {
+    if (_layout.workMode != WorkMode.focus) return;
+    final text = _doc.contentCtrl.text;
+    final sel = _doc.contentCtrl.selection;
+    if (!sel.isValid) return;
+    final before = text.substring(0, sel.start.clamp(0, text.length));
+    final line = '\n'.allMatches(before).length + 1;
+    if (line != _lastCursorLine) {
+      _lastCursorLine = line;
+      _focusCursorLine.value = line;
+      _centerCursorInFocusMode(line);
+    }
   }
 
   /// 专注模式下将光标所在行滚动到屏幕中央
@@ -959,7 +988,8 @@ class DesktopShellState extends State<DesktopShell>
     final c = content ?? _doc.contentCtrl.text;
     final t = title ?? _doc.titleCtrl.text;
     final prevC = _lastSavedContentMap[aid];
-    if (c.isEmpty || (c == prevC && t == _lastSavedTitle)) return;
+    final prevT = _lastSavedTitleMap[aid];
+    if (c.isEmpty || (c == prevC && t == prevT)) return;
     try {
       await sessionService.saveAutoSnapshot(
         articleId: aid,
@@ -969,14 +999,21 @@ class DesktopShellState extends State<DesktopShell>
         categories: _doc.categoriesCtrl.text,
         cover: _doc.coverCtrl.text,
       );
-      _lastSavedContent = c;
-      _lastSavedTitle = t;
       _lastSavedContentMap[aid] = c;
+      _lastSavedTitleMap[aid] = t;
+      // 全局镜像只反映当前激活文章，后台保存其他文章时不得覆盖
+      if (aid == _doc.currentArticle.id) {
+        _lastSavedContent = c;
+        _lastSavedTitle = t;
+      }
       if (articleId == null) {
         _doc.markSaved();
       }
       await sessionService.cleanupSnapshots(aid);
-      await _saveDraft(_collect(draft: true));
+      // 仅当保存的是当前激活文章且内容一致时才落草稿，避免后台保存污染其他文章
+      if (aid == _doc.currentArticle.id && _doc.contentCtrl.text == c) {
+        await _saveDraft(_collect(draft: true));
+      }
       if (mounted) _showToast('草稿已自动保存');
     } catch (e) {
       debugPrint('AutoSave snapshot error: $e');
@@ -1261,6 +1298,7 @@ class DesktopShellState extends State<DesktopShell>
     _lastSavedContent = a.content;
     _lastSavedTitle = a.title;
     _lastSavedContentMap[a.id] = a.content;
+    _lastSavedTitleMap[a.id] = a.title;
     _doc.markSaved();
     // 创建版本快照
     versionSnapshotService.createSnapshot(a.id, a.title, a.content);
@@ -1526,6 +1564,7 @@ class DesktopShellState extends State<DesktopShell>
       _lastSavedContent = pub.content;
       _lastSavedTitle = pub.title;
       _lastSavedContentMap[pub.id] = pub.content;
+      _lastSavedTitleMap[pub.id] = pub.title;
       _doc.markSaved();
       await _saveDraft(pub.copyWith(isDraft: false, published: true));
       await _refreshRemote();
@@ -1590,6 +1629,7 @@ class DesktopShellState extends State<DesktopShell>
       _lastSavedContent = a.content;
       _lastSavedTitle = a.title;
       _lastSavedContentMap[a.id] = a.content;
+      _lastSavedTitleMap[a.id] = a.title;
       _doc.markSaved();
       await _saveDraft(pub);
       await cmsDraftService.saveDraft(result);
@@ -1828,6 +1868,8 @@ class DesktopShellState extends State<DesktopShell>
                   {},
             );
           });
+          // 快捷键可能在桌面壳就绪后才加载完成，通知上层重建全局绑定
+          widget.onShortcutsChanged?.call();
         }
       }
     } catch (e) {
@@ -1927,7 +1969,10 @@ class DesktopShellState extends State<DesktopShell>
     _editorRepo = s.repo ?? activeRepo;
     _lastSavedContent = s.lastSavedContent;
     _lastSavedTitle = s.lastSavedTitle;
+    _lastSavedContentMap[s.article.id] = s.lastSavedContent;
+    _lastSavedTitleMap[s.article.id] = s.lastSavedTitle;
     _lastCursorLine = 0;
+    _focusCursorLine.value = 1;
     if (s.content == s.lastSavedContent && s.title == s.lastSavedTitle) {
       _doc.markSaved();
     } else {
@@ -2144,6 +2189,11 @@ class DesktopShellState extends State<DesktopShell>
     String? autoTemplateId;
     if (repo != null)
       autoTemplateId = TemplateResolver.resolvePostTemplateId(repo, templates);
+    // 覆盖 _doc 前先保存当前激活标签的未保存会话，避免切换标签时内容丢失
+    final currentTabId = 'editor_${_doc.currentArticle.id}';
+    if (_tabSessions.containsKey(currentTabId)) {
+      _saveSessionFromDoc(currentTabId);
+    }
     _doc.setCurrentArticle(
       Article(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -2165,7 +2215,10 @@ class DesktopShellState extends State<DesktopShell>
     _doc.coverCtrl.text = '';
     _lastSavedContent = '';
     _lastSavedTitle = '';
+    _lastSavedContentMap[_doc.currentArticle.id] = '';
+    _lastSavedTitleMap[_doc.currentArticle.id] = '';
     _lastCursorLine = 0;
+    _focusCursorLine.value = 1;
     _doc.markSaved();
     _doc.setSelectedTemplateId(autoTemplateId);
     _startAutoSave();
@@ -2229,6 +2282,7 @@ class DesktopShellState extends State<DesktopShell>
       _debounceTimers.clear();
       _pendingSaveMap.clear();
       _lastSavedContentMap.clear();
+      _lastSavedTitleMap.clear();
       _editor.closeAllTabs();
       _doc.titleCtrl.text = '';
       _doc.contentCtrl.text = '';
@@ -2242,16 +2296,20 @@ class DesktopShellState extends State<DesktopShell>
     }
     if (index < 0 || index >= tabs.length) return;
     final closingId = tabs[index].id;
+    final isClosingActive = _editor.activeTabIndex == index;
     // 关闭的是当前激活标签：先把未保存内容收回会话，避免丢失
-    if (_editor.activeTabIndex == index) {
+    if (isClosingActive) {
       _saveSessionFromDoc(closingId);
     }
     _tabSessions.remove(closingId);
     _editor.closeTab(index);
-    // 关闭后切换到的新激活标签：载入其会话内容
-    final remaining = _editor.openTabs;
-    if (remaining.isNotEmpty && _editor.activeTabIndex < remaining.length) {
-      _loadSessionIntoDoc(remaining[_editor.activeTabIndex].id);
+    // 仅关闭激活标签时才需载入新的激活标签会话；
+    // 关闭非激活标签会保留当前激活标签的实时未保存编辑，不得覆盖
+    if (isClosingActive) {
+      final remaining = _editor.openTabs;
+      if (remaining.isNotEmpty && _editor.activeTabIndex < remaining.length) {
+        _loadSessionIntoDoc(remaining[_editor.activeTabIndex].id);
+      }
     }
   }
 
@@ -3403,14 +3461,14 @@ class DesktopShellState extends State<DesktopShell>
   // 查找/替换对话框
   // ============================================================
 
-  void _showFindReplace() {
+  Future<void> _showFindReplace() async {
     final findCtrl = TextEditingController();
     final replaceCtrl = TextEditingController();
     bool caseSensitive = false;
     bool useRegex = false;
 
     try {
-      showDialog(
+      await showDialog(
         context: context,
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, setDialogState) {
@@ -3548,13 +3606,13 @@ class DesktopShellState extends State<DesktopShell>
       if (useRegex) {
         pattern = RegExp(
           findText,
-          caseSensitive: caseSensitive ? false : true,
+          caseSensitive: caseSensitive,
           multiLine: true,
         );
       } else {
         pattern = RegExp(
           RegExp.escape(findText),
-          caseSensitive: caseSensitive ? false : true,
+          caseSensitive: caseSensitive,
         );
       }
 
@@ -3625,11 +3683,11 @@ class DesktopShellState extends State<DesktopShell>
     try {
       RegExp pattern;
       if (useRegex) {
-        pattern = RegExp(findText, caseSensitive: caseSensitive ? false : true);
+        pattern = RegExp(findText, caseSensitive: caseSensitive);
       } else {
         pattern = RegExp(
           RegExp.escape(findText),
-          caseSensitive: caseSensitive ? false : true,
+          caseSensitive: caseSensitive,
         );
       }
 
@@ -3663,13 +3721,13 @@ class DesktopShellState extends State<DesktopShell>
       if (useRegex) {
         pattern = RegExp(
           findText,
-          caseSensitive: caseSensitive ? false : true,
+          caseSensitive: caseSensitive,
           multiLine: true,
         );
       } else {
         pattern = RegExp(
           RegExp.escape(findText),
-          caseSensitive: caseSensitive ? false : true,
+          caseSensitive: caseSensitive,
         );
       }
 
@@ -3949,63 +4007,9 @@ class DesktopShellState extends State<DesktopShell>
 
   void _formatDocument() {
     try {
-      final lines = _doc.contentCtrl.text.split('\n');
-      final result = <String>[];
-      int emptyLineCount = 0;
-      int prevHeadingLevel = 0;
-
-      for (int i = 0; i < lines.length; i++) {
-        var line = lines[i];
-
-        // 去除行尾空白
-        line = line.trimRight();
-
-        // 处理空行
-        if (line.trim().isEmpty) {
-          emptyLineCount++;
-          if (emptyLineCount <= 2) {
-            result.add(line);
-          }
-          // 超过 2 个连续空行则跳过
-          continue;
-        }
-        emptyLineCount = 0;
-
-        // 检测标题
-        final headingMatch = RegExp(r'^(#{1,6})\s').firstMatch(line);
-        if (headingMatch != null) {
-          final level = headingMatch.group(1)!.length;
-
-          // 确保标题前有空行（除非是文档开头）
-          if (result.isNotEmpty && result.last.trim().isNotEmpty) {
-            result.add('');
-          }
-
-          // 规范化标题级别：不允许跳级
-          int adjustedLevel = level;
-          if (prevHeadingLevel > 0 && level > prevHeadingLevel + 1) {
-            // 调整标题级别
-            adjustedLevel = prevHeadingLevel + 1;
-            line = '${'#' * adjustedLevel}${line.substring(level)}';
-          }
-          prevHeadingLevel = adjustedLevel;
-          result.add(line);
-
-          // 确保标题后有空行
-          if (i + 1 < lines.length && lines[i + 1].trim().isNotEmpty) {
-            result.add('');
-          }
-        } else {
-          result.add(line);
-        }
-      }
-
-      // 去除末尾多余空行
-      while (result.isNotEmpty && result.last.trim().isEmpty) {
-        result.removeLast();
-      }
-
-      _doc.contentCtrl.text = '${result.join('\n')}\n';
+      _doc.contentCtrl.text = MarkdownFormatter.formatDocument(
+        _doc.contentCtrl.text,
+      );
       _onContentChanged();
       if (mounted) _showToast('文档格式化完成');
     } catch (e) {
@@ -5271,20 +5275,12 @@ class DesktopShellState extends State<DesktopShell>
       builder: (ctx) => AiPromptTemplatesScreen(
         onUseTemplate: (promptContent) {
           Navigator.pop(ctx);
-          // 将模板内容插入 AI 聊天面板
+          // 将模板内容插入 AI 聊天面板（等待面板挂载，避免动画期间消息丢失）
           _openRightDrawer(RightDrawerTab.aiChat);
-          // 通过延迟确保 AI 面板已打开
-          Future.delayed(const Duration(milliseconds: 300), () {
-            _sendToAiChat(promptContent);
-          });
+          _sendToAiChatWhenReady(promptContent);
         },
       ),
     );
-  }
-
-  void _sendToAiChat(String prompt) {
-    // 将提示词模板发送到 AI 聊天
-    _aiChatKey.currentState?.sendMessage(prompt);
   }
 
   final _aiChatKey = GlobalKey<AiChatPanelState>();
@@ -5337,10 +5333,26 @@ class DesktopShellState extends State<DesktopShell>
       return;
     }
     _openRightDrawer(RightDrawerTab.aiChat);
-    Future.delayed(const Duration(milliseconds: 300), () {
-      _aiChatKey.currentState?.sendMessage('请对以下文章进行润色优化：\n\n$text');
-    });
+    _sendToAiChatWhenReady('请对以下文章进行润色优化：\n\n$text');
     _showToast('已发送全文到 AI');
+  }
+
+  /// 等待右侧 AI 面板挂载后发送消息，避免面板动画期间消息丢失
+  void _sendToAiChatWhenReady(String message, {int maxAttempts = 20}) {
+    var attempts = 0;
+    void trySend() {
+      attempts++;
+      final state = _aiChatKey.currentState;
+      if (state != null) {
+        state.sendMessage(message);
+        return;
+      }
+      if (attempts < maxAttempts) {
+        Future.delayed(const Duration(milliseconds: 50), trySend);
+      }
+    }
+
+    trySend();
   }
 
   // ── AI 输出对比 ──
@@ -5715,12 +5727,12 @@ class DesktopShellState extends State<DesktopShell>
   Timer? _scheduledPublishTimer;
   DateTime? _scheduledPublishTime;
 
-  void _schedulePublish() {
+  Future<void> _schedulePublish() async {
     final dateCtrl = TextEditingController();
     final timeCtrl = TextEditingController();
 
     try {
-      showDialog(
+      await showDialog(
         context: context,
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, setDialogState) => AlertDialog(
@@ -5887,6 +5899,7 @@ class DesktopShellState extends State<DesktopShell>
         _lastSavedContent = pub.content;
         _lastSavedTitle = pub.title;
         _lastSavedContentMap[pub.id] = pub.content;
+        _lastSavedTitleMap[pub.id] = pub.title;
         _doc.markSaved();
         await _saveDraft(pub.copyWith(isDraft: false, published: true));
         await _refreshRemote();
@@ -6889,6 +6902,7 @@ class DesktopShellState extends State<DesktopShell>
                 onTap: () async {
                   settings = settings.copyWith(themeColor: colors[i].value);
                   await _persistSettings();
+                  if (mounted) setState(() {});
                   _showToast('主题色已切换为${names[i]}');
                   if (ctx.mounted) Navigator.pop(ctx);
                 },
@@ -10595,7 +10609,6 @@ $htmlContent
   /// 全局快捷键：Ctrl+Shift+E 在极简写作模式与完整编辑模式间切换
   KeyEventResult _handleGlobalKeyEvent(FocusNode node, KeyEvent event) {
     if (event is KeyDownEvent &&
-        !event.repeat &&
         event.logicalKey == LogicalKeyboardKey.keyE &&
         HardwareKeyboard.instance.isControlPressed &&
         HardwareKeyboard.instance.isShiftPressed) {
@@ -11176,16 +11189,22 @@ $htmlContent
                   // 正文编辑区（带当前行高亮）
                   Stack(
                     children: [
-                      Positioned(
-                        top:
-                            (_lastCursorLine - 1) *
-                            (_editor.editorFontSize * _editor.editorLineHeight),
-                        left: 0,
-                        right: 0,
-                        height:
-                            _editor.editorFontSize * _editor.editorLineHeight,
-                        child: Container(
-                          color: cs.primary.withOpacity(isDark ? 0.08 : 0.05),
+                      ValueListenableBuilder<int>(
+                        valueListenable: _focusCursorLine,
+                        builder: (context, cursorLine, _) => Positioned(
+                          top: cursorLine > 0
+                              ? (cursorLine - 1) *
+                                  (_editor.editorFontSize *
+                                      _editor.editorLineHeight)
+                              : -100,
+                          left: 0,
+                          right: 0,
+                          height: _editor.editorFontSize *
+                              _editor.editorLineHeight,
+                          child: Container(
+                            color: cs.primary
+                                .withOpacity(isDark ? 0.08 : 0.05),
+                          ),
                         ),
                       ),
                       SizedBox(
@@ -11306,33 +11325,25 @@ $htmlContent
                           markdown: t.isEmpty
                               ? body
                               : '# $t\n\n$body',
-                        darkTheme: isDark,
-                        onOpenLink: (url) async {
-                          final uri = Uri.tryParse(url);
-                          if (uri != null &&
-                              (uri.scheme == 'http' ||
-                                  uri.scheme == 'https')) {
-                            await launchUrl(
-                              uri,
-                              mode: LaunchMode.externalApplication,
-                            );
-                          }
-                        },
-                      ),
+                          darkTheme: isDark,
+                          onOpenLink: (url) async {
+                            final uri = Uri.tryParse(url);
+                            if (uri != null &&
+                                (uri.scheme == 'http' ||
+                                    uri.scheme == 'https')) {
+                              await launchUrl(
+                                uri,
+                                mode: LaunchMode.externalApplication,
+                              );
+                            }
+                          },
+                        );
+                      },
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-        // ── 右侧抽屉（元数据 / AI，与预览互斥） ──
-        if (!_focusPreviewOpen &&
-            context.watch<LayoutController>().rightDrawerOpen)
-          Positioned(
-            right: 0,
-            top: 0,
-            bottom: 0,
-            child: _buildRightDrawer(_layout),
           ),
         // ── 右侧抽屉（元数据 / AI，与预览互斥） ──
         if (!_focusPreviewOpen &&

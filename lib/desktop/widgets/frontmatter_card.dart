@@ -190,7 +190,9 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
           offset: prefix.length.clamp(0, fullText.length),
         );
       } else {
-        final newText = '$prefix---\n$newBlock\n---\n$rest';
+        // 去掉 rest 的换行前缀，避免上次写入的换行被累积成空行
+        final restTrimmed = rest.replaceFirst(RegExp(r'^\n+'), '');
+        final newText = '$prefix---\n$newBlock\n---\n$restTrimmed';
         widget.contentController.text = newText;
         widget.contentController.selection = TextSelection.collapsed(
           offset: (prefix.length + newBlock.length + 8).clamp(0, newText.length),
