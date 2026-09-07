@@ -74,3 +74,13 @@ Entries discovered by the Agent during task execution should follow this format:
   - 工具权限（ToolExecutionManager checkToolPermission）：模型可用 deny_tool 标记声明"已授权"绕过确认，比按工具名判断更灵活
   - 工具结果/参数展示 UI：结果摘要 200 字 + 点击弹窗看全文 + 复制；大参数按字节数显示"N B"；read 类工具按名归组折叠"工具调用 (N)"；流式中自动展开、结束后折叠；thinking 默认折叠最新展开
   - MonkeyCode (github.com/chaitin/MonkeyCode) 核心 Agent 在私有 submodule OhMyAgent 拿不到，前端 task-stream-client.ts 有指数退避重连+chunk去重可参考；backend pkg/llm/client.go 是 OpenAI Chat/Responses/Anthropic 三协议适配（我们 ai_provider.dart 已对标 Provider/InterfaceType）
+
+[Project Knowledge Summary]
+- Date: 2026-09-07
+- Context: User asked to hook the Archify architecture diagram into the regular development workflow
+- Category: Workflow & Collaboration
+- Instructions:
+  - 存有拓墨主应用架构图：`/workspace/hexo/tuomo.architecture.html`（Archify 生成的单文件交互图，11 节点 + 区域边界「拓墨客户端（Flutter）」+ 3 个 view：写作主路径 / AI 辅助 / 一键发布；每个组件都带真实源码 sources）
+  - 修改拓墨功能前先参考这张架构图：用图上节点定位「要改的层」，再按图上的 sources 找到对应源码文件；避免改错层或漏掉依赖（如控制器层→AI 引擎→LLM、发布编排→GitHub/CMS、本地存储→云同步）
+  - 示意图是上下文辅助，本身不生成也不修改实现；真正的改动仍走正常开发，并按 code-splitting-guide.md 规范落地
+  - 图产出的源 JSON 在 `/tmp/opencode/tuomo.architecture.json`，需要按新架构更新时可改动后重新 `node ~/.agents/skills/archify/bin/archify.mjs deliver architecture <json> /workspace/hexo/tuomo.architecture.html --quality showcase --repo-root /workspace/hexo`
