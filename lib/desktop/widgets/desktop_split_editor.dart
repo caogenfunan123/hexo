@@ -159,8 +159,9 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
         curve: Curves.easeInOut,
         child: LayoutBuilder(
           builder: (ctx, constraints) {
-            // 极小窗口（<860px）双栏降级：自动回到单栏源码，避免预览被压扁
-            final narrow = constraints.maxWidth < 860;
+            // 极小窗口（<480px）双栏实在放不下才自动回单栏源码，避免预览被压扁。
+            // 低于该阈值仅是兜底，绝不静默禁用分栏按钮；正常桌面宽度不受影响。
+            final narrow = constraints.maxWidth < 480;
             final effective = (narrow && _mode == SplitEditorMode.split)
                 ? SplitEditorMode.sourceOnly
                 : _mode;
@@ -209,7 +210,6 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
             mode: SplitEditorMode.split,
             isDark: isDark,
             cs: cs,
-            enabled: !narrow,
           ),
           _modeButton(
             icon: Icons.visibility,

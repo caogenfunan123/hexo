@@ -58,6 +58,8 @@ class DesktopApp extends StatefulWidget {
 class _DesktopAppState extends State<DesktopApp> with WindowListener {
   final SystemTray _systemTray = SystemTray();
   bool _isTrayReady = false;
+  /// 关闭流程进行中，防止 close 事件重入导致重复销毁
+  bool _closing = false;
 
   // ── 布局记忆 ──
   Offset _windowPosition = const Offset(100, 80);
@@ -241,16 +243,25 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
 
   @override
   void onWindowClose() async {
-    await _saveLayout();
-    // 关闭前强制落盘所有未保存内容
-    DesktopApp.shellKey.currentState?.flushAllPendingSaves();
-    await _editorCtrl.onBeforeClose();
-    // 最小化到托盘而不是关闭
+    if (_closing) return;
+    _closing = true;
+    try {
+      // 关闭前强制落盘所有未保存内容，真正等待完成后才销毁
+      await _saveLayout();
+      await _editorCtrl.onBeforeClose();
+      await DesktopApp.shellKey.currentState?.flushAllPendingSaves();
+    } catch (e) {
+      debugPrint('Close flush error: $e');
+    }
+    // 交由下一事件循环再销毁：避免在 setPreventClose(true) 拦截的
+    // close 回调内并发调用 destroy，造成原生关闭双重处理的崩溃
     if (_isTrayReady) {
       await windowManager.hide();
     } else {
+      await Future<void>.delayed(Duration.zero);
       await windowManager.destroy();
     }
+    _closing = false;
   }
 
   // ============================================================
@@ -278,7 +289,7 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
         }),
         MenuSeparator(),
         MenuItemLabel(label: '退出', onClicked: (_) async {
-          DesktopApp.shellKey.currentState?.flushAllPendingSaves();
+          await DesktopApp.shellKey.currentState?.flushAllPendingSaves();
           await _editorCtrl.onBeforeClose();
           await _systemTray.destroy();
           await windowManager.destroy();

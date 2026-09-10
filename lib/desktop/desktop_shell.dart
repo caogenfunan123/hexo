@@ -888,14 +888,16 @@ class DesktopShellState extends State<DesktopShell>
     _debounceTimers.clear();
   }
 
-  /// 冲刷所有等待中的保存任务（三重落盘：文本变更 / 页面切换 / APP 转入后台）
-  void _flushAllPendingSaves() {
+  /// 冲刷所有等待中的保存任务（三重落盘：文本变更 / 页面切换 / APP 转入后台）。
+  /// 返回所有发起的落盘 Future，便于关闭窗口时真正 await 完成后再销毁。
+  List<Future<void>> _flushAllPendingSaves() {
+    final futures = <Future<void>>[];
     // 1) 仍在排队中的防抖任务：立即取消并保存
     for (final entry in _debounceTimers.entries) {
       entry.value.cancel();
       final pending = _pendingSaveMap[entry.key];
       if (pending != null && pending.content.isNotEmpty) {
-        _autoSaveSnapshot(
+        futures.add(_autoSaveSnapshot(
           articleId: pending.articleId,
           content: pending.content,
           title: pending.title,
@@ -903,14 +905,14 @@ class DesktopShellState extends State<DesktopShell>
           categories: pending.categories,
           cover: pending.cover,
           force: true,
-        );
+        ));
       }
     }
     // 2) 已切走文章挂起在 pending 中的内容：之前被 clear 直接丢弃，这里真正落盘
     final leftover = Map<String, _PendingSave>.from(_pendingSaveMap);
     for (final pending in leftover.values) {
       if (pending.content.isNotEmpty) {
-        _autoSaveSnapshot(
+        futures.add(_autoSaveSnapshot(
           articleId: pending.articleId,
           content: pending.content,
           title: pending.title,
@@ -918,11 +920,12 @@ class DesktopShellState extends State<DesktopShell>
           categories: pending.categories,
           cover: pending.cover,
           force: true,
-        );
+        ));
       }
     }
     _debounceTimers.clear();
     _pendingSaveMap.clear();
+    return futures;
   }
 
   /// 标题变化时同步标签栏标题（未命名兜底）
@@ -7708,13 +7711,15 @@ class DesktopShellState extends State<DesktopShell>
   // 全局操作入口（由 desktop_main 快捷键/托盘/拖拽调用）
   // ============================================================
 
-  /// 窗口关闭/托盘退出前强制冲刷所有待保存内容（由 desktop_main 调用）
-  void flushAllPendingSaves() {
-    _flushAllPendingSaves();
+  /// 窗口关闭/托盘退出前强制冲刷所有待保存内容（由 desktop_main 调用）。
+  /// 返回的 Future 在全部落盘完成时 resolve，供关闭前 await，避免销毁竞态。
+  Future<void> flushAllPendingSaves() async {
+    final futures = _flushAllPendingSaves();
     for (final t in _debounceTimers.values) {
       t.cancel();
     }
     _debounceTimers.clear();
+    await Future.wait(futures);
   }
 
   /// GlobalKey 调用的统一入口
