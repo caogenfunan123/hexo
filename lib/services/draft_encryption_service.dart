@@ -221,6 +221,13 @@ class DraftEncryptionService {
       if (enc.trim().isEmpty) return;
       final plain = SiteEncryptionService.decrypt(enc.trim(), _password!);
       await plainFile.writeAsString(plain, flush: true);
+      // 解密成功后移除加密文件，避免下次启动仍被当作加密态回读；
+      // 保留 .enc.bak 以便明文写入异常时人工恢复
+      try {
+        await encFile.rename('${encFile.path}.bak');
+      } catch (e) {
+        debugPrint('DraftEncryption: rename enc backup failed: $e');
+      }
     } catch (e) {
       debugPrint('DraftEncryption: decrypt existing error: $e');
     }

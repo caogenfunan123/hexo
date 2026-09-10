@@ -77,68 +77,78 @@ class DesktopStatusBar extends StatelessWidget {
             cs: cs,
           ),
 
-          const Spacer(),
+          // 状态信息：窄窗时横向滚动，避免 Row 溢出
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              reverse: true,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 编辑器状态信息
+                  if (editorStatus != null)
+                    _statusLabel(context,
+                      editorStatus!,
+                      isDark: isDark,
+                    ),
 
-          // 编辑器状态信息
-          if (editorStatus != null)
-            _statusLabel(context,
-              editorStatus!,
-              isDark: isDark,
+                  // 光标位置
+                  if (cursorPosition != null) ...[
+                    const SizedBox(width: 12),
+                    _statusLabel(context,
+                      '行 ${cursorPosition!.$1} 列 ${cursorPosition!.$2}',
+                      isDark: isDark,
+                    ),
+                  ],
+
+                  // 行数
+                  const SizedBox(width: 12),
+                  _statusLabel(context,
+                    '$lineCount 行',
+                    isDark: isDark,
+                  ),
+
+                  // 字数统计
+                  const SizedBox(width: 12),
+                  _statusLabel(context,
+                    '$wordCount 词',
+                    isDark: isDark,
+                  ),
+                  const SizedBox(width: 8),
+                  _statusLabel(context,
+                    '$charCount 字',
+                    isDark: isDark,
+                  ),
+
+                  // 阅读时间
+                  if (readTime.isNotEmpty) ...[
+                    const SizedBox(width: 12),
+                    _statusLabel(context,
+                      readTime,
+                      icon: Icons.timer_outlined,
+                      isDark: isDark,
+                    ),
+                  ],
+
+                  // 同步状态
+                  const SizedBox(width: 12),
+                  if (isSyncing)
+                    const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(strokeWidth: 1.5),
+                    )
+                  else
+                    _statusLabel(context,
+                      siteName.isNotEmpty ? siteName : '未连接',
+                      icon: Icons.cloud_outlined,
+                      isDark: isDark,
+                    ),
+                  const SizedBox(width: 12),
+                ],
+              ),
             ),
-
-          // 光标位置
-          if (cursorPosition != null) ...[
-            const SizedBox(width: 12),
-            _statusLabel(context,
-              '行 ${cursorPosition!.$1} 列 ${cursorPosition!.$2}',
-              isDark: isDark,
-            ),
-          ],
-
-          // 行数
-          const SizedBox(width: 12),
-          _statusLabel(context,
-            '$lineCount 行',
-            isDark: isDark,
           ),
-
-          // 字数统计
-          const SizedBox(width: 12),
-          _statusLabel(context,
-            '$wordCount 词',
-            isDark: isDark,
-          ),
-          const SizedBox(width: 8),
-          _statusLabel(context,
-            '$charCount 字',
-            isDark: isDark,
-          ),
-
-          // 阅读时间
-          if (readTime.isNotEmpty) ...[
-            const SizedBox(width: 12),
-            _statusLabel(context,
-              readTime,
-              icon: Icons.timer_outlined,
-              isDark: isDark,
-            ),
-          ],
-
-          // 同步状态
-          const SizedBox(width: 12),
-          if (isSyncing)
-            const SizedBox(
-              width: 12,
-              height: 12,
-              child: CircularProgressIndicator(strokeWidth: 1.5),
-            )
-          else
-            _statusLabel(context,
-              siteName.isNotEmpty ? siteName : '未连接',
-              icon: Icons.cloud_outlined,
-              isDark: isDark,
-            ),
-          const SizedBox(width: 12),
         ],
       ),
     );

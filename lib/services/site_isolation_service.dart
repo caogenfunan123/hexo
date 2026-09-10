@@ -407,9 +407,15 @@ class SiteIsolationService {
 
   /// 保存当前站点状态
   Future<void> _saveCurrentSiteState() async {
-    if (_currentSiteId == null) return;
-    // 状态保存逻辑（如当前打开的文章、光标位置等）
-    // 由调用方负责具体实现
+    final site = _currentSite;
+    if (site == null) return;
+    // 持久化当前站点配置（含最后打开时间等内存态），
+    // 避免切换站点后未落盘的改动丢失
+    final dir = await getSiteDir(site.id);
+    final configFile = File('${dir.path}/$_configFileName');
+    await configFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(site.toJson()),
+    );
   }
 
   /// 加载站点索引

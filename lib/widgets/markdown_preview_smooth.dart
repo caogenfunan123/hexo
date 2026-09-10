@@ -20,12 +20,25 @@ class MarkdownPreviewSmooth extends StatefulWidget {
     super.key,
     required this.markdown,
     this.darkTheme = false,
+    this.baseFontSize,
+    this.lineHeight,
+    this.padding = const EdgeInsets.all(16),
     this.onOpenLink,
   }) : _plugins = ParserPluginRegistry()..register(const MermaidPlugin()),
        _builderRegistry = BuilderRegistry()..register('mermaid', const MermaidBuilder());
 
   final String markdown;
   final bool darkTheme;
+
+  /// 正文基础字号；为空则沿用内置样式表默认值（手机端不变）
+  final double? baseFontSize;
+
+  /// 正文行高；为空则沿用内置样式表默认值（手机端不变）
+  final double? lineHeight;
+
+  /// 内容内边距
+  final EdgeInsetsGeometry padding;
+
   final ValueChanged<String>? onOpenLink;
   final ParserPluginRegistry _plugins;
   final BuilderRegistry _builderRegistry;
@@ -66,14 +79,54 @@ class _MarkdownPreviewSmoothState extends State<MarkdownPreviewSmooth> {
 
   @override
   Widget build(BuildContext context) {
+    final base = widget.darkTheme
+        ? MarkdownStyleSheet.dark()
+        : MarkdownStyleSheet.light();
+    final fontSize = widget.baseFontSize;
+    final lineHeight = widget.lineHeight;
+    final MarkdownStyleSheet styleSheet;
+    if (fontSize == null && lineHeight == null) {
+      styleSheet = base;
+    } else {
+      // 按基准字号(16)等比缩放所有文本样式：标题/强调/代码/表格跟随正文，
+      // 只覆盖 paragraphStyle 会导致标题与代码字号不随设置变化
+      TextStyle? scale(TextStyle? s) {
+        if (s == null) return null;
+        return s.copyWith(
+          fontSize: s.fontSize == null
+              ? fontSize
+              : (fontSize == null ? s.fontSize : s.fontSize! * (fontSize / 16)),
+          height: lineHeight ?? s.height,
+        );
+      }
+
+      styleSheet = base.copyWith(
+        textStyle: scale(base.textStyle),
+        paragraphStyle: scale(base.paragraphStyle),
+        h1Style: scale(base.h1Style),
+        h2Style: scale(base.h2Style),
+        h3Style: scale(base.h3Style),
+        h4Style: scale(base.h4Style),
+        h5Style: scale(base.h5Style),
+        h6Style: scale(base.h6Style),
+        blockquoteStyle: scale(base.blockquoteStyle),
+        codeBlockStyle: scale(base.codeBlockStyle),
+        inlineCodeStyle: scale(base.inlineCodeStyle),
+        linkStyle: scale(base.linkStyle),
+        boldStyle: scale(base.boldStyle),
+        italicStyle: scale(base.italicStyle),
+        strikethroughStyle: scale(base.strikethroughStyle),
+        listBulletStyle: scale(base.listBulletStyle),
+        tableHeaderStyle: scale(base.tableHeaderStyle),
+        tableCellStyle: scale(base.tableCellStyle),
+      );
+    }
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: widget.padding,
       child: SmoothMarkdown(
         data: _displayed,
         selectable: true,
-        styleSheet: widget.darkTheme
-            ? MarkdownStyleSheet.dark()
-            : MarkdownStyleSheet.light(),
+        styleSheet: styleSheet,
         onTapLink: (url) {
           widget.onOpenLink?.call(url);
         },

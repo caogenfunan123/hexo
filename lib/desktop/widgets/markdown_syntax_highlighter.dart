@@ -72,27 +72,27 @@ class MarkdownSyntaxColors {
     plainText: Color(0xFFD4D4D4),
   );
 
-  /// 浅色主题配色
+  /// 浅色主题配色（降饱和：贴近中性色板，长时间书写不刺眼）
   static const light = MarkdownSyntaxColors(
-    heading: Color(0xFF0000FF),
-    bold: Color(0xFF6A0DAD),
-    italic: Color(0xFFA31515),
-    boldItalic: Color(0xFF6A0DAD),
-    code: Color(0xFFA31515),
-    codeBlock: Color(0xFFA31515),
-    link: Color(0xFF0451A5),
-    linkUrl: Color(0xFF008000),
-    image: Color(0xFFA31515),
-    listMarker: Color(0xFF098658),
-    blockquote: Color(0xFF008000),
-    horizontalRule: Color(0xFF808080),
-    table: Color(0xFF0000FF),
-    strikethrough: Color(0xFF808080),
-    highlight: Color(0xFF6A0DAD),
-    frontmatter: Color(0xFF008000),
-    htmlTag: Color(0xFF0000FF),
-    comment: Color(0xFF008000),
-    plainText: Color(0xFF1E1E1E),
+    heading: Color(0xFF2563EB),
+    bold: Color(0xFF6D28D9),
+    italic: Color(0xFFB45309),
+    boldItalic: Color(0xFF6D28D9),
+    code: Color(0xFFC2410C),
+    codeBlock: Color(0xFFC2410C),
+    link: Color(0xFF1D4ED8),
+    linkUrl: Color(0xFF15803D),
+    image: Color(0xFFB45309),
+    listMarker: Color(0xFF0F766E),
+    blockquote: Color(0xFF4B5563),
+    horizontalRule: Color(0xFF9CA3AF),
+    table: Color(0xFF2563EB),
+    strikethrough: Color(0xFF9CA3AF),
+    highlight: Color(0xFF6D28D9),
+    frontmatter: Color(0xFF15803D),
+    htmlTag: Color(0xFF2563EB),
+    comment: Color(0xFF6B7280),
+    plainText: Color(0xFF1F2937),
   );
 }
 
@@ -142,6 +142,9 @@ class BridgedSyntaxController extends TextEditingController {
   void updateColors(MarkdownSyntaxColors newColors) {
     if (colors != newColors) {
       colors = newColors;
+      // 缓存中的 span 携带旧配色，主题切换后必须失效重建
+      _cacheText = '';
+      _cacheSpans = const [];
       notifyListeners();
     }
   }
@@ -525,7 +528,7 @@ class _HighlightSpan {
 /// Markdown 语法高亮 TextEditingController
 /// 通过重写 buildTextSpan 实现语法着色
 class MarkdownSyntaxController extends TextEditingController {
-  final MarkdownSyntaxColors colors;
+  MarkdownSyntaxColors colors;
   final double fontSize;
   final String fontFamily;
 
@@ -543,7 +546,10 @@ class MarkdownSyntaxController extends TextEditingController {
   /// 更新配色方案
   void updateColors(MarkdownSyntaxColors newColors) {
     if (colors != newColors) {
-      // 强制重建
+      colors = newColors;
+      // 缓存中的 span 携带旧配色，主题切换后必须失效重建
+      _cacheText = '';
+      _cacheSpans = const [];
       notifyListeners();
     }
   }

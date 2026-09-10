@@ -697,14 +697,18 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(6),
-          onTap: () => widget.bus.onOpenArticle?.call(a),
-          onLongPress: (a.volume == null || a.volume!.trim().isEmpty)
-              ? null
-              : () => _showArticleMenu(a),
-          child: Container(
+        borderRadius: BorderRadius.circular(8),
+        child: GestureDetector(
+          behavior: HitTestBehavior.deferToChild,
+          onLongPressStart: (details) {
+            if (a.volume != null && a.volume!.trim().isNotEmpty) {
+              _showArticleMenu(a, details.globalPosition);
+            }
+          },
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => widget.bus.onOpenArticle?.call(a),
+            child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: Row(
               children: [
@@ -729,13 +733,12 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
             ),
           ),
         ),
+        ),
       ),
     );
   }
 
-  Future<void> _showArticleMenu(Article a) async {
-    final box = context.findRenderObject() as RenderBox?;
-    final anchor = box?.localToGlobal(Offset.zero) ?? Offset.zero;
+  Future<void> _showArticleMenu(Article a, Offset anchor) async {
     final bus = widget.bus;
     await showArticleActionMenu(
       context: context,
@@ -816,7 +819,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
                     ),
                     decoration: BoxDecoration(
                       color: Colors.amber.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       '默认',
@@ -848,9 +851,9 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
       message: tooltip ?? '',
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(8),
         child: InkWell(
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(8),
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.all(4),

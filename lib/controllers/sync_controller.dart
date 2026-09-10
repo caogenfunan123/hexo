@@ -114,6 +114,9 @@ class SyncController extends ChangeNotifier {
     if (error != null) {
       _status = SyncStatus.error;
       _isSyncing = false; // 出错即停止同步中标记，避免 UI 永久"同步中"
+    } else if (_status == SyncStatus.error) {
+      // 清除错误时同步复位状态，避免 UI 停留在错误态
+      _status = SyncStatus.idle;
     }
     notifyListeners();
   }
@@ -163,8 +166,10 @@ class SyncController extends ChangeNotifier {
   void startAutoSync() {
     _autoSyncEnabled = true;
     _autoSyncTimer?.cancel();
+    // 兜底最小间隔，避免 0/负值导致 Timer.periodic 抛异常
+    final seconds = _autoSyncIntervalSeconds < 10 ? 10 : _autoSyncIntervalSeconds;
     _autoSyncTimer = Timer.periodic(
-      Duration(seconds: _autoSyncIntervalSeconds),
+      Duration(seconds: seconds),
       (_) => _runAutoSync(),
     );
     notifyListeners();
@@ -178,10 +183,15 @@ class SyncController extends ChangeNotifier {
   }
 
   void setAutoSyncInterval(int seconds) {
-    _autoSyncIntervalSeconds = seconds;
+    // 校验间隔：至少 10 秒，防止 0/负值导致定时器异常
+    final safe = seconds < 10 ? 10 : seconds;
+    if (safe == _autoSyncIntervalSeconds) return;
+    _autoSyncIntervalSeconds = safe;
     if (_autoSyncEnabled) {
       stopAutoSync();
       startAutoSync();
+    } else {
+      notifyListeners();
     }
   }
 

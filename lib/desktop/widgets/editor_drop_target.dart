@@ -170,7 +170,7 @@ class _EditorDropTargetState extends State<EditorDropTarget> {
                     padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
                     decoration: BoxDecoration(
                       color: AppColor.surfaceBase(context),
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: Theme.of(context).colorScheme.primary,
                         width: 2,

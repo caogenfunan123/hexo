@@ -32,6 +32,8 @@ extension EditorTextExt on _RootShellState {
 
   void _startAutoSave() {
     _stopAutoSave();
+    // 种子化当前文章的"上次保存标题"，供标题-only 改动正确判定未保存
+    _lastSavedTitleMap[_doc.currentArticle.id] = _doc.titleCtrl.text;
     if (!settings.autoSaveEnabled) return;
     _autoSaveTimer = Timer.periodic(
       Duration(seconds: settings.autoSaveIntervalSeconds),
@@ -55,15 +57,17 @@ extension EditorTextExt on _RootShellState {
 
   void _onContentChanged() {
     final current = _doc.contentCtrl.text;
+    final title = _doc.titleCtrl.text;
     _editor.updateStats(current);
-    if (current == _doc.lastSavedContent) {
+    // 正文或标题任一变化都视为未保存，避免标题-only 改动被忽略
+    final articleId = _doc.currentArticle.id;
+    if (current == _doc.lastSavedContent &&
+        title == _lastSavedTitleMap[articleId]) {
       _doc.markSaved();
       return;
     }
     _doc.markUnsaved();
     // 每草稿独立防抖，杜绝多草稿相互阻塞
-    final articleId = _doc.currentArticle.id;
-    final title = _doc.titleCtrl.text;
     _debounceTimers[articleId]?.cancel();
     _debounceTimers[articleId] = _DebounceEntry(
       content: current,
@@ -86,7 +90,12 @@ extension EditorTextExt on _RootShellState {
     required String content,
     String title = '',
   }) async {
-    if (content.isEmpty || content == _lastSavedContentMap[articleId]) return;
+    // 正文与标题都未变化（或均为空）时无需保存，标题-only 改动必须落盘
+    if ((content.isEmpty && title.isEmpty) ||
+        (content == _lastSavedContentMap[articleId] &&
+            title == _lastSavedTitleMap[articleId])) {
+      return;
+    }
     // 保存时应以文档当前最新状态为准，但防止串草稿：
     // 仅当用户当前仍在此文章时才标记 saved
     final isCurrent = _doc.currentArticle.id == articleId;
@@ -100,10 +109,21 @@ extension EditorTextExt on _RootShellState {
         cover: _doc.coverCtrl.text,
       );
       _lastSavedContentMap[articleId] = content;
+      _lastSavedTitleMap[articleId] = title;
       if (isCurrent) _doc.markSaved();
       await sessionService.cleanupSnapshots(articleId);
-      // 同时保存草稿到 storage
-      await _saveDraft(_collect(draft: true));
+      // 同时保存草稿到 storage；已发布文章不得被自动保存降级为草稿
+      if (isCurrent) {
+        final currentArticle = _doc.currentArticle;
+        await _saveDraft(
+          _collect(draft: true).copyWith(
+            isDraft: currentArticle.isDraft,
+            published: currentArticle.published,
+          ),
+        );
+      } else {
+        await _saveDraft(_collect(draft: true));
+      }
       if (mounted) {
         _showToast('草稿已自动保存');
       }

@@ -133,12 +133,17 @@ class SiteController extends ChangeNotifier {
   // ── 站点切换 ──
   Future<void> switchSite(String siteId) async {
     if (_activeSiteId == siteId) return;
+    final previous = _activeSiteId;
     _loading = true;
     notifyListeners();
 
     _activeSiteId = siteId;
     try {
       await onSiteSwitch?.call(siteId);
+    } catch (_) {
+      // 切换失败回滚激活站点，避免 UI 与真实状态不一致
+      _activeSiteId = previous;
+      rethrow;
     } finally {
       // 无论成功与否都复位 loading，避免异常导致 UI 永久卡 loading
       _loading = false;

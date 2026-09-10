@@ -34,6 +34,9 @@ class DesktopSplitEditor extends StatefulWidget {
   final SplitEditorMode initialMode;
   final ValueChanged<SplitEditorMode>? onModeChanged;
   final Color? editorTextColor;
+  final Color? backgroundColor;
+  final double initialSplitRatio;
+  final ValueChanged<double>? onSplitRatioChanged;
 
   const DesktopSplitEditor({
     super.key,
@@ -50,6 +53,9 @@ class DesktopSplitEditor extends StatefulWidget {
     this.initialMode = SplitEditorMode.sourceOnly,
     this.onModeChanged,
     this.editorTextColor,
+    this.backgroundColor,
+    this.initialSplitRatio = 0.5,
+    this.onSplitRatioChanged,
   });
 
   @override
@@ -58,7 +64,8 @@ class DesktopSplitEditor extends StatefulWidget {
 
 class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
   late SplitEditorMode _mode;
-  double _splitRatio = 0.5; // 源码区占比
+  late double _splitRatio; // 源码区占比
+  bool _sepDragActive = false; // 分隔线拖拽/悬停高亮
 
   // 源码区滚动控制器
   final ScrollController _sourceScrollCtrl = ScrollController();
@@ -73,6 +80,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
   void initState() {
     super.initState();
     _mode = widget.initialMode;
+    _splitRatio = widget.initialSplitRatio.clamp(0.3, 0.7);
     _sourceScrollCtrl.addListener(_onSourceScroll);
     _previewState = DebouncedMarkdownPreviewState(
       debounce: const Duration(milliseconds: 200),
@@ -88,6 +96,13 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
       oldWidget.contentController.removeListener(_onContentChanged);
       widget.contentController.addListener(_onContentChanged);
       _previewState.updateText(widget.contentController.text);
+    }
+    // 受控同步：父级切换标签或恢复会话后，将最新模式/比例同步到本地状态
+    if (oldWidget.initialMode != widget.initialMode) {
+      _mode = widget.initialMode;
+    }
+    if (oldWidget.initialSplitRatio != widget.initialSplitRatio) {
+      _splitRatio = widget.initialSplitRatio.clamp(0.3, 0.7);
     }
   }
 
@@ -125,36 +140,57 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
     widget.onModeChanged?.call(mode);
   }
 
+  /// 调整分栏比例：更新本地状态并回写父级，保证切标签后可恢复
+  void _setSplitRatio(double value) {
+    final next = value.clamp(0.3, 0.7);
+    setState(() => _splitRatio = next);
+    widget.onSplitRatioChanged?.call(next);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = widget.isDark;
     final cs = widget.colorScheme;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeInOut,
-      child: Column(
-        children: [
-          // 模式切换工具栏
-          _buildModeBar(isDark, cs),
-          // 编辑器主体
-          Expanded(
-            child: _buildEditorBody(isDark, cs),
-          ),
-        ],
+    return ColoredBox(
+      color: widget.backgroundColor ?? Colors.transparent,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        child: LayoutBuilder(
+          builder: (ctx, constraints) {
+            // 极小窗口（<860px）双栏降级：自动回到单栏源码，避免预览被压扁
+            final narrow = constraints.maxWidth < 860;
+            final effective = (narrow && _mode == SplitEditorMode.split)
+                ? SplitEditorMode.sourceOnly
+                : _mode;
+            return Column(
+              children: [
+                // 模式切换工具栏
+                _buildModeBar(isDark, cs, narrow),
+                // 编辑器主体
+                Expanded(
+                  child: _buildEditorBodyContent(isDark, cs, effective),
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
 
-  Widget _buildModeBar(bool isDark, ColorScheme cs) {
+  Widget _buildModeBar(bool isDark, ColorScheme cs, bool narrow) {
     return Container(
       height: 32,
       padding: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
-        color: AppColor.surfaceBase(context),
+        color: AppColor.surfaceRaised(context),
         border: Border(
           bottom: BorderSide(
-            color: AppColor.border(context),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white.withOpacity(0.06)
+                : const Color(0xFFE5E7EB),
           ),
         ),
       ),
@@ -173,6 +209,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
             mode: SplitEditorMode.split,
             isDark: isDark,
             cs: cs,
+            enabled: !narrow,
           ),
           _modeButton(
             icon: Icons.visibility,
@@ -182,13 +219,13 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
             cs: cs,
           ),
           const Spacer(),
-          // 分栏比例调整（仅在分栏模式）
-          if (_mode == SplitEditorMode.split)
+          // 分栏比例调整（仅在分栏模式且窗口足够宽）
+          if (!narrow && _mode == SplitEditorMode.split)
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 GestureDetector(
-                  onTap: () => setState(() => _splitRatio = (_splitRatio - 0.1).clamp(0.3, 0.7)),
+                  onTap: () => _setSplitRatio(_splitRatio - 0.1),
                   child: Icon(Icons.chevron_left, size: 14, color: cs.primary.withOpacity(0.6)),
                 ),
                 const SizedBox(width: 4),
@@ -198,7 +235,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
                 ),
                 const SizedBox(width: 4),
                 GestureDetector(
-                  onTap: () => setState(() => _splitRatio = (_splitRatio + 0.1).clamp(0.3, 0.7)),
+                  onTap: () => _setSplitRatio(_splitRatio + 0.1),
                   child: Icon(Icons.chevron_right, size: 14, color: cs.primary.withOpacity(0.6)),
                 ),
               ],
@@ -214,10 +251,11 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
     required SplitEditorMode mode,
     required bool isDark,
     required ColorScheme cs,
+    bool enabled = true,
   }) {
     final active = _mode == mode;
     return GestureDetector(
-      onTap: () => _switchMode(mode),
+      onTap: enabled ? () => _switchMode(mode) : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 2),
@@ -255,14 +293,14 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
     );
   }
 
-  Widget _buildEditorBody(bool isDark, ColorScheme cs) {
-    // 直接用 switch 构建单一子树：AnimatedSwitcher 过渡期间新旧两个
-    // TextField 会同时挂载同一个 focusNode，触发 FocusNode 二次 attach 崩溃
-    return _buildEditorBodyContent(isDark, cs);
-  }
-
-  Widget _buildEditorBodyContent(bool isDark, ColorScheme cs) {
-    switch (_mode) {
+  // 直接用 switch 构建单一子树：AnimatedSwitcher 过渡期间新旧两个
+  // TextField 会同时挂载同一个 focusNode，触发 FocusNode 二次 attach 崩溃
+  Widget _buildEditorBodyContent(
+    bool isDark,
+    ColorScheme cs,
+    SplitEditorMode mode,
+  ) {
+    switch (mode) {
       case SplitEditorMode.sourceOnly:
         return _buildSourceEditor(isDark, cs);
       case SplitEditorMode.previewOnly:
@@ -313,12 +351,11 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
     );
   }
 
-  /// 纯预览 — PureWriter 风格：720px 宽度约束
+  /// 纯预览 — 与分栏预览对齐：820px 宽度约束 + 16 内边距
   Widget _buildPreviewOnly(bool isDark, ColorScheme cs) {
     return Center(
       child: ConstrainedBox(
-        // PureWriter 借鉴：720px 最大宽度
-        constraints: const BoxConstraints(maxWidth: 720),
+        constraints: const BoxConstraints(maxWidth: 820),
         child: ScrollbarTheme(
           data: ScrollbarThemeData(
             thickness: WidgetStateProperty.all(0), // 隐藏滚动条
@@ -327,7 +364,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
             controller: _previewScrollCtrl,
             child: SingleChildScrollView(
               controller: _previewScrollCtrl,
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16),
               child: DebouncedMarkdownPreview(
                 state: _previewState,
                 isDark: isDark,
@@ -342,8 +379,6 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
 
   /// 左右分栏 — PureWriter 风格：隐藏滚动条
   Widget _buildSplitView(bool isDark, ColorScheme cs) {
-    final sepColor = AppColor.border(context);
-
     return LayoutBuilder(
       builder: (ctx, constraints) {
         final totalWidth = constraints.maxWidth.isFinite
@@ -396,29 +431,39 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
             },
           ),
         ),
-        // 分隔线（可拖拽）
-        GestureDetector(
-          onHorizontalDragUpdate: (details) {
-            setState(() {
-              _splitRatio += details.delta.dx / totalWidth;
-              _splitRatio = _splitRatio.clamp(0.3, 0.7);
-            });
-          },
-          child: Container(
-            width: 1,
-            color: sepColor,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 3,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white.withOpacity(0.05) : const Color(0xFFE5E5EA),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+        // 分隔线（可拖拽）：默认 1px #E5E7EB，悬停/拖拽加深
+        MouseRegion(
+          cursor: SystemMouseCursors.resizeColumn,
+          onEnter: (_) => setState(() => _sepDragActive = true),
+          onExit: (_) => setState(() => _sepDragActive = false),
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragStart: (_) =>
+                setState(() => _sepDragActive = true),
+            onHorizontalDragUpdate: (details) {
+              setState(() {
+                _splitRatio += details.delta.dx / totalWidth;
+                _splitRatio = _splitRatio.clamp(0.3, 0.7);
+              });
+            },
+            onHorizontalDragEnd: (_) {
+              setState(() => _sepDragActive = false);
+              widget.onSplitRatioChanged?.call(_splitRatio);
+            },
+            child: SizedBox(
+              width: 7,
+              child: Center(
+                child: Container(
+                  width: 1,
+                  color: _sepDragActive
+                      ? (isDark
+                            ? Colors.white.withOpacity(0.35)
+                            : const Color(0xFF9CA3AF))
+                      : (isDark
+                            ? Colors.white.withOpacity(0.12)
+                            : const Color(0xFFE5E7EB)),
                 ),
-              ],
+              ),
             ),
           ),
         ),

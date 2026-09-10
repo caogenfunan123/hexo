@@ -116,8 +116,12 @@ class DocumentController extends ChangeNotifier {
   void updateCurrentArticleMeta(Article article) {
     _currentArticle = article;
     _lastSavedContent = article.content;
+    // 未保存标记需同时考虑元数据，否则发布期间改标签/分类/封面会被误判为已保存
     _hasUnsavedChanges = _contentCtrl.text != article.content ||
-        _titleCtrl.text != article.title;
+        _titleCtrl.text != article.title ||
+        _tagsCtrl.text != article.tags.join(', ') ||
+        _categoriesCtrl.text != article.categories.join(', ') ||
+        _coverCtrl.text != (article.cover ?? '');
     notifyListeners();
   }
 
@@ -157,8 +161,8 @@ class DocumentController extends ChangeNotifier {
     return _currentArticle.copyWith(
       title: _titleCtrl.text,
       content: _contentCtrl.text,
-      tags: _tagsCtrl.text.split(',').map((t) => t.trim()).where((t) => t.isNotEmpty).toList(),
-      categories: _categoriesCtrl.text.split(',').map((c) => c.trim()).where((c) => c.isNotEmpty).toList(),
+      tags: _tagsCtrl.text.split(RegExp(r'[,，]')).map((t) => t.trim()).where((t) => t.isNotEmpty).toList(),
+      categories: _categoriesCtrl.text.split(RegExp(r'[,，]')).map((c) => c.trim()).where((c) => c.isNotEmpty).toList(),
       cover: _coverCtrl.text.isNotEmpty ? _coverCtrl.text : null,
       updatedAt: DateTime.now(),
       isDraft: draft,

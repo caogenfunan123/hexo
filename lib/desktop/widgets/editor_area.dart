@@ -93,7 +93,7 @@ class DesktopEditorArea extends StatelessWidget {
                       color: isActive
                           ? (AppColor.surfaceBase(context))
                           : Colors.transparent,
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
                       border: isActive
                           ? Border(
                               top: BorderSide(
@@ -138,7 +138,7 @@ class DesktopEditorArea extends StatelessWidget {
                               width: 16,
                               height: 16,
                               decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(3),
+                                borderRadius: BorderRadius.circular(8),
                               ),
                               child: Icon(
                                 Icons.close,
@@ -164,7 +164,7 @@ class DesktopEditorArea extends StatelessWidget {
                 height: 32,
                 margin: const EdgeInsets.only(right: 4),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   Icons.add,
@@ -182,9 +182,11 @@ class DesktopEditorArea extends StatelessWidget {
     return Container(
       color: AppColor.surfaceBase(context),
       child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
             // 大图标
             Container(
               width: 96,
@@ -267,6 +269,7 @@ class DesktopEditorArea extends StatelessWidget {
             ),
           ],
         ),
+        ),
       ),
     );
   }
@@ -286,7 +289,7 @@ class DesktopEditorArea extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
         decoration: BoxDecoration(
           color: AppColor.surfaceHover(context),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: AppColor.border(context),
           ),

@@ -8,6 +8,9 @@ import 'package:flutter/material.dart';
 
 /// FrontMatter 数据
 class FrontMatterData {
+  /// 哨兵值：用于区分「未传参」与「显式传 null（清空字段）」
+  static const Object _unset = Object();
+
   final String title;
   final List<String> tags;
   final List<String> categories;
@@ -34,9 +37,9 @@ class FrontMatterData {
     String? title,
     List<String>? tags,
     List<String>? categories,
-    String? cover,
-    DateTime? date,
-    String? template,
+    Object? cover = _unset,
+    Object? date = _unset,
+    Object? template = _unset,
     String? articleType,
     bool? isDraft,
     Map<String, dynamic>? extra,
@@ -45,9 +48,10 @@ class FrontMatterData {
       title: title ?? this.title,
       tags: tags ?? this.tags,
       categories: categories ?? this.categories,
-      cover: cover ?? this.cover,
-      date: date ?? this.date,
-      template: template ?? this.template,
+      // 可空字段用哨兵判断：显式传 null 表示清空，未传则保留原值
+      cover: identical(cover, _unset) ? this.cover : cover as String?,
+      date: identical(date, _unset) ? this.date : date as DateTime?,
+      template: identical(template, _unset) ? this.template : template as String?,
       articleType: articleType ?? this.articleType,
       isDraft: isDraft ?? this.isDraft,
       extra: extra ?? this.extra,

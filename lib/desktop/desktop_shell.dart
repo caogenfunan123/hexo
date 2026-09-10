@@ -6,6 +6,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -103,18 +104,12 @@ import 'widgets/markdown_formatter.dart';
 import '../theme/app_color.dart';
 import '../widgets/typewriter_scroll.dart';
 import '../widgets/orientation_guard.dart';
+import '../widgets/unified_markdown_styles.dart';
 import '../services/site_isolation_service.dart';
 import '../services/draft_encryption_service.dart';
 import '../services/template_sync_service.dart';
 import '../services/full_text_search_isolate.dart';
 
-import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:flutter_highlight/flutter_highlight.dart';
-import 'package:flutter_highlight/themes/github.dart' as highlight_github;
-import 'package:flutter_highlight/themes/monokai-sublime.dart'
-    as highlight_monokai;
-import 'package:flutter_highlight/themes/dracula.dart' as highlight_dracula;
-import 'package:flutter_highlight/themes/nord.dart' as highlight_nord;
 // webview_flutter 在桌面端不可用，Mermaid 预览改为纯文本展示
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
@@ -128,7 +123,6 @@ import 'widgets/right_drawer.dart';
 import 'widgets/status_bar.dart';
 import 'widgets/editor_themes.dart';
 import 'widgets/desktop_split_editor.dart';
-import 'widgets/frontmatter_card.dart';
 import '../screens/home_screen.dart';
 import 'package:window_manager/window_manager.dart';
 import '../models/ui_settings.dart';
@@ -154,6 +148,12 @@ class _EditorTabSession {
   RepoConfig? repo;
   String lastSavedContent;
   String lastSavedTitle;
+  bool showEditorMeta = false;
+  // 文章类型/模板与分栏视图按标签独立保存，避免切标签后被其他标签的状态覆盖
+  ArticleType articleType;
+  String? templateId;
+  SplitEditorMode splitMode;
+  double splitRatio;
 
   _EditorTabSession({
     required this.article,
@@ -165,6 +165,10 @@ class _EditorTabSession {
     this.repo,
     required this.lastSavedContent,
     required this.lastSavedTitle,
+    this.articleType = ArticleType.post,
+    this.templateId,
+    this.splitMode = SplitEditorMode.sourceOnly,
+    this.splitRatio = 0.5,
   });
 }
 
@@ -311,6 +315,15 @@ class DesktopShellState extends State<DesktopShell>
   // ──────────────────────────────────────────────
   bool _frontMatterExpanded = false;
 
+  // 工作区顶部元数据区（仓库/类型/Front Matter）是否展开
+  bool _showEditorMeta = false;
+
+  // 本地保存进行中标志，防止连点/多入口并发重复落盘
+  bool _savingLocal = false;
+
+  // 会话载入期间抑制标签标题回写，避免载入过程误改其它标签标题
+  bool _loadingSession = false;
+
   // ──────────────────────────────────────────────
   // 编辑器壁纸（对应 settings.ui.editorTheme，桌面写作界面背景）
   // ──────────────────────────────────────────────
@@ -324,9 +337,9 @@ class DesktopShellState extends State<DesktopShell>
       _deskEditorTheme.bgMode == 2 &&
       _deskEditorTheme.wallpaperPath.isNotEmpty;
 
-  /// 编辑器背景底色：纯黑 / 纯白（壁纸模式仅作兜底）
+  /// 编辑器背景底色：纯黑 / 浅灰白（壁纸模式仅作兜底）
   Color get _deskBgColor =>
-      _deskEditorTheme.bgMode == 1 ? const Color(0xFF000000) : Colors.white;
+      _deskEditorTheme.bgMode == 1 ? const Color(0xFF000000) : const Color(0xFFF9FAFB);
 
   /// 写作界面是否启用非纯白背景（壁纸 / 纯黑）
   bool get _deskCustomBg => _deskEditorTheme.bgMode != 0;
@@ -410,6 +423,7 @@ class DesktopShellState extends State<DesktopShell>
 
   // ── 新功能：分栏编辑器 ──
   SplitEditorMode _splitEditorMode = SplitEditorMode.sourceOnly;
+  double _splitEditorRatio = 0.5;
 
   // ── 新功能：命令面板 ──
   bool _showCommandPalette = false;
@@ -501,6 +515,8 @@ class DesktopShellState extends State<DesktopShell>
     );
     // 纯光标移动（方向键/点击）不触发 onChanged，此处监听 selection 刷新专注模式行高亮
     _doc.contentCtrl.addListener(_onCursorSelectionChanged);
+    // 标题变化实时回写当前标签标题（标签栏与编辑内容同步）
+    _doc.titleCtrl.addListener(_onTitleChanged);
     aiService.modelManager = aiModelManager;
     _bus = ShellActionBus(
     // 导航
@@ -570,6 +586,7 @@ class DesktopShellState extends State<DesktopShell>
     _stopAutoSave();
     _stopAutoSync();
     _doc.contentCtrl.removeListener(_onCursorSelectionChanged);
+    _doc.titleCtrl.removeListener(_onTitleChanged);
     _typewriterCtrl.dispose();
     _focusScrollCtrl.dispose();
     _focusCursorLine.dispose();
@@ -882,6 +899,10 @@ class DesktopShellState extends State<DesktopShell>
           articleId: pending.articleId,
           content: pending.content,
           title: pending.title,
+          tags: pending.tags,
+          categories: pending.categories,
+          cover: pending.cover,
+          force: true,
         );
       }
     }
@@ -893,11 +914,25 @@ class DesktopShellState extends State<DesktopShell>
           articleId: pending.articleId,
           content: pending.content,
           title: pending.title,
+          tags: pending.tags,
+          categories: pending.categories,
+          cover: pending.cover,
+          force: true,
         );
       }
     }
     _debounceTimers.clear();
     _pendingSaveMap.clear();
+  }
+
+  /// 标题变化时同步标签栏标题（未命名兜底）
+  void _onTitleChanged() {
+    if (_loadingSession) return;
+    if (_editor.openTabs.isEmpty) return;
+    if (_editor.activeTabIndex >= _editor.openTabs.length) return;
+    final tabId = _editor.openTabs[_editor.activeTabIndex].id;
+    final title = _doc.titleCtrl.text.trim();
+    _editor.updateTabTitle(tabId, title.isEmpty ? '未命名' : title);
   }
 
   void _onContentChanged() {
@@ -935,6 +970,9 @@ class DesktopShellState extends State<DesktopShell>
           articleId: articleId,
           content: current,
           title: title,
+          tags: _doc.tagsCtrl.text,
+          categories: _doc.categoriesCtrl.text,
+          cover: _doc.coverCtrl.text,
         );
         return;
       }
@@ -998,8 +1036,10 @@ class DesktopShellState extends State<DesktopShell>
   }
 
   /// 专注模式下将光标所在行滚动到屏幕中央
-  /// 正文上方固定头部（padding 64 + 标题 32×1.3 + 间距28 + 分隔线1 + 间距28）
-  static const double _focusHeaderOffset = 64 + 41.6 + 28 + 1 + 28;
+  /// 正文上方固定头部，与 _buildFocusEditor 布局一致：
+  /// 滚动纵向 padding 48 + 标题(28×1.3 文本 + 主题 contentPadding 2×14) + 间距16 + 分隔线1 + 间距16
+  static const double _focusHeaderOffset =
+      48 + (28 * 1.3 + 28) + 16 + 1 + 16;
   void _centerCursorInFocusMode(int line) {
     if (!_focusScrollCtrl.hasClients) return;
     final lineHeight = _editor.editorFontSize * _editor.editorLineHeight;
@@ -1018,6 +1058,9 @@ class DesktopShellState extends State<DesktopShell>
     String? articleId,
     String? content,
     String? title,
+    String? tags,
+    String? categories,
+    String? cover,
     bool force = false,
   }) async {
     final aid = articleId ?? _doc.currentArticle.id;
@@ -1034,9 +1077,10 @@ class DesktopShellState extends State<DesktopShell>
         articleId: aid,
         content: c,
         title: t.isEmpty ? '未命名' : t,
-        tags: _doc.tagsCtrl.text,
-        categories: _doc.categoriesCtrl.text,
-        cover: _doc.coverCtrl.text,
+        // 传入捕获的元数据；为空时回退到当前控制器，避免把别的文章元数据写到目标文章
+        tags: tags ?? _doc.tagsCtrl.text,
+        categories: categories ?? _doc.categoriesCtrl.text,
+        cover: cover ?? _doc.coverCtrl.text,
       );
       _lastSavedContentMap[aid] = c;
       _lastSavedTitleMap[aid] = t;
@@ -1325,36 +1369,42 @@ class DesktopShellState extends State<DesktopShell>
   }
 
   Future<void> _saveLocal() async {
-    final a = _collect(draft: true);
-    _doc.setCurrentArticle(a);
-    _editor.setEditorStatus('本地已保存');
-    await _saveDraft(a);
-    if (siteManager.isDynamicSite) {
-      final adapter = siteManager.currentAdapter;
-      if (adapter != null) {
-        final post = BlogPost(
-          title: a.title,
-          contentMd: a.content,
-          status: 'draft',
-          slug: _generateSlug(a.title),
-          tags: a.tags,
-          categories: a.categories,
-          date: DateTime.now(),
-          siteId: adapter.config.id,
-          siteType: adapter.config.type,
-        );
-        await cmsDraftService.saveDraft(post);
+    if (_savingLocal) return;
+    _savingLocal = true;
+    try {
+      final a = _collect(draft: true);
+      _doc.setCurrentArticle(a);
+      _editor.setEditorStatus('本地已保存');
+      await _saveDraft(a);
+      if (siteManager.isDynamicSite) {
+        final adapter = siteManager.currentAdapter;
+        if (adapter != null) {
+          final post = BlogPost(
+            title: a.title,
+            contentMd: a.content,
+            status: 'draft',
+            slug: _generateSlug(a.title),
+            tags: a.tags,
+            categories: a.categories,
+            date: DateTime.now(),
+            siteId: adapter.config.id,
+            siteType: adapter.config.type,
+          );
+          await cmsDraftService.saveDraft(post);
+        }
       }
+      _lastSavedContent = a.content;
+      _lastSavedTitle = a.title;
+      _lastSavedContentMap[a.id] = a.content;
+      _lastSavedTitleMap[a.id] = a.title;
+      _doc.markSaved();
+      // 创建版本快照
+      versionSnapshotService.createSnapshot(a.id, a.title, a.content);
+      logService.add('保存草稿', '标题: ${a.title.isNotEmpty ? a.title : "(无标题)"}');
+      if (mounted) _showToast('草稿已保存到本地');
+    } finally {
+      _savingLocal = false;
     }
-    _lastSavedContent = a.content;
-    _lastSavedTitle = a.title;
-    _lastSavedContentMap[a.id] = a.content;
-    _lastSavedTitleMap[a.id] = a.title;
-    _doc.markSaved();
-    // 创建版本快照
-    versionSnapshotService.createSnapshot(a.id, a.title, a.content);
-    logService.add('保存草稿', '标题: ${a.title.isNotEmpty ? a.title : "(无标题)"}');
-    if (mounted) _showToast('草稿已保存到本地');
   }
 
   Future<void> _saveMdBackup() async {
@@ -1625,7 +1675,12 @@ class DesktopShellState extends State<DesktopShell>
       _lastSavedTitle = pub.title;
       _lastSavedContentMap[pub.id] = pub.content;
       _lastSavedTitleMap[pub.id] = pub.title;
-      await _saveDraft(pub.copyWith(isDraft: false, published: true));
+      // 发布期间若继续编辑，落盘当前内容而非发布旧快照，避免覆盖用户新改动
+      await _saveDraft(
+        userEdited
+            ? _collect(draft: false)
+            : pub.copyWith(isDraft: false, published: true),
+      );
       await _refreshRemote();
       // 触发全部部署钩子（Cloudflare / Vercel / Netlify 等）
       if (settings.deployHooks.isNotEmpty) {
@@ -1697,7 +1752,8 @@ class DesktopShellState extends State<DesktopShell>
       _lastSavedTitle = a.title;
       _lastSavedContentMap[a.id] = a.content;
       _lastSavedTitleMap[a.id] = a.title;
-      await _saveDraft(pub);
+      // 发布期间若继续编辑，落盘当前内容而非发布旧快照，避免覆盖用户新改动
+      await _saveDraft(userEdited ? _collect(draft: false) : pub);
       await cmsDraftService.saveDraft(result);
       if (result.id != null) {
         syncService.setMapping(
@@ -2003,6 +2059,10 @@ class DesktopShellState extends State<DesktopShell>
       repo: repos.where((r) => r.id == a.repoId).firstOrNull ?? activeRepo,
       lastSavedContent: a.content,
       lastSavedTitle: a.title,
+      articleType: a.articleType,
+      templateId: a.templateId,
+      splitMode: _splitEditorMode,
+      splitRatio: _splitEditorRatio,
     );
     _loadSessionIntoDoc(tabId);
     _startAutoSave();
@@ -2027,29 +2087,47 @@ class DesktopShellState extends State<DesktopShell>
     s.repo = _editorRepo;
     s.lastSavedContent = _lastSavedContent;
     s.lastSavedTitle = _lastSavedTitle;
+    s.showEditorMeta = _showEditorMeta;
+    s.articleType = _doc.articleType;
+    s.templateId = _doc.selectedTemplateId;
+    s.splitMode = _splitEditorMode;
+    s.splitRatio = _splitEditorRatio;
   }
 
   /// 把指定标签的会话内容载入共享的 `_doc` 与 shell 状态
   void _loadSessionIntoDoc(String tabId) {
     final s = _tabSessions[tabId];
     if (s == null) return;
-    _doc.setCurrentArticle(s.article);
-    _doc.titleCtrl.text = s.title;
-    _doc.contentCtrl.text = s.content;
-    _doc.tagsCtrl.text = s.tags;
-    _doc.categoriesCtrl.text = s.categories;
-    _doc.coverCtrl.text = s.cover;
-    _editorRepo = s.repo ?? activeRepo;
-    _lastSavedContent = s.lastSavedContent;
-    _lastSavedTitle = s.lastSavedTitle;
-    _lastSavedContentMap[s.article.id] = s.lastSavedContent;
-    _lastSavedTitleMap[s.article.id] = s.lastSavedTitle;
-    _lastCursorLine = 0;
-    _focusCursorLine.value = 1;
-    if (s.content == s.lastSavedContent && s.title == s.lastSavedTitle) {
-      _doc.markSaved();
-    } else {
-      _doc.markUnsaved();
+    // 载入会话期间抑制标签标题回写，避免误改其它标签
+    _loadingSession = true;
+    try {
+      _doc.setCurrentArticle(s.article);
+      _doc.titleCtrl.text = s.title;
+      _doc.contentCtrl.text = s.content;
+      _doc.tagsCtrl.text = s.tags;
+      _doc.categoriesCtrl.text = s.categories;
+      _doc.coverCtrl.text = s.cover;
+      _editorRepo = s.repo ?? activeRepo;
+      // setCurrentArticle 会用 article 内的旧值覆盖类型/模板，需用会话中保存的值还原
+      _doc.setArticleType(s.articleType);
+      _doc.setSelectedTemplateId(s.templateId);
+      _doc.setEditorRepoId(_editorRepo?.id);
+      _splitEditorMode = s.splitMode;
+      _splitEditorRatio = s.splitRatio;
+      _lastSavedContent = s.lastSavedContent;
+      _lastSavedTitle = s.lastSavedTitle;
+      _showEditorMeta = s.showEditorMeta;
+      _lastSavedContentMap[s.article.id] = s.lastSavedContent;
+      _lastSavedTitleMap[s.article.id] = s.lastSavedTitle;
+      _lastCursorLine = 0;
+      _focusCursorLine.value = 1;
+      if (s.content == s.lastSavedContent && s.title == s.lastSavedTitle) {
+        _doc.markSaved();
+      } else {
+        _doc.markUnsaved();
+      }
+    } finally {
+      _loadingSession = false;
     }
     _onContentChanged();
   }
@@ -2065,6 +2143,9 @@ class DesktopShellState extends State<DesktopShell>
     _saveSessionFromDoc(currentId);
     _editor.switchTab(index);
     _loadSessionIntoDoc(nextId);
+    // 元数据折叠状态由本 State 持有且位于 _editor 监听范围之外，
+    // 需显式重建，保证切换标签后抽屉展开状态与目标标签一致
+    if (mounted) setState(() {});
   }
 
   Future<void> _deleteDraft(Article a) async {
@@ -2263,9 +2344,9 @@ class DesktopShellState extends State<DesktopShell>
     if (repo != null)
       autoTemplateId = TemplateResolver.resolvePostTemplateId(repo, templates);
     // 覆盖 _doc 前先保存当前激活标签的未保存会话，避免切换标签时内容丢失
-    final currentTabId = 'editor_${_doc.currentArticle.id}';
-    if (_tabSessions.containsKey(currentTabId)) {
-      _saveSessionFromDoc(currentTabId);
+    if (_editor.openTabs.isNotEmpty &&
+        _editor.activeTabIndex < _editor.openTabs.length) {
+      _saveSessionFromDoc(_editor.openTabs[_editor.activeTabIndex].id);
     }
     _doc.setCurrentArticle(
       Article(
@@ -2394,6 +2475,13 @@ class DesktopShellState extends State<DesktopShell>
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    // 预览排版：行高 1.6，段落间距收紧（MarkText 式紧凑阅读）
+    final previewStyle = createUnifiedMarkdownStyle(
+      context: context,
+      baseFontSize: 16,
+      lineHeight: 1.6,
+    ).copyWith(pPadding: const EdgeInsets.symmetric(vertical: 2));
+
     // 背景层：自定义壁纸 / 纯色（写作界面全屏背景）
     final Widget bgLayer;
     if (_deskUseWallpaper) {
@@ -2409,315 +2497,391 @@ class DesktopShellState extends State<DesktopShell>
     return Stack(
       children: [
         Positioned.fill(child: bgLayer),
-        SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Front-matter 结构化编辑面板 ──
-              FrontMatterCard(
-                contentController: _doc.contentCtrl,
-                onChanged: _onContentChanged,
-                isDark: isDark,
-                background: _deskCustomBg ? _deskCardBg : null,
-              ),
-              const SizedBox(height: 8),
-              // ── 仓库选择器 ──
-              if (repos.isNotEmpty)
-                _editorCard(
-              child: DropdownButtonFormField<String>(
-                value: _editorRepo?.id,
-                decoration: const InputDecoration(
-                  labelText: '目标仓库',
-                  prefixIcon: Icon(Icons.storage_outlined, size: 19),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  isDense: true,
-                ),
-                items: repos
-                    .map(
-                      (r) => DropdownMenuItem(
-                        value: r.id,
-                        child: Text(
-                          '${r.name} (${r.fullName})',
-                          style: const TextStyle(fontSize: 13),
+        Column(
+          children: [
+            // ── 顶栏（固定：标题 + 元数据开关 + 工具栏） ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── 标题（预览态隐藏：标题改到右侧属性抽屉编辑） ──
+                  if (_splitEditorMode != SplitEditorMode.previewOnly)
+                    _editorCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                    child: TextField(
+                      controller: _doc.titleCtrl,
+                      decoration: const InputDecoration(
+                        labelText: '文章标题',
+                        prefixIcon: Icon(Icons.title, size: 19),
+                        prefixIconConstraints: BoxConstraints(
+                          minWidth: 30,
+                          minHeight: 30,
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        filled: false,
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 6),
+                      ),
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      onChanged: (_) {
+                        _onContentChanged();
+                        _doc.refreshUi();
+                        // 更新打字机光标位置
+                        final text = _doc.contentCtrl.text;
+                        final cursorPos = _doc.contentCtrl.selection.baseOffset;
+                        final textBefore = text.substring(
+                          0,
+                          cursorPos.clamp(0, text.length),
+                        );
+                        final currentLine = '\n'.allMatches(textBefore).length;
+                        final totalLines = '\n'.allMatches(text).length + 1;
+                        _typewriterCtrl.updateCursorPosition(
+                          currentLine,
+                          totalLines,
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // 元数据折叠开关
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    // canRequestFocus=false：点击展开/收起不抢编辑器键盘焦点，
+                    // 抽屉输入过程中编辑器光标与选区保持不变
+                    child: Focus(
+                      canRequestFocus: false,
+                      child: TextButton.icon(
+                        onPressed: () =>
+                            setState(() => _showEditorMeta = !_showEditorMeta),
+                        icon: Icon(
+                          _showEditorMeta
+                              ? Icons.expand_less
+                              : Icons.expand_more,
+                          size: 16,
+                        ),
+                        label: Text(_showEditorMeta ? '收起文章属性' : '展开文章属性'),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          visualDensity: VisualDensity.compact,
+                          textStyle: const TextStyle(fontSize: 12.5),
                         ),
                       ),
-                    )
-                    .toList(),
-                onChanged: (v) => setState(
-                  () => _editorRepo = repos.firstWhere((e) => e.id == v),
-                ),
-              ),
-            ),
-          const SizedBox(height: 8),
-          // ── 文章类型切换（紧凑） ──
-          Row(
-            children: [
-              Expanded(
-                child: _editorTypeToggle(
-                  icon: Icons.article_outlined,
-                  label: '博文',
-                  active: _doc.articleType == ArticleType.post,
-                  onTap: () {
-                    _doc.setArticleType(ArticleType.post);
-                    _autoSelectTemplate();
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _editorTypeToggle(
-                  icon: Icons.web_outlined,
-                  label: '页面',
-                  active: _doc.articleType == ArticleType.page,
-                  onTap: () {
-                    _doc.setArticleType(ArticleType.page);
-                    _autoSelectTemplate();
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // ── 标题 ──
-          _editorCard(
-            child: TextField(
-              controller: _doc.titleCtrl,
-              decoration: const InputDecoration(
-                labelText: '文章标题',
-                prefixIcon: Icon(Icons.title, size: 19),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-              ),
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-              onChanged: (_) {
-                _onContentChanged();
-                _doc.refreshUi();
-                // 更新打字机光标位置
-                final text = _doc.contentCtrl.text;
-                final cursorPos = _doc.contentCtrl.selection.baseOffset;
-                final textBefore = text.substring(
-                  0,
-                  cursorPos.clamp(0, text.length),
-                );
-                final currentLine = '\n'.allMatches(textBefore).length;
-                final totalLines = '\n'.allMatches(text).length + 1;
-                _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
-              },
-            ),
-          ),
-          const SizedBox(height: 10),
-          // ── 工具栏 ──
-          ListenableBuilder(
-            listenable: _editor,
-            builder: (context, child) => _editorCard(
-              padding: const EdgeInsets.all(8),
-              child: Wrap(
-                spacing: 2,
-                runSpacing: 2,
-                children: [
-                  ..._buildToolChips(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 10),
-          // ── 文章属性（front matter，可折叠） ──
-          _buildFrontMatterPanel(templates),
-          const SizedBox(height: 10),
-          // ── 正文编辑区（双栏 Markdown 编辑器） ──
-          _editorCard(
-            padding: EdgeInsets.zero,
-            transparent: true,
-            child: SizedBox(
-              height: 600, // 给编辑器一个固定高度
-              child: DesktopSplitEditor(
-                contentController: _doc.contentCtrl,
-                focusNode: _doc.contentFocus,
-                onChanged: () {
-                  _onContentChanged();
-                  // 更新打字机光标位置
-                  final text = _doc.contentCtrl.text;
-                  final cursorPos = _doc.contentCtrl.selection.baseOffset;
-                  final textBefore = text.substring(
-                    0,
-                    cursorPos.clamp(0, text.length),
-                  );
-                  final currentLine = '\n'.allMatches(textBefore).length;
-                  final totalLines = '\n'.allMatches(text).length + 1;
-                  _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
-                },
-                fontSize: _editor.editorFontSize,
-                lineHeight: _editor.editorLineHeight,
-                fontFamily: 'monospace',
-                isDark: isDark,
-                colorScheme: cs,
-                editorTextColor: _deskCustomBg ? _deskTextColor : null,
-                initialMode: _splitEditorMode,
-                onModeChanged: (mode) {
-                  setState(() => _splitEditorMode = mode);
-                },
+            // ── 工具栏（预览态隐藏，只保留轻量阅读） ──
+            if (_splitEditorMode != SplitEditorMode.previewOnly)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: ListenableBuilder(
+                  listenable: _editor,
+                  builder: (context, child) => _editorCard(
+                    padding: const EdgeInsets.all(8),
+                    child: Wrap(
+                      spacing: 4,
+                      runSpacing: 8,
+                      children: [..._buildToolChips()],
+                    ),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
+
+            // ── 元数据面板（折叠收纳，220ms 缓动展开，不挤占编辑器区域） ──
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: _showEditorMeta
+                  ? ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: _metaPanelMaxHeight(context),
+                      ),
+                      child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── 仓库选择器 ──
+                      if (repos.isNotEmpty)
+                        _editorCard(
+                          child: DropdownButtonFormField<String>(
+                            value: _editorRepo?.id,
+                            decoration: const InputDecoration(
+                              labelText: '目标仓库',
+                              prefixIcon: Icon(
+                                Icons.storage_outlined,
+                                size: 19,
+                              ),
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              isDense: true,
+                              filled: false,
+                            ),
+                            items: repos
+                                .map(
+                                  (r) => DropdownMenuItem(
+                                    value: r.id,
+                                    child: Text(
+                                      '${r.name} (${r.fullName})',
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) => setState(() {
+                              final match = repos
+                                  .where((e) => e.id == v)
+                                  .firstOrNull;
+                              if (match != null) _editorRepo = match;
+                            }),
+                          ),
+                        ),
+                      const SizedBox(height: 16),
+                      // ── 文章属性（front matter，可折叠） ──
+                      _buildFrontMatterPanel(templates),
+                      const SizedBox(height: 12),
+                    ],
+                  ),
+                ),
+              )
+                  : const SizedBox.shrink(),
               ),
             ),
-          ),
-          ListenableBuilder(
-            listenable: _editor,
-            builder: (context, child) => Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (_editor.editorStatus != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Row(
-                      children: [
-                        if (_editor.editorBusy)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: SizedBox(
-                              width: 12,
-                              height: 12,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: cs.primary,
+            // ── 正文编辑区（双栏 Markdown 编辑器，占满剩余高度） ──
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: DesktopSplitEditor(
+                  contentController: _doc.contentCtrl,
+                  focusNode: _doc.contentFocus,
+                  onChanged: () {
+                    _onContentChanged();
+                    // 更新打字机光标位置
+                    final text = _doc.contentCtrl.text;
+                    final cursorPos = _doc.contentCtrl.selection.baseOffset;
+                    final textBefore = text.substring(
+                      0,
+                      cursorPos.clamp(0, text.length),
+                    );
+                    final currentLine = '\n'.allMatches(textBefore).length;
+                    final totalLines = '\n'.allMatches(text).length + 1;
+                    _typewriterCtrl.updateCursorPosition(
+                      currentLine,
+                      totalLines,
+                    );
+                  },
+                  fontSize: _editor.editorFontSize,
+                  lineHeight: _editor.editorLineHeight,
+                  fontFamily: 'monospace',
+                  isDark: isDark,
+                  colorScheme: cs,
+                  editorTextColor: _deskCustomBg ? _deskTextColor : null,
+                  backgroundColor: _deskCustomBg
+                      ? _deskCardBg
+                      : AppColor.surfaceRaised(context),
+                  initialSplitRatio: _splitEditorRatio,
+                  onSplitRatioChanged: (r) =>
+                      setState(() => _splitEditorRatio = r),
+                  styleSheet: previewStyle,
+                  initialMode: _splitEditorMode,
+                  onModeChanged: (mode) {
+                    setState(() => _splitEditorMode = mode);
+                  },
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: ListenableBuilder(
+              listenable: _editor,
+              builder: (context, child) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_editor.editorStatus != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Row(
+                        children: [
+                          if (_editor.editorBusy)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: cs.primary,
+                                ),
                               ),
                             ),
+                          Text(
+                            _editor.editorStatus!,
+                            style: TextStyle(
+                              color: _editor.editorBusy
+                                  ? cs.primary
+                                  : cs.outline,
+                              fontSize: 12,
+                            ),
                           ),
-                        Text(
-                          _editor.editorStatus!,
-                          style: TextStyle(
-                            color: _editor.editorBusy ? cs.primary : cs.outline,
-                            fontSize: 12,
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 16),
+                  // ── 底部操作栏 ──
+                  Row(
+                    children: [
+                      // 导出下拉菜单
+                      PopupMenuButton<String>(
+                        tooltip: '导出',
+                        offset: const Offset(0, -8),
+                        enabled: !_editor.editorBusy,
+                        icon: const Icon(
+                          Icons.file_download_outlined,
+                          size: 18,
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 13,
+                            horizontal: 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                const SizedBox(height: 16),
-                // ── 底部操作栏 ──
-                Row(
-                  children: [
-              // 导出下拉菜单
-              PopupMenuButton<String>(
-                tooltip: '导出',
-                offset: const Offset(0, -200),
-                enabled: !_editor.editorBusy,
-                icon: const Icon(Icons.file_download_outlined, size: 18),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 13,
-                    horizontal: 12,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                itemBuilder: (_) => [
-                  const PopupMenuItem(
-                    value: 'html',
-                    child: ListTile(
-                      leading: Icon(Icons.html),
-                      title: Text('导出 HTML'),
-                      dense: true,
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'pdf',
-                    child: ListTile(
-                      leading: Icon(Icons.picture_as_pdf),
-                      title: Text('导出 PDF'),
-                      dense: true,
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'md',
-                    child: ListTile(
-                      leading: Icon(Icons.description),
-                      title: Text('导出 Markdown'),
-                      dense: true,
-                    ),
-                  ),
-                ],
-                onSelected: (v) {
-                  switch (v) {
-                    case 'html':
-                      _exportHtml();
-                      break;
-                    case 'pdf':
-                      _exportPdf();
-                      break;
-                    case 'md':
-                      _saveMdBackup();
-                      break;
-                  }
-                },
-              ),
-              const SizedBox(width: 8),
-              if (_editor.failedImageBytes != null) ...[
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _editor.editorBusy ? null : _retryUploadImage,
-                    icon: const Icon(
-                      Icons.refresh,
-                      size: 18,
-                      color: Colors.orange,
-                    ),
-                    label: const Text(
-                      '重试上传',
-                      style: TextStyle(color: Colors.orange),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        itemBuilder: (_) => [
+                          const PopupMenuItem(
+                            value: 'html',
+                            child: ListTile(
+                              leading: Icon(Icons.html),
+                              title: Text('导出 HTML'),
+                              dense: true,
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'pdf',
+                            child: ListTile(
+                              leading: Icon(Icons.picture_as_pdf),
+                              title: Text('导出 PDF'),
+                              dense: true,
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'md',
+                            child: ListTile(
+                              leading: Icon(Icons.description),
+                              title: Text('导出 Markdown'),
+                              dense: true,
+                            ),
+                          ),
+                        ],
+                        onSelected: (v) {
+                          switch (v) {
+                            case 'html':
+                              _exportHtml();
+                              break;
+                            case 'pdf':
+                              _exportPdf();
+                              break;
+                            case 'md':
+                              _saveMdBackup();
+                              break;
+                          }
+                        },
                       ),
-                      side: const BorderSide(color: Colors.orange),
-                    ),
+                      const SizedBox(width: 8),
+                      if (_editor.failedImageBytes != null) ...[
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _editor.editorBusy
+                                ? null
+                                : _retryUploadImage,
+                            icon: const Icon(
+                              Icons.refresh,
+                              size: 18,
+                              color: Colors.orange,
+                            ),
+                            label: const Text(
+                              '重试上传',
+                              style: TextStyle(color: Colors.orange),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              side: const BorderSide(color: Colors.orange),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _editor.editorBusy ? null : _saveLocal,
+                          icon: const Icon(Icons.save_outlined, size: 18),
+                          label: const Text('存草稿'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton.icon(
+                          onPressed: _editor.editorBusy ? null : _handlePublish,
+                          icon: const Icon(
+                            Icons.cloud_upload_outlined,
+                            size: 18,
+                          ),
+                          label: const Text('发布'),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 8),
-              ],
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _editor.editorBusy ? null : _saveLocal,
-                  icon: const Icon(Icons.save_outlined, size: 18),
-                  label: const Text('存草稿'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton.icon(
-                  onPressed: _editor.editorBusy ? null : _handlePublish,
-                  icon: const Icon(Icons.cloud_upload_outlined, size: 18),
-                  label: const Text('发布'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-              ),
                 ],
               ),
-            ],
-          ),
+            ),
+            ),
+          ],
         ),
       ],
-    ),
-      ),
-    ],
-  );
+    );
   }
 
   // ── 编辑器辅助组件 ──
+
+  /// 元数据面板最大高度：按窗口高度计算并预留顶栏/工具栏/底栏空间，
+  /// 避免短窗口下固定内容超出可用高度导致 RenderFlex 溢出。
+  double _metaPanelMaxHeight(BuildContext context) {
+    final h = MediaQuery.sizeOf(context).height;
+    final upper = h * 0.6;
+    if (upper <= 120) return upper;
+    return math.max(120.0, math.min(upper, h - 320));
+  }
 
   Widget _editorCard({
     required Widget child,
@@ -2727,16 +2891,16 @@ class DesktopShellState extends State<DesktopShell>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = transparent
         ? Colors.transparent
-        : (_deskCustomBg ? _deskCardBg : AppColor.surfaceBase(context));
+        : (_deskCustomBg ? _deskCardBg : AppColor.surfaceRaised(context));
     return Card(
       elevation: 0,
       shadowColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         side: BorderSide(
           color: isDark
               ? Colors.white.withOpacity(0.06)
-              : Colors.black.withOpacity(0.05),
+              : const Color(0xFFE5E7EB),
         ),
       ),
       color: cardColor,
@@ -2744,63 +2908,6 @@ class DesktopShellState extends State<DesktopShell>
       child: Padding(
         padding: padding ?? const EdgeInsets.all(12),
         child: child,
-      ),
-    );
-  }
-
-  Widget _editorTypeToggle({
-    required IconData icon,
-    required String label,
-    required bool active,
-    required VoidCallback onTap,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: active
-              ? cs.primary.withOpacity(0.08)
-              : (_deskCustomBg ? _deskCardBg : AppColor.surfaceBase(context)),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: active
-                ? cs.primary
-                : (isDark
-                      ? Colors.white.withOpacity(0.06)
-                      : const Color(0xFFE5E7EB)),
-            width: active ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 15,
-              color: active
-                  ? cs.primary
-                  : (isDark
-                        ? Colors.white.withOpacity(0.4)
-                        : const Color(0xFF9CA3AF)),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: active
-                    ? cs.primary
-                    : (isDark
-                          ? Colors.white.withOpacity(0.8)
-                           : const Color(0xFF374151)),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -2849,7 +2956,7 @@ class DesktopShellState extends State<DesktopShell>
               onTap: () => setState(
                 () => _frontMatterExpanded = !_frontMatterExpanded,
               ),
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(8),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(
@@ -2891,27 +2998,35 @@ class DesktopShellState extends State<DesktopShell>
             ),
             if (_frontMatterExpanded) ...[
               const Divider(height: 8),
-              const SizedBox(height: 4),
-              // ── 类型 + 模板 ──
+              const SizedBox(height: 12),
+              // ── 模板（最高频：置顶） ──
               Row(
                 children: [
-                  _fmTypePill('博文', ArticleType.post, Icons.article_outlined),
-                  const SizedBox(width: 6),
-                  _fmTypePill('页面', ArticleType.page, Icons.web_outlined),
-                  const SizedBox(width: 10),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _doc.selectedTemplateId,
-                      decoration: InputDecoration(
+                      // 值必须是当前类型过滤后的可选项，否则触发断言：
+                      // 切换文章类型后 _autoSelectTemplate 提前返回会留下失效模板 id
+                      value: templates
+                              .where(
+                                (t) =>
+                                    t.isPost ==
+                                    (_doc.articleType == ArticleType.post),
+                              )
+                              .any((t) => t.id == _doc.selectedTemplateId)
+                          ? _doc.selectedTemplateId
+                          : null,
+                      decoration: const InputDecoration(
                         labelText: '模板',
-                        prefixIcon: const Icon(
-                          Icons.view_quilt_outlined,
-                          size: 16,
+                        prefixIcon: Icon(Icons.view_quilt_outlined, size: 19),
+                        prefixIconConstraints: BoxConstraints(
+                          minWidth: 30,
+                          minHeight: 30,
                         ),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         isDense: true,
-                        contentPadding: EdgeInsets.zero,
+                        filled: false,
+                        contentPadding: EdgeInsets.symmetric(vertical: 6),
                       ),
                       items: [
                         const DropdownMenuItem<String>(
@@ -2943,7 +3058,8 @@ class DesktopShellState extends State<DesktopShell>
                   ),
                   IconButton(
                     tooltip: '设为本仓库默认模板',
-                    onPressed: _editorRepo != null && _doc.selectedTemplateId != null
+                    onPressed:
+                        _editorRepo != null && _doc.selectedTemplateId != null
                         ? () => _setAsRepoDefault(_doc.selectedTemplateId!)
                         : null,
                     icon: const Icon(Icons.bookmark_add_outlined, size: 16),
@@ -2959,27 +3075,40 @@ class DesktopShellState extends State<DesktopShell>
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              _fmFieldRow(
-                key: 'tags',
-                icon: Icons.tag,
-                ctrl: _doc.tagsCtrl,
-                hint: '逗号分隔',
+              const SizedBox(height: 16),
+              // ── 类型 ──
+              Row(
+                children: [
+                  _fmTypePill('博文', ArticleType.post, Icons.article_outlined),
+                  const SizedBox(width: 6),
+                  _fmTypePill('页面', ArticleType.page, Icons.web_outlined),
+                ],
               ),
-              _fmFieldRow(
-                key: 'categories',
+              // 预览态标题改由右侧属性抽屉编辑，属性面板内不再重复
+              if (_splitEditorMode != SplitEditorMode.previewOnly) ...[
+                const SizedBox(height: 16),
+                _fmField(
+                  label: '标题',
+                  icon: Icons.title,
+                  ctrl: _doc.titleCtrl,
+                ),
+              ],
+              const SizedBox(height: 16),
+              _fmField(
+                label: '分类',
                 icon: Icons.folder_outlined,
                 ctrl: _doc.categoriesCtrl,
                 hint: '逗号分隔',
               ),
-              _fmFieldRow(
-                key: 'cover',
-                icon: Icons.image_outlined,
-                ctrl: _doc.coverCtrl,
-                hint: '图床链接',
+              const SizedBox(height: 16),
+              _fmField(
+                label: '标签',
+                icon: Icons.tag,
+                ctrl: _doc.tagsCtrl,
+                hint: '逗号分隔',
               ),
               if (_editorRepo != null) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: 16),
                 Text(
                   '框架: ${BlogFramework.byId(_editorRepo!.frameworkId)?.name ?? _editorRepo!.frameworkId} | '
                   '文件名: ${_doc.articleType == ArticleType.page ? '无日期前缀' : (_editorRepo!.fileNameRule.postDatePrefix ? '自动加日期' : '纯标题')}',
@@ -3008,7 +3137,7 @@ class DesktopShellState extends State<DesktopShell>
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: active ? cs.primary.withOpacity(0.1) : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: active ? cs.primary : AppColor.border(context),
             width: active ? 1.2 : 1,
@@ -3037,61 +3166,37 @@ class DesktopShellState extends State<DesktopShell>
     );
   }
 
-  Widget _fmFieldRow({
-    required String key,
+  Widget _fmField({
+    required String label,
     required IconData icon,
     required TextEditingController ctrl,
-    required String hint,
+    String? hint,
   }) {
     final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 96,
-            child: Row(
-              children: [
-                Icon(icon, size: 13, color: cs.primary),
-                const SizedBox(width: 5),
-                Text(
-                  '$key:',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontFamily: 'monospace',
-                    fontWeight: FontWeight.w600,
-                    color: cs.primary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: TextField(
-              controller: ctrl,
-              style: const TextStyle(
-                fontSize: 12.5,
-                fontFamily: 'monospace',
-              ),
-              decoration: InputDecoration(
-                hintText: hint,
-                isDense: true,
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: cs.primary, width: 1),
-                ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 4),
-              ),
-              onChanged: (_) {
-                _onContentChanged();
-                _doc.refreshUi();
-              },
-            ),
-          ),
-        ],
+    return TextField(
+      controller: ctrl,
+      style: const TextStyle(fontSize: 13.5),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon, size: 18),
+        prefixIconConstraints: const BoxConstraints(
+          minWidth: 30,
+          minHeight: 30,
+        ),
+        isDense: true,
+        filled: false,
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: UnderlineInputBorder(
+          borderSide: BorderSide(color: cs.primary, width: 1),
+        ),
+        contentPadding: const EdgeInsets.symmetric(vertical: 8),
       ),
+      onChanged: (_) {
+        _onContentChanged();
+        _doc.refreshUi();
+      },
     );
   }
 
@@ -5880,7 +5985,7 @@ class DesktopShellState extends State<DesktopShell>
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
                         children: [
@@ -6001,7 +6106,12 @@ class DesktopShellState extends State<DesktopShell>
         _lastSavedTitle = pub.title;
         _lastSavedContentMap[pub.id] = pub.content;
         _lastSavedTitleMap[pub.id] = pub.title;
-        await _saveDraft(pub.copyWith(isDraft: false, published: true));
+        // 发布期间若继续编辑，落盘当前内容而非发布旧快照，避免覆盖用户新改动
+        await _saveDraft(
+          userEdited
+              ? _collect(draft: false)
+              : pub.copyWith(isDraft: false, published: true),
+        );
         await _refreshRemote();
         logService.add('发布成功', '已发布到 ${repo.fullName}: ${pub.title}');
         if (mounted) _showToast('已发布到 ${repo.fullName}');
@@ -6425,7 +6535,7 @@ class DesktopShellState extends State<DesktopShell>
                     color: spellCheckService.enabled
                         ? Colors.green.withOpacity(0.15)
                         : Colors.grey.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     spellCheckService.enabled ? '已启用' : '已禁用',
@@ -7014,7 +7124,7 @@ class DesktopShellState extends State<DesktopShell>
                       height: 48,
                       decoration: BoxDecoration(
                         color: colors[i],
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(8),
                         border: settings.themeColor == colors[i].value
                             ? Border.all(color: Colors.black, width: 2.5)
                             : null,
@@ -8200,9 +8310,6 @@ class DesktopShellState extends State<DesktopShell>
     }
   }
 
-  /// 获取当前编辑器主题
-  EditorTheme get _currentEditorTheme => getEditorTheme(_editor.editorTheme);
-
   // ──────────────────────────────────────────────
   // 1. 字体设置对话框
   // ──────────────────────────────────────────────
@@ -8383,361 +8490,6 @@ class DesktopShellState extends State<DesktopShell>
   }
 
   // ──────────────────────────────────────────────
-  // 2. 代码语法高亮
-  // ──────────────────────────────────────────────
-
-  /// 根据主题名称获取对应的 highlight 主题
-  Map<String, TextStyle> _getHighlightTheme() {
-    switch (_editor.editorTheme) {
-      case 'monokai':
-        return highlight_monokai.monokaiSublimeTheme;
-      case 'dracula':
-        return highlight_dracula.draculaTheme;
-      case 'nord':
-        return highlight_nord.nordTheme;
-      case 'solarized-dark':
-        return highlight_monokai.monokaiSublimeTheme;
-      default:
-        return highlight_github.githubTheme;
-    }
-  }
-
-  /// 构建带语法高亮的代码块
-  Widget _buildHighlightedCode(String code, String? language) {
-    try {
-      return HighlightView(
-        code.trim(),
-        language: (language != null && language.isNotEmpty)
-            ? language
-            : 'plaintext',
-        theme: _getHighlightTheme(),
-        padding: const EdgeInsets.all(12),
-        textStyle: TextStyle(
-          fontFamily: 'monospace',
-          fontSize: _editor.editorFontSize - 2,
-          height: _editor.editorLineHeight * 0.85,
-        ),
-      );
-    } catch (e) {
-      debugPrint('Shell: site switch failed: $e');
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: _currentEditorTheme.codeBlockBackground,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          code.trim(),
-          style: TextStyle(
-            fontFamily: 'monospace',
-            fontSize: _editor.editorFontSize - 2,
-            height: _editor.editorLineHeight * 0.85,
-            color: _currentEditorTheme.codeBlockTextColor,
-          ),
-        ),
-      );
-    }
-  }
-
-  /// 构建增强的 Markdown 预览（支持代码高亮、Mermaid 和 LaTeX）
-  Widget _buildMarkdownPreview(String markdown) {
-    if (markdown.isEmpty) {
-      return Center(
-        child: Text(
-          '*暂无内容*',
-          style: TextStyle(
-            color: _currentEditorTheme.textColor.withOpacity(0.4),
-            fontSize: _editor.editorFontSize,
-          ),
-        ),
-      );
-    }
-
-    // 解析 Mermaid 代码块
-    final mermaidPattern = RegExp(r'```mermaid\n([\s\S]*?)```');
-    // 解析 LaTeX 块级公式 $$...$$
-    final latexBlockPattern = RegExp(r'\$\$([\s\S]*?)\$\$');
-    // 解析普通代码块
-    final codeBlockPattern = RegExp(r'```(\w*)\n([\s\S]*?)```');
-
-    final parts = <Widget>[];
-    int lastEnd = 0;
-
-    // 同时匹配所有特殊块
-    final allMatches = <_SpecialBlock>[];
-    for (final m in mermaidPattern.allMatches(markdown)) {
-      allMatches.add(
-        _SpecialBlock(m.start, m.end, 'mermaid', m.group(1) ?? ''),
-      );
-    }
-    for (final m in latexBlockPattern.allMatches(markdown)) {
-      // 避免与 mermaid 块重叠
-      if (!allMatches.any((b) => m.start >= b.start && m.start < b.end)) {
-        allMatches.add(
-          _SpecialBlock(m.start, m.end, 'latex', m.group(1) ?? ''),
-        );
-      }
-    }
-    for (final m in codeBlockPattern.allMatches(markdown)) {
-      final lang = m.group(1) ?? '';
-      if (lang.toLowerCase() == 'mermaid') continue; // 已由 mermaid 处理
-      if (!allMatches.any((b) => m.start >= b.start && m.start < b.end)) {
-        allMatches.add(
-          _SpecialBlock(
-            m.start,
-            m.end,
-            'code',
-            m.group(2) ?? '',
-            lang: lang.isNotEmpty ? lang : null,
-          ),
-        );
-      }
-    }
-    allMatches.sort((a, b) => a.start.compareTo(b.start));
-
-    for (final block in allMatches) {
-      // 添加前面的普通 Markdown
-      if (block.start > lastEnd) {
-        final before = markdown.substring(lastEnd, block.start);
-        parts.add(_renderPlainMarkdown(before));
-      }
-
-      // 根据类型渲染特殊块
-      switch (block.type) {
-        case 'mermaid':
-          parts.add(_buildMermaidPreview(block.content));
-          break;
-        case 'latex':
-          parts.add(_buildLatexPreview(block.content));
-          break;
-        case 'code':
-          parts.add(_buildHighlightedCode(block.content, block.lang));
-          break;
-      }
-      lastEnd = block.end;
-    }
-
-    // 添加剩余的普通 Markdown
-    if (lastEnd < markdown.length) {
-      parts.add(_renderPlainMarkdown(markdown.substring(lastEnd)));
-    }
-
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: parts,
-      ),
-    );
-  }
-
-  /// 渲染普通 Markdown 文本（不含代码块）
-  Widget _renderPlainMarkdown(String text) {
-    final cssStyle = _buildCustomMarkdownStyleSheet();
-
-    // 处理内联 LaTeX $...$
-    if (text.contains(RegExp(r'(?<!\$)\$(?!\$)[^$]+\$(?!\$)')) &&
-        text.length < 5000) {
-      return _buildInlineLatexMarkdown(text, cssStyle);
-    }
-
-    return Markdown(data: text, selectable: true, styleSheet: cssStyle);
-  }
-
-  /// 构建含内联 LaTeX 的 Markdown 渲染
-  Widget _buildInlineLatexMarkdown(String text, MarkdownStyleSheet styleSheet) {
-    final inlinePattern = RegExp(r'(?<!\$)\$(?!\$)([^$]+)\$(?!\$)');
-    final parts = <Widget>[];
-    int lastEnd = 0;
-
-    for (final m in inlinePattern.allMatches(text)) {
-      if (m.start > lastEnd) {
-        final before = text.substring(lastEnd, m.start);
-        if (before.isNotEmpty) {
-          parts.add(
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Markdown(
-                data: before,
-                selectable: true,
-                styleSheet: styleSheet,
-              ),
-            ),
-          );
-        }
-      }
-      final latex = m.group(1) ?? '';
-      parts.add(
-        Text(
-          '\$$latex\$',
-          style: TextStyle(
-            fontSize: _editor.editorFontSize,
-            color: _currentEditorTheme.textColor,
-            fontStyle: FontStyle.italic,
-          ),
-        ),
-      );
-      lastEnd = m.end;
-    }
-    if (lastEnd < text.length) {
-      final remaining = text.substring(lastEnd);
-      if (remaining.isNotEmpty) {
-        parts.add(
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Markdown(
-              data: remaining,
-              selectable: true,
-              styleSheet: styleSheet,
-            ),
-          ),
-        );
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: parts,
-    );
-  }
-
-  /// 根据自定义 CSS 构建 MarkdownStyleSheet
-  MarkdownStyleSheet _buildCustomMarkdownStyleSheet() {
-    final theme = _currentEditorTheme;
-
-    // 基础样式
-    double? h1Size, h2Size, h3Size;
-    Color? h1Color, h2Color, h3Color;
-    Color? codeBg, codeText;
-    Color? linkColor;
-
-    h1Size = _editor.editorFontSize * 1.5;
-    h2Size = _editor.editorFontSize * 1.3;
-    h3Size = _editor.editorFontSize * 1.15;
-    h1Color = theme.headingColor;
-    h2Color = theme.heading2Color;
-    h3Color = theme.heading3Color;
-    codeBg = theme.codeBlockBackground;
-    codeText = theme.codeBlockTextColor;
-    linkColor = theme.linkColor;
-
-    // 如果有自定义 CSS，尝试解析
-    if (_editor.customCss.isNotEmpty) {
-      try {
-        final cssMap = _parseSimpleCss(_editor.customCss);
-        if (cssMap.containsKey('h1-size'))
-          h1Size = double.tryParse(cssMap['h1-size']!);
-        if (cssMap.containsKey('h2-size'))
-          h2Size = double.tryParse(cssMap['h2-size']!);
-        if (cssMap.containsKey('h3-size'))
-          h3Size = double.tryParse(cssMap['h3-size']!);
-        if (cssMap.containsKey('code-bg'))
-          codeBg = _parseColor(cssMap['code-bg']!);
-        if (cssMap.containsKey('code-color'))
-          codeText = _parseColor(cssMap['code-color']!);
-        if (cssMap.containsKey('link-color'))
-          linkColor = _parseColor(cssMap['link-color']!);
-      } catch (e) {
-        debugPrint('Shell: markdown export failed: $e');
-      }
-    }
-
-    return MarkdownStyleSheet(
-      p: TextStyle(
-        fontSize: _editor.editorFontSize,
-        height: _editor.editorLineHeight,
-        color: theme.textColor,
-        fontFamily: _resolveFontFamily(_editor.editorFontFamily),
-      ),
-      h1: TextStyle(
-        fontSize: h1Size,
-        fontWeight: FontWeight.w700,
-        color: h1Color,
-        fontFamily: _resolveFontFamily(_editor.editorFontFamily),
-      ),
-      h2: TextStyle(
-        fontSize: h2Size,
-        fontWeight: FontWeight.w600,
-        color: h2Color,
-        fontFamily: _resolveFontFamily(_editor.editorFontFamily),
-      ),
-      h3: TextStyle(
-        fontSize: h3Size,
-        fontWeight: FontWeight.w600,
-        color: h3Color,
-        fontFamily: _resolveFontFamily(_editor.editorFontFamily),
-      ),
-      code: TextStyle(
-        fontSize: _editor.editorFontSize - 2,
-        fontFamily: 'monospace',
-        color: codeText,
-        backgroundColor: codeBg,
-      ),
-      codeblockDecoration: BoxDecoration(
-        color: codeBg,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      a: TextStyle(color: linkColor, fontSize: _editor.editorFontSize),
-      blockquoteDecoration: BoxDecoration(
-        color: theme.blockquoteBackground,
-        border: Border(
-          left: BorderSide(color: theme.blockquoteBorderColor, width: 3),
-        ),
-      ),
-    );
-  }
-
-  /// 简单 CSS 解析器（将 CSS 属性映射为 key-value）
-  Map<String, String> _parseSimpleCss(String css) {
-    final result = <String, String>{};
-    final rules = css.split(';');
-    for (final rule in rules) {
-      final parts = rule.split(':');
-      if (parts.length == 2) {
-        final key = parts[0].trim().toLowerCase();
-        final value = parts[1].trim();
-        result[key] = value;
-      }
-    }
-    return result;
-  }
-
-  /// 解析颜色字符串
-  Color? _parseColor(String colorStr) {
-    try {
-      if (colorStr.startsWith('#')) {
-        final hex = colorStr.substring(1);
-        if (hex.length == 6) {
-          return Color(int.parse('FF$hex', radix: 16));
-        } else if (hex.length == 8) {
-          return Color(int.parse(hex, radix: 16));
-        }
-      }
-      // 简单颜色名称映射
-      const colorNames = {
-        'red': 0xFFFF0000,
-        'blue': 0xFF0000FF,
-        'green': 0xFF008000,
-        'black': 0xFF000000,
-        'white': 0xFFFFFFFF,
-        'gray': 0xFF808080,
-        'grey': 0xFF808080,
-        'orange': 0xFFFFA500,
-        'purple': 0xFF800080,
-        'yellow': 0xFFFFFF00,
-        'cyan': 0xFF00FFFF,
-        'magenta': 0xFFFF00FF,
-      };
-      if (colorNames.containsKey(colorStr.toLowerCase())) {
-        return Color(colorNames[colorStr.toLowerCase()]!);
-      }
-    } catch (e) {
-      debugPrint('Shell: image upload failed: $e');
-    }
-    return null;
-  }
-
-  // ──────────────────────────────────────────────
   // 3. 编辑器主题选择器
   // ──────────────────────────────────────────────
 
@@ -8768,7 +8520,7 @@ class DesktopShellState extends State<DesktopShell>
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: getEditorTheme(selectedTheme).backgroundColor,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.grey.shade300),
                     ),
                     child: Column(
@@ -8797,7 +8549,7 @@ class DesktopShellState extends State<DesktopShell>
                             color: getEditorTheme(
                               selectedTheme,
                             ).codeBlockBackground,
-                            borderRadius: BorderRadius.circular(6),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
                             'code block preview',
@@ -9080,7 +8832,7 @@ class DesktopShellState extends State<DesktopShell>
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       color: Colors.amber.shade50,
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Text(
                       '提示: 点击快捷键值可编辑，修改后点击空白处保存。\n'
@@ -9124,7 +8876,7 @@ class DesktopShellState extends State<DesktopShell>
                                   vertical: 6,
                                 ),
                                 border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(4),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
                               onSubmitted: (value) {
@@ -9176,88 +8928,6 @@ class DesktopShellState extends State<DesktopShell>
         c.dispose();
       }
     }
-  }
-
-  // ──────────────────────────────────────────────
-  // 6. Mermaid 图表渲染
-  // ──────────────────────────────────────────────
-
-  Widget _buildMermaidPreview(String mermaidCode) {
-    // 桌面端不支持 WebView，用代码块展示 Mermaid 源码
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColor.surfaceBase(context),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: AppColor.borderStrong(context),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.schema,
-                size: 16,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Mermaid 图表（桌面端仅显示源码）',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          SelectableText(
-            mermaidCode.trim(),
-            style: TextStyle(
-              fontSize: 13,
-              fontFamily: 'monospace',
-              color: isDark
-                  ? Colors.white.withOpacity(0.8)
-                  : const Color(0xFF1F2937),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ──────────────────────────────────────────────
-  // 7. LaTeX 数学公式渲染
-  // ──────────────────────────────────────────────
-
-  Widget _buildLatexPreview(String latexCode) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _currentEditorTheme.codeBlockBackground.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade300.withOpacity(0.5)),
-      ),
-      child: Center(
-        child: SelectableText(
-          '\$\$$latexCode\$\$',
-          style: TextStyle(
-            fontSize: _editor.editorFontSize + 2,
-            color: _currentEditorTheme.textColor,
-            fontStyle: FontStyle.italic,
-          ),
-        ),
-      ),
-    );
   }
 
   // ============================================================
@@ -9366,7 +9036,7 @@ class DesktopShellState extends State<DesktopShell>
                     ),
                     decoration: BoxDecoration(
                       color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       e.$1,
@@ -11167,7 +10837,7 @@ $htmlContent
         padding: const EdgeInsets.symmetric(horizontal: 2),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(8),
           child: Padding(
             padding: const EdgeInsets.all(6),
             child: Icon(
@@ -11271,7 +10941,7 @@ $htmlContent
         // ── 主编辑区：只有「标题输入 + 正文」，大留白 ──
         SingleChildScrollView(
           controller: _focusScrollCtrl,
-          padding: const EdgeInsets.symmetric(horizontal: 80, vertical: 64),
+          padding: const EdgeInsets.symmetric(horizontal: 80, vertical: 48),
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 860),
@@ -11282,7 +10952,7 @@ $htmlContent
                   TextField(
                     controller: _doc.titleCtrl,
                     style: TextStyle(
-                      fontSize: 32,
+                      fontSize: 28,
                       fontWeight: FontWeight.w700,
                       height: 1.3,
                       color: textColor,
@@ -11294,7 +10964,7 @@ $htmlContent
                     decoration: InputDecoration(
                       hintText: '在此输入标题...',
                       hintStyle: TextStyle(
-                        fontSize: 32,
+                        fontSize: 28,
                         fontWeight: FontWeight.w700,
                         color: mutedColor,
                       ),
@@ -11302,12 +10972,12 @@ $htmlContent
                     ),
                     onChanged: (_) => _onContentChanged(),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 16),
                   Container(
                     height: 1,
                     color: mutedColor.withOpacity(0.6),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 16),
                   // 正文编辑区（带当前行高亮）
                   Stack(
                     children: [
@@ -11324,8 +10994,9 @@ $htmlContent
                           height: _editor.editorFontSize *
                               _editor.editorLineHeight,
                           child: Container(
-                            color: cs.primary
-                                .withOpacity(isDark ? 0.08 : 0.05),
+                            color: isDark
+                                ? const Color(0xFF27272A)
+                                : const Color(0xFFF3F4F6),
                           ),
                         ),
                       ),
@@ -11373,7 +11044,7 @@ $htmlContent
                                 ? _deskCardBg
                                 : AppColor.surfaceBase(context))
                             .withOpacity(0.92),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: AppColor.border(context),
                         ),
@@ -11393,16 +11064,26 @@ $htmlContent
         // ── 右侧预览面板（极简标题栏「预览」打开） ──
         if (_focusPreviewOpen)
           Positioned(
-            right: 0,
-            top: 0,
-            bottom: 0,
+            right: 8,
+            top: 8,
+            bottom: 8,
             child: Container(
               width: 400,
               decoration: BoxDecoration(
                 color: AppColor.surfaceRaised(context),
-                border: Border(
-                  left: BorderSide(color: AppColor.border(context)),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withOpacity(0.12)
+                      : const Color(0xFFE5E7EB),
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(isDark ? 0.28 : 0.06),
+                    blurRadius: 16,
+                    offset: const Offset(-2, 2),
+                  ),
+                ],
               ),
               child: Column(
                 children: [
@@ -11448,6 +11129,8 @@ $htmlContent
                               ? body
                               : '# $t\n\n$body',
                           darkTheme: isDark,
+                          baseFontSize: 16,
+                          lineHeight: 1.6,
                           onOpenLink: (url) async {
                             final uri = Uri.tryParse(url);
                             if (uri != null &&
@@ -11501,12 +11184,12 @@ $htmlContent
     }
 
     return Container(
-      color: AppColor.surfaceBase(context),
+      color: isDark ? AppColor.surfaceBase(context) : const Color(0xFFF9FAFB),
       child: Column(
         children: [
           // 源码模式标题栏
           Container(
-            height: 32,
+            height: 28,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
               color: AppColor.surfaceRaised(context),
@@ -11514,7 +11197,7 @@ $htmlContent
                 bottom: BorderSide(
                   color: isDark
                       ? Colors.white.withOpacity(0.06)
-                      : const Color(0xFFE5E5EA),
+                      : const Color(0xFFE5E7EB),
                 ),
               ),
             ),
@@ -11586,44 +11269,49 @@ $htmlContent
           ),
           // 源码编辑区（带语法高亮）
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: TextField(
-                controller: _sourceSyntaxCtrl,
-                maxLines: null,
-                focusNode: _doc.contentFocus,
-                cursorColor: cs.primary,
-                style: const TextStyle(
-                  fontSize: 14,
-                  height: 1.7,
-                  fontFamily: 'monospace',
-                ),
-                decoration: InputDecoration(
-                  border: InputBorder.none,
-                  hintText: '在此编辑 Markdown 源码...',
-                  hintStyle: TextStyle(
+            child: ColoredBox(
+              color: isDark ? const Color(0xFF18181B) : Colors.white,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: TextField(
+                  controller: _sourceSyntaxCtrl,
+                  maxLines: null,
+                  focusNode: _doc.contentFocus,
+                  cursorColor: cs.primary,
+                  style: const TextStyle(
                     fontSize: 14,
+                    height: 1.45,
                     fontFamily: 'monospace',
-                    color: isDark
-                        ? Colors.white.withOpacity(0.1)
-                        : const Color(0xFFB0B0B0),
                   ),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    hintText: '在此编辑 Markdown 源码...',
+                    hintStyle: TextStyle(
+                      fontSize: 14,
+                      fontFamily: 'monospace',
+                      color: isDark
+                          ? Colors.white.withOpacity(0.1)
+                          : const Color(0xFFB0B0B0),
+                    ),
+                  ),
+                  onChanged: (_) => _onContentChanged(),
                 ),
-                onChanged: (_) => _onContentChanged(),
               ),
             ),
           ),
-          // 底部状态条
+          // 底部状态条（白底 + 顶部细线，轻量化）
           Container(
             height: 24,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: AppColor.surfaceRaised(context),
+              color: isDark
+                  ? AppColor.surfaceRaised(context)
+                  : const Color(0xFFFFFFFF),
               border: Border(
                 top: BorderSide(
                   color: isDark
                       ? Colors.white.withOpacity(0.06)
-                      : const Color(0xFFE5E5EA),
+                      : const Color(0xFFE5E7EB),
                 ),
               ),
             ),
@@ -11635,7 +11323,7 @@ $htmlContent
                     fontSize: 11,
                     color: isDark
                         ? Colors.white.withOpacity(0.3)
-                        : const Color(0xFF9CA3AF),
+                        : const Color(0xFF6B7280),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -11645,7 +11333,7 @@ $htmlContent
                     fontSize: 11,
                     color: isDark
                         ? Colors.white.withOpacity(0.3)
-                        : const Color(0xFF9CA3AF),
+                        : const Color(0xFF6B7280),
                   ),
                 ),
                 const Spacer(),
@@ -11655,7 +11343,7 @@ $htmlContent
                     fontSize: 11,
                     color: isDark
                         ? Colors.white.withOpacity(0.3)
-                        : const Color(0xFF9CA3AF),
+                        : const Color(0xFF6B7280),
                   ),
                 ),
               ],
@@ -11676,9 +11364,9 @@ $htmlContent
       message: tooltip,
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(8),
         child: InkWell(
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(8),
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.all(5),
@@ -11735,11 +11423,17 @@ class _PendingSave {
   final String articleId;
   final String content;
   final String title;
+  final String tags;
+  final String categories;
+  final String cover;
 
   const _PendingSave({
     required this.articleId,
     required this.content,
     required this.title,
+    this.tags = '',
+    this.categories = '',
+    this.cover = '',
   });
 }
 
@@ -11756,24 +11450,6 @@ class RecentFile {
   });
 }
 
-/// Markdown 特殊块（代码块、Mermaid、LaTeX）
-class _SpecialBlock {
-  final int start;
-  final int end;
-  final String type; // 'code', 'mermaid', 'latex'
-  final String content;
-  final String? lang;
-
-  const _SpecialBlock(
-    this.start,
-    this.end,
-    this.type,
-    this.content, {
-    this.lang,
-  });
-}
-
-// ============================================================
 // 帮助对话框辅助 Widget
 // ============================================================
 
@@ -12150,7 +11826,7 @@ class _ConflictResolutionDialogState extends State<_ConflictResolutionDialog> {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: Colors.orange.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
                 children: [
@@ -12326,7 +12002,7 @@ class _ConflictResolutionDialogState extends State<_ConflictResolutionDialog> {
           color: isSelected ? color : Colors.grey.withOpacity(0.2),
           width: isSelected ? 2 : 1,
         ),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         children: [
@@ -12337,7 +12013,7 @@ class _ConflictResolutionDialogState extends State<_ConflictResolutionDialog> {
                   ? color.withOpacity(0.1)
                   : Colors.grey.withOpacity(0.05),
               borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(5),
+                top: Radius.circular(8),
               ),
             ),
             child: Row(

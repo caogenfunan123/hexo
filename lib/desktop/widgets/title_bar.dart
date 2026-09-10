@@ -64,9 +64,11 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
             ),
             const SizedBox(width: 16),
 
-            // 站点下拉
-            _siteDropdown(context, cs),
-            const Spacer(),
+            // 站点下拉（窄窗可收缩省略）
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 220),
+              child: _siteDropdown(context, cs),
+            ),
 
             // 分隔线
             Container(
@@ -76,49 +78,63 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
             ),
             const SizedBox(width: 4),
 
-            // 快捷操作按钮
-            if (bus.onOpenFile != null)
-              _titleBarButton(context,
-                icon: Icons.folder_open,
-                tooltip: '打开文件 (Ctrl+O)',
-                onTap: bus.onOpenFile!,
-                cs: cs,
+            // 快捷操作按钮：窄窗时可横向滚动，避免 Row 溢出
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  reverse: true,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (bus.onOpenFile != null)
+                        _titleBarButton(context,
+                          icon: Icons.folder_open,
+                          tooltip: '打开文件 (Ctrl+O)',
+                          onTap: bus.onOpenFile!,
+                          cs: cs,
+                        ),
+                      _titleBarButton(context,
+                        icon: Icons.add,
+                        tooltip: '新建文章 (Ctrl+N)',
+                        onTap: bus.onNewArticle,
+                        cs: cs,
+                      ),
+                      _titleBarButton(context,
+                        icon: Icons.sync,
+                        tooltip: '同步 (Ctrl+S)',
+                        onTap: bus.onSync,
+                        cs: cs,
+                      ),
+                      _titleBarButton(context,
+                        icon: Icons.send,
+                        tooltip: '一键发布 (Ctrl+P)',
+                        onTap: bus.onPublish,
+                        cs: cs,
+                      ),
+                      _titleBarButton(context,
+                        icon: Icons.auto_awesome,
+                        tooltip: 'AI 助手',
+                        onTap: onAi,
+                        cs: cs,
+                      ),
+                      _titleBarButton(context,
+                        icon: Icons.vertical_split,
+                        tooltip: '右侧面板',
+                        onTap: bus.onToggleRightDrawer,
+                        cs: cs,
+                      ),
+                      _titleBarButton(context,
+                        icon: isDark ? Icons.light_mode : Icons.dark_mode_outlined,
+                        tooltip: '切换主题',
+                        onTap: bus.onThemeToggle,
+                        cs: cs,
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            _titleBarButton(context,
-              icon: Icons.add,
-              tooltip: '新建文章 (Ctrl+N)',
-              onTap: bus.onNewArticle,
-              cs: cs,
-            ),
-            _titleBarButton(context,
-              icon: Icons.sync,
-              tooltip: '同步 (Ctrl+S)',
-              onTap: bus.onSync,
-              cs: cs,
-            ),
-            _titleBarButton(context,
-              icon: Icons.send,
-              tooltip: '一键发布 (Ctrl+P)',
-              onTap: bus.onPublish,
-              cs: cs,
-            ),
-            _titleBarButton(context,
-              icon: Icons.auto_awesome,
-              tooltip: 'AI 助手',
-              onTap: onAi,
-              cs: cs,
-            ),
-            _titleBarButton(context,
-              icon: Icons.vertical_split,
-              tooltip: '右侧面板',
-              onTap: bus.onToggleRightDrawer,
-              cs: cs,
-            ),
-            _titleBarButton(context,
-              icon: isDark ? Icons.light_mode : Icons.dark_mode_outlined,
-              tooltip: '切换主题',
-              onTap: bus.onThemeToggle,
-              cs: cs,
             ),
 
             // 窗口控件分隔
@@ -220,11 +236,15 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
               color: AppColor.iconMuted(context),
             ),
             const SizedBox(width: 6),
-            Text(
-              siteName,
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColor.textSecondary(context),
+            Flexible(
+              child: Text(
+                siteName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColor.textSecondary(context),
+                ),
               ),
             ),
             const SizedBox(width: 4),
@@ -259,11 +279,15 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
               color: AppColor.iconMuted(context),
             ),
             const SizedBox(width: 6),
-            Text(
-              siteName,
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColor.textSecondary(context),
+            Flexible(
+              child: Text(
+                siteName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColor.textSecondary(context),
+                ),
               ),
             ),
             const SizedBox(width: 4),
@@ -298,7 +322,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                 decoration: BoxDecoration(
                   color: Colors.amber.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   '默认',

@@ -311,7 +311,7 @@ class _VersionSnapshotViewState extends State<VersionSnapshotView> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: AppColor.surfaceRaised(context),
         ),
@@ -385,7 +385,7 @@ class _VersionSnapshotViewState extends State<VersionSnapshotView> {
   Widget _actionButton(String label, IconData icon, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(4),
+      borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
         child: Row(

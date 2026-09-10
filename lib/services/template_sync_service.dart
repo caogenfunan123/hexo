@@ -366,6 +366,14 @@ class TemplateSyncService {
       _setState(TemplateSyncState.error);
       _errorMessage = '同步失败: $e';
       _log('同步失败: $e');
+      // 失败时保持 error 状态，避免被下方 completed 覆盖
+      return TemplateSyncResult(
+        totalTemplates: remoteTemplates.length,
+        synced: synced,
+        skipped: skipped,
+        conflicts: conflicts,
+        conflictDetails: conflictDetails,
+      );
     }
 
     _setState(TemplateSyncState.completed);

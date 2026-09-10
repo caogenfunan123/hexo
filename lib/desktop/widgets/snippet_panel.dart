@@ -130,7 +130,7 @@ class _SnippetPanelState extends State<SnippetPanel> {
                     color: active
                         ? cs.primary.withOpacity(isDark ? 0.25 : 0.12)
                         : (AppColor.surfaceHover(context)),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     cat,
@@ -269,7 +269,7 @@ class _SnippetCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
                       color: cs.primary.withOpacity(isDark ? 0.15 : 0.08),
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       snippet.category,

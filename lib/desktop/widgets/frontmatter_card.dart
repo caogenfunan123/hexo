@@ -1,6 +1,10 @@
 /// Front-matter 结构化编辑面板
 /// 对标 MarkText + VS Code Front Matter 插件
 /// 在编辑器顶部渲染卡片式 YAML 元数据编辑区
+///
+/// TODO(待清理): 自 P2 起属性编辑已统一走工作区 B 面板
+/// （desktop_shell.dart 的 `_buildFrontMatterPanel`），本组件已无引用。
+/// 本轮迭代保留不删，待 MarkText 改造全部验证通过后再移除。
 library;
 
 import 'package:flutter/material.dart';
@@ -335,7 +339,7 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: widget.background ?? AppColor.surfaceBase(context),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: isDark
               ? cs.primary.withOpacity(0.15)
@@ -366,7 +370,7 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
                     height: 22,
                     decoration: BoxDecoration(
                       color: cs.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(Icons.code, size: 12, color: cs.primary),
                   ),
@@ -535,19 +539,19 @@ class _FrontMatterCardState extends State<FrontMatterCard> {
             filled: true,
             fillColor: isDark ? Colors.white.withOpacity(0.03) : const Color(0xFFF3F4F6),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide(
                 color: AppColor.border(context),
               ),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide(
                 color: AppColor.border(context),
               ),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide(color: cs.primary.withOpacity(0.3)),
             ),
           ),

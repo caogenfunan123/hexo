@@ -145,7 +145,7 @@ class _CommandPaletteState extends State<CommandPalette> {
               constraints: const BoxConstraints(maxHeight: 480),
               decoration: BoxDecoration(
                 color: AppColor.surfaceBase(context),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                   color: AppColor.border(context),
                 ),
@@ -265,7 +265,7 @@ class _CommandPaletteState extends State<CommandPalette> {
                                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                           decoration: BoxDecoration(
                                             color: AppColor.surfaceHover(context),
-                                            borderRadius: BorderRadius.circular(4),
+                                            borderRadius: BorderRadius.circular(8),
                                           ),
                                           child: Text(
                                             cmd.shortcut,
@@ -322,7 +322,7 @@ class _CommandPaletteState extends State<CommandPalette> {
           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
           decoration: BoxDecoration(
             color: AppColor.border(context),
-            borderRadius: BorderRadius.circular(3),
+            borderRadius: BorderRadius.circular(8),
           ),
           child: Text(
             key,

@@ -309,6 +309,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   /// 每草稿独立上次保存内容，切换草稿不丢失
   final Map<String, String> _lastSavedContentMap = {};
 
+  /// 每草稿独立上次保存标题，供标题-only 改动识别未保存状态
+  final Map<String, String> _lastSavedTitleMap = {};
+
   // Editor state
   RepoConfig? _editorRepo;
   bool _editorBusy = false;
@@ -492,6 +495,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       scrollController: _editorScrollCtrl,
       textController: _doc.contentCtrl,
     );
+    // 标题输入变化同样触发保存状态判定，修复标题-only 改动不置未保存
+    _doc.titleCtrl.addListener(_onContentChanged);
     // 先初始化空的站点管理器，避免任何路径下访问 late 字段触发
     // LateInitializationError（bootstrap 完成后会重新更新为完整配置）
     siteManager = SiteManager(
@@ -517,6 +522,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     _quickNoteSub = null;
     _stopAutoSave();
     _stopAutoSync();
+    _doc.titleCtrl.removeListener(_onContentChanged);
     for (final e in _debounceTimers.values) {
       e.cancel();
     }

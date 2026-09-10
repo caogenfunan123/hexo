@@ -274,7 +274,11 @@ extension EditorUiExt on _RootShellState {
                           )
                           .toList(),
                       onChanged: (v) => _applyState(() {
-                        _editorRepo = repos.firstWhere((e) => e.id == v);
+                        final match = repos
+                            .where((e) => e.id == v)
+                            .firstOrNull;
+                        if (match == null) return;
+                        _editorRepo = match;
                         _doc.setEditorRepoId(v);
                       }),
                     ),
@@ -352,7 +356,22 @@ extension EditorUiExt on _RootShellState {
                           children: [
                             Expanded(
                               child: DropdownButtonFormField<String>(
-                                value: _doc.selectedTemplateId,
+                                // 值必须是当前类型过滤后的可选项，否则触发断言。
+                                // 切换文章类型后 _autoSelectTemplate 提前返回时会留下失效模板 id
+                                value: templates
+                                        .where(
+                                          (t) =>
+                                              t.isPost ==
+                                              (_doc.articleType ==
+                                                  ArticleType.post),
+                                        )
+                                        .any(
+                                          (t) =>
+                                              t.id ==
+                                              _doc.selectedTemplateId,
+                                        )
+                                    ? _doc.selectedTemplateId
+                                    : null,
                                 decoration: InputDecoration(
                                   labelText:
                                       '模板 (${_doc.articleType == ArticleType.post ? '博文' : '页面'})',

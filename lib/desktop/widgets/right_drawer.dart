@@ -19,7 +19,6 @@ class DesktopRightDrawer extends StatelessWidget {
   final TextEditingController? tagsCtrl;
   final TextEditingController? categoriesCtrl;
   final TextEditingController? coverCtrl;
-  final TextEditingController? dateCtrl;
   final Widget? aiChatPanel;
   final List<String> syncLogs;
   final List<SnippetItem>? snippets;
@@ -37,7 +36,6 @@ class DesktopRightDrawer extends StatelessWidget {
     this.tagsCtrl,
     this.categoriesCtrl,
     this.coverCtrl,
-    this.dateCtrl,
     this.aiChatPanel,
     this.syncLogs = const [],
     this.snippets,
@@ -252,8 +250,6 @@ class DesktopRightDrawer extends StatelessWidget {
           _fmField(context, '分类', categoriesCtrl, hint: '逗号分隔'),
           const SizedBox(height: 10),
           _fmField(context, '封面图', coverCtrl, hint: '图片 URL'),
-          const SizedBox(height: 10),
-          _fmField(context, '日期', dateCtrl, hint: 'YYYY-MM-DD'),
         ],
       ),
     );
@@ -290,19 +286,19 @@ class DesktopRightDrawer extends StatelessWidget {
             filled: true,
             fillColor: AppColor.surfaceHover(context),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide(
                 color: AppColor.border(context),
               ),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide(
                 color: AppColor.border(context),
               ),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide(
                 color: cs.primary.withOpacity(0.5),
               ),
@@ -444,7 +440,21 @@ class OutlineItem {
 List<OutlineItem> parseOutline(String markdown) {
   final items = <OutlineItem>[];
   final lines = markdown.split('\n');
+  final fenceReg = RegExp(r'^(```+|~~~+)');
+  String fence = ''; // 非空表示处于代码围栏内
   for (final line in lines) {
+    final fenceMatch = fenceReg.firstMatch(line.trimLeft());
+    if (fenceMatch != null) {
+      final marker = fenceMatch.group(1)!;
+      if (fence.isEmpty) {
+        fence = marker.substring(0, 3);
+      } else if (marker.startsWith(fence)) {
+        fence = '';
+      }
+      continue;
+    }
+    // 代码围栏内的 # 不算标题
+    if (fence.isNotEmpty) continue;
     final match = RegExp(r'^(#{1,6})\s+(.+)$').firstMatch(line.trim());
     if (match != null) {
       items.add(OutlineItem(

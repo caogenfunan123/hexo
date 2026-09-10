@@ -177,6 +177,23 @@ class EditorController extends ChangeNotifier {
     }
   }
 
+  /// 更新指定标签的标题（标题栏/标签栏同步用）
+  void updateTabTitle(String id, String title) {
+    final index = _openTabs.indexWhere((t) => t.id == id);
+    if (index < 0) return;
+    final t = _openTabs[index];
+    if (t.title == title) return;
+    _openTabs[index] = EditorTab(
+      id: t.id,
+      title: title,
+      icon: t.icon,
+      canClose: t.canClose,
+      contentKey: t.contentKey,
+      contentBuilder: t.contentBuilder,
+    );
+    notifyListeners();
+  }
+
   void closeTab(int index) {
     if (index >= 0 && index < _openTabs.length) {
       _flushTabTasks(_openTabs[index].id);
