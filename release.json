@@ -7,35 +7,35 @@
   "platforms": {
     "android": {
       "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.14/app-release.apk",
-      "sha256": "",
-      "size": 0,
+      "sha256": "3e0963760ac38d4a3d3836878d9a3a935f8a731503130fbcb2dac388bb016653",
+      "size": 80774676,
       "abi": {
         "arm64": {
           "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.14/app-arm64-v8a-release.apk",
-          "sha256": "",
-          "size": 0
+          "sha256": "683aa8cf5e4340c1e1cf92f0cd15b185fc2f81e47ba301289450e2855931a7bc",
+          "size": 29449464
         },
         "armv7": {
           "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.14/app-armeabi-v7a-release.apk",
-          "sha256": "",
-          "size": 0
+          "sha256": "6c4be2bf957e323079648c77a62e221cda44956a24917302aeb34090f7af0fd1",
+          "size": 27661376
         },
         "universal": {
           "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.14/app-release.apk",
-          "sha256": "",
-          "size": 0
+          "sha256": "3e0963760ac38d4a3d3836878d9a3a935f8a731503130fbcb2dac388bb016653",
+          "size": 80774676
         }
       }
     },
     "windows": {
       "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.14/hexo-windows.zip",
-      "sha256": "",
-      "size": 0
+      "sha256": "8200450f65be3d5fa2b07289ef8fde75582c33de142e3c483c68bf196acfb93c",
+      "size": 23791032
     },
     "linux": {
       "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.14/hexo-linux.tar.gz",
-      "sha256": "",
-      "size": 0
+      "sha256": "7c376e4458a50f2ac8c7783c7cbb7995516b8fd9bbe6db10e336fdece7f1d532",
+      "size": 20579275
     }
   }
 }
