@@ -93,7 +93,9 @@ class DebouncedMarkdownPreview extends StatelessWidget {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Markdown(
+              // MarkdownBody 无内建滚动：外层 SingleChildScrollView 负责滚动，
+              // 若用 Markdown（内建 ListView）会在滚动容器内高度无界直接崩溃
+              MarkdownBody(
                 data: safe,
                 selectable: true,
                 styleSheet: styleSheet,
@@ -112,7 +114,8 @@ class DebouncedMarkdownPreview extends StatelessWidget {
             ],
           );
         }
-        return Markdown(
+        // MarkdownBody 无内建滚动，避免在外层滚动容器内出现无界高度崩溃
+        return MarkdownBody(
           data: text,
           selectable: true,
           styleSheet: styleSheet,

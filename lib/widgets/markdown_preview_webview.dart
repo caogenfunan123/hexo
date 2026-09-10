@@ -382,7 +382,9 @@ class _MarkdownPreviewWebViewState extends State<MarkdownPreviewWebView> {
     }
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Markdown(
+      // MarkdownBody 无内建滚动：Markdown 自带 ListView，嵌在滚动容器内
+      // 会因高度无界直接崩溃
+      child: MarkdownBody(
         data: widget.markdown,
         selectable: true,
       ),
