@@ -84,3 +84,21 @@ Entries discovered by the Agent during task execution should follow this format:
   - 修改拓墨功能前先参考这张架构图：用图上节点定位「要改的层」，再按图上的 sources 找到对应源码文件；避免改错层或漏掉依赖（如控制器层→AI 引擎→LLM、发布编排→GitHub/CMS、本地存储→云同步）
   - 示意图是上下文辅助，本身不生成也不修改实现；真正的改动仍走正常开发，并按 code-splitting-guide.md 规范落地
   - 图产出的源 JSON 在 `/tmp/opencode/tuomo.architecture.json`，需要按新架构更新时可改动后重新 `node ~/.agents/skills/archify/bin/archify.mjs deliver architecture <json> /workspace/hexo/tuomo.architecture.html --quality showcase --repo-root /workspace/hexo`
+
+[Project Knowledge Summary]
+- Date: 2026-09-11
+- Context: Discovered by Agent while investigating "电脑端分栏/预览空白、很多功能对不上号" user reports
+- Category: Troubleshooting & Debugging
+- Instructions:
+  - 双端平行实现风险：桌面端 DesktopShellState（lib/desktop/desktop_shell.dart 约 1.2 万行）与手机端 _RootShellState（lib/main.dart + lib/mixins/editor_*_ext.dart）是两套独立实现，不共享任何 mixin；修复/新功能只改一侧就会"对不上号"，改动后必须双端各自核对等价入口
+  - "预览空白"排查首选假设：滚动套滚动崩溃。flutter_markdown 0.6.23 的 Markdown 组件内建 ListView（自身可滚动），嵌在 SingleChildScrollView 内会因高度无界抛 "Vertical viewport was given unbounded height"，release 包表现为整块空白；正确用法是 MarkdownBody（无内建滚动）+ 外层滚动容器。已修 debounced_markdown_preview.dart 与 markdown_preview_webview.dart _buildFallback
+  - headless 渲染验证法：无法跑 GUI 时用 widget 测试直接驱动组件——单独测组件要复现嵌套类 bug，必须按真实布局包一层（如 DesktopSplitEditor 端到端测试就复现了组件级测试发现不了的 14 个渲染异常）；参考 test/preview_render_test.dart
+  - release 模式下渲染异常显示为空白/ErrorBox 无文字，用户只会说"空白/坏了"，不能按表面症状定位
+
+[Project Knowledge Summary]
+- Date: 2026-09-11
+- Context: Discovered by Agent while running headless widget tests this session
+- Category: Build & Compilation
+- Instructions:
+  - 本地 Flutter SDK 实际可用：/tmp/opencode/flutter/bin/flutter（AGENTS.md 所述"无 Flutter SDK 环境"已过时），flutter test 可完整运行（本机全量 23/23 绿约 15s，首次编译约 1-2 分钟）
+  - 编译/测试类命令按资源管控规则走 background_terminal_create（cpu_percent 200 即可，输出重定向到文件再读，避免管道截断丢失首个异常栈）
