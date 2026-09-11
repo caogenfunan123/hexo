@@ -155,5 +155,52 @@ void main() {
       expect(find.textContaining('分栏更新内容肆'), findsWidgets,
           reason: 'split 模式输入后右侧预览应实时更新');
     });
+
+    testWidgets('split 模式带代码块内容应渲染（高亮构建器路径）', (tester) async {
+      final ctrl = TextEditingController(text: '代码前文字\n\n```dart\nvoid main() { print(1); }\n```\n\n代码后文字');
+      await tester.pumpWidget(_wrap(buildEditor(ctrl, SplitEditorMode.split)));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.textContaining('代码前文字'), findsWidgets,
+          reason: 'split 模式含代码块时正文应正常渲染');
+      expect(tester.takeException(), isNull,
+          reason: '含代码块渲染不应抛出布局异常');
+    });
+
+    testWidgets('previewOnly 超长文档应走截断分支且不崩溃', (tester) async {
+      final longText = '超长段落测试。\n' * 12000;  // 约 8.4 万字符 > 60000
+      final state = DebouncedMarkdownPreviewState();
+      state.updateText(longText);
+      // 按真实布局：预览永远套在 SingleChildScrollView 内（有界盒子会溢出）
+      await tester.pumpWidget(_wrap(
+        SingleChildScrollView(
+          child: Builder(
+            builder: (context) {
+              final style = createUnifiedMarkdownStyle(context: context);
+              return DebouncedMarkdownPreview(
+                state: state,
+                isDark: false,
+                styleSheet: style,
+              );
+            },
+          ),
+        ),
+      ));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.takeException(), isNull,
+          reason: '超长文档截断渲染不应抛异常');
+      expect(find.textContaining('预览已折叠'), findsWidgets,
+          reason: '超 60000 字符应显示截断提示');
+    });
+
+    testWidgets('sourceOnly 模式应渲染编辑器且可输入', (tester) async {
+      final ctrl = TextEditingController(text: '源码模式内容戊');
+      await tester.pumpWidget(_wrap(buildEditor(ctrl, SplitEditorMode.sourceOnly)));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.takeException(), isNull, reason: 'sourceOnly 渲染不应抛异常');
+      expect(find.textContaining('源码模式内容戊'), findsOneWidget);
+      ctrl.text = '源码模式更新己';
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.textContaining('源码模式更新己'), findsOneWidget);
+    });
   });
 }
