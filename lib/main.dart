@@ -104,7 +104,6 @@ import 'services/site_isolation_service.dart';
 import 'services/p2p_sync_service.dart';
 import 'screens/p2p_sync_screen.dart';
 import 'services/template_sync_service.dart';
-import 'services/full_text_search_isolate.dart';
 import 'services/recycle_bin_service.dart';
 import 'services/quick_note_service.dart';
 import 'services/timestamp_util.dart';
@@ -336,7 +335,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   SiteIsolationService? _siteIsolation;
   late final P2PSyncService _p2pSyncService;
   TemplateSyncService? _templateSync;
-  FullTextSearchIsolate? _searchIsolate;
   RecycleBinService? _recycleBin;
   VersionSnapshotService? _snapshotService;
   QuickNoteService? _quickNoteService; // ignore: unused_field 保持监听器生命周期
@@ -530,7 +528,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     _typewriterCtrl.dispose();
     _editorScrollCtrl.dispose();
     _orientationManager.dispose();
-    _searchIsolate?.cancel();
     _p2pSyncService.dispose();
     _templateSync?.dispose();
     _siteIsolation?.dispose();
@@ -707,7 +704,6 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         templateDir: Directory('${root.path}/templates'),
         deviceId: 'mobile-${DateTime.now().millisecondsSinceEpoch}',
       );
-      _searchIsolate = FullTextSearchIsolate(logService);
       _recycleBin = RecycleBinService();
       await _recycleBin!.init(root);
       _snapshotService = VersionSnapshotService(logService);

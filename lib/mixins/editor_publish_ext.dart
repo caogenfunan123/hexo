@@ -54,6 +54,66 @@ extension EditorPublishExt on _RootShellState {
   }
 
   Future<void> _publish() async {
+    // ── 发布预检测（与桌面端一致）：空内容/外链图/空标题/内容过短 ──
+    final article = _collect(draft: false);
+    final preCheckWarnings = <String>[];
+    if (article.content.trim().isEmpty) {
+      preCheckWarnings.add('⚠ 文章内容为空');
+    }
+    final imgRegex = RegExp(r'!\[.*?\]\((https?://[^\s)]+)\)');
+    final imgMatches = imgRegex.allMatches(article.content).toList();
+    if (imgMatches.isNotEmpty) {
+      preCheckWarnings.add(
+        'ℹ 文章包含 ${imgMatches.length} 个外部图片链接，建议检查图片是否可访问',
+      );
+    }
+    if (article.title.isEmpty || article.title == '未命名') {
+      preCheckWarnings.add('⚠ 文章标题为空或未命名');
+    }
+    if (article.content.trim().length < 20 &&
+        article.content.trim().isNotEmpty) {
+      preCheckWarnings.add('⚠ 文章内容过短（<20字符），建议补充内容');
+    }
+    if (preCheckWarnings.isNotEmpty) {
+      final continuePublish = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.fact_check_outlined, color: Colors.blue, size: 22),
+              SizedBox(width: 8),
+              Text('发布预检测', style: TextStyle(fontSize: 17)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ...preCheckWarnings.map(
+                (w) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(w, style: const TextStyle(fontSize: 13)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('是否继续发布？', style: TextStyle(fontSize: 13)),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('继续发布'),
+            ),
+          ],
+        ),
+      );
+      if (continuePublish != true || !mounted) return;
+    }
+
     // ── 发布确认对话框 ──
     final publishTarget = siteManager.isDynamicSite
         ? siteManager.currentBlogType.displayName
