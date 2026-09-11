@@ -150,6 +150,60 @@ class _RemoteScreenState extends State<RemoteScreen> {
               ),
             ]),
           ),
+
+        // 选择模式底部操作栏：取消 / 删除所选
+        if (_selectMode && !_showStaticPosts)
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 10,
+                    offset: const Offset(0, -2))
+              ],
+            ),
+            child: Row(children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _toggleSelectMode,
+                  icon: const Icon(Icons.close, size: 18),
+                  label: Text(l10n.translate('cancel')),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _selected.isEmpty
+                      ? null
+                      : () {
+                          final items = widget.posts
+                              .where((p) => _selected.contains(p.path))
+                              .toList();
+                          setState(() {
+                            _selectMode = false;
+                            _selected.clear();
+                          });
+                          widget.onBatchDelete(items);
+                        },
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: Text(
+                      '${l10n.translate('delete_remote')}(${_selected.length})'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ]),
+          ),
       ],
     );
   }

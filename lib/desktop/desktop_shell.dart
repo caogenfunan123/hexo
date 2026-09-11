@@ -3488,6 +3488,7 @@ class DesktopShellState extends State<DesktopShell>
         },
       );
       int uploaded = 0;
+      int failed = 0;
       final buf = StringBuffer();
       for (var i = 0; i < total; i++) {
         _editor.setEditorStatus('正在上传图片 ${i + 1}/$total...');
@@ -3500,11 +3501,20 @@ class DesktopShellState extends State<DesktopShell>
           buf.writeln(imageService.markdownImage(url));
           uploaded++;
         } catch (e) {
-          debugPrint('Shell: load template failed: $e');
+          debugPrint('Shell: batch upload image failed: $e');
+          // 缓存失败图片字节供工具栏重试按钮使用，写入标准重试标记
+          _editor.setFailedImageBytes(preResult.images[i]);
+          buf.writeln('\n> ⚠️ 图片上传失败，[点击重试](#retry-upload)');
+          failed++;
         }
       }
       _insertText('\n\n${buf.toString()}');
-      _editor.setEditorStatus('完成: $uploaded/$total 张上传成功');
+      if (failed > 0) {
+        _editor.setEditorStatus('完成: $uploaded/$total 张上传成功，$failed 张失败可重试');
+        if (mounted) _showToast('有 $failed 张图片上传失败，可点击编辑器工具栏重试');
+      } else {
+        _editor.setEditorStatus('完成: $uploaded/$total 张上传成功');
+      }
     } catch (e) {
       _editor.setEditorStatus('批量上传失败');
       if (mounted) _showToast('批量上传失败: $e');
@@ -4683,10 +4693,137 @@ class DesktopShellState extends State<DesktopShell>
               _showToast('删除失败: $e');
             }
           },
-          onBatchDelete: (items) async {},
-          onRollback: (item) async {},
+          onBatchDelete: _batchDeleteRemoteFiles,
+          onRollback: _rollbackRemoteFile,
         ),
       );
+    }
+  }
+
+  /// 远程文章批量删除（静态站点，GitHub 文件级删除）
+  Future<void> _batchDeleteRemoteFiles(List<GitHubFileItem> items) async {
+    if (items.isEmpty) return;
+    final repo = effectiveRepo;
+    if (repo == null) {
+      _showToast('未配置仓库');
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('批量删除 ${items.length} 篇远程文章？'),
+        content: const Text(
+          '将删除远程仓库中的对应文件，此操作不可撤销。',
+          style: TextStyle(fontSize: 13, height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    int success = 0;
+    int fail = 0;
+    for (final item in items) {
+      try {
+        final article = await github.getArticle(repo, item);
+        await github.deleteArticle(repo, article);
+        success++;
+      } catch (e) {
+        debugPrint('Batch delete remote failed: $e');
+        fail++;
+      }
+    }
+    await _refreshRemote();
+    await _refreshCommits();
+    _showToast('删除完成: $success 成功, $fail 失败');
+  }
+
+  /// 远程文章回滚到历史提交（静态站点，GitHub 文件级恢复）
+  Future<void> _rollbackRemoteFile(String path) async {
+    final repo = effectiveRepo;
+    if (repo == null) {
+      _showToast('未配置仓库');
+      return;
+    }
+    if (path.isEmpty) {
+      _showToast('路径不能为空');
+      return;
+    }
+    if (commits.isEmpty) await _refreshCommits();
+    if (commits.isEmpty) {
+      _showToast('无提交历史');
+      return;
+    }
+    final sha = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('回滚 $path'),
+        content: SizedBox(
+          width: 480,
+          height: 360,
+          child: ListView.builder(
+            itemCount: commits.length,
+            itemBuilder: (_, i) {
+              final c = commits[i];
+              final dateStr = c.date
+                  .toIso8601String()
+                  .substring(0, 16)
+                  .replaceFirst('T', ' ');
+              return ListTile(
+                dense: true,
+                title: Text(c.message.split('\n').first,
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text('${c.sha.substring(0, 7)} · $dateStr'),
+                onTap: () => Navigator.pop(ctx, c.sha),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+    if (sha == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认回滚'),
+        content: Text(
+          '将 $path 恢复为 ${sha.substring(0, 7)} 的内容并新建提交？',
+          style: const TextStyle(fontSize: 13, height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('回滚'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final article = await github.rollbackFile(repo, path, sha);
+      _showToast('回滚成功: ${article.remotePath}');
+      await _refreshRemote();
+      await _refreshCommits();
+    } catch (e) {
+      _showToast('回滚失败: $e');
     }
   }
 
@@ -4849,11 +4986,47 @@ class DesktopShellState extends State<DesktopShell>
         onShowRepoManager: _showRepoManager,
         onShowSiteEditor: _showSiteEditor,
         onShowThemeColorPicker: _showThemeColorPicker,
-        onShowPwaGuide: () {},
+        onShowPwaGuide: _showPwaGuide,
         onPersistSettings: _persistSettings,
         onShowToast: _showToast,
         onShowBlogSiteManager: _showBlogSiteManager,
         onShowCreateSite: () => _startAiSiteWizard(),
+      ),
+    );
+  }
+
+  /// PWA / 主屏幕快捷方式指南（与移动端一致，桌面仅作指引与复制站点地址）
+  void _showPwaGuide() {
+    final site = activeRepo?.siteUrl.isNotEmpty == true
+        ? activeRepo!.siteUrl
+        : (settings.sitePreviewUrl.isNotEmpty ? settings.sitePreviewUrl : '');
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('PWA / 主屏幕快捷方式'),
+        content: Text(
+          '本应用负责写作与 Git 发布。\n\n'
+          '站点 $site 由 Cloudflare Pages 部署，可在 Chrome/Edge/Safari：\n'
+          '1. 打开站点\n'
+          '2. 菜单 → 添加到主屏幕 / 安装应用\n'
+          '3. 获得 PWA 阅读入口\n\n'
+          '写作请继续使用本应用（支持离线草稿与 Token 发布）。',
+          style: const TextStyle(fontSize: 13, height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: site));
+              Navigator.pop(ctx);
+              _showToast('站点地址已复制');
+            },
+            child: const Text('复制站点'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('知道了'),
+          ),
+        ],
       ),
     );
   }
