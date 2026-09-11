@@ -245,9 +245,7 @@ class DesktopStatusBar extends StatelessWidget {
           Icon(
             icon,
             size: 13,
-            color: useDark
-                ? Colors.white.withOpacity(0.25)
-                : const Color(0xFFD1D5DB),
+            color: AppColor.iconMuted(context),
           ),
           const SizedBox(width: 5),
         ],

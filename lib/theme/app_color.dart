@@ -28,6 +28,12 @@ class AppColor {
           ? Colors.white.withOpacity(0.45)
           : const Color(0xFF9CA3AF);
 
+  /// 辅助信息小字（状态栏/角标）
+  static Color textSubtle(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? Colors.white.withOpacity(0.45)
+          : const Color(0xFF6B7280);
+
   /// 极弱文字（占位/时间戳）
   static Color textFaint(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark

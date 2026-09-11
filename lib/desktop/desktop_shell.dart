@@ -2241,9 +2241,10 @@ class DesktopShellState extends State<DesktopShell>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     '选择目标卷宗：',
-                    style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                    style: TextStyle(
+                        fontSize: 13, color: AppColor.textMuted(context)),
                   ),
                   const SizedBox(height: 8),
                   Wrap(
@@ -2891,7 +2892,6 @@ class DesktopShellState extends State<DesktopShell>
     EdgeInsetsGeometry? padding,
     bool transparent = false,
   }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = transparent
         ? Colors.transparent
         : (_deskCustomBg ? _deskCardBg : AppColor.surfaceRaised(context));
@@ -2901,9 +2901,7 @@ class DesktopShellState extends State<DesktopShell>
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: BorderSide(
-          color: isDark
-              ? Colors.white.withOpacity(0.06)
-              : const Color(0xFFE5E7EB),
+          color: AppColor.border(context),
         ),
       ),
       color: cardColor,
@@ -10839,9 +10837,7 @@ $htmlContent
         color: AppColor.surfaceRaised(context),
         border: Border(
           bottom: BorderSide(
-            color: isDark
-                ? Colors.white.withOpacity(0.06)
-                : const Color(0xFFE5E5EA),
+            color: AppColor.border(context),
           ),
         ),
       ),
@@ -10873,9 +10869,7 @@ $htmlContent
                   siteName,
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark
-                        ? Colors.white.withOpacity(0.4)
-                        : const Color(0xFF9CA3AF),
+                    color: AppColor.iconMuted(context),
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -10964,9 +10958,7 @@ $htmlContent
             Container(
               width: 1,
               height: 20,
-              color: isDark
-                  ? Colors.white.withOpacity(0.06)
-                  : const Color(0xFFE5E5EA),
+              color: AppColor.border(context),
             ),
             const SizedBox(width: 2),
             _minimalBarButton(
@@ -11149,9 +11141,7 @@ $htmlContent
         Icon(
           icon,
           size: 16,
-          color: isDark
-              ? Colors.white.withOpacity(0.6)
-              : const Color(0xFF6B7280),
+          color: AppColor.icon(context),
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -11248,9 +11238,7 @@ $htmlContent
                           height: _editor.editorFontSize *
                               _editor.editorLineHeight,
                           child: Container(
-                            color: isDark
-                                ? const Color(0xFF27272A)
-                                : const Color(0xFFF3F4F6),
+                            color: AppColor.surfaceHover(context),
                           ),
                         ),
                       ),
@@ -11327,9 +11315,7 @@ $htmlContent
                 color: AppColor.surfaceRaised(context),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: isDark
-                      ? Colors.white.withOpacity(0.12)
-                      : const Color(0xFFE5E7EB),
+                  color: AppColor.borderStrong(context),
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -11347,9 +11333,7 @@ $htmlContent
                     decoration: BoxDecoration(
                       border: Border(
                         bottom: BorderSide(
-                          color: isDark
-                              ? Colors.white.withOpacity(0.06)
-                              : const Color(0xFFE5E5EA),
+                          color: AppColor.border(context),
                         ),
                       ),
                     ),
@@ -11438,7 +11422,7 @@ $htmlContent
     }
 
     return Container(
-      color: isDark ? AppColor.surfaceBase(context) : const Color(0xFFF9FAFB),
+      color: AppColor.surfaceBase(context),
       child: Column(
         children: [
           // 源码模式标题栏
@@ -11449,9 +11433,7 @@ $htmlContent
               color: AppColor.surfaceRaised(context),
               border: Border(
                 bottom: BorderSide(
-                  color: isDark
-                      ? Colors.white.withOpacity(0.06)
-                      : const Color(0xFFE5E7EB),
+                  color: AppColor.border(context),
                 ),
               ),
             ),
@@ -11475,9 +11457,7 @@ $htmlContent
                       : '未命名文章',
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark
-                        ? Colors.white.withOpacity(0.4)
-                        : const Color(0xFF9CA3AF),
+                    color: AppColor.iconMuted(context),
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -11508,9 +11488,7 @@ $htmlContent
                 Container(
                   width: 1,
                   height: 18,
-                  color: isDark
-                      ? Colors.white.withOpacity(0.06)
-                      : const Color(0xFFE5E5EA),
+                  color: AppColor.border(context),
                 ),
                 _sourceToolbarButton(
                   Icons.close_fullscreen,
@@ -11558,14 +11536,10 @@ $htmlContent
             height: 24,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: isDark
-                  ? AppColor.surfaceRaised(context)
-                  : const Color(0xFFFFFFFF),
+              color: AppColor.surfaceRaised(context),
               border: Border(
                 top: BorderSide(
-                  color: isDark
-                      ? Colors.white.withOpacity(0.06)
-                      : const Color(0xFFE5E7EB),
+                  color: AppColor.border(context),
                 ),
               ),
             ),
@@ -11575,9 +11549,7 @@ $htmlContent
                   'Markdown',
                   style: TextStyle(
                     fontSize: 11,
-                    color: isDark
-                        ? Colors.white.withOpacity(0.3)
-                        : const Color(0xFF6B7280),
+                    color: AppColor.textSubtle(context),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -11585,9 +11557,7 @@ $htmlContent
                   '行 ${_editor.cursorPos.line} 列 ${_editor.cursorPos.column}',
                   style: TextStyle(
                     fontSize: 11,
-                    color: isDark
-                        ? Colors.white.withOpacity(0.3)
-                        : const Color(0xFF6B7280),
+                    color: AppColor.textSubtle(context),
                   ),
                 ),
                 const Spacer(),
@@ -11595,9 +11565,7 @@ $htmlContent
                   '$_editor.wordCount 词  $_editor.charCount 字',
                   style: TextStyle(
                     fontSize: 11,
-                    color: isDark
-                        ? Colors.white.withOpacity(0.3)
-                        : const Color(0xFF6B7280),
+                    color: AppColor.textSubtle(context),
                   ),
                 ),
               ],
@@ -11636,7 +11604,6 @@ $htmlContent
   }
 
   Widget _collapseToggle() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: _toggleLeftPanel,
       child: MouseRegion(
@@ -11647,9 +11614,7 @@ $htmlContent
             color: AppColor.surfaceBase(context),
             border: Border(
               right: BorderSide(
-                color: isDark
-                    ? Colors.white.withOpacity(0.06)
-                    : const Color(0xFFE5E5EA),
+                color: AppColor.border(context),
               ),
             ),
           ),
@@ -11657,9 +11622,7 @@ $htmlContent
             child: Icon(
               Icons.chevron_right,
               size: 14,
-              color: isDark
-                  ? Colors.white.withOpacity(0.3)
-                  : const Color(0xFF9CA3AF),
+              color: AppColor.iconMuted(context),
             ),
           ),
         ),

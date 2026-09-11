@@ -94,7 +94,6 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       width: widget.width.clamp(200, 400),
@@ -102,9 +101,7 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
         color: AppColor.surfaceBase(context),
         border: Border(
           right: BorderSide(
-            color: isDark
-                ? cs.outlineVariant.withOpacity(0.15)
-                : const Color(0xFFE0E0E5),
+            color: AppColor.border(context),
           ),
         ),
       ),
@@ -505,10 +502,20 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
   }) {
     // 简易模式下分组内无可见项时整组隐藏
     if (children.isEmpty) return const SizedBox.shrink();
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+    // 分组卡片化：与移动端卡片语言一致（圆角 12 + 描边 + 卡片底色）
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColor.surfaceRaised(context),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColor.border(context)),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
         // 分组标题
         GestureDetector(
           onTap: onToggle,
@@ -544,7 +551,9 @@ class _DesktopLeftPanelState extends State<DesktopLeftPanel> {
         ),
         // 分组内容
         if (!collapsed) ...children,
-      ],
+          ],
+        ),
+      ),
     );
   }
 

@@ -189,9 +189,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
         color: AppColor.surfaceRaised(context),
         border: Border(
           bottom: BorderSide(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? Colors.white.withOpacity(0.06)
-                : const Color(0xFFE5E7EB),
+            color: AppColor.border(context),
           ),
         ),
       ),
@@ -456,12 +454,8 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
                 child: Container(
                   width: 1,
                   color: _sepDragActive
-                      ? (isDark
-                            ? Colors.white.withOpacity(0.35)
-                            : const Color(0xFF9CA3AF))
-                      : (isDark
-                            ? Colors.white.withOpacity(0.12)
-                            : const Color(0xFFE5E7EB)),
+                      ? AppColor.iconMuted(context)
+                      : AppColor.borderStrong(context),
                 ),
               ),
             ),
