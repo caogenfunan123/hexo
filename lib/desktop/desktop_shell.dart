@@ -3241,54 +3241,130 @@ class DesktopShellState extends State<DesktopShell>
         '图床',
         _editor.editorBusy ? null : _insertImage,
       ),
-      _toolChip(
-        Icons.collections_outlined,
-        '批量图床',
-        _editor.editorBusy ? null : _batchInsertImages,
-      ),
-      _toolChip(
-        Icons.auto_awesome,
-        'AI润色',
-        _editor.editorBusy ? null : () => _aiAction('polish'),
-        color: Colors.purple,
-      ),
-      _toolChip(
-        Icons.edit_note,
-        'AI续写',
-        _editor.editorBusy ? null : () => _aiAction('continue'),
-        color: Colors.purple,
-      ),
-      _toolChip(
-        Icons.summarize_outlined,
-        'AI摘要',
-        _editor.editorBusy ? null : () => _aiAction('summary'),
-        color: Colors.purple,
-      ),
-      _toolChip(
-        Icons.developer_mode,
-        'AI代码',
-        _editor.editorBusy ? null : () => _aiAction('code'),
-        color: Colors.purple,
-      ),
-      _toolChip(
-        Icons.sync_alt,
-        'AI改写',
-        _editor.editorBusy ? null : () => _aiAction('rewrite'),
-        color: Colors.purple,
-      ),
-      _toolChip(
-        Icons.auto_fix_high,
-        'AI排版',
-        _editor.editorBusy ? null : () => _aiAction('format'),
-        color: Colors.deepPurple,
-      ),
-      _toolChip(
-        Icons.chat,
-        'AI对话',
-        () => _showAgentWorkbench(),
-        color: Colors.deepPurple,
-      ),
+      _moreToolsChip(),
     ];
+  }
+
+  /// 低频专业工具（批量图床 + AI 动作）收纳菜单；
+  /// 命令面板（Ctrl+K）仍可直达全部动作。
+  Widget _moreToolsChip() {
+    final busy = _editor.editorBusy;
+    return PopupMenuButton<String>(
+      tooltip: '更多工具',
+      enabled: !busy,
+      onSelected: (value) {
+        switch (value) {
+          case 'batch_images':
+            _batchInsertImages();
+          case 'ai_polish':
+            _aiAction('polish');
+          case 'ai_continue':
+            _aiAction('continue');
+          case 'ai_summary':
+            _aiAction('summary');
+          case 'ai_code':
+            _aiAction('code');
+          case 'ai_rewrite':
+            _aiAction('rewrite');
+          case 'ai_format':
+            _aiAction('format');
+          case 'ai_chat':
+            _showAgentWorkbench();
+        }
+      },
+      itemBuilder: (_) => [
+        const PopupMenuItem(
+          value: 'batch_images',
+          child: Row(children: [
+            Icon(Icons.collections_outlined, size: 16),
+            SizedBox(width: 8),
+            Text('批量图床'),
+          ]),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: 'ai_polish',
+          child: Row(children: [
+            Icon(Icons.auto_awesome, size: 16, color: Colors.purple),
+            SizedBox(width: 8),
+            Text('AI 润色'),
+          ]),
+        ),
+        const PopupMenuItem(
+          value: 'ai_continue',
+          child: Row(children: [
+            Icon(Icons.edit_note, size: 16, color: Colors.purple),
+            SizedBox(width: 8),
+            Text('AI 续写'),
+          ]),
+        ),
+        const PopupMenuItem(
+          value: 'ai_summary',
+          child: Row(children: [
+            Icon(Icons.summarize_outlined, size: 16, color: Colors.purple),
+            SizedBox(width: 8),
+            Text('AI 摘要'),
+          ]),
+        ),
+        const PopupMenuItem(
+          value: 'ai_code',
+          child: Row(children: [
+            Icon(Icons.developer_mode, size: 16, color: Colors.purple),
+            SizedBox(width: 8),
+            Text('AI 代码'),
+          ]),
+        ),
+        const PopupMenuItem(
+          value: 'ai_rewrite',
+          child: Row(children: [
+            Icon(Icons.sync_alt, size: 16, color: Colors.purple),
+            SizedBox(width: 8),
+            Text('AI 改写'),
+          ]),
+        ),
+        const PopupMenuItem(
+          value: 'ai_format',
+          child: Row(children: [
+            Icon(Icons.auto_fix_high, size: 16, color: Colors.deepPurple),
+            SizedBox(width: 8),
+            Text('AI 排版'),
+          ]),
+        ),
+        const PopupMenuItem(
+          value: 'ai_chat',
+          child: Row(children: [
+            Icon(Icons.chat, size: 16, color: Colors.deepPurple),
+            SizedBox(width: 8),
+            Text('AI 对话'),
+          ]),
+        ),
+      ],
+      child: Builder(builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.add_circle_outline,
+                size: 16,
+                color: cs.onSurface.withOpacity(0.7),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '更多',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: cs.onSurface.withOpacity(0.7),
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+    );
   }
 
   Widget _toolChip(

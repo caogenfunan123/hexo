@@ -58,12 +58,34 @@ void main() {
       }
     });
 
-    test('简易模式默认只显示 shown 项', () {
+    test('简易模式默认只显示高频入口，optIn 项可经 extras 加回', () {
       const cfg = NavCustomConfig();
       expect(NavEntries.navVisibleFor('home', AppMode.simple, [], cfg), isTrue);
       expect(
         NavEntries.navVisibleFor('drafts', AppMode.simple, [], cfg),
         isTrue,
+      );
+      // 高频集合：image_bed / agent_workbench 显示
+      expect(
+        NavEntries.navVisibleFor('image_bed', AppMode.simple, [], cfg),
+        isTrue,
+      );
+      expect(
+        NavEntries.navVisibleFor('agent_workbench', AppMode.simple, [], cfg),
+        isTrue,
+      );
+      // 非高频的 shown 项（theme_store/proxy_settings/p2p_sync）默认隐藏
+      expect(
+        NavEntries.navVisibleFor('theme_store', AppMode.simple, [], cfg),
+        isFalse,
+      );
+      expect(
+        NavEntries.navVisibleFor('proxy_settings', AppMode.simple, [], cfg),
+        isFalse,
+      );
+      expect(
+        NavEntries.navVisibleFor('p2p_sync', AppMode.simple, [], cfg),
+        isFalse,
       );
       expect(
         NavEntries.navVisibleFor('logs', AppMode.simple, [], cfg),

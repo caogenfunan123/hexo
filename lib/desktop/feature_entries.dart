@@ -129,11 +129,23 @@ abstract final class NavEntries {
   static bool visibleEntry(String id, AppMode mode, List<String> extras) =>
       ModeVisibilityFilter.isVisible(id, mode, extras, registry);
 
+  /// 简易模式桌面侧边栏默认高频入口（其余经「全部功能」Hub 或自定义侧边栏加回）
+  static const Set<String> simpleSidebarDefaults = {
+    'home',
+    'new_article',
+    'drafts',
+    'cloud_sync',
+    'site_manager',
+    'agent_workbench',
+    'image_bed',
+    'settings',
+  };
+
   /// 按模式默认（不考虑 extras 加回）判断入口是否可见，用于自定义对话框展示默认状态
   static bool visibleEntryOrDefault(String id, AppMode mode) {
     if (mode == AppMode.standard) return true;
-    final vis = registry[id];
-    return vis == FeatureVisibility.shown;
+    if (simpleSidebarDefaults.contains(id)) return true;
+    return registry[id] == FeatureVisibility.optIn;
   }
 
   /// 组合过滤：用户自定义覆盖模式默认
@@ -147,6 +159,12 @@ abstract final class NavEntries {
   ) {
     if (navCustom.hasOverride(id)) {
       return navCustom.visible[id] ?? false;
+    }
+    if (mode == AppMode.simple) {
+      // 简易模式：默认仅高频入口，optIn 项经 simpleModeExtras 加回
+      if (simpleSidebarDefaults.contains(id)) return true;
+      final vis = registry[id];
+      return vis == FeatureVisibility.optIn && extras.contains(id);
     }
     return visibleEntry(id, mode, extras);
   }
