@@ -255,18 +255,18 @@ class _ConflictDiffViewState extends State<ConflictDiffView> {
 
     switch (line.operation) {
       case DiffOperation.insert:
-        bgColor = isDark ? const Color(0xFF1A3A2A) : const Color(0xFFE8F5E9);
-        borderColor = isDark ? const Color(0xFF4CAF50) : const Color(0xFF66BB6A);
+        bgColor = AppColor.diffAddedBg(context);
+        borderColor = AppColor.diffAddedAccent(context);
         prefix = '+ ';
         break;
       case DiffOperation.delete:
-        bgColor = isDark ? const Color(0xFF3A1A1A) : const Color(0xFFFFEBEE);
-        borderColor = isDark ? const Color(0xFFEF5350) : const Color(0xFFEF9A9A);
+        bgColor = AppColor.diffRemovedBg(context);
+        borderColor = AppColor.diffRemovedAccent(context);
         prefix = '- ';
         break;
       case DiffOperation.replace:
-        bgColor = isDark ? const Color(0xFF2A2A1A) : const Color(0xFFFFF8E1);
-        borderColor = isDark ? const Color(0xFFFFCA28) : const Color(0xFFFFE082);
+        bgColor = AppColor.diffModifiedBg(context);
+        borderColor = AppColor.diffModifiedAccent(context);
         prefix = '~ ';
         break;
       case DiffOperation.equal:
@@ -290,7 +290,7 @@ class _ConflictDiffViewState extends State<ConflictDiffView> {
               style: TextStyle(
                 fontSize: 11,
                 fontFamily: 'monospace',
-                color: isDark ? Colors.white.withOpacity(0.3) : Colors.grey.shade500,
+                color: AppColor.textMuted(context),
                 height: 1.5,
               ),
             ),
@@ -311,7 +311,7 @@ class _ConflictDiffViewState extends State<ConflictDiffView> {
                 style: TextStyle(
                   fontSize: 12,
                   fontFamily: 'monospace',
-                  color: isDark ? Colors.white : Colors.black87,
+                  color: AppColor.textPrimary(context),
                   height: 1.5,
                 ),
                 children: [

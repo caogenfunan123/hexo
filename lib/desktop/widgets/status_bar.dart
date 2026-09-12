@@ -168,11 +168,11 @@ class DesktopStatusBar extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: isSaved
-                  ? (isDark ? const Color(0xFF4ADE80) : const Color(0xFF22C55E))
-                  : (isDark ? const Color(0xFFFBBF24) : const Color(0xFFF59E0B)),
+                  ? AppColor.success(context)
+                  : AppColor.warning(context),
               boxShadow: isSaved ? null : [
                 BoxShadow(
-                  color: (isDark ? const Color(0xFFFBBF24) : const Color(0xFFF59E0B)).withOpacity(0.4),
+                  color: AppColor.warning(context).withOpacity(0.4),
                   blurRadius: 4,
                   spreadRadius: 0.5,
                 ),
@@ -185,8 +185,8 @@ class DesktopStatusBar extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               color: isSaved
-                  ? (isDark ? const Color(0xFF4ADE80) : const Color(0xFF22C55E))
-                  : (isDark ? const Color(0xFFFBBF24) : const Color(0xFFF59E0B)),
+                  ? AppColor.success(context)
+                  : AppColor.warning(context),
               fontWeight: FontWeight.w500,
             ),
           ),

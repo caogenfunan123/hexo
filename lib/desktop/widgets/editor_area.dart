@@ -40,26 +40,23 @@ class DesktopEditorArea extends StatelessWidget {
         children: [
           // 标签页栏
           _buildTabBar(context, cs),
-          // 内容区域：仅挂载激活标签，避免多个标签共享同一 FocusNode/controller
-          // 导致 "A FocusNode cannot be used in multiple widgets" 崩溃
-          Expanded(
-            child: IndexedStack(
-              index: activeIndex.clamp(0, tabs.length - 1),
-              children: List.generate(tabs.length, (i) {
-                if (i != activeIndex.clamp(0, tabs.length - 1)) {
-                  return const SizedBox.shrink();
-                }
-                final t = tabs[i];
-                if (t.contentBuilder != null) {
-                  return Builder(builder: t.contentBuilder!);
-                }
-                return const SizedBox.shrink();
-              }),
-            ),
-          ),
+          // 内容区域
+          Expanded(child: _buildActiveContent()),
         ],
       ),
     );
+  }
+
+  /// 仅挂载激活标签：多个标签会共享同一 FocusNode/controller，
+  /// 触发 "A FocusNode cannot be used in multiple widgets" 崩溃，
+  /// 因此不做跨标签保活（原 IndexedStack 对非激活标签返回空壳，与此等价）。
+  Widget _buildActiveContent() {
+    final index = activeIndex.clamp(0, tabs.length - 1);
+    final t = tabs[index];
+    if (t.contentBuilder != null) {
+      return Builder(builder: t.contentBuilder!);
+    }
+    return const SizedBox.shrink();
   }
 
   Widget _buildTabBar(BuildContext context, ColorScheme cs) {

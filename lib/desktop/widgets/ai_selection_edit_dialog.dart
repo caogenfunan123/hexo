@@ -12,6 +12,7 @@ import '../../models/app_settings.dart';
 import '../../services/ai_service.dart';
 import '../../services/conflict_diff_service.dart';
 import '../../core/cancel_token.dart';
+import '../../theme/app_color.dart';
 
 /// AI 编辑操作类型
 enum AiEditAction {
@@ -270,7 +271,7 @@ class _AiSelectionEditDialogState extends State<AiSelectionEditDialog>
       child: AlertDialog(
         title: Row(
           children: [
-            const Icon(Icons.auto_awesome, size: 22, color: Color(0xFF7C4DFF)),
+            Icon(Icons.auto_awesome, size: 22, color: AppColor.aiAccent(context)),
             const SizedBox(width: 8),
             const Expanded(
               child: Text('AI 选区编辑', style: TextStyle(fontSize: 17)),
@@ -383,7 +384,7 @@ class _AiSelectionEditDialogState extends State<AiSelectionEditDialog>
                         final isSelected = _selectedAction == action;
                         return Material(
                           color: isSelected
-                              ? const Color(0xFF7C4DFF).withOpacity(0.1)
+                              ? AppColor.aiAccent(context).withOpacity(0.1)
                               : Theme.of(context).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(8),
                           child: InkWell(
@@ -397,7 +398,7 @@ class _AiSelectionEditDialogState extends State<AiSelectionEditDialog>
                                     action.icon,
                                     size: 20,
                                     color: isSelected
-                                        ? const Color(0xFF7C4DFF)
+                                        ? AppColor.aiAccent(context)
                                         : Theme.of(context).colorScheme.onSurfaceVariant,
                                   ),
                                   const SizedBox(width: 8),
@@ -450,20 +451,20 @@ class _AiSelectionEditDialogState extends State<AiSelectionEditDialog>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: const Color(0xFF7C4DFF).withOpacity(0.1),
+                color: AppColor.aiAccent(context).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(_selectedAction?.icon ?? Icons.auto_awesome,
-                      size: 14, color: const Color(0xFF7C4DFF)),
+                      size: 14, color: AppColor.aiAccent(context)),
                   const SizedBox(width: 4),
                   Text(
                     _selectedAction?.label ?? '',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF7C4DFF),
+                        color: AppColor.aiAccent(context),
                         fontWeight: FontWeight.w500),
                   ),
                 ],
@@ -499,18 +500,18 @@ class _AiSelectionEditDialogState extends State<AiSelectionEditDialog>
                 prefix = '  ';
               } else if (_acceptedLines.contains(i)) {
                 // 被接受的变更 → 蓝色
-                bgColor = const Color(0xFF7C4DFF).withOpacity(0.08);
-                textColor = const Color(0xFF7C4DFF);
+                bgColor = AppColor.aiAccent(context).withOpacity(0.08);
+                textColor = AppColor.aiAccent(context);
                 prefix = '✓ ';
               } else {
                 switch (line.operation) {
                   case DiffOperation.insert:
-                    bgColor = Colors.green.withOpacity(0.1);
+                    bgColor = AppColor.diffAddedAccent(context).withOpacity(0.1);
                     textColor = Colors.green.shade700;
                     prefix = '+ ';
                     break;
                   case DiffOperation.delete:
-                    bgColor = Colors.red.withOpacity(0.1);
+                    bgColor = AppColor.error(context).withOpacity(0.1);
                     textColor = Colors.red.shade700;
                     prefix = '- ';
                     break;
@@ -585,13 +586,13 @@ class _AiSelectionEditDialogState extends State<AiSelectionEditDialog>
   Widget _buildDiffLegend() {
     return Row(
       children: [
-        _legendItem(Colors.green, '新增'),
+        _legendItem(AppColor.diffAddedAccent(context), '新增'),
         const SizedBox(width: 12),
-        _legendItem(Colors.red, '删除'),
+        _legendItem(AppColor.diffRemovedAccent(context), '删除'),
         const SizedBox(width: 12),
-        _legendItem(Colors.grey, '不变'),
+        _legendItem(AppColor.iconMuted(context), '不变'),
         const SizedBox(width: 12),
-        _legendItem(const Color(0xFF7C4DFF), '已接受'),
+        _legendItem(AppColor.aiAccent(context), '已接受'),
       ],
     );
   }

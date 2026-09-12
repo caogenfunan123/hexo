@@ -96,57 +96,23 @@ class MarkdownSyntaxColors {
   );
 }
 
-/// 桥接语法高亮控制器
-/// 包裹一个普通的 TextEditingController，在 buildTextSpan 中注入语法高亮
-/// 双向同步：用户输入 → delegate，delegate 外部变更 → 本控制器
-class BridgedSyntaxController extends TextEditingController {
-  final TextEditingController _delegate;
-  MarkdownSyntaxColors colors;
-  final double fontSize;
-  final String fontFamily;
-  bool _syncing = false;
+/// 共享的 Markdown 解析与着色引擎（修复2：消除两个控制器的重复实现）
+///
+/// 解析结果带缓存：文本未变化时复用上次结果，避免每帧重绘全量解析；
+/// 配色变更后必须调用 [invalidateHighlightCache] 使缓存失效。
+mixin _MarkdownHighlightParsing on TextEditingController {
+  MarkdownSyntaxColors get colors;
+  double get fontSize;
+  String get fontFamily;
 
   // 解析缓存：文本未变化时复用上次结果，避免每帧重绘全量解析
   String _cacheText = '';
   List<_HighlightSpan> _cacheSpans = const [];
 
-  BridgedSyntaxController({
-    required TextEditingController delegate,
-    this.colors = MarkdownSyntaxColors.dark,
-    this.fontSize = 14.5,
-    this.fontFamily = 'monospace',
-  }) : _delegate = delegate, super(text: delegate.text) {
-    _delegate.addListener(_onDelegateChanged);
-    addListener(_onSelfChanged);
-  }
-
-  void _onDelegateChanged() {
-    if (_syncing) return;
-    _syncing = true;
-    if (_delegate.text != text) {
-      value = _delegate.value;
-    }
-    _syncing = false;
-  }
-
-  void _onSelfChanged() {
-    if (_syncing) return;
-    _syncing = true;
-    if (text != _delegate.text) {
-      _delegate.text = text;
-    }
-    _syncing = false;
-  }
-
-  /// 更新配色
-  void updateColors(MarkdownSyntaxColors newColors) {
-    if (colors != newColors) {
-      colors = newColors;
-      // 缓存中的 span 携带旧配色，主题切换后必须失效重建
-      _cacheText = '';
-      _cacheSpans = const [];
-      notifyListeners();
-    }
+  /// 解析缓存失效（配色切换后 span 携带旧配色，必须重建）
+  void invalidateHighlightCache() {
+    _cacheText = '';
+    _cacheSpans = const [];
   }
 
   @override
@@ -172,411 +138,7 @@ class BridgedSyntaxController extends TextEditingController {
       color: colors.plainText,
     );
 
-    final spans = _parseHighlighting(text);
-    if (spans.isEmpty) {
-      return TextSpan(text: text, style: defaultStyle);
-    }
-
-    final children = <TextSpan>[];
-    var cursor = 0;
-
-    for (final span in spans) {
-      if (span.start > cursor) {
-        children.add(TextSpan(
-          text: text.substring(cursor, span.start),
-          style: defaultStyle,
-        ));
-      }
-      if (span.end > span.start) {
-        children.add(TextSpan(
-          text: text.substring(span.start, span.end),
-          style: defaultStyle.copyWith(
-            color: span.color,
-            fontWeight: span.fontWeight ?? defaultStyle.fontWeight,
-            fontStyle: span.fontStyle ?? defaultStyle.fontStyle,
-            decoration: span.decoration ?? defaultStyle.decoration,
-          ),
-        ));
-      }
-      cursor = span.end;
-    }
-
-    if (cursor < text.length) {
-      children.add(TextSpan(
-        text: text.substring(cursor),
-        style: defaultStyle,
-      ));
-    }
-
-    return TextSpan(style: defaultStyle, children: children);
-  }
-
-  /// 解析 Markdown 文本并返回高亮区间
-  List<_HighlightSpan> _parseHighlighting(String text) {
-    if (text == _cacheText) return _cacheSpans;
-    final spans = <_HighlightSpan>[];
-    final lines = text.split('\n');
-    var offset = 0;
-    var inCodeBlock = false;
-    var inFrontmatter = false;
-
-    for (var i = 0; i < lines.length; i++) {
-      final line = lines[i];
-      final lineStart = offset;
-      final lineEnd = offset + line.length;
-
-      // Frontmatter 检测
-      if (i == 0 && line.trim() == '---') {
-        inFrontmatter = true;
-        spans.add(_HighlightSpan(
-          start: lineStart,
-          end: lineEnd,
-          color: colors.frontmatter,
-          fontWeight: FontWeight.bold,
-        ));
-        offset = lineEnd + 1;
-        continue;
-      }
-      if (inFrontmatter) {
-        if (line.trim() == '---') {
-          inFrontmatter = false;
-          spans.add(_HighlightSpan(
-            start: lineStart,
-            end: lineEnd,
-            color: colors.frontmatter,
-            fontWeight: FontWeight.bold,
-          ));
-          offset = lineEnd + 1;
-          continue;
-        }
-        _highlightFrontmatterLine(line, lineStart, spans);
-        offset = lineEnd + 1;
-        continue;
-      }
-
-      // 代码块检测
-      if (line.trimLeft().startsWith('```')) {
-        if (!inCodeBlock) {
-          inCodeBlock = true;
-          _highlightCodeBlockDelimiter(line, lineStart, spans);
-        } else {
-          inCodeBlock = false;
-          _highlightCodeBlockDelimiter(line, lineStart, spans);
-        }
-        offset = lineEnd + 1;
-        continue;
-      }
-
-      if (inCodeBlock) {
-        spans.add(_HighlightSpan(
-          start: lineStart,
-          end: lineEnd,
-          color: colors.codeBlock,
-        ));
-        offset = lineEnd + 1;
-        continue;
-      }
-
-      // 空行跳过
-      if (line.trim().isEmpty) {
-        offset = lineEnd + 1;
-        continue;
-      }
-
-      // 标题
-      final headingMatch = RegExp(r'^(#{1,6})\s+(.*)$').firstMatch(line);
-      if (headingMatch != null) {
-        final hashEnd = lineStart + headingMatch.group(1)!.length;
-        spans.add(_HighlightSpan(
-          start: lineStart,
-          end: hashEnd + 1,
-          color: colors.heading.withOpacity(0.5),
-          fontWeight: FontWeight.bold,
-        ));
-        spans.add(_HighlightSpan(
-          start: hashEnd + 1,
-          end: lineEnd,
-          color: colors.heading,
-          fontWeight: FontWeight.bold,
-        ));
-        offset = lineEnd + 1;
-        continue;
-      }
-
-      // 引用块
-      final trimmedLeft = line.trimLeft();
-      if (trimmedLeft.startsWith('>')) {
-        final indent = line.length - trimmedLeft.length;
-        spans.add(_HighlightSpan(
-          start: lineStart + indent,
-          end: lineStart + indent + 1,
-          color: colors.blockquote.withOpacity(0.5),
-          fontWeight: FontWeight.bold,
-        ));
-        spans.add(_HighlightSpan(
-          start: lineStart + indent + 1,
-          end: lineEnd,
-          color: colors.blockquote,
-        ));
-        offset = lineEnd + 1;
-        continue;
-      }
-
-      // 水平线
-      if (RegExp(r'^(\s*[-*_]\s*){3,}$').hasMatch(line)) {
-        spans.add(_HighlightSpan(
-          start: lineStart,
-          end: lineEnd,
-          color: colors.horizontalRule,
-        ));
-        offset = lineEnd + 1;
-        continue;
-      }
-
-      // 无序列表
-      final ulMatch = RegExp(r'^(\s*)([-*+])\s+(.*)$').firstMatch(line);
-      if (ulMatch != null) {
-        final indentLen = ulMatch.group(1)!.length;
-        spans.add(_HighlightSpan(
-          start: lineStart + indentLen,
-          end: lineStart + indentLen + 1,
-          color: colors.listMarker,
-          fontWeight: FontWeight.bold,
-        ));
-        _highlightInline(
-          line.substring(indentLen + 2),
-          lineStart + indentLen + 2,
-          spans,
-        );
-        offset = lineEnd + 1;
-        continue;
-      }
-
-      // 有序列表
-      final olMatch = RegExp(r'^(\s*)(\d+\.)\s+(.*)$').firstMatch(line);
-      if (olMatch != null) {
-        final indentLen = olMatch.group(1)!.length;
-        final markerLen = olMatch.group(2)!.length;
-        spans.add(_HighlightSpan(
-          start: lineStart + indentLen,
-          end: lineStart + indentLen + markerLen,
-          color: colors.listMarker,
-          fontWeight: FontWeight.bold,
-        ));
-        _highlightInline(
-          line.substring(indentLen + markerLen + 1),
-          lineStart + indentLen + markerLen + 1,
-          spans,
-        );
-        offset = lineEnd + 1;
-        continue;
-      }
-
-      // 表格行
-      if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
-        _highlightTableLine(line, lineStart, spans);
-        offset = lineEnd + 1;
-        continue;
-      }
-
-      // 普通文本行 — 内联高亮
-      _highlightInline(line, lineStart, spans);
-      offset = lineEnd + 1;
-    }
-
-    spans.sort((a, b) => a.start.compareTo(b.start));
-    final result = _mergeOverlappingSpans(spans);
-    _cacheText = text;
-    _cacheSpans = result;
-    return result;
-  }
-
-  void _highlightFrontmatterLine(String line, int lineStart, List<_HighlightSpan> spans) {
-    final colonIdx = line.indexOf(':');
-    if (colonIdx > 0) {
-      spans.add(_HighlightSpan(
-        start: lineStart,
-        end: lineStart + colonIdx,
-        color: colors.frontmatter,
-        fontWeight: FontWeight.w600,
-      ));
-      spans.add(_HighlightSpan(
-        start: lineStart + colonIdx,
-        end: lineStart + line.length,
-        color: colors.plainText,
-      ));
-    } else {
-      spans.add(_HighlightSpan(
-        start: lineStart,
-        end: lineStart + line.length,
-        color: colors.frontmatter,
-      ));
-    }
-  }
-
-  void _highlightCodeBlockDelimiter(String line, int lineStart, List<_HighlightSpan> spans) {
-    spans.add(_HighlightSpan(
-      start: lineStart,
-      end: lineStart + line.length,
-      color: colors.codeBlock.withOpacity(0.6),
-      fontWeight: FontWeight.bold,
-    ));
-  }
-
-  void _highlightTableLine(String line, int lineStart, List<_HighlightSpan> spans) {
-    if (RegExp(r'^\|[\s:-]+\|').hasMatch(line.trim())) {
-      spans.add(_HighlightSpan(
-        start: lineStart,
-        end: lineStart + line.length,
-        color: colors.table.withOpacity(0.5),
-      ));
-    } else {
-      spans.add(_HighlightSpan(
-        start: lineStart,
-        end: lineStart + line.length,
-        color: colors.table,
-      ));
-    }
-  }
-
-  void _highlightInline(String text, int baseOffset, List<_HighlightSpan> spans) {
-    final patterns = <_PatternDef>[
-      _PatternDef(RegExp(r'</?[a-zA-Z][a-zA-Z0-9]*(?:\s+[^>]*)?/?>'), colors.htmlTag),
-      _PatternDef(RegExp(r'<!--.*?-->'), colors.comment),
-      _PatternDef(RegExp(r'!\[([^\]]*)\]\(([^)]*)\)'), colors.image),
-      _PatternDef(RegExp(r'\[([^\]]*)\]\(([^)]*)\)'), colors.link),
-      _PatternDef(RegExp(r'`([^`]+)`'), colors.code),
-      _PatternDef(RegExp(r'\*\*\*([^*]+)\*\*\*'), colors.boldItalic, bold: true, italic: true),
-      _PatternDef(RegExp(r'\*\*([^*]+)\*\*'), colors.bold, bold: true),
-      _PatternDef(RegExp(r'(?<!\*)\*([^*]+)\*(?!\*)'), colors.italic, italic: true),
-      _PatternDef(RegExp(r'~~([^~]+)~~'), colors.strikethrough, strikethrough: true),
-      _PatternDef(RegExp(r'==([^=]+)=='), colors.highlight),
-      _PatternDef(RegExp(r'\[([^\]]*)\]\[([^\]]*)\]'), colors.link),
-      _PatternDef(RegExp(r'<(https?://[^>]+)>'), colors.linkUrl),
-    ];
-
-    for (final pattern in patterns) {
-      for (final match in pattern.regex.allMatches(text)) {
-        final start = baseOffset + match.start;
-        final end = baseOffset + match.end;
-        if (!_hasOverlap(spans, start, end)) {
-          spans.add(_HighlightSpan(
-            start: start,
-            end: end,
-            color: pattern.color,
-            fontWeight: pattern.bold ? FontWeight.bold : null,
-            fontStyle: pattern.italic ? FontStyle.italic : null,
-            decoration: pattern.strikethrough ? TextDecoration.lineThrough : null,
-          ));
-        }
-      }
-    }
-  }
-
-  bool _hasOverlap(List<_HighlightSpan> spans, int start, int end) {
-    for (final s in spans) {
-      if (start < s.end && end > s.start) return true;
-    }
-    return false;
-  }
-
-  List<_HighlightSpan> _mergeOverlappingSpans(List<_HighlightSpan> spans) {
-    if (spans.length <= 1) return spans;
-    final merged = <_HighlightSpan>[];
-    merged.add(spans.first);
-    for (var i = 1; i < spans.length; i++) {
-      final last = merged.last;
-      final cur = spans[i];
-      if (cur.start < last.end) {
-        if (cur.end - cur.start > last.end - last.start) {
-          merged.last = cur;
-        }
-      } else {
-        merged.add(cur);
-      }
-    }
-    return merged;
-  }
-
-  @override
-  void dispose() {
-    _delegate.removeListener(_onDelegateChanged);
-    removeListener(_onSelfChanged);
-    super.dispose();
-  }
-}
-
-/// 语法高亮范围
-class _HighlightSpan {
-  final int start;
-  final int end;
-  final Color color;
-  final FontWeight? fontWeight;
-  final FontStyle? fontStyle;
-  final TextDecoration? decoration;
-
-  const _HighlightSpan({
-    required this.start,
-    required this.end,
-    required this.color,
-    this.fontWeight,
-    this.fontStyle,
-    this.decoration,
-  });
-}
-
-/// Markdown 语法高亮 TextEditingController
-/// 通过重写 buildTextSpan 实现语法着色
-class MarkdownSyntaxController extends TextEditingController {
-  MarkdownSyntaxColors colors;
-  final double fontSize;
-  final String fontFamily;
-
-  // 解析缓存：文本未变化时复用上次结果，避免每帧重绘全量解析
-  String _cacheText = '';
-  List<_HighlightSpan> _cacheSpans = const [];
-
-  MarkdownSyntaxController({
-    super.text,
-    this.colors = MarkdownSyntaxColors.dark,
-    this.fontSize = 14.5,
-    this.fontFamily = 'monospace',
-  });
-
-  /// 更新配色方案
-  void updateColors(MarkdownSyntaxColors newColors) {
-    if (colors != newColors) {
-      colors = newColors;
-      // 缓存中的 span 携带旧配色，主题切换后必须失效重建
-      _cacheText = '';
-      _cacheSpans = const [];
-      notifyListeners();
-    }
-  }
-
-  @override
-  TextSpan buildTextSpan({
-    required BuildContext context,
-    TextStyle? style,
-    required bool withComposing,
-  }) {
-    if (text.isEmpty) {
-      return TextSpan(
-        text: '',
-        style: style?.copyWith(
-          fontSize: fontSize,
-          fontFamily: fontFamily,
-        ),
-      );
-    }
-
-    final spans = _parseHighlighting(text);
-    final defaultStyle = (style ?? const TextStyle()).copyWith(
-      fontSize: fontSize,
-      fontFamily: fontFamily,
-      color: colors.plainText,
-    );
-
+    final spans = parseHighlighting(text);
     if (spans.isEmpty) {
       return TextSpan(text: text, style: defaultStyle);
     }
@@ -618,7 +180,7 @@ class MarkdownSyntaxController extends TextEditingController {
   }
 
   /// 解析 Markdown 文本并返回高亮区间
-  List<_HighlightSpan> _parseHighlighting(String text) {
+  List<_HighlightSpan> parseHighlighting(String text) {
     if (text == _cacheText) return _cacheSpans;
     final spans = <_HighlightSpan>[];
     final lines = text.split('\n');
@@ -925,6 +487,112 @@ class MarkdownSyntaxController extends TextEditingController {
       }
     }
     return merged;
+  }
+}
+
+/// 桥接语法高亮控制器
+/// 包裹一个普通的 TextEditingController，在 buildTextSpan 中注入语法高亮
+/// 双向同步：用户输入 → delegate，delegate 外部变更 → 本控制器
+class BridgedSyntaxController extends TextEditingController
+    with _MarkdownHighlightParsing {
+  final TextEditingController _delegate;
+  @override
+  MarkdownSyntaxColors colors;
+  @override
+  final double fontSize;
+  @override
+  final String fontFamily;
+  bool _syncing = false;
+
+  BridgedSyntaxController({
+    required TextEditingController delegate,
+    this.colors = MarkdownSyntaxColors.dark,
+    this.fontSize = 14.5,
+    this.fontFamily = 'monospace',
+  }) : _delegate = delegate, super(text: delegate.text) {
+    _delegate.addListener(_onDelegateChanged);
+    addListener(_onSelfChanged);
+  }
+
+  void _onDelegateChanged() {
+    if (_syncing) return;
+    _syncing = true;
+    if (_delegate.text != text) {
+      value = _delegate.value;
+    }
+    _syncing = false;
+  }
+
+  void _onSelfChanged() {
+    if (_syncing) return;
+    _syncing = true;
+    if (text != _delegate.text) {
+      _delegate.text = text;
+    }
+    _syncing = false;
+  }
+
+  /// 更新配色
+  void updateColors(MarkdownSyntaxColors newColors) {
+    if (colors != newColors) {
+      colors = newColors;
+      invalidateHighlightCache();
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    _delegate.removeListener(_onDelegateChanged);
+    removeListener(_onSelfChanged);
+    super.dispose();
+  }
+}
+
+/// 语法高亮范围
+class _HighlightSpan {
+  final int start;
+  final int end;
+  final Color color;
+  final FontWeight? fontWeight;
+  final FontStyle? fontStyle;
+  final TextDecoration? decoration;
+
+  const _HighlightSpan({
+    required this.start,
+    required this.end,
+    required this.color,
+    this.fontWeight,
+    this.fontStyle,
+    this.decoration,
+  });
+}
+
+/// Markdown 语法高亮 TextEditingController
+/// 通过重写 buildTextSpan 实现语法着色
+class MarkdownSyntaxController extends TextEditingController
+    with _MarkdownHighlightParsing {
+  @override
+  MarkdownSyntaxColors colors;
+  @override
+  final double fontSize;
+  @override
+  final String fontFamily;
+
+  MarkdownSyntaxController({
+    super.text,
+    this.colors = MarkdownSyntaxColors.dark,
+    this.fontSize = 14.5,
+    this.fontFamily = 'monospace',
+  });
+
+  /// 更新配色方案
+  void updateColors(MarkdownSyntaxColors newColors) {
+    if (colors != newColors) {
+      colors = newColors;
+      invalidateHighlightCache();
+      notifyListeners();
+    }
   }
 }
 

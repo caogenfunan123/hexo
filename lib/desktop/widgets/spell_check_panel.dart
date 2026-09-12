@@ -34,7 +34,7 @@ class SpellCheckPanel extends StatelessWidget {
             Icon(
               Icons.check_circle_outline,
               size: 48,
-              color: isDark ? const Color(0xFF4ADE80).withOpacity(0.5) : const Color(0xFF22C55E).withOpacity(0.5),
+              color: AppColor.success(context).withOpacity(0.5),
             ),
             const SizedBox(height: 12),
             Text(
@@ -50,7 +50,7 @@ class SpellCheckPanel extends StatelessWidget {
               '文档拼写检查通过',
               style: TextStyle(
                 fontSize: 11,
-                color: isDark ? Colors.white.withOpacity(0.25) : const Color(0xFFD1D5DB),
+                color: AppColor.borderStrong(context),
               ),
             ),
           ],
@@ -81,7 +81,7 @@ class SpellCheckPanel extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white.withOpacity(0.7) : const Color(0xFF374151),
+                  color: AppColor.textSecondary(context),
                 ),
               ),
               if (errors > 0) ...[
@@ -89,7 +89,7 @@ class SpellCheckPanel extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.15),
+                    color: AppColor.error(context).withOpacity(0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -103,7 +103,7 @@ class SpellCheckPanel extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.amber.withOpacity(0.15),
+                    color: AppColor.warning(context).withOpacity(0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -161,7 +161,7 @@ class _SpellCheckItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isError = result.severity == spell_svc.SpellCheckSeverity.error;
-    final severityColor = isError ? Colors.red : Colors.amber;
+    final severityColor = isError ? AppColor.error(context) : AppColor.warning(context);
 
     return Container(
       decoration: BoxDecoration(
@@ -192,7 +192,9 @@ class _SpellCheckItem extends StatelessWidget {
                       fontFamily: 'monospace',
                       color: severityColor,
                       decoration: TextDecoration.underline,
-                      decorationColor: isError ? Colors.red.withOpacity(0.4) : Colors.amber.withOpacity(0.4),
+                      decorationColor: isError
+                          ? AppColor.error(context).withOpacity(0.4)
+                          : AppColor.warning(context).withOpacity(0.4),
                       decorationStyle: TextDecorationStyle.wavy,
                     ),
                   ),

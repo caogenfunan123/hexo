@@ -122,7 +122,7 @@ class _VersionSnapshotViewState extends State<VersionSnapshotView> {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: isDark ? Colors.white : Colors.black87,
+              color: AppColor.textPrimary(context),
             ),
           ),
           if (_snapshots != null)
@@ -169,7 +169,7 @@ class _VersionSnapshotViewState extends State<VersionSnapshotView> {
         return Card(
           margin: const EdgeInsets.only(bottom: 4),
           color: isSelected
-              ? (isDark ? const Color(0xFF2A3A5A) : const Color(0xFFE3F2FD))
+              ? AppColor.infoBg(context)
               : null,
           child: InkWell(
             borderRadius: BorderRadius.circular(8),
@@ -324,7 +324,7 @@ class _VersionSnapshotViewState extends State<VersionSnapshotView> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              color: isDark ? const Color(0xFF2A2A1A) : const Color(0xFFFFF8E1),
+              color: AppColor.diffModifiedBg(context),
               child: Text(
                 '行 ${block.startLineOld} → ${block.startLineNew}',
                 style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
@@ -344,13 +344,13 @@ class _VersionSnapshotViewState extends State<VersionSnapshotView> {
 
     switch (line.operation) {
       case DiffOperation.insert:
-        bg = isDark ? const Color(0xFF1A3A2A) : const Color(0xFFE8F5E9);
-        border = const Color(0xFF4CAF50);
+        bg = AppColor.diffAddedBg(context);
+        border = AppColor.diffAddedAccent(context);
         prefix = '+ ';
         break;
       case DiffOperation.delete:
-        bg = isDark ? const Color(0xFF3A1A1A) : const Color(0xFFFFEBEE);
-        border = const Color(0xFFEF5350);
+        bg = AppColor.diffRemovedBg(context);
+        border = AppColor.diffRemovedAccent(context);
         prefix = '- ';
         break;
       case DiffOperation.equal:

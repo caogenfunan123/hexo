@@ -102,6 +102,7 @@ class DesktopFileOperator extends AppFileOperator {
 
       final destName = exportName ?? relativePath.split('/').last;
       final downloadsDir = await pp.getDownloadsDirectory();
+      if (downloadsDir == null) return null;
       final dest = File('${downloadsDir.path}/$destName');
       await source.copy(dest.path);
       return dest.path;

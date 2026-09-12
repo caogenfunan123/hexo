@@ -251,23 +251,15 @@ class AndroidFileOperator extends AppFileOperator {
         return result;
       } else {
         // Android 9-: 使用外部存储
-        final Directory downloadsDir;
-        try {
-          downloadsDir = await pp.getExternalStoragePublicDirectory(
-            pp.ExternalStorageDirectoryType.downloads,
-          );
-        } catch (_) {
-          final fallback = Directory('/storage/emulated/0/Download');
-          if (await fallback.exists()) {
-            final destFile = File('${fallback.path}/$name');
-            await sourceFile.copy(destFile.path);
-            return destFile.path;
-          }
-          return null;
+        // path_provider 2.x 已移除 getExternalStoragePublicDirectory API，
+        // 直接使用公共下载目录（即原 API 失败时的回退路径）
+        final fallback = Directory('/storage/emulated/0/Download');
+        if (await fallback.exists()) {
+          final destFile = File('${fallback.path}/$name');
+          await sourceFile.copy(destFile.path);
+          return destFile.path;
         }
-        final destFile = File('${downloadsDir.path}/$name');
-        await sourceFile.copy(destFile.path);
-        return destFile.path;
+        return null;
       }
     } catch (e) {
       debugPrint('exportToUserDirectory error: $e');
@@ -285,17 +277,10 @@ class AndroidFileOperator extends AppFileOperator {
         if (path != null && path.isNotEmpty) return path;
       } catch (_) {}
     }
-    // 回退到下载目录
-    try {
-      final downloadsDir = await pp.getExternalStoragePublicDirectory(
-        pp.ExternalStorageDirectoryType.downloads,
-      );
+    // 回退到下载目录（path_provider 2.x 已移除 getExternalStoragePublicDirectory API）
+    final downloadsDir = Directory('/storage/emulated/0/Download');
+    if (await downloadsDir.exists()) {
       return downloadsDir.path;
-    } catch (_) {
-      final downloadsDir = Directory('/storage/emulated/0/Download');
-      if (await downloadsDir.exists()) {
-        return downloadsDir.path;
-      }
     }
     // 最后回退到内部存储
     final root = await _getInternalRoot();

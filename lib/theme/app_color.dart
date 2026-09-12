@@ -97,4 +97,68 @@ class AppColor {
       Theme.of(context).brightness == Brightness.dark
           ? Colors.white.withOpacity(0.35)
           : const Color(0xFF9CA3AF);
+
+  // ── 状态色 ──
+
+  /// 成功/已保存
+  static Color success(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF4ADE80)
+          : const Color(0xFF22C55E);
+
+  /// 警告/未保存
+  static Color warning(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFFFBBF24)
+          : const Color(0xFFF59E0B);
+
+  /// 错误/失败
+  static Color error(BuildContext context) => Colors.red;
+
+  /// AI 功能强调色（AI 选区编辑/接受态）
+  static Color aiAccent(BuildContext context) => const Color(0xFF7C4DFF);
+
+  // ── Diff / 差异对比 ──
+
+  /// 新增行背景
+  static Color diffAddedBg(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF1A3A2A)
+          : const Color(0xFFE8F5E9);
+
+  /// 新增行强调（边框/色条）
+  static Color diffAddedAccent(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF4CAF50)
+          : const Color(0xFF66BB6A);
+
+  /// 删除行背景
+  static Color diffRemovedBg(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF3A1A1A)
+          : const Color(0xFFFFEBEE);
+
+  /// 删除行强调（边框/色条）
+  static Color diffRemovedAccent(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFFEF5350)
+          : const Color(0xFFEF9A9A);
+
+  /// 修改行背景
+  static Color diffModifiedBg(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF2A2A1A)
+          : const Color(0xFFFFF8E1);
+
+  /// 修改行强调（边框/色条）
+  static Color diffModifiedAccent(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFFFFCA28)
+          : const Color(0xFFFFE082);
+
+  /// 信息/蓝色系背景（选中项、远程面板头）
+  static Color infoBg(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF2A3A5A)
+          : const Color(0xFFE3F2FD);
 }
