@@ -338,12 +338,12 @@ extension DesktopShellNavExt on DesktopShellState {
     if (_layout.leftPanelExpanded && _layout.workMode == WorkMode.focus) {
       _layout.switchWorkMode(WorkMode.workspace);
     }
-    // 持久化左面板折叠状态（重启恢复）
-    final collapsed = !_layout.leftPanelExpanded;
-    if (settings.ui.leftPanelCollapsed != collapsed) {
+    // 持久化左面板展开状态（重启恢复；默认隐藏，用户展开才记住"开"）
+    final expanded = _layout.leftPanelExpanded;
+    if (settings.ui.leftPanelExpanded != expanded) {
       _updateSettings(
         settings.copyWith(
-          ui: settings.ui.copyWith(leftPanelCollapsed: collapsed),
+          ui: settings.ui.copyWith(leftPanelExpanded: expanded),
         ),
       );
     }

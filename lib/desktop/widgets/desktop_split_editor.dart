@@ -308,7 +308,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
     }
   }
 
-  /// 纯源码编辑器 — 占满可用宽度、隐藏滚动条
+  /// 纯源码编辑器 — 内容 760px 居中（纸感书写宽度）、隐藏滚动条
   Widget _buildSourceEditor(bool isDark, ColorScheme cs) {
     return LayoutBuilder(
       builder: (ctx, constraints) {
@@ -316,32 +316,40 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
         final minLines = expands
             ? null
             : ((constraints.maxHeight - 80) / (widget.fontSize * widget.lineHeight)).floor().clamp(1, 50);
-        return ScrollbarTheme(
-          data: ScrollbarThemeData(
-            thickness: WidgetStateProperty.all(0), // 隐藏滚动条
+        final textField = TextField(
+          controller: widget.contentController,
+          focusNode: widget.focusNode,
+          minLines: minLines,
+          maxLines: null,
+          expands: expands,
+          keyboardType: TextInputType.multiline,
+          cursorColor: cs.primary,
+          style: TextStyle(
+            fontFamily: widget.fontFamily,
+            height: widget.lineHeight,
+            fontSize: widget.fontSize,
+            color: widget.editorTextColor ?? AppColor.textPrimary(context),
           ),
-          child: TextField(
-            controller: widget.contentController,
-            focusNode: widget.focusNode,
-            minLines: minLines,
-            maxLines: null,
-            expands: expands,
-            keyboardType: TextInputType.multiline,
-            cursorColor: cs.primary,
-            style: TextStyle(
-              fontFamily: widget.fontFamily,
-                  height: widget.lineHeight,
-                  fontSize: widget.fontSize,
-                  color: widget.editorTextColor ?? AppColor.textPrimary(context),
-                ),
-                decoration: InputDecoration(
-                  hintText: '支持 Markdown 语法写作...',
-                  hintStyle: TextStyle(
-                    color: (widget.editorTextColor ?? AppColor.textPrimary(context)).withOpacity(0.35),
-                    fontSize: widget.fontSize,
-                  ),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.all(20),
+          decoration: InputDecoration(
+            hintText: '支持 Markdown 语法写作...',
+            hintStyle: TextStyle(
+              color: (widget.editorTextColor ?? AppColor.textPrimary(context)).withOpacity(0.35),
+              fontSize: widget.fontSize,
+            ),
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            contentPadding: const EdgeInsets.all(20),
+          ),
+        );
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: ScrollbarTheme(
+              data: ScrollbarThemeData(
+                thickness: WidgetStateProperty.all(0), // 隐藏滚动条
+              ),
+              child: textField,
             ),
           ),
         );
@@ -349,11 +357,11 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
     );
   }
 
-  /// 纯预览 — 与分栏预览对齐：820px 宽度约束 + 16 内边距
+  /// 纯预览 — 与分栏预览对齐：760px 宽度约束 + 16 内边距
   Widget _buildPreviewOnly(bool isDark, ColorScheme cs) {
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 820),
+        constraints: const BoxConstraints(maxWidth: 760),
         child: ScrollbarTheme(
           data: ScrollbarThemeData(
             thickness: WidgetStateProperty.all(0), // 隐藏滚动条
@@ -420,6 +428,8 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
                           fontSize: widget.fontSize,
                         ),
                         border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
                         contentPadding: const EdgeInsets.all(16),
                       ),
                     ),

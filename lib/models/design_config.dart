@@ -55,18 +55,18 @@ class DesignConfig {
   final String editorTheme;
 
   const DesignConfig({
-    this.seedColor = 0xFF0D9488,
-    this.lightBgColor = 0xFFF0FDFA,
+    this.seedColor = 0xFFC4573A, // 陶土橙：低饱和红橙强调色（纸感写作主题）
+    this.lightBgColor = 0xFFFAF9F7, // 暖纸白
     this.lightCardColor = 0xFFFFFFFF,
-    this.lightTextColor = 0xFF134E4A,
-    this.darkBgColor = 0xFF042F2E,
-    this.darkCardColor = 0xFF0F3D3A,
+    this.lightTextColor = 0xFF292524, // 暖近黑 stone-800
+    this.darkBgColor = 0xFF1C1917, // 暖炭黑 stone-900
+    this.darkCardColor = 0xFF292524, // 暖石板 stone-800
     this.borderRadiusScale = 1.0,
     this.paddingScale = 1.0,
     this.fontScale = 1.0,
     this.leftPanelWidth = 260,
-    this.editorFontSize = 14.0,
-    this.editorLineHeight = 1.6,
+    this.editorFontSize = 15.0,
+    this.editorLineHeight = 1.75,
     this.density = 1,
     this.enableBlur = true,
     this.editorTheme = 'auto',
@@ -127,18 +127,18 @@ class DesignConfig {
       };
 
   factory DesignConfig.fromJson(Map<String, dynamic> j) => DesignConfig(
-        seedColor: (j['seedColor'] as num?)?.toInt() ?? 0xFF0EA5E9,
-        lightBgColor: (j['lightBgColor'] as num?)?.toInt() ?? 0xFFF0F4F8,
+        seedColor: (j['seedColor'] as num?)?.toInt() ?? 0xFFC4573A,
+        lightBgColor: (j['lightBgColor'] as num?)?.toInt() ?? 0xFFFAF9F7,
         lightCardColor: (j['lightCardColor'] as num?)?.toInt() ?? 0xFFFFFFFF,
-        lightTextColor: (j['lightTextColor'] as num?)?.toInt() ?? 0xFF0F172A,
-        darkBgColor: (j['darkBgColor'] as num?)?.toInt() ?? 0xFF0F172A,
-        darkCardColor: (j['darkCardColor'] as num?)?.toInt() ?? 0xFF1E293B,
+        lightTextColor: (j['lightTextColor'] as num?)?.toInt() ?? 0xFF292524,
+        darkBgColor: (j['darkBgColor'] as num?)?.toInt() ?? 0xFF1C1917,
+        darkCardColor: (j['darkCardColor'] as num?)?.toInt() ?? 0xFF292524,
         borderRadiusScale: (j['borderRadiusScale'] as num?)?.toDouble() ?? 1.0,
         paddingScale: (j['paddingScale'] as num?)?.toDouble() ?? 1.0,
         fontScale: (j['fontScale'] as num?)?.toDouble() ?? 1.0,
         leftPanelWidth: (j['leftPanelWidth'] as num?)?.toDouble() ?? 260,
-        editorFontSize: (j['editorFontSize'] as num?)?.toDouble() ?? 14.0,
-        editorLineHeight: (j['editorLineHeight'] as num?)?.toDouble() ?? 1.6,
+        editorFontSize: (j['editorFontSize'] as num?)?.toDouble() ?? 15.0,
+        editorLineHeight: (j['editorLineHeight'] as num?)?.toDouble() ?? 1.75,
         density: (j['density'] as num?)?.toInt() ?? 1,
         enableBlur: j['enableBlur'] != false,
         editorTheme: j['editorTheme']?.toString() ?? 'auto',

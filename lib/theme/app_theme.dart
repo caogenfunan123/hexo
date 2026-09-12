@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import '../models/design_config.dart';
 
 class AppTheme {
-  static const Color seed = Color(0xFF0D9488);
-  static const bg = Color(0xFFF0FDFA);
+  static const Color seed = Color(0xFFC4573A);
+  static const bg = Color(0xFFFAF9F7);
   static const card = Colors.white;
-  static const text = Color(0xFF134E4A);
+  static const text = Color(0xFF292524);
   static const muted = Color(0xFF475569);
-  static const divider = Color(0xFF99F6E4);
+  static const divider = Color(0xFFECEAE6);
   static const accent = Color(0xFFEA580C);
   static const accentPurple = Color(0xFF8B5CF6);
   static const accentGreen = Color(0xFF10B981);
@@ -110,6 +110,7 @@ class AppTheme {
 
     return ThemeData(
       useMaterial3: true,
+      fontFamily: 'Inter',
       colorScheme: scheme,
       scaffoldBackgroundColor: bgColor,
       visualDensity: visualDensity,
@@ -138,19 +139,15 @@ class AppTheme {
         color: cardColor,
         elevation: 0,
         shadowColor: Colors.transparent,
+        // 去描边：分层靠背景色阶而非边框线（Mac 风）
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(baseRadius * 1.2),
-          side: BorderSide(
-            color: isLight
-                ? Colors.black.withOpacity(0.05)
-                : Colors.white.withOpacity(0.05),
-          ),
         ),
         margin: EdgeInsets.zero,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isLight ? const Color(0xFFF0FDFA) : cardColor,
+        fillColor: isLight ? const Color(0xFFF5F3F0) : cardColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(baseRadius),
           borderSide: BorderSide(color: dividerColor),
@@ -283,6 +280,7 @@ class AppTheme {
     );
     return ThemeData(
       useMaterial3: true,
+      fontFamily: 'Inter',
       colorScheme: scheme,
       scaffoldBackgroundColor: bg,
       appBarTheme: AppBarTheme(
@@ -309,13 +307,12 @@ class AppTheme {
         shadowColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: Colors.black.withOpacity(0.05)),
         ),
         margin: EdgeInsets.zero,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFFF0FDFA),
+        fillColor: const Color(0xFFF5F3F0),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: divider),
@@ -430,6 +427,7 @@ class AppTheme {
     );
     return ThemeData(
       useMaterial3: true,
+      fontFamily: 'Inter',
       colorScheme: scheme,
       scaffoldBackgroundColor: const Color(0xFF042F2E),
       appBarTheme: AppBarTheme(
@@ -449,7 +447,6 @@ class AppTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: Colors.white.withOpacity(0.05)),
         ),
         margin: EdgeInsets.zero,
       ),

@@ -1,5 +1,6 @@
 /// 桌面版自定义标题栏
-/// 专业桌面端设计：清晰的视觉层次，优雅的暗色/亮色适配
+/// 阶段1（界面改版）：Mac/Bear 风格——
+/// 红绿灯窗口按钮左置、极简动作区、去分隔线（留白分层）、整栏可拖拽移窗
 library;
 
 import 'package:flutter/material.dart';
@@ -33,26 +34,40 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
 
     return GestureDetector(
       onPanStart: (_) => windowManager.startDragging(),
+      onDoubleTap: () async {
+        // 双击标题栏 = 最大化/还原（macOS 惯例）
+        if (await windowManager.isMaximized()) {
+          await windowManager.unmaximize();
+        } else {
+          await windowManager.maximize();
+        }
+      },
       child: Container(
         height: 44,
-        decoration: BoxDecoration(
-          color: AppColor.surfaceRaised(context),
-          border: Border(
-            bottom: BorderSide(color: AppColor.border(context)),
-          ),
-        ),
-        child: Row(
-          children: [
-            // 汉堡菜单
-            _titleBarButton(context,
+        color: AppColor.surfaceRaised(context),
+        // Material(transparency)：为栏内 InkWell/PopupMenuButton 提供必需的
+        // Material 祖先。缺失时站点下拉渲染为红色错误框（存量 bug，曾表现为
+        // 标题栏按钮失效）。
+        child: Material(
+          type: MaterialType.transparency,
+          child: Row(
+            children: [
+            // ── 红绿灯（macOS 惯例：左置） ──
+            const SizedBox(width: 14),
+            _trafficLights(),
+            const SizedBox(width: 10),
+
+            // 汉堡菜单（左栏开关）
+            _titleBarButton(
+              context,
               icon: Icons.menu,
-              tooltip: '菜单 (Ctrl+L)',
+              tooltip: '文章栏 (Ctrl+L)',
               onTap: bus.onToggleLeftPanel,
               cs: cs,
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 8),
 
-            // 应用名称
+            // 应用名 + 站点下拉
             Text(
               '拓墨',
               style: TextStyle(
@@ -62,108 +77,64 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
                 letterSpacing: 0.3,
               ),
             ),
-            const SizedBox(width: 16),
-
-            // 站点下拉（窄窗可收缩省略）
+            const SizedBox(width: 10),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 220),
               child: _siteDropdown(context, cs),
             ),
 
-            // 分隔线
-            Container(
-              width: 1,
-              height: 20,
-              color: AppColor.border(context),
-            ),
-            const SizedBox(width: 4),
+            // ── 中段留白（拖拽区） ──
+            Expanded(child: SizedBox.expand()),
 
-            // 快捷操作按钮：窄窗时可横向滚动，避免 Row 溢出
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  reverse: true,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (bus.onOpenFile != null)
-                        _titleBarButton(context,
-                          icon: Icons.folder_open,
-                          tooltip: '打开文件 (Ctrl+O)',
-                          onTap: bus.onOpenFile!,
-                          cs: cs,
-                        ),
-                      _titleBarButton(context,
-                        icon: Icons.add,
-                        tooltip: '新建文章 (Ctrl+N)',
-                        onTap: bus.onNewArticle,
-                        cs: cs,
-                      ),
-                      _titleBarButton(context,
-                        icon: Icons.sync,
-                        tooltip: '同步 (Ctrl+S)',
-                        onTap: bus.onSync,
-                        cs: cs,
-                      ),
-                      _titleBarButton(context,
-                        icon: Icons.send,
-                        tooltip: '一键发布 (Ctrl+P)',
-                        onTap: bus.onPublish,
-                        cs: cs,
-                      ),
-                      _titleBarButton(context,
-                        icon: Icons.auto_awesome,
-                        tooltip: 'AI 助手',
-                        onTap: onAi,
-                        cs: cs,
-                      ),
-                      _titleBarButton(context,
-                        icon: Icons.vertical_split,
-                        tooltip: '右侧面板',
-                        onTap: bus.onToggleRightDrawer,
-                        cs: cs,
-                      ),
-                      _titleBarButton(context,
-                        icon: isDark ? Icons.light_mode : Icons.dark_mode_outlined,
-                        tooltip: '切换主题',
-                        onTap: bus.onThemeToggle,
-                        cs: cs,
-                      ),
-                    ],
+            // ── 极简动作区：窄窗时可横向滚动防溢出 ──
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              reverse: true,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _titleBarButton(
+                    context,
+                    icon: Icons.add,
+                    tooltip: '新建文章 (Ctrl+N)',
+                    onTap: bus.onNewArticle,
+                    cs: cs,
                   ),
-                ),
+                  _titleBarButton(
+                    context,
+                    icon: Icons.auto_awesome,
+                    tooltip: 'AI 助手',
+                    onTap: onAi,
+                    cs: cs,
+                  ),
+                  _titleBarButton(
+                    context,
+                    icon: Icons.send,
+                    tooltip: '一键发布 (Ctrl+P)',
+                    onTap: bus.onPublish,
+                    cs: cs,
+                  ),
+                  _titleBarButton(
+                    context,
+                    icon: isDark ? Icons.light_mode : Icons.dark_mode_outlined,
+                    tooltip: '切换主题',
+                    onTap: bus.onThemeToggle,
+                    cs: cs,
+                  ),
+                ],
               ),
             ),
-
-            // 窗口控件分隔
-            const SizedBox(width: 4),
-            Container(
-              width: 1,
-              height: 20,
-              color: AppColor.border(context),
-            ),
-            const SizedBox(width: 2),
-
-            // 窗口控件
-            _windowButton(context,
-              icon: Icons.minimize,
-              onTap: () => windowManager.minimize(),
-            ),
-            _windowButton(context,
-              icon: Icons.crop_square,
-              onTap: () => windowManager.maximize(),
-            ),
-            _windowButton(context,
-              icon: Icons.close,
-              onTap: () => windowManager.close(),
-              isClose: true,
-            ),
-          ],
+            const SizedBox(width: 12),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  /// macOS 红绿灯：关闭(红)/最小化(黄)/最大化(绿)，悬停显示符号
+  Widget _trafficLights() {
+    return _TrafficLightGroup();
   }
 
   Widget _titleBarButton(
@@ -194,37 +165,13 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 
-  Widget _windowButton(
-    BuildContext context, {
-    required IconData icon,
-    required VoidCallback onTap,
-    bool isClose = false,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Icon(
-            icon,
-            size: 16,
-            color: isClose ? Colors.redAccent : AppColor.icon(context),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _siteDropdown(BuildContext context, ColorScheme cs) {
     if (repos.isEmpty || bus.onSiteChange == null) {
       return Container(
-        height: 30,
+        height: 28,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(14),
           color: AppColor.surfaceHover(context),
         ),
         child: Row(
@@ -242,7 +189,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 12.5,
                   color: AppColor.textSecondary(context),
                 ),
               ),
@@ -264,10 +211,10 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
           ? AppColor.surfaceOverlay(context)
           : null,
       child: Container(
-        height: 30,
+        height: 28,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(14),
           color: AppColor.surfaceHover(context),
         ),
         child: Row(
@@ -285,7 +232,7 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 12.5,
                   color: AppColor.textSecondary(context),
                 ),
               ),
@@ -337,6 +284,86 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
         ),
       )).toList(),
       onSelected: bus.onSiteChange,
+    );
+  }
+}
+
+/// 红绿灯按钮组（有状态：悬停任一灯时显示符号，macOS 行为）
+class _TrafficLightGroup extends StatefulWidget {
+  @override
+  State<_TrafficLightGroup> createState() => _TrafficLightGroupState();
+}
+
+class _TrafficLightGroupState extends State<_TrafficLightGroup> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _light(
+            color: const Color(0xFFFF5F57),
+            hoveredSymbol: Icons.close,
+            onTap: () => windowManager.close(),
+            tooltip: '关闭（隐藏到托盘）',
+          ),
+          const SizedBox(width: 8),
+          _light(
+            color: const Color(0xFFFEBC2E),
+            hoveredSymbol: Icons.remove,
+            onTap: () => windowManager.minimize(),
+            tooltip: '最小化',
+          ),
+          const SizedBox(width: 8),
+          _light(
+            color: const Color(0xFF28C840),
+            hoveredSymbol: Icons.crop_square,
+            onTap: () async {
+              if (await windowManager.isMaximized()) {
+                await windowManager.unmaximize();
+              } else {
+                await windowManager.maximize();
+              }
+            },
+            tooltip: '最大化/还原',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _light({
+    required Color color,
+    required IconData hoveredSymbol,
+    required VoidCallback onTap,
+    required String tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 500),
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
+            child: _hovering
+                ? Icon(hoveredSymbol, size: 9, color: Colors.black.withOpacity(0.55))
+                : null,
+          ),
+        ),
+      ),
     );
   }
 }

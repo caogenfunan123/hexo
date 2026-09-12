@@ -1685,8 +1685,8 @@ class DesktopShellState extends State<DesktopShell>
     super.didChangeDependencies();
     if (!_leftPanelRestored) {
       _leftPanelRestored = true;
-      if (settings.ui.leftPanelCollapsed && _layout.leftPanelExpanded) {
-        _layout.collapseLeftPanel();
+      if (settings.ui.leftPanelExpanded && !_layout.leftPanelExpanded) {
+        _layout.expandLeftPanel();
       }
     }
   }
@@ -1703,12 +1703,18 @@ class DesktopShellState extends State<DesktopShell>
     final stackChildren = <Widget>[
       ColoredBox(
         color: Theme.of(context).scaffoldBackgroundColor,
-        child: Column(
-          children: [
-            _buildTopBar(layout),
-            _buildMainArea(layout),
-            _buildBottomBar(layout),
-          ],
+        // Material(transparency)：桌面壳没有 Scaffold，必须显式提供 Material
+        // 祖先，否则工作台编辑器 TextField / 各处 InkWell 会抛
+        // "No Material widget found" 渲染成红色错误框（存量 bug 根治）。
+        child: Material(
+          type: MaterialType.transparency,
+          child: Column(
+            children: [
+              _buildTopBar(layout),
+              _buildMainArea(layout),
+              _buildBottomBar(layout),
+            ],
+          ),
         ),
       ),
     ];

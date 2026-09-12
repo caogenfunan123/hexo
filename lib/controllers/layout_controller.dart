@@ -55,7 +55,9 @@ enum LayoutChangeType {
 
 class LayoutController extends ChangeNotifier {
   // ── 桌面端专用 ──
-  bool _leftPanelExpanded = true;
+  // 阶段1（界面改版）：左栏默认隐藏，写作即全部界面；
+  // 用户展开后经 UiSettings.leftPanelExpanded 记住偏好
+  bool _leftPanelExpanded = false;
   double _leftPanelWidth = 260;
   bool _rightDrawerOpen = false;
   RightDrawerTab _activeDrawerTab = RightDrawerTab.outline;
