@@ -23,8 +23,30 @@ extension DesktopShellMiscExt on DesktopShellState {
     _applyState(() => _showCommandPalette = false);
   }
 
+  /// 阶段2 Spike：super_editor 所见即所得编辑（实验入口，经命令面板触发）
+  Future<void> _openWysiwygPoc() async {
+    final initial = _doc.contentCtrl.text;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => WysiwygPocDialog(initialMarkdown: initial),
+    );
+    if (result == null) return;
+    if (result != initial) {
+      _doc.contentCtrl.text = result;
+      _onContentChanged();
+      _showToast('所见即所得内容已应用');
+    }
+  }
+
   List<CommandItem> _buildCommandItems() {
     return [
+      CommandItem(
+        label: '所见即所得编辑（实验）',
+        category: '编辑',
+        shortcut: '',
+        icon: Icons.auto_fix_high_outlined,
+        onExecute: _openWysiwygPoc,
+      ),
       CommandItem(
         label: '保存草稿',
         category: '文件',

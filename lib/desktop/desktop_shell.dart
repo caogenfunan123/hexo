@@ -96,6 +96,7 @@ import '../screens/content_stats_screen.dart';
 import '../screens/backup_restore_screen.dart';
 import '../screens/p2p_sync_screen.dart';
 import '../widgets/ai_chat_panel.dart';
+import 'widgets/wysiwyg_editor_poc.dart';
 import '../widgets/markdown_preview_smooth.dart';
 import 'widgets/ai_selection_edit_dialog.dart';
 import 'widgets/markdown_formatter.dart';

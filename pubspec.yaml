@@ -52,6 +52,13 @@ dependencies:
   flutter_inappwebview: ^6.1.5
   # 系统分享
   share_plus: ^10.0.2
+  # 阶段2：所见即所得编辑器 spike（Document/Composer + Markdown 双向序列化）
+  super_editor: 0.3.0-dev.52
+
+# uuid 4 兼容垫片：super_editor 0.3.0-dev 需 uuid ^4.5，system_tray 钉 uuid ^3；
+  # system_tray 仅用 Uuid().v4() 生成标识符，uuid 4 该 API 不变，实测可共存
+dependency_overrides:
+  uuid: ^4.5.1
 
 dev_dependencies:
   flutter_test:
