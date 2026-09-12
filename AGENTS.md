@@ -3,6 +3,20 @@
 本文件供任何 AI Agent（opencode / monkeycode / Copilot 等）在操作本仓库时读取并遵守。
 涉及**发布新版本**的任务时，必须严格遵守 `docs/RELEASE_PROCESS.md` 的固定流程。
 
+## 开始工作前必读
+
+**基础架构速查**在 `.monkeycode/docs/ARCHITECTURE.md` 的
+「代码地图与改码守则」章节——包含桌面端（desktop_shell + 16 个业务域 part）、
+移动端（main.dart + 10 个 mixin）、状态管理、持久化、主题令牌、发布管线、
+构建/CI 与已知坑清单。**读完该章节再动手，无需重新探索仓库。**
+其中与改码强相关的硬规则：
+
+1. 桌面壳无 Scaffold：`DesktopShell.build` 与标题栏的 `Material(transparency)` 根修复勿删。
+2. part 文件（shell_parts/、mixins/）里 setState 一律写 `_applyState`。
+3. 新增功能入口四处同步（feature_entries → kNavEntries+navEntryAction → ShellActionBus → shell 接线），详见 `lib/desktop/shell_action_bus.dart` 头注释。
+4. 新代码颜色一律走 `AppColor` 语义令牌（纸感色板），禁止硬编码 hex。
+5. 修复/改版文档按 `docs/fixes/` 既有格式追加（该目录 gitignore，需 `git add -f`）。
+
 ## 项目概要
 
 - Flutter 应用「拓墨」：AI Markdown 写作 + 静态博客发布工具（Android / iOS / Web / 桌面）。
