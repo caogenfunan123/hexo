@@ -531,6 +531,7 @@ class DesktopShellState extends State<DesktopShell>
     onShowAgentWorkbench: _showAgentWorkbench,
     onShowThemeStore: _showThemeStore,
     onShowAiModelManager: _showAiModelManager,
+    onShowAiTemplateChat: _showAiTemplateChat,
     onShowToolLibrary: _showToolLibrary,
     onShowBlogSiteManager: _showBlogSiteManager,
     onShowSiteEditor: _showSiteEditor,

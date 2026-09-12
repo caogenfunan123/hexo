@@ -14,6 +14,16 @@ import '../models/article.dart';
 /// 将原本分散在 DesktopLeftPanel（37 个）、DesktopTitleBar（12 个）、
 /// DesktopEditorArea（6 个）、DesktopStatusBar（2 个）的回调参数
 /// 统一收口到一个对象中，消除参数层层传递。
+///
+/// ## 新增功能入口的固定清单（四处必须同步，缺一即功能失效）
+///
+/// 1. `lib/desktop/feature_entries.dart` — 注册入口 id 与可见性
+///    （shown/hidden/optIn）；
+/// 2. `lib/desktop/nav_entries_meta.dart` — `kNavEntries` 加展示定义
+///    （图标/文案/分组），**并在 `navEntryAction` 加 id → 回调映射**
+///    （漏加此处的典型症状：全部功能 Hub 卡片呈灰色不可点）；
+/// 3. 本类 — 新增回调字段并在构造参数声明；
+/// 4. `desktop_shell.dart` 的 `_bus` 构造处 — 接上具体的处理方法。
 class ShellActionBus {
   // ── 导航：文章管理 ──
   final VoidCallback onNewArticle;
@@ -56,6 +66,7 @@ class ShellActionBus {
   final VoidCallback onShowAgentWorkbench;
   final VoidCallback onShowThemeStore;
   final VoidCallback onShowAiModelManager;
+  final VoidCallback onShowAiTemplateChat;
   final VoidCallback onShowToolLibrary;
 
   // ── 导航：站点 ──
@@ -122,6 +133,7 @@ class ShellActionBus {
     required this.onShowAgentWorkbench,
     required this.onShowThemeStore,
     required this.onShowAiModelManager,
+    required this.onShowAiTemplateChat,
     required this.onShowToolLibrary,
     required this.onShowBlogSiteManager,
     required this.onShowSiteEditor,
