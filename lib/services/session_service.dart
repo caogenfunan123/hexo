@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../models/session_state.dart';
 import 'web_storage_backend.dart';
@@ -30,10 +31,18 @@ class SessionService {
 
   Future<Directory> _baseDir() async {
     if (kIsWeb) return Directory('/session');
-    // 使用应用文档目录
+    // 移动端 Platform.environment 为空（硬编码 '/tmp' 在安卓是只读文件系统，
+    // 曾致自动保存全挂），必须走 path_provider 应用目录
+    if (Platform.isAndroid || Platform.isIOS) {
+      final docs = await getApplicationDocumentsDirectory();
+      final dir = Directory('${docs.path}/.hexo_app');
+      if (!await dir.exists()) await dir.create(recursive: true);
+      return dir;
+    }
+    // 桌面端保持原有 HOME/USERPROFILE 约定（存量数据路径不变）
     final home = Platform.environment['HOME'] ??
         Platform.environment['USERPROFILE'] ??
-        '/tmp';
+        (await getApplicationSupportDirectory()).path;
     final dir = Directory('$home/.hexo_app');
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;

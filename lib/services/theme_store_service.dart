@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/git_provider.dart';
@@ -201,8 +202,9 @@ class ThemeStoreService {
     if (root == null) {
       throw Exception('主题包结构异常：未找到顶层目录');
     }
+    final sysTmp = await getTemporaryDirectory();
     final tempDir =
-        '${Directory.systemTemp.path}/theme_store_${DateTime.now().millisecondsSinceEpoch}';
+        '${sysTmp.path}/theme_store_${DateTime.now().millisecondsSinceEpoch}';
     final dest = Directory(tempDir);
     if (await dest.exists()) {
       await dest.delete(recursive: true);

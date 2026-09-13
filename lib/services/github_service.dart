@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../models/article.dart';
 import '../models/article_type.dart';
@@ -581,7 +582,9 @@ class GitHubService {
         (git.stdout?.toString() ?? '').trim().isEmpty) {
       throw Exception('未检测到 git 命令，无法使用 CLI 方式');
     }
-    final root = await Directory.systemTemp.createTemp('hexo_batch_');
+    // 安卓 /tmp 只读：临时目录走 path_provider 缓存目录
+    final sysTmp = await getTemporaryDirectory();
+    final root = await sysTmp.createTemp('hexo_batch_');
     try {
       final originUrl = Uri.parse(
               baseUrl?.isNotEmpty == true

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../core/ai/ai_model_manager.dart';
 import '../core/ai/ai_request_dispatcher.dart';
@@ -127,8 +128,9 @@ class _ThemeMigrationScreenState extends State<ThemeMigrationScreen> {
     );
 
     try {
+      final sysTmp = await getTemporaryDirectory();
       final tempDir =
-          '${Directory.systemTemp.path}/hexo_theme_migrate_${DateTime.now().millisecondsSinceEpoch}';
+          '${sysTmp.path}/hexo_theme_migrate_${DateTime.now().millisecondsSinceEpoch}';
       _tempDir = tempDir;
 
       if (url.startsWith('http')) {

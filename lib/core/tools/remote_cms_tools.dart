@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 
 import '../../models/blog_post.dart';
 import '../repository/blog_repository.dart';
@@ -582,7 +583,8 @@ class RemoteCmsTools {
       // 如果是 base64 数据，先写入临时文件
       String actualPath = filePath;
       if (base64Data.isNotEmpty) {
-        final tempDir = await Directory.systemTemp.createTemp('hexo_upload_');
+        final sysTmp = await getTemporaryDirectory();
+        final tempDir = await sysTmp.createTemp('hexo_upload_');
         actualPath = '${tempDir.path}/$safeFileName';
         final bytes = base64Decode(base64Data);
         await File(actualPath).writeAsBytes(bytes);
