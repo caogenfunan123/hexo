@@ -18,11 +18,17 @@ class WysiwygSmoothEditor extends StatefulWidget {
     required this.controller,
     this.baseFontSize = 15,
     this.lineHeight = 1.7,
+    this.onAfterWriteBack,
   });
 
   final TextEditingController controller;
   final double baseFontSize;
   final double lineHeight;
+
+  /// 每次把组件内编辑写回 [controller] 后回调（宿主借此触发
+  /// _onContentChanged：未保存标记 + 自动保存防抖，所见即所得模式下
+  /// 没有源码 TextField 的 onChanged，缺了这条链路内容只靠周期兜底保存）
+  final VoidCallback? onAfterWriteBack;
 
   @override
   State<WysiwygSmoothEditor> createState() => _WysiwygSmoothEditorState();
@@ -121,6 +127,7 @@ class _WysiwygSmoothEditorState extends State<WysiwygSmoothEditor> {
         } finally {
           _writingBack = false;
         }
+        widget.onAfterWriteBack?.call();
       },
     );
   }

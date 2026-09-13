@@ -6,7 +6,12 @@
 
 系统由七大能力域构成：AI 写作域（多模型调度、7 类会话、工具调用闭环）、多平台发布域（Git 四平台适配 + 静态/动态博客仓库适配）、图床与资源域、数据安全域（AES-256-GCM 加密、站点隔离、版本快照、回收站、冲突解决）、同步域（GitHub 云同步 / WebDAV / 局域网 P2P）、工具系统（内置工具 / Skill / MCP 服务器）以及桌面外壳（窗口、托盘、全局快捷键、多模式布局）。
 
-架构上采用分层 + 门面模式：业务核心（`lib/core/`）与 UI（`lib/screens/`、`lib/desktop/`）解耦，全部文件操作经 `AppFileOperator` 抽象（Android 分区存储 / 桌面直读），全部 Git 操作经 `GitHubService` 门面按平台分发到 `GitProviderAdapter` 实现。
+架构上采用分层 + 门面模式：业务核心（`lib/core/`）与 UI（`lib/screens/`、`lib/desktop/`）解耦，
+全部 Git 操作经 `GitHubService` 门面按平台分发到 `GitProviderAdapter` 实现（UI 层禁止直连
+平台 API，2026-09 复盘后已收口）。
+> 2026-09 全量复盘：原声称的 `AppFileOperator` 文件抽象层（core/file_manager + platform/）
+> 因全仓零调用已整体删除，平台文件操作直接走 dart:io + path_provider；
+> FrontMatterController（零消费）删除后 MultiProvider 为 6 控制器。
 
 ## 技术栈
 
@@ -60,35 +65,32 @@
 ```
 lib/
 ├── main.dart                # 入口 + _RootShellState 核心状态（生命周期/会话/导航）
-├── desktop/                 # 桌面外壳（25 文件）
+├── desktop/                 # 桌面外壳
 │   ├── desktop_main.dart    # 桌面入口：托盘/快捷键/拖拽导入/窗口管理
 │   ├── desktop_shell.dart   # 桌面主类（约2.4千行：生命周期/引导/动作分发）
 │   ├── shell_parts/         # 16 个业务域 part 扩展（发布/同步/AI/弹窗/UI…约1万行）
 │   ├── shell_action_bus.dart# 统一回调总线（消除 37+ 回调地狱）
-│   └── widgets/             # 26 个桌面组件（标题栏/左导航/分栏编辑器/命令面板/高亮器…）
-├── screens/                 # 44 个功能页面
-├── services/                # 42 个服务（Git/CMS/AI/同步/安全/存储）
+│   └── widgets/             # 桌面组件（标题栏/左导航/分栏编辑器/命令面板…）
+├── screens/                 # 功能页面（2026-09 清理后 38 个）
+├── services/                # 服务（Git/CMS/AI/同步/安全/存储；2026-09 清理 7 个死服务）
 ├── models/                  # 21 个数据模型
-├── controllers/             # 8 个控制器（文档/编辑/布局/同步/站点/UI 状态…）
+├── controllers/             # 6 个控制器（文档/编辑/布局/同步/站点/UI 状态）
 ├── mixins/                  # 10 个 State 扩展 part（发布/同步/设置/AI/仓库…）
 ├── core/                    # 业务核心（与 UI 解耦）
 │   ├── ai/                  # AI 会话/模型调度/自检/迁移/工具创建（11 文件）
-│   ├── tools/               # 工具系统：内置工具/MCP/Skill/执行器/校验器（13 文件）
+│   ├── tools/               # 工具系统：内置工具/MCP/Skill/执行器/校验器
 │   ├── repository/          # 博客仓库适配层（8 文件）
-│   ├── file_manager/        # AppFileOperator 文件操作抽象
 │   ├── task/                # Agent 任务模型
 │   ├── diff/                # MarkdownDiff 行级 diff
 │   ├── template_engine/     # 模板解析引擎
-│   ├── utils/               # 路径/字数统计工具
-│   └── constant/            # 应用常量
-├── platform/                # 平台文件操作实现
-│   ├── android/             # AndroidFileOperator（分区存储/SAF/MediaStore）
-│   └── desktop/             # DesktopFileOperator（本地直读）
-├── widgets/                 # 独立公开组件（字数徽标/AI 对话面板…）
+│   └── utils/               # 字数统计等纯工具
+├── widgets/                 # 独立公开组件（平滑预览/实验性所见即所得/字数徽标/AI 面板…）
 ├── theme/                   # 主题控制器与配色
-├── l10n/                    # 应用本地化
-└── examples/                # 使用示例
+└── l10n/                    # 应用本地化
 ```
+> 2026-09 全量复盘删除：core/file_manager + platform/（AppFileOperator 抽象层，全仓零调用）、
+> examples/、7 个死服务、5 个死页面、editor_screen.dart(+.bak)、assets/preview/（WebView
+> 预览备选方案 ~4MB 死资源）、markdown_syntax_highlighter/code_highlight 等孤儿组件。
 
 **入口点**
 - `lib/main.dart` — 全平台入口，`_RootShellState` 状态类
@@ -122,15 +124,16 @@ lib/
 **目的**: 数据加密、站点隔离、版本快照、回收站与冲突解决。
 **位置**: `lib/services/`
 **关键文件**: `site_encryption_service.dart`（AES-256-GCM）、`site_isolation_service.dart`、`version_snapshot_service.dart`、`recycle_bin_service.dart`、`conflict_diff_service.dart`
-**依赖**: `core/file_manager/`（文件抽象）
+**依赖**: dart:io + path_provider（平台文件操作直接实现，无抽象层）
 **被依赖**: 编辑器、移动端快照/回收站/冲突页
 
 ### 5. 数据同步域
 **目的**: 多端数据互通（手机 ↔ 桌面）。
 **位置**: `lib/services/`
-**关键文件**: `cloud_sync_service.dart`（GitHub 私有仓库 + WebDAV 后端）、`webdav_service.dart`、`p2p_sync_service.dart` + `p2p_mdns_service.dart`（局域网 mDNS 发现）、`sync_service.dart`（CMS 双向同步状态机）
+**关键文件**: `cloud_sync_service.dart`（GitHub 私有仓库 + WebDAV 后端）、`webdav_service.dart`、`p2p_sync_service.dart`（局域网 P2P）、`sync_service.dart`（CMS 双向同步状态机）
 **依赖**: 存储层、`models/`
 **被依赖**: `sync_settings_screen.dart`、`p2p_sync_screen.dart`、`sync_screen.dart`
+> SyncController 2026-09 复盘后仅保留日志职责（addLog/logs），同步状态由各界面自持。
 
 ### 6. 工具系统
 **目的**: 让 AI 具备工具调用能力（内置 / Skill / MCP）。
@@ -317,23 +320,30 @@ feature_entries → kNavEntries+navEntryAction → bus 字段 → shell 接线�
 | editor_misc_ext | 杂项（主题店/PWA） |
 | editor_drawer_ext | 抽屉组件 |
 
-- 路由：MobilePage 枚举（editor/drafts/remote/dashboard/rss/history/batchUpload/preview/settings/reader/themeMigrate/logs/sync/cloudSync/home），LayoutController.navigateTo 切换。
-- 页面在 lib/screens/（44 个）：编辑/阅读分离（editor_screen/article_reader_screen）、首页卷宗（home_screen）、移动专有（mobile_diff/mobile_recycle_bin/mobile_snapshot/quick_note_floater 悬浮速记）。
+- 路由：MobilePage 枚举（editor/drafts/remote/dashboard/rss/history/batchUpload/preview/settings/reader/themeMigrate/logs/sync/cloudSync/home），main.dart `_navigateTo` 切换（页面索引由 `_RootShellState` 自持，不经 LayoutController）。
+- 页面在 lib/screens/（38 个）：编辑/阅读分离（main.dart 内编辑页/article_reader_screen）、首页卷宗（home_screen）、移动专有（mobile_recycle_bin/quick_note_floater 悬浮速记）。
 - 移动抽屉/工具箱入口用 feature_entries 的 navVisible 过滤，动作直接调方法（不经 ShellActionBus）。
+- **实验性所见即所得（阶段6，路线B）**：编辑页顶栏 auto_stories 开关（会话级）→
+  `WysiwygSmoothEditor`（lib/widgets/）以 flutter_smooth_markdown 的 formatted 模式
+  （块渲染+点入编辑）桥接 contentCtrl；写回后经 onAfterWriteBack → _onContentChanged
+  保持未保存标记与自动保存防抖不断链。定时发布 `_schedulePublish` 双端均有
+  （移动端为原生日期/时间选择器 + Timer）。
 
 ### D. 状态管理层（lib/controllers/，双端共用）
 
 | 控制器 | 职责 | 访问方式 |
 |---|---|---|
 | DocumentController | 当前文章数据 + titleCtrl/contentCtrl/tagsCtrl 等文本编辑器 | Provider → _doc |
-| EditorController | 编辑器视图状态（光标/字数/tab 列表/编辑器字号） | _editor |
-| LayoutController | 桌面：左栏/右抽屉/工作模式；移动：页面索引/横竖屏 | _layout |
-| SyncController | 同步日志 | _sync |
-| SiteController | 站点状态 | _site |
-| FrontMatterController | FrontMatter 解析/回写 | _frontMatterCtrl |
-| UiStateController | 全局 loading/设置持久化入口（settings/repos） | _ui |
+| EditorController | 编辑器视图状态（光标/字数/tab 列表/编辑器字号/图片失败重试） | _editor |
+| LayoutController | 桌面：左栏/右抽屉/工作模式（移动端页面索引由 main.dart 自持） | _layout |
+| SyncController | 同步日志（仅 addLog/logs） | _sync |
+| SiteController | 站点状态（setSites/setLoading） | _site |
+| UiStateController | 全局 loading | _ui |
 
 变更通知双轨：控制器 ChangeNotifier + DesktopShellState.setState（part 内用 _applyState）。
+> 2026-09 复盘删除 FrontMatterController（注册后零消费）；EditorController 的
+> 保存队列（enqueue/flush，从未入队）删除——落盘统一走 shell 自动保存链路 +
+> flushAllPendingSaves。
 
 ### E. 数据持久化
 
@@ -355,8 +365,8 @@ feature_entries → kNavEntries+navEntryAction → bus 字段 → shell 接线�
   **新代码禁止硬编码 hex**，用令牌；对比度敏感的深 shade 文字可保留并注释。
 - 纸感色板：亮=暖纸白 0xFFFAF9F7 + stone 系文字 + 陶土橙 0xFFC4573A 强调；
   暗=暖炭黑 0xFF1C1917/0xFF292524。边框近乎不可见，分层靠背景色阶。
-- 编辑器配色独立（editor_themes.dart 12 套 + BridgedSyntaxController 高亮，
-  桌面源码模式内容 760px 居中，聚焦边框必须 none）。
+- 编辑器配色独立（editor_themes.dart 12 套；桌面分栏源码模式 760px 居中，
+  所见即所得模式左对齐满宽，聚焦边框必须 none）。
 
 ### G. 发布管线（概览）
 
@@ -365,14 +375,22 @@ blobs/trees/commits/refs，失败回退 git CLI）→ Hexo/Hugo/Jekyll 等 frame
 目录/命名；动态 CMS 经 SiteManager.getAdapter（WordPress/Ghost/Typecho 适配器）；
 静态批量 StaticBlogBatchPublishService；图床 ImageService 跟随仓库平台；
 所有远程操作受 SiteIsolationService 站点隔离与 token_vault 管理。
+UI 层禁止绕过门面直连平台 API（repoIsPrivate/setRepoVisibility/repoActionsRun/
+setRepoCustomDomain 等已在门面收口）。
 
 ### H. 构建 / CI / 发布
 
-- CI（.github/workflows/build.yml）：push main/develop 或 PR → analyze + Android/Web/Windows/Linux 四端构建；**tag v* 触发 Release**（产物名固定 app-release.apk / hexo-windows.zip / hexo-linux.tar.gz）。
+- CI（.github/workflows/build.yml）：push main/develop 或 PR → analyze（`flutter analyze
+  --no-fatal-infos` **真门禁，warning 即红**）+ **flutter test（真门禁，全部 *_test.dart）**
+  + Android/Web/Windows/Linux 四端构建；**tag v* 触发 Release**（产物名固定
+  app-release.apk / hexo-windows.zip / hexo-linux.tar.gz；release 缺产物硬失败）。
 - windows/ linux/ 平台目录**不入库**：CI 用 `flutter create --platforms=windows .` 现场生成；本地构建同样先执行。
 - 本地 Windows 构建三要素：VS Build Tools(C++)、`nuget.exe` 在 PATH（flutter_inappwebview 下载 WebView2 依赖，缺失报 MSB3073/9009）、`CL=-utf-8`（中文代码页下 printing 插件 C4819 当错误，Git Bash 里 `/utf-8` 会被路径转换，必须写 `-utf-8`）。
-- 发布走 tools/release.sh（升版本→SHA256→release.json→tag）；版本号三处同步：pubspec.yaml + main.dart + settings_screen.dart 的 _appVersion。
-- 验证命令：`flutter analyze`（lib/ 必须 0 error/0 warning；_archive/ 的 135 个存量 error 是历史归档死文件，不参与构建，勿修）→ `flutter test`（28/28）→ `flutter build windows --debug -t lib/desktop/desktop_main.dart` → 运行 build/windows/x64/runner/Debug/hexo.exe 截图冒烟。
+- 发布走 tools/release.sh（升版本→SHA256→release.json→tag；显式 --version 不带 +build
+  时自动补构建号；推送当前分支）；版本号三处同步：pubspec.yaml + main.dart + settings_screen.dart 的 _appVersion。
+- 验证命令：`flutter analyze --no-fatal-infos`（lib/ 必须 0 error/0 warning）→
+  `flutter test` → `flutter build windows --debug -t lib/desktop/desktop_main.dart`
+  → 运行 build/windows/x64/runner/Debug/hexo.exe 截图冒烟。
 
 ### I. 已知坑（新会话最容易踩）
 
@@ -395,3 +413,12 @@ blobs/trees/commits/refs，失败回退 git CLI）→ Hexo/Hugo/Jekyll 等 frame
 12. **预览渲染引擎双端统一 flutter_smooth_markdown**（表格/公式/mermaid 原生）：
     桌面分屏走 DebouncedMarkdownPreview、手机预览走 MarkdownPreviewSmooth，
     新增渲染能力先改 lib/widgets/ 这两个入口；flutter_markdown 不支持公式，勿再引回。
+13. **富文本写回必须显式接 _onContentChanged**：WYSIWYG 组件写 contentCtrl.text 不会
+    触发源码 TextField 的 onChanged——桌面经 DesktopSplitEditor 的 contentController
+    listener 兜到，手机端实验所见即所得走 onAfterWriteBack 回调；新增富文本编辑器
+    漏接这条链路 = 未保存标记失灵 + 自动保存只剩周期兜底。
+14. **CI 门禁已收紧**：`flutter analyze --no-fatal-infos` 与 `flutter test` 都是硬门禁，
+    未用 import/未用局部变量即红；测试文件必须命名 `*_test.dart`（test_ 前缀会被
+    flutter test 静默跳过）。推送前本地过一遍这两个命令。
+15. **发布链路 await 后先落本地持久化再查 mounted**：远端已成功而本地映射/草稿
+    未写会造成重复建文（_publishToCms 已按此修正）。

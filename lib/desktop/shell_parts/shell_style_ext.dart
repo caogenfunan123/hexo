@@ -768,7 +768,7 @@ extension DesktopShellStyleExt on DesktopShellState {
         '写作编辑',
         [
           'Markdown 实时预览',
-          '代码语法高亮（flutter_highlight）',
+          '代码语法高亮',
           'LaTeX 数学公式（块级+内联）',
           'Mermaid 图表渲染',
           '查找替换（支持正则）',

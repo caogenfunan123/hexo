@@ -1613,7 +1613,7 @@ extension EditorUiExt on _RootShellState {
                 ),
               Expanded(
                 child: _wysiwygExperimental
-                    ? _buildWysiwygExperimentalPane(cs)
+                    ? _buildWysiwygExperimentalPane()
                     : ListView(
                   controller: _editorScrollCtrl,
                   padding: const EdgeInsets.fromLTRB(14, 14, 14, 40),
@@ -1767,10 +1767,9 @@ extension EditorUiExt on _RootShellState {
     );
   }
 
-  /// 底部 MD 语法工具栏：紧贴输入法顶部的横向滚动工具条
   /// 实验性所见即所得面板（路线B）：标题 + SmoothMarkdownEditor(formatted)。
   /// 自带滚动与 MD 工具栏，替代源码 ListView 的滚动；打字机滚动在该模式暂不可用。
-  Widget _buildWysiwygExperimentalPane(ColorScheme cs) {
+  Widget _buildWysiwygExperimentalPane() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1803,12 +1802,16 @@ extension EditorUiExt on _RootShellState {
         Expanded(
           child: WysiwygSmoothEditor(
             controller: _doc.contentCtrl,
+            // 所见即所得没有源码 TextField 的 onChanged，写回后手动
+            // 走 _onContentChanged：未保存标记 + 自动保存防抖不断链
+            onAfterWriteBack: _onContentChanged,
           ),
         ),
       ],
     );
   }
 
+  /// 底部 MD 语法工具栏：紧贴输入法顶部的横向滚动工具条
   Widget _buildMdToolbar(ColorScheme cs) {
     return Container(
       height: 46,

@@ -422,19 +422,8 @@ extension DesktopShellPublishExt on DesktopShellState {
       // 发布期间用户可能继续编辑，此时不得用发布快照覆盖编辑器内容
       final userEdited = _doc.contentCtrl.text != a.content ||
           _doc.titleCtrl.text != a.title;
-      if (!mounted) return;
-      if (userEdited) {
-        _doc.updateCurrentArticleMeta(pub);
-      } else {
-        _doc.setCurrentArticle(pub);
-        _doc.markSaved();
-      }
-      _editor.setEditorStatus('已发布到 ${adapter.config.type.displayName}');
-      _lastSavedContent = a.content;
-      _lastSavedTitle = a.title;
-      _lastSavedContentMap[a.id] = a.content;
-      _lastSavedTitleMap[a.id] = a.title;
-      // 发布期间若继续编辑，落盘当前内容而非发布旧快照，避免覆盖用户新改动
+      // 本地持久化（草稿/CMS映射）不依赖 widget 存活：远端已发布成功，
+      // 卸载早退会丢本地映射，后续同步可能重复建文
       await _saveDraft(userEdited ? _collect(draft: false) : pub);
       await cmsDraftService.saveDraft(result);
       if (result.id != null) {
@@ -449,6 +438,18 @@ extension DesktopShellPublishExt on DesktopShellState {
           ),
         );
       }
+      if (!mounted) return;
+      if (userEdited) {
+        _doc.updateCurrentArticleMeta(pub);
+      } else {
+        _doc.setCurrentArticle(pub);
+        _doc.markSaved();
+      }
+      _editor.setEditorStatus('已发布到 ${adapter.config.type.displayName}');
+      _lastSavedContent = a.content;
+      _lastSavedTitle = a.title;
+      _lastSavedContentMap[a.id] = a.content;
+      _lastSavedTitleMap[a.id] = a.title;
       logService.add(
         'CMS发布成功',
         '已发布到 ${adapter.config.type.displayName}: ${result.title}',
