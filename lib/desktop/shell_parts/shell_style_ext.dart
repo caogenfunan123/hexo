@@ -894,7 +894,7 @@ extension DesktopShellStyleExt on DesktopShellState {
         SizedBox(height: 8),
         _HelpModeCard('工作台', '完整三栏布局：左侧导航 + 中央编辑器 + 右侧抽屉', '适合日常写作、管理文章'),
         _HelpModeCard('专注模式', '极简顶栏，隐藏面板，全宽编辑器 + 实时预览', '适合沉浸式写作，打字机滚动'),
-        _HelpModeCard('源码模式', '等宽字体纯文本编辑，隐藏预览', '适合直接编辑 Markdown 源码'),
+        _HelpModeCard('写作画布', '标题+正文一张连续画布，所见即所得，支持自定义壁纸', '对标手机端的沉浸排版写作'),
         SizedBox(height: 16),
         Text(
           '📐 布局说明',

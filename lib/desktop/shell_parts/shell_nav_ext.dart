@@ -351,7 +351,7 @@ extension DesktopShellNavExt on DesktopShellState {
 
   void _toggleRightDrawer() => _layout.toggleRightDrawer();
 
-  /// Escape 键处理：关闭抽屉 → 关闭极简预览 → 退出专注模式 → 退出源码模式
+  /// Escape 键处理：关闭抽屉 → 关闭极简预览 → 退出专注模式 → 退出写作画布
   void _handleEscape() {
     if (_layout.rightDrawerOpen) {
       _layout.closeRightDrawer();

@@ -105,7 +105,6 @@ import 'widgets/markdown_formatter.dart';
 import '../theme/app_color.dart';
 import '../widgets/typewriter_scroll.dart';
 import '../widgets/orientation_guard.dart';
-import '../widgets/unified_markdown_styles.dart';
 import '../services/site_isolation_service.dart';
 import '../services/draft_encryption_service.dart';
 import '../services/template_sync_service.dart';
@@ -128,7 +127,6 @@ import '../screens/home_screen.dart';
 import 'package:window_manager/window_manager.dart';
 import '../models/ui_settings.dart';
 import '../models/editor_theme.dart' as editor_theme_model;
-import 'widgets/markdown_syntax_highlighter.dart';
 import 'widgets/editor_drop_target.dart';
 import 'widgets/spell_check_panel.dart';
 import 'widgets/command_palette.dart';
@@ -412,9 +410,6 @@ class DesktopShellState extends State<DesktopShell>
   // 极简写作模式：内嵌预览面板开关（与右抽屉互斥）
   bool _focusPreviewOpen = false;
 
-  // ── 新功能：源码语法高亮 ──
-  BridgedSyntaxController? _sourceSyntaxCtrl;
-
   // ── 新功能：横竖屏状态保持 ──
   late final EditorStateManager _orientationManager;
 
@@ -546,6 +541,7 @@ class DesktopShellState extends State<DesktopShell>
     // 同步 & 发布
     onSync: _handleSync,
     onPublish: _handlePublish,
+    onSaveLocal: _saveLocal,
     // 文件操作
     onOpenFile: _openFileDialog,
     onOpenFileZone: _openLocalFileZone,
@@ -586,7 +582,6 @@ class DesktopShellState extends State<DesktopShell>
     _scheduledPublishTimer?.cancel();
     _scheduledPublishTimer = null;
     _publishCancelToken.cancel();
-    _sourceSyntaxCtrl?.dispose();
     super.dispose();
   }
 

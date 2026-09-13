@@ -125,10 +125,10 @@ extension DesktopShellMiscExt on DesktopShellState {
         onExecute: () => _switchWorkMode(WorkMode.workspace),
       ),
       CommandItem(
-        label: '源码模式',
+        label: '写作画布',
         category: '视图',
         shortcut: '',
-        icon: Icons.code,
+        icon: Icons.auto_stories,
         onExecute: () => _switchWorkMode(WorkMode.source),
       ),
       CommandItem(

@@ -47,7 +47,8 @@ extension DesktopShellModeUiExt on DesktopShellState {
   }
 
   Widget _buildTopBar(LayoutController layout) {
-    if (layout.workMode == WorkMode.focus) return _focusModeTitleBar();
+    // 专注与写作画布共用极简标题栏（保存/预览/更多菜单）；工作台用完整标题栏
+    if (layout.workMode != WorkMode.workspace) return _focusModeTitleBar();
     return DesktopTitleBar(
       onAi: () => _openRightDrawer(RightDrawerTab.aiChat),
       bus: _bus,
@@ -60,7 +61,7 @@ extension DesktopShellModeUiExt on DesktopShellState {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final mainContent = switch (layout.workMode) {
       WorkMode.focus => _buildFocusEditor(),
-      WorkMode.source => _buildSourceEditor(),
+      WorkMode.source => _buildCanvasEditor(),
       _ => _buildWorkspaceLayout(layout),
     };
 
@@ -651,288 +652,184 @@ extension DesktopShellModeUiExt on DesktopShellState {
             ),
           ),
         ),
-        // ── 右侧预览面板（极简标题栏「预览」打开） ──
-        if (_focusPreviewOpen)
-          Positioned(
-            right: 8,
-            top: 8,
-            bottom: 8,
-            child: Container(
-              width: 400,
-              decoration: BoxDecoration(
-                color: AppColor.surfaceRaised(context),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColor.borderStrong(context)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(isDark ? 0.28 : 0.06),
-                    blurRadius: 16,
-                    offset: const Offset(-2, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    height: 36,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: AppColor.border(context)),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.visibility, size: 14, color: mutedColor),
-                        const SizedBox(width: 6),
-                        Text(
-                          '实时预览',
-                          style: TextStyle(fontSize: 11, color: mutedColor),
-                        ),
-                        const Spacer(),
-                        GestureDetector(
-                          onTap: _toggleFocusPreview,
-                          child: Icon(Icons.close, size: 14, color: mutedColor),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: ListenableBuilder(
-                      listenable: Listenable.merge([
-                        _doc.contentCtrl,
-                        _doc.titleCtrl,
-                      ]),
-                      builder: (context, _) {
-                        final t = _doc.titleCtrl.text.trim();
-                        final body = _doc.contentCtrl.text;
-                        return MarkdownPreviewSmooth(
-                          markdown: t.isEmpty ? body : '# $t\n\n$body',
-                          darkTheme: isDark,
-                          baseFontSize: 16,
-                          lineHeight: 1.6,
-                          onOpenLink: (url) async {
-                            final uri = Uri.tryParse(url);
-                            if (uri != null &&
-                                (uri.scheme == 'http' ||
-                                    uri.scheme == 'https')) {
-                              await launchUrl(
-                                uri,
-                                mode: LaunchMode.externalApplication,
-                              );
-                            }
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        // ── 右侧抽屉（元数据 / AI，与预览互斥） ──
-        if (!_focusPreviewOpen &&
-            context.watch<LayoutController>().rightDrawerOpen)
-          Positioned(
-            right: 0,
-            top: 0,
-            bottom: 0,
-            child: _buildRightDrawer(_layout),
-          ),
+        // ── 浮层：右侧实时预览 / 右抽屉（与专注模式共用） ──
+        ..._buildCanvasOverlays(mutedColor: mutedColor),
       ],
     );
   }
 
-  Widget _buildSourceEditor() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cs = Theme.of(context).colorScheme;
-
-    // 初始化或重建语法高亮桥接控制器
-    final syntaxColors = isDark
-        ? MarkdownSyntaxColors.dark
-        : MarkdownSyntaxColors.light;
-    if (_sourceSyntaxCtrl == null) {
-      _sourceSyntaxCtrl = BridgedSyntaxController(
-        delegate: _doc.contentCtrl,
-        colors: syntaxColors,
-        fontSize: 14,
-        fontFamily: 'monospace',
-      );
-    } else {
-      _sourceSyntaxCtrl!.updateColors(syntaxColors);
-    }
-
-    return Container(
-      color: AppColor.surfaceBase(context),
-      child: Column(
-        children: [
-          // 源码模式标题栏
-          Container(
-            height: 28,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+  /// 专注/画布模式共用浮层：右侧实时预览面板（极简标题栏「预览」打开）
+  /// 与右抽屉（元数据/AI），两者互斥。
+  List<Widget> _buildCanvasOverlays({required Color mutedColor}) {
+    return [
+      if (_focusPreviewOpen)
+        Positioned(
+          right: 8,
+          top: 8,
+          bottom: 8,
+          child: Container(
+            width: 400,
             decoration: BoxDecoration(
               color: AppColor.surfaceRaised(context),
-              border: Border(
-                bottom: BorderSide(color: AppColor.border(context)),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.code, size: 14, color: cs.primary),
-                const SizedBox(width: 8),
-                Text(
-                  '源码模式',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: cs.primary,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  _doc.titleCtrl.text.isNotEmpty
-                      ? _doc.titleCtrl.text
-                      : '未命名文章',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColor.iconMuted(context),
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const Spacer(),
-                // 快捷操作
-                _sourceToolbarButton(
-                  Icons.save_outlined,
-                  '保存',
-                  _saveLocal,
-                  isDark,
-                ),
-                _sourceToolbarButton(
-                  Icons.send_outlined,
-                  '发布',
-                  _handlePublish,
-                  isDark,
-                ),
-                _sourceToolbarButton(Icons.content_copy, '复制全文', () {
-                  Clipboard.setData(ClipboardData(text: _doc.contentCtrl.text));
-                  _showToast('已复制到剪贴板');
-                }, isDark),
-                _sourceToolbarButton(
-                  Icons.spellcheck,
-                  '拼写检查',
-                  () => _showSpellCheck(),
-                  isDark,
-                ),
-                Container(
-                  width: 1,
-                  height: 18,
-                  color: AppColor.border(context),
-                ),
-                _sourceToolbarButton(
-                  Icons.close_fullscreen,
-                  '退出源码模式',
-                  () => _switchWorkMode(WorkMode.workspace),
-                  isDark,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColor.borderStrong(context)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(
+                      Theme.of(context).brightness == Brightness.dark
+                          ? 0.28
+                          : 0.06),
+                  blurRadius: 16,
+                  offset: const Offset(-2, 2),
                 ),
               ],
             ),
-          ),
-          // 源码编辑区（带语法高亮）
-          Expanded(
-            child: ColoredBox(
-              color: isDark ? const Color(0xFF18181B) : Colors.white,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: TextField(
-                  controller: _sourceSyntaxCtrl,
-                  maxLines: null,
-                  focusNode: _doc.contentFocus,
-                  cursorColor: cs.primary,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    height: 1.45,
-                    fontFamily: 'monospace',
-                  ),
-                  decoration: InputDecoration(
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    hintText: '在此编辑 Markdown 源码...',
-                    hintStyle: TextStyle(
-                      fontSize: 14,
-                      fontFamily: 'monospace',
-                      color: isDark
-                          ? Colors.white.withOpacity(0.1)
-                          : const Color(0xFFB0B0B0),
+            child: Column(
+              children: [
+                Container(
+                  height: 36,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: AppColor.border(context)),
                     ),
                   ),
-                  onChanged: (_) => _onContentChanged(),
-                ),
-              ),
-            ),
-          ),
-          // 底部状态条（白底 + 顶部细线，轻量化）
-          Container(
-            height: 24,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: AppColor.surfaceRaised(context),
-              border: Border(top: BorderSide(color: AppColor.border(context))),
-            ),
-            child: Row(
-              children: [
-                Text(
-                  'Markdown',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppColor.textSubtle(context),
+                  child: Row(
+                    children: [
+                      Icon(Icons.visibility, size: 14, color: mutedColor),
+                      const SizedBox(width: 6),
+                      Text(
+                        '实时预览',
+                        style: TextStyle(fontSize: 11, color: mutedColor),
+                      ),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: _toggleFocusPreview,
+                        child: Icon(Icons.close, size: 14, color: mutedColor),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                Text(
-                  '行 ${_editor.cursorPos.line} 列 ${_editor.cursorPos.column}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppColor.textSubtle(context),
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  '$_editor.wordCount 词  $_editor.charCount 字',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppColor.textSubtle(context),
+                Expanded(
+                  child: ListenableBuilder(
+                    listenable: Listenable.merge([
+                      _doc.contentCtrl,
+                      _doc.titleCtrl,
+                    ]),
+                    builder: (context, _) {
+                      final t = _doc.titleCtrl.text.trim();
+                      final body = _doc.contentCtrl.text;
+                      return MarkdownPreviewSmooth(
+                        markdown: t.isEmpty ? body : '# $t\n\n$body',
+                        darkTheme: Theme.of(context).brightness ==
+                            Brightness.dark,
+                        baseFontSize: 16,
+                        lineHeight: 1.6,
+                        onOpenLink: (url) async {
+                          final uri = Uri.tryParse(url);
+                          if (uri != null &&
+                              (uri.scheme == 'http' ||
+                                  uri.scheme == 'https')) {
+                            await launchUrl(
+                              uri,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          }
+                        },
+                      );
+                    },
                   ),
                 ),
               ],
             ),
           ),
-        ],
-      ),
-    );
+        ),
+      // ── 右侧抽屉（元数据 / AI，与预览互斥） ──
+      if (!_focusPreviewOpen &&
+          context.watch<LayoutController>().rightDrawerOpen)
+        Positioned(
+          right: 0,
+          top: 0,
+          bottom: 0,
+          child: _buildRightDrawer(_layout),
+        ),
+    ];
   }
 
-  Widget _sourceToolbarButton(
-    IconData icon,
-    String tooltip,
-    VoidCallback onTap,
-    bool isDark,
-  ) {
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(5),
-            child: Icon(icon, size: 15, color: AppColor.icon(context)),
-          ),
+  /// 写作画布（原源码模式，阶段6改版）：
+  /// 标题+正文一张连续画布，所见即所得渲染，支持自定义壁纸，对标手机端编辑页。
+  /// 纯 Markdown 源码编辑保留在工作台分栏编辑器的「源码」模式。
+  Widget _buildCanvasEditor() {
+    final cs = Theme.of(context).colorScheme;
+
+    // 背景层：自定义壁纸 / 纯黑 / 主题底色（对标手机端 _buildEditorBackground）。
+    // 非自定义背景时跟随明暗主题，修正旧画布在暗色主题下白底白字的问题。
+    final Widget bgLayer;
+    if (_deskUseWallpaper) {
+      bgLayer = Image.file(
+        File(_deskEditorTheme.wallpaperPath),
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => ColoredBox(
+          color: _deskCustomBg
+              ? _deskBgColor
+              : AppColor.surfaceBase(context),
         ),
-      ),
+      );
+    } else if (_deskCustomBg) {
+      bgLayer = ColoredBox(color: _deskBgColor);
+    } else {
+      bgLayer = ColoredBox(color: AppColor.surfaceBase(context));
+    }
+
+    final textColor = _deskCustomBg ? _deskTextColor : null;
+    final fallbackText = textColor ?? AppColor.textPrimary(context);
+
+    return Stack(
+      children: [
+        Positioned.fill(child: bgLayer),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 标题：无卡片、无分割线，与正文同底一张画布（对标手机端）
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: TextField(
+                controller: _doc.titleCtrl,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  height: 1.3,
+                  color: fallbackText,
+                ),
+                cursorColor: cs.primary,
+                decoration: InputDecoration(
+                  hintText: '在此输入标题...',
+                  hintStyle: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    color: fallbackText.withOpacity(0.3),
+                  ),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                ),
+                onChanged: (_) => _onContentChanged(),
+              ),
+            ),
+            // 正文：所见即所得，左对齐全宽
+            Expanded(
+              child: WysiwygMainEditor(
+                controller: _doc.contentCtrl,
+                textColor: textColor,
+              ),
+            ),
+          ],
+        ),
+        // ── 浮层：右侧实时预览 / 右抽屉（与专注模式共用） ──
+        ..._buildCanvasOverlays(
+          mutedColor: fallbackText.withOpacity(0.35),
+        ),
+      ],
     );
   }
 

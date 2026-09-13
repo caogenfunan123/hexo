@@ -1,11 +1,8 @@
 import 'dart:async';
 
-import 'package:characters/characters.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_smooth_markdown/flutter_smooth_markdown.dart';
 
-import '../desktop/widgets/code_highlight.dart';
 import '../theme/app_color.dart';
 
 /// 防抖版 Markdown 预览状态。
@@ -48,25 +45,40 @@ class DebouncedMarkdownPreviewState extends ChangeNotifier {
 
 /// 使用 [DebouncedMarkdownPreviewState] 的只读预览，仅在提交后重建。
 ///
+/// 渲染引擎与手机端预览（MarkdownPreviewSmooth）一致，基于
+/// flutter_smooth_markdown：表格 / 数学公式 / mermaid 全平台原生渲染，
+/// 不再走 flutter_markdown（后者不支持公式）。
+///
 /// 外层仍需自行包裹滚动容器（本组件不内建 ScrollView）。
 class DebouncedMarkdownPreview extends StatelessWidget {
   const DebouncedMarkdownPreview({
     super.key,
     required this.state,
     this.isDark = false,
-    this.styleSheet,
+    this.baseFontSize = 16,
+    this.lineHeight = 1.6,
     this.maxRenderChars = 60000,
   });
 
   final DebouncedMarkdownPreviewState state;
   final bool isDark;
-  final MarkdownStyleSheet? styleSheet;
+
+  /// 正文基础字号，标题/代码/表格按 16 基准等比缩放（对标手机端预览）
+  final double baseFontSize;
+
+  /// 正文行高
+  final double lineHeight;
 
   /// 单次渲染的字符上限：超长文档（如 5w 字）截断预览，
   /// 避免一次性全量解析造成的卡顿；编辑区与保存内容不受影响。
   /// 计数按 Unicode 字素簇（grapheme）而非 UTF-16 code unit，
   /// 避免把 emoji / 组合字符从中间切开。
   final int maxRenderChars;
+
+  static final ParserPluginRegistry _plugins = ParserPluginRegistry()
+    ..register(const MermaidPlugin());
+  static final BuilderRegistry _builders = BuilderRegistry()
+    ..register('mermaid', const MermaidBuilder());
 
   @override
   Widget build(BuildContext context) {
@@ -93,14 +105,7 @@ class DebouncedMarkdownPreview extends StatelessWidget {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // MarkdownBody 无内建滚动：外层 SingleChildScrollView 负责滚动，
-              // 若用 Markdown（内建 ListView）会在滚动容器内高度无界直接崩溃
-              MarkdownBody(
-                data: safe,
-                selectable: true,
-                styleSheet: styleSheet,
-                builders: buildHighlightedBuilders(isDark),
-              ),
+              _buildSmooth(safe),
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: Text(
@@ -114,14 +119,55 @@ class DebouncedMarkdownPreview extends StatelessWidget {
             ],
           );
         }
-        // MarkdownBody 无内建滚动，避免在外层滚动容器内出现无界高度崩溃
-        return MarkdownBody(
-          data: text,
-          selectable: true,
-          styleSheet: styleSheet,
-          builders: buildHighlightedBuilders(isDark),
-        );
+        return _buildSmooth(text);
       },
+    );
+  }
+
+  Widget _buildSmooth(String markdown) {
+    final base = isDark
+        ? MarkdownStyleSheet.dark()
+        : MarkdownStyleSheet.light();
+    // 按基准字号(16)等比缩放所有文本样式：标题/强调/代码/表格跟随正文，
+    // 只覆盖 paragraphStyle 会导致标题与代码字号不随设置变化
+    TextStyle? scale(TextStyle? s) {
+      if (s == null) return null;
+      return s.copyWith(
+        fontSize: s.fontSize == null
+            ? baseFontSize
+            : baseFontSize * (s.fontSize! / 16),
+        height: lineHeight,
+      );
+    }
+
+    final styleSheet = base.copyWith(
+      textStyle: scale(base.textStyle),
+      paragraphStyle: scale(base.paragraphStyle),
+      h1Style: scale(base.h1Style),
+      h2Style: scale(base.h2Style),
+      h3Style: scale(base.h3Style),
+      h4Style: scale(base.h4Style),
+      h5Style: scale(base.h5Style),
+      h6Style: scale(base.h6Style),
+      blockquoteStyle: scale(base.blockquoteStyle),
+      codeBlockStyle: scale(base.codeBlockStyle),
+      inlineCodeStyle: scale(base.inlineCodeStyle),
+      linkStyle: scale(base.linkStyle),
+      boldStyle: scale(base.boldStyle),
+      italicStyle: scale(base.italicStyle),
+      strikethroughStyle: scale(base.strikethroughStyle),
+      listBulletStyle: scale(base.listBulletStyle),
+      tableHeaderStyle: scale(base.tableHeaderStyle),
+      tableCellStyle: scale(base.tableCellStyle),
+    );
+    // SmoothMarkdown 无内建滚动：外层 SingleChildScrollView 负责滚动，
+    // 直接用内建 ListView 的形态会在滚动容器内高度无界崩溃
+    return SmoothMarkdown(
+      data: markdown,
+      selectable: true,
+      styleSheet: styleSheet,
+      plugins: _plugins,
+      builderRegistry: _builders,
     );
   }
 }

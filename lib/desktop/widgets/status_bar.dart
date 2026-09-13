@@ -70,8 +70,8 @@ class DesktopStatusBar extends StatelessWidget {
             cs: cs,
           ),
           _modeButton(context,
-            label: '源码',
-            icon: Icons.code,
+            label: '画布',
+            icon: Icons.auto_stories,
             active: workMode == WorkMode.source,
             onTap: () => onModeChange(WorkMode.source),
             cs: cs,
@@ -156,7 +156,6 @@ class DesktopStatusBar extends StatelessWidget {
 
   /// 自动保存指示器圆点
   Widget _buildSaveIndicator(BuildContext context, ColorScheme cs) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10),
       child: Row(

@@ -76,6 +76,8 @@ class _WysiwygEditorPocState extends State<WysiwygEditorPoc> {
       editor: _editor,
       componentBuilders: [
         TaskComponentBuilder(_editor),
+        // 表格组件默认不在 defaultComponentBuilders 里，缺了表格只解析不渲染
+        const MarkdownTableComponentBuilder(),
         ...defaultComponentBuilders,
       ],
       stylesheet: defaultStylesheet.copyWith(
@@ -180,7 +182,16 @@ class WysiwygMainEditor extends StatefulWidget {
   final TextEditingController controller;
   final double? maxWidth;
 
-  const WysiwygMainEditor({super.key, required this.controller, this.maxWidth});
+  /// 正文文字色；为空时跟随明暗主题默认（壁纸/纯黑背景下由调用方传
+  /// `_deskTextColor` 自动适配色，保证可读）
+  final Color? textColor;
+
+  const WysiwygMainEditor({
+    super.key,
+    required this.controller,
+    this.maxWidth,
+    this.textColor,
+  });
 
   @override
   State<WysiwygMainEditor> createState() => _WysiwygMainEditorState();
@@ -306,21 +317,25 @@ class _WysiwygMainEditorState extends State<WysiwygMainEditor> {
       editor: editor,
       componentBuilders: [
         TaskComponentBuilder(editor),
+        // 表格组件默认不在 defaultComponentBuilders 里，缺了表格只解析不渲染
+        const MarkdownTableComponentBuilder(),
         ...defaultComponentBuilders,
       ],
       stylesheet: defaultStylesheet.copyWith(
+        // 左对齐书写（对标源码模式的 20px 左缘内边距），不做纸面居中
         documentPadding: const EdgeInsets.symmetric(
           vertical: 24,
-          horizontal: 8,
+          horizontal: 20,
         ),
         addRulesAfter: [
           StyleRule(
             BlockSelector.all,
             (doc, docNode) => {
               'backgroundColor': Colors.transparent,
-              'color': isDark
-                  ? const Color(0xFFE7E5E4)
-                  : const Color(0xFF292524),
+              'color': widget.textColor ??
+                  (isDark
+                      ? const Color(0xFFE7E5E4)
+                      : const Color(0xFF292524)),
             },
           ),
         ],

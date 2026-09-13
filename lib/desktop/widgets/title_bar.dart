@@ -102,6 +102,13 @@ class DesktopTitleBar extends StatelessWidget implements PreferredSizeWidget {
                   ),
                   _titleBarButton(
                     context,
+                    icon: Icons.save_outlined,
+                    tooltip: '存草稿 (Ctrl+S)',
+                    onTap: bus.onSaveLocal,
+                    cs: cs,
+                  ),
+                  _titleBarButton(
+                    context,
                     icon: Icons.auto_awesome,
                     tooltip: 'AI 助手',
                     onTap: onAi,

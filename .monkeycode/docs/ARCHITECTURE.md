@@ -284,16 +284,19 @@ sequenceDiagram
 **布局骨架**（build → Stack）：
 ColoredBox → **Material(transparency)【必须！桌面壳无 Scaffold，缺了编辑器/下拉全红屏】**
 → Column[标题栏, 主区, 状态栏] + 护眼滤色层 + 命令面板覆盖层。
-主区按 WorkMode 三态：workspace（左栏+标签页编辑器+右抽屉）/ focus（无框纸面）/ source。
+主区按 WorkMode 三态：workspace（左栏+标签页编辑器+右抽屉）/ focus（无框纸面，源码形态）/
+source=写作画布（阶段6：所见即所得，标题+正文一张画布，壁纸背景，
+顶栏复用极简标题栏，浮层与 focus 共用 _buildCanvasOverlays）。
 左栏默认隐藏（LayoutController._leftPanelExpanded=false），展开经
 UiSettings.leftPanelExpanded 持久化记忆；右抽屉 5 tab（大纲/属性/片段/AI/同步日志）。
 
-**桌面 widgets**（desktop/widgets/）：title_bar（红绿灯左置 Mac 风）、left_panel（7 组卡片导航+文章/站点列表）、right_drawer、editor_area（标签页）、desktop_split_editor（源码/分栏/预览，内容 760px 居中）、markdown_syntax_highlighter（共享解析 mixin）、command_palette、ai_selection_edit_dialog（Cursor 式 diff）、conflict_diff_view、version_snapshot_view、status_bar 等。
+**桌面 widgets**（desktop/widgets/）：title_bar（红绿灯左置 Mac 风+保存/发布/AI/新建动作）、left_panel（7 组卡片导航+文章/站点列表）、right_drawer、editor_area（标签页）、desktop_split_editor（所见即所得[默认,左对齐]/源码/分栏/预览四模式，预览走 flutter_smooth_markdown 引擎：表格/公式/mermaid 原生渲染）、wysiwyg_editor_poc（WysiwygMainEditor：super_editor 富文本与 contentCtrl 双向绑定，含 MarkdownTableComponentBuilder）、command_palette、ai_selection_edit_dialog（Cursor 式 diff）、conflict_diff_view、version_snapshot_view、status_bar 等。
 
 **导航元数据（桌面+移动共用）**：feature_entries.dart（约45入口的可见性注册表：shown/hidden/optIn）
 → nav_entries_meta.dart（kNavEntries 展示定义 + navEntryAction id→回调映射）
 → 消费方（left_panel/all_features_screen/sidebar_customize_dialog）。
-ShellActionBus（shell_action_bus.dart）≈46 回调总线，单构造点在 desktop_shell initState。
+ShellActionBus（shell_action_bus.dart）≈47 回调总线，单构造点在 desktop_shell initState
+（含 onSaveLocal 保存草稿；发布在 onPublish）。
 **新增入口四处同步**（缺一即灰卡失效，详见 shell_action_bus.dart 头注释）：
 feature_entries → kNavEntries+navEntryAction → bus 字段 → shell 接线。
 
@@ -380,9 +383,15 @@ blobs/trees/commits/refs，失败回退 git CLI）→ Hexo/Hugo/Jekyll 等 frame
 5. docs/ 与部分生成文件在 .gitignore：docs/force-add（-f）可入库（DESKTOP_FIXES.md 先例）；GeneratedPluginRegistrant 不提交（git checkout 还原）。
 6. 大 Dart 文件做结构化拆分时用 tools/split_helper.py + split_execute.py（文档级字符串屏蔽 + 括号感知配对 + 0基闭区间切片），三个历史 bug 见 docs/fixes/fix-01。
 7. shell_parts/ 与 mixins/ 的 part 文件里 setState 必须写 _applyState（宿主包装）。
-8. 主编辑区默认所见即所得（阶段2.5）：WysiwygMainEditor 与 contentCtrl 双向绑定，
-   frontmatter 拆出保管不进富文本；super_editor 0.3.0-dev 需 uuid 依赖覆盖（见 pubspec 注释）；
-   源码/分栏/预览保留为辅助模式。边界清单见 docs/fixes/ui-phase2/phase4 文档。
+8. 主编辑区默认所见即所得（阶段2.5，阶段6 左对齐满宽）：WysiwygMainEditor 与 contentCtrl
+   双向绑定，frontmatter 拆出保管不进富文本；super_editor 0.3.0-dev 需 uuid 依赖覆盖
+   （见 pubspec注释）；源码/分栏/预览保留为工作台内辅助模式。边界清单见
+   docs/fixes/ui-phase2/phase4/phase6 文档。
 9. **连续回调（拖拽/滚动/动画进度）内严禁 _applyState/整壳 setState**：
    连续值只写字段供恢复用，渲染让组件自持局部状态（曾致拖拽每像素整壳重建）。
 10. 桌面三区域（左栏/编辑区/右抽屉）已包 RepaintBoundary，新增面板同理，防水波纹重绘串扰。
+11. **super_editor 表格必须显式加 `MarkdownTableComponentBuilder()`**：包内解析/序列化
+    都支持表格，但 defaultComponentBuilders 不含表格渲染组件，漏加表现为表格能存不能看。
+12. **预览渲染引擎双端统一 flutter_smooth_markdown**（表格/公式/mermaid 原生）：
+    桌面分屏走 DebouncedMarkdownPreview、手机预览走 MarkdownPreviewSmooth，
+    新增渲染能力先改 lib/widgets/ 这两个入口；flutter_markdown 不支持公式，勿再引回。

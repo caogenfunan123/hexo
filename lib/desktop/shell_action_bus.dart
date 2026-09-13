@@ -83,6 +83,7 @@ class ShellActionBus {
   // ── 同步 & 发布 ──
   final VoidCallback onSync;
   final VoidCallback onPublish;
+  final VoidCallback onSaveLocal;
 
   // ── 文件操作 ──
   final VoidCallback? onOpenFile;
@@ -146,6 +147,7 @@ class ShellActionBus {
     // 同步 & 发布
     required this.onSync,
     required this.onPublish,
+    required this.onSaveLocal,
     // 文件操作
     this.onOpenFile,
     this.onOpenFileZone,

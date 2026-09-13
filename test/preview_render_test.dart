@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hexo/desktop/widgets/desktop_split_editor.dart';
 import 'package:hexo/widgets/debounced_markdown_preview.dart';
 import 'package:hexo/widgets/markdown_preview_smooth.dart';
-import 'package:hexo/widgets/unified_markdown_styles.dart';
 
 Widget _wrap(Widget child) {
   return MaterialApp(
@@ -73,16 +72,7 @@ void main() {
       final state = DebouncedMarkdownPreviewState();
       state.updateText('# 标题丙\n\n分屏正文丁，用于验证渲染。');
       await tester.pumpWidget(_wrap(
-        Builder(
-          builder: (context) {
-            final style = createUnifiedMarkdownStyle(context: context);
-            return DebouncedMarkdownPreview(
-              state: state,
-              isDark: false,
-              styleSheet: style,
-            );
-          },
-        ),
+        DebouncedMarkdownPreview(state: state, isDark: false),
       ));
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.textContaining('分屏正文丁'), findsWidgets,
@@ -93,16 +83,7 @@ void main() {
       final state = DebouncedMarkdownPreviewState();
       state.updateText('旧内容甲');
       await tester.pumpWidget(_wrap(
-        Builder(
-          builder: (context) {
-            final style = createUnifiedMarkdownStyle(context: context);
-            return DebouncedMarkdownPreview(
-              state: state,
-              isDark: false,
-              styleSheet: style,
-            );
-          },
-        ),
+        DebouncedMarkdownPreview(state: state, isDark: false),
       ));
       await tester.pump(const Duration(milliseconds: 300));
       state.updateText('新内容乙已实时更新');
@@ -110,13 +91,26 @@ void main() {
       expect(find.textContaining('新内容乙已实时更新'), findsWidgets,
           reason: '打字停止 200ms 后分屏预览应实时更新');
     });
+
+    testWidgets('表格 markdown 应渲染出表头与单元格', (tester) async {
+      final state = DebouncedMarkdownPreviewState();
+      state.updateText('| 名称 | 数量 |\n| --- | --- |\n| 苹果 | 3 |');
+      await tester.pumpWidget(_wrap(
+        DebouncedMarkdownPreview(state: state, isDark: false),
+      ));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.textContaining('名称'), findsWidgets,
+          reason: '表格表头应渲染');
+      expect(find.textContaining('苹果'), findsWidgets,
+          reason: '表格单元格应渲染');
+      expect(tester.takeException(), isNull, reason: '表格渲染不应抛异常');
+    });
   });
 
   group('DesktopSplitEditor 端到端', () {
     Widget buildEditor(TextEditingController ctrl, SplitEditorMode mode) {
       return Builder(
         builder: (context) {
-          final style = createUnifiedMarkdownStyle(context: context);
           return DesktopSplitEditor(
             contentController: ctrl,
             focusNode: FocusNode(),
@@ -125,7 +119,6 @@ void main() {
             fontFamily: 'monospace',
             isDark: false,
             colorScheme: Theme.of(context).colorScheme,
-            styleSheet: style,
             initialMode: mode,
           );
         },
@@ -173,16 +166,7 @@ void main() {
       // 按真实布局：预览永远套在 SingleChildScrollView 内（有界盒子会溢出）
       await tester.pumpWidget(_wrap(
         SingleChildScrollView(
-          child: Builder(
-            builder: (context) {
-              final style = createUnifiedMarkdownStyle(context: context);
-              return DebouncedMarkdownPreview(
-                state: state,
-                isDark: false,
-                styleSheet: style,
-              );
-            },
-          ),
+          child: DebouncedMarkdownPreview(state: state, isDark: false),
         ),
       ));
       await tester.pump(const Duration(milliseconds: 400));

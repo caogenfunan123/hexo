@@ -8,13 +8,6 @@ extension DesktopShellWorkbenchUiExt on DesktopShellState {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // 预览排版：行高 1.6，段落间距收紧（MarkText 式紧凑阅读）
-    final previewStyle = createUnifiedMarkdownStyle(
-      context: context,
-      baseFontSize: 16,
-      lineHeight: 1.6,
-    ).copyWith(pPadding: const EdgeInsets.symmetric(vertical: 2));
-
     // 背景层：自定义壁纸 / 纯色（写作界面全屏背景）
     final Widget bgLayer;
     if (_deskUseWallpaper) {
@@ -238,7 +231,6 @@ extension DesktopShellWorkbenchUiExt on DesktopShellState {
                   // 分栏拖拽是连续回调：只记值供下次恢复，绝不能整壳 setState
                   // （曾导致拖拽期间每像素一次全壳重建 = 卡顿主因之一）
                   onSplitRatioChanged: (r) => _splitEditorRatio = r,
-                  styleSheet: previewStyle,
                   initialMode: _splitEditorMode,
                   // 模式切换保留整壳刷新：工具栏显隐依赖该状态（单击一次，可接受）
                   onModeChanged: (mode) {
@@ -283,8 +275,11 @@ extension DesktopShellWorkbenchUiExt on DesktopShellState {
                           ],
                         ),
                       ),
-                    const SizedBox(height: 16),
-                    // ── 底部操作栏 ──
+                    const SizedBox(height: 8),
+                    // ── 底部轻量操作条 ──
+                    // 阶段6：移除常驻「存草稿/发布」大按钮——存草稿在顶栏
+                    // 保存按钮与 Ctrl+S（另有自动保存），发布在顶栏与 Ctrl+P，
+                    // 对标手机端不把高频动作铺成刺眼大按钮。
                     Row(
                       children: [
                         // 导出下拉菜单
@@ -345,68 +340,33 @@ extension DesktopShellWorkbenchUiExt on DesktopShellState {
                             }
                           },
                         ),
-                        const SizedBox(width: 8),
                         if (_editor.failedImageBytes != null) ...[
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _editor.editorBusy
-                                  ? null
-                                  : _retryUploadImage,
-                              icon: const Icon(
-                                Icons.refresh,
-                                size: 18,
-                                color: Colors.orange,
-                              ),
-                              label: const Text(
-                                '重试上传',
-                                style: TextStyle(color: Colors.orange),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 13,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                side: const BorderSide(color: Colors.orange),
-                              ),
-                            ),
-                          ),
                           const SizedBox(width: 8),
-                        ],
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: _editor.editorBusy ? null : _saveLocal,
-                            icon: const Icon(Icons.save_outlined, size: 18),
-                            label: const Text('存草稿'),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 13),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          flex: 2,
-                          child: ElevatedButton.icon(
+                          OutlinedButton.icon(
                             onPressed: _editor.editorBusy
                                 ? null
-                                : _handlePublish,
+                                : _retryUploadImage,
                             icon: const Icon(
-                              Icons.cloud_upload_outlined,
+                              Icons.refresh,
                               size: 18,
+                              color: Colors.orange,
                             ),
-                            label: const Text('发布'),
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 13),
+                            label: const Text(
+                              '重试上传',
+                              style: TextStyle(color: Colors.orange),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 9,
+                                horizontal: 12,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
+                              side: const BorderSide(color: Colors.orange),
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ],

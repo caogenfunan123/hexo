@@ -6,7 +6,6 @@ library;
 
 import 'package:flutter/material.dart';
 import '../../../theme/app_color.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../widgets/debounced_markdown_preview.dart';
 import 'wysiwyg_editor_poc.dart';
 
@@ -30,7 +29,6 @@ class DesktopSplitEditor extends StatefulWidget {
   final TextEditingController contentController;
   final FocusNode focusNode;
   final VoidCallback? onChanged;
-  final MarkdownStyleSheet? styleSheet;
   final double fontSize;
   final double lineHeight;
   final String fontFamily;
@@ -49,7 +47,6 @@ class DesktopSplitEditor extends StatefulWidget {
     required this.contentController,
     required this.focusNode,
     this.onChanged,
-    this.styleSheet,
     this.fontSize = 14.5,
     this.lineHeight = 1.6,
     this.fontFamily = 'monospace',
@@ -324,12 +321,10 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
     }
   }
 
-  /// 所见即所得编辑器 — 与 contentCtrl 双向绑定，760px 居中纸面
+  /// 所见即所得编辑器 — 与 contentCtrl 双向绑定，左对齐全宽书写
+  /// （阶段6：去掉 760px 居中纸面，对标源码模式从左缘起排）
   Widget _buildWysiwygEditor(bool isDark, ColorScheme cs) {
-    return WysiwygMainEditor(
-      controller: widget.contentController,
-      maxWidth: 760,
-    );
+    return WysiwygMainEditor(controller: widget.contentController);
   }
 
   /// 纯源码编辑器 — 内容 760px 居中（纸感书写宽度）、隐藏滚动条
@@ -402,7 +397,6 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
               child: DebouncedMarkdownPreview(
                 state: _previewState,
                 isDark: isDark,
-                styleSheet: widget.styleSheet,
               ),
             ),
           ),
@@ -522,7 +516,6 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
                     child: DebouncedMarkdownPreview(
                       state: _previewState,
                       isDark: isDark,
-                      styleSheet: widget.styleSheet,
                     ),
                   ),
                 ),

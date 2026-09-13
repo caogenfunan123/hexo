@@ -34,6 +34,32 @@ void main() {
     expect(out, contains('引用块'));
   });
 
+  test('表格 markdown 往返应保持表头与行', () {
+    const sample = '| 名称 | 数量 |\n| --- | --- |\n| 苹果 | 3 |\n';
+    final doc = deserializeMarkdownToDocument(sample);
+    final out = serializeDocumentToMarkdown(doc);
+    expect(out, contains('名称'));
+    expect(out, contains('苹果'));
+    expect(out, contains('|'), reason: '表格序列化应保留表格语法');
+  });
+
+  testWidgets('所见即所得编辑器应能渲染表格文档（表格组件构建器）', (tester) async {
+    final controller = TextEditingController(
+      text: '| 名称 | 数量 |\n| --- | --- |\n| 苹果 | 3 |\n',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: WysiwygMainEditor(controller: controller),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle(const Duration(seconds: 1));
+    expect(find.byType(SuperEditor), findsOneWidget);
+    expect(tester.takeException(), isNull,
+        reason: '含表格文档渲染不应抛异常（缺表格组件构建器时曾表现为不渲染）');
+  });
+
   testWidgets('所见即所得主编辑区：frontmatter 拆分与外部改动同步', (tester) async {
     final controller = TextEditingController(
       text: '---\ntitle: 测试\ntags: [a]\n---\n\n# 正文标题\n\n段落。\n',
