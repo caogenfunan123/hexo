@@ -40,12 +40,21 @@ Entries discovered by the Agent during task execution should follow this format:
   - 用户侧提醒方式：直接说「按 code-splitting-guide.md 的规范写」即可
 
 [Project Knowledge Summary]
+- Date: 2026-09-13
+- Context: Discovered by Agent while pushing fa62401 (agent credential helper 返回 500，改走本地凭据库成功)
+- Category: Operations & Deployment
+- Instructions:
+  - push 方法（2026-09-13 验证有效）：token 写入 /root/.git-credentials（格式 `https://<user>:<token>@github.com`，chmod 600），再执行 `git -c credential.helper= -c credential.helper=store -c credential.useHttpPath=false push origin main`；关键点是环境强制 `credential.useHttpPath=true`，必须显式关掉，否则 store 按"主机+路径"精确匹配永远查不到凭据
+  - agent 自带 credential helper（/app/agent/bin/agent git-credential-helper）可能持续返回 500，不要依赖它
+  - gh CLI 本环境未认证，查 CI 用 GitHub API：`curl -s -H "Authorization: Bearer <token>" "https://api.github.com/repos/caogenfunan123/hexo/actions/runs?per_page=1"`；push 触发的 "CI Build & Monitor" 约 6-8 分钟出结果
+
+[Project Knowledge Summary]
 - Date: 2026-08-11
 - Context: Discovered by Agent while splitting _RootShellState (7425 行) into extension part files in lib/mixins/
 - Category: Build Methods
 - Instructions:
   - Flutter SDK 在 /tmp/opencode/flutter（stable，Dart 3.12.2），执行命令前需 `export PATH=/tmp/opencode/flutter/bin:$PATH`
-  - 本仓库（hexo app）位于 /workspace，远程为 https://github.com/caogenfunan123/hexo.git，push 命令：`git -c credential.helper= -c credential.helper="store --file=/root/.netrc" push origin main`；查 CI 用 `export GH_TOKEN="$(awk '/machine github.com/{print $6}' /root/.netrc)"` + `gh run list`
+  - 本仓库（hexo app）位于 /workspace，远程为 https://github.com/caogenfunan123/hexo.git
   - 拆分巨型 State 类的可行方案：`mixin on` 自身类会报 recursive_interface_inheritance，mixin 无法访问宿主私有成员；**extension on _RootShellState + part of '../main.dart'** 同 library 可访问全部私有成员，唯一限制是不能直接调 State 的 protected setState —— 需在宿主类加 `void _applyState(VoidCallback fn) => setState(fn);` 包装，extension 内用 `_applyState` 替代 setState
   - 提取脚本：字符串/注释屏蔽（strip_line）+ 花括号配对得方法边界；支持多行参数声明（匹配行首返回类型关键字）；向上收集连续 `//`/`///` 注释（不跨空行）；提取后批量 `setState(` → `_applyState(`
   - 删除方法前先打印全部区间确认无重叠；已完成的 part：editor_publish/sync/settings_dialogs/ui/text/ai/repo/remote/misc/drawer_ext.dart（main.dart 1293 行，flutter analyze 0 error/warning、471+ info 全为历史 deprecated 类）
