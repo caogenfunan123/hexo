@@ -323,11 +323,15 @@ feature_entries → kNavEntries+navEntryAction → bus 字段 → shell 接线�
 - 路由：MobilePage 枚举（editor/drafts/remote/dashboard/rss/history/batchUpload/preview/settings/reader/themeMigrate/logs/sync/cloudSync/home），main.dart `_navigateTo` 切换（页面索引由 `_RootShellState` 自持，不经 LayoutController）。
 - 页面在 lib/screens/（38 个）：编辑/阅读分离（main.dart 内编辑页/article_reader_screen）、首页卷宗（home_screen）、移动专有（mobile_recycle_bin/quick_note_floater 悬浮速记）。
 - 移动抽屉/工具箱入口用 feature_entries 的 navVisible 过滤，动作直接调方法（不经 ShellActionBus）。
-- **实验性所见即所得（阶段6，路线B）**：编辑页顶栏 auto_stories 开关（会话级）→
-  `WysiwygSmoothEditor`（lib/widgets/）以 flutter_smooth_markdown 的 formatted 模式
-  （块渲染+点入编辑）桥接 contentCtrl；写回后经 onAfterWriteBack → _onContentChanged
-  保持未保存标记与自动保存防抖不断链。定时发布 `_schedulePublish` 双端均有
-  （移动端为原生日期/时间选择器 + Timer）。
+- **实验性分屏实时预览（阶段6 改定，Markor/SoloMD 模式）**：编辑页顶栏
+  auto_stories 开关（会话级）→ `SplitPreviewPane`（lib/widgets/）：上半屏
+  原源码编辑（同一套 TextField/自动保存/打字机链路，零新风险），下半屏
+  MarkdownPreviewSmooth 实时渲染（200ms 防抖，表格/公式/mermaid 全支持），
+  中缝可拖拽调比例（ValueNotifier 局部刷新，不整页 setState）。
+  走这条路线的原因：super_editor 移动端 IME 风险未验证、flutter_smooth_markdown
+  的 formatted 编辑器实测空渲染不可用（CI widget test 复现）；安卓开源生态
+  （Markor/Mua/SoloMD）主流即源码+实时预览。定时发布 `_schedulePublish`
+  双端均有（移动端为原生日期/时间选择器 + Timer）。
 
 ### D. 状态管理层（lib/controllers/，双端共用）
 
@@ -422,3 +426,11 @@ setRepoCustomDomain 等已在门面收口）。
     flutter test 静默跳过）。推送前本地过一遍这两个命令。
 15. **发布链路 await 后先落本地持久化再查 mounted**：远端已成功而本地映射/草稿
     未写会造成重复建文（_publishToCms 已按此修正）。
+16. **安卓没有环境变量且 /tmp 只读**：`Platform.environment` 在安卓为空，
+    `Directory.systemTemp`=/tmp 不可写——移动端一切目录必须走 path_provider
+    （session_service / github_service / remote_cms_tools / theme_store /
+    theme_migration 已修，新代码禁止在移动可达路径用 systemTemp）。
+17. **桌面与移动的所见即所得是两套已验证不同的方案**：桌面 super_editor
+    （WysiwygMainEditor），手机端 Markor 式分屏实时预览（SplitPreviewPane），
+    勿互相套用；flutter_smooth_markdown 只用其渲染器，其 SmoothMarkdownEditor
+    formatted 编辑器实测空渲染，禁用。
