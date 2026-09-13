@@ -1612,9 +1612,11 @@ extension EditorUiExt on _RootShellState {
                   ),
                 ),
               Expanded(
-                child: _wysiwygExperimental
-                    ? _buildWysiwygExperimentalPane()
-                    : ListView(
+                child: _wysiwygWebViewMode
+                    ? _buildWebWysiwygPane()
+                    : _wysiwygExperimental
+                        ? _buildWysiwygExperimentalPane()
+                        : ListView(
                   controller: _editorScrollCtrl,
                   padding: const EdgeInsets.fromLTRB(14, 14, 14, 40),
                   children: [
@@ -1764,6 +1766,27 @@ extension EditorUiExt on _RootShellState {
           ),
         ],
       ),
+    );
+  }
+
+  /// 实验性真·所见即所得（WebView/TipTap）：
+  /// ProseMirror 在渲染好的富文本上直接编辑，中文输入法走系统 WebView。
+  /// WebView 加载失败时自动退回源码模式并提示。
+  Widget _buildWebWysiwygPane() {
+    return WysiwygWebViewEditor(
+      contentCtrl: _doc.contentCtrl,
+      dark: Theme.of(context).brightness == Brightness.dark,
+      onContentChanged: () {
+        if (!_contentHintDismissed && _doc.contentCtrl.text.isNotEmpty) {
+          _applyState(() => _contentHintDismissed = true);
+        }
+        _onContentChanged();
+      },
+      onFatalError: () {
+        if (!mounted) return;
+        _applyState(() => _wysiwygWebViewMode = false);
+        _showToast('所见即所得加载失败，已切回源码编辑');
+      },
     );
   }
 

@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:hexo/widgets/markdown_preview_smooth.dart';
 import 'package:hexo/widgets/split_preview_pane.dart';
+
+Finder _previewText(String s) => find.descendant(
+      of: find.byType(MarkdownPreviewSmooth),
+      matching: find.textContaining(s),
+    );
 
 Widget _wrap(Widget child) {
   return MaterialApp(
@@ -42,7 +48,7 @@ void main() {
           reason: '预览区应渲染正文');
     });
 
-    testWidgets('编辑区打字应实时更新预览（200ms 防抖）', (tester) async {
+    testWidgets('编辑区打字应实时更新预览（停手600ms空闲防抖）', (tester) async {
       final title = TextEditingController(text: '');
       final content = TextEditingController(text: '初始内容。');
       final ratio = ValueNotifier<double>(0.55);
@@ -61,10 +67,14 @@ void main() {
       );
       expect(contentField, findsOneWidget);
       await tester.enterText(contentField, '初始内容。追加的新句子丙。');
-      await tester.pump(const Duration(milliseconds: 400));
-
-      expect(find.textContaining('追加的新句子丙'), findsWidgets,
-          reason: '预览区应实时渲染新输入的内容');
+      // 打字期间（600ms 内）预览不应变化
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(_previewText('追加的新句子丙'), findsNothing,
+          reason: '打字期间预览应静止（空闲防抖）');
+      // 停手超过空闲窗口 + 预览自身 200ms 防抖
+      await tester.pump(const Duration(milliseconds: 900));
+      expect(_previewText('追加的新句子丙'), findsWidgets,
+          reason: '停手后预览应渲染新输入的内容');
       expect(tester.takeException(), isNull);
     });
 

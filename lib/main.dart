@@ -112,6 +112,7 @@ import 'services/version_snapshot_service.dart';
 import 'widgets/word_count_badge.dart';
 import 'widgets/markdown_preview_smooth.dart';
 import 'widgets/split_preview_pane.dart';
+import 'widgets/wysiwyg_web_editor.dart';
 import 'screens/home_screen.dart';
 import 'models/ui_settings.dart';
 import 'desktop/feature_entries.dart';
@@ -326,6 +327,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   // ── 实验性分屏实时预览（Markor/SoloMD 模式，顶栏 auto_stories 开关，会话级） ──
   bool _wysiwygExperimental = false;
   final ValueNotifier<double> _previewSplitRatio = ValueNotifier(0.55);
+  // ── 实验性真·所见即所得（WebView/TipTap，顶栏 auto_fix_high 开关，会话级） ──
+  bool _wysiwygWebViewMode = false;
 
   // ── 极简编辑界面：正文首次进入显示淡提示，输入后永久隐藏 ──
   bool _contentHintDismissed = false;
@@ -1467,6 +1470,26 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                 titleCtrl: _doc.titleCtrl,
                 contentCtrl: _doc.contentCtrl,
                 textColor: globalTextColor,
+              ),
+              _appBarAction(
+                icon: _wysiwygWebViewMode
+                    ? Icons.auto_fix_high
+                    : Icons.auto_fix_high_outlined,
+                tooltip: _wysiwygWebViewMode
+                    ? '真·所见即所得（实验）已开启，点按切回源码'
+                    : '真·所见即所得（实验，TipTap）',
+                color: _wysiwygWebViewMode
+                    ? Theme.of(context).colorScheme.primary
+                    : globalTextColor,
+                onTap: () {
+                  setState(() {
+                    _wysiwygWebViewMode = !_wysiwygWebViewMode;
+                    if (_wysiwygWebViewMode) _wysiwygExperimental = false;
+                  });
+                  _showToast(_wysiwygWebViewMode
+                      ? '真·所见即所得（实验）已开启'
+                      : '已切回源码编辑');
+                },
               ),
               _appBarAction(
                 icon: _wysiwygExperimental

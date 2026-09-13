@@ -64,6 +64,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/wysiwyg/web/
   fonts:
     - family: Inter
       fonts:

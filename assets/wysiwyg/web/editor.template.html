@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>
+  /* 透明背景：让 Flutter 侧的壁纸/纸面底色透出来 */
+  html, body {
+    margin: 0; padding: 0;
+    background: transparent !important;
+    font-family: -apple-system, 'Segoe UI', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+    color: #292524;
+  }
+  body.dark { color: #E7E5E4; }
+
+  #editor {
+    outline: none;
+    padding: 14px 16px 40px 16px;
+    font-size: 16px;
+    line-height: 1.75;
+    caret-color: #C4573A;
+    min-height: 60vh;
+  }
+  #editor:focus { outline: none; }
+
+  #editor h1 { font-size: 1.7em; font-weight: 700; margin: 0.8em 0 0.4em; line-height: 1.35; }
+  #editor h2 { font-size: 1.4em; font-weight: 700; margin: 0.8em 0 0.4em; line-height: 1.35; }
+  #editor h3 { font-size: 1.2em; font-weight: 600; margin: 0.7em 0 0.35em; }
+  #editor h4, #editor h5, #editor h6 { font-size: 1.05em; font-weight: 600; margin: 0.6em 0 0.3em; }
+  #editor p { margin: 0.45em 0; }
+  #editor ul, #editor ol { padding-left: 1.4em; margin: 0.45em 0; }
+  #editor li { margin: 0.18em 0; }
+  #editor ul[data-type="taskList"] { list-style: none; padding-left: 0.2em; }
+  #editor ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.5em; }
+  #editor ul[data-type="taskList"] li > label { margin-top: 0.28em; }
+  #editor blockquote {
+    margin: 0.6em 0; padding: 0.35em 0.9em;
+    border-left: 3px solid #C4573A;
+    background: rgba(196, 87, 58, 0.06);
+    border-radius: 0 6px 6px 0;
+  }
+  #editor pre {
+    background: rgba(120, 113, 108, 0.12);
+    border-radius: 8px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    font-size: 0.88em;
+    line-height: 1.55;
+  }
+  #editor code {
+    font-family: 'JetBrains Mono', Consolas, monospace;
+    font-size: 0.88em;
+    background: rgba(120, 113, 108, 0.14);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+  }
+  #editor pre code { background: transparent; padding: 0; }
+  #editor a { color: #B45309; text-decoration: underline; text-underline-offset: 2px; }
+  body.dark #editor a { color: #D9A544; }
+  #editor img { max-width: 100%; border-radius: 8px; }
+  #editor hr { border: none; border-top: 1px solid rgba(120, 113, 108, 0.3); margin: 1em 0; }
+  #editor table {
+    border-collapse: collapse; width: 100%; margin: 0.6em 0;
+    font-size: 0.92em;
+  }
+  #editor th, #editor td {
+    border: 1px solid rgba(120, 113, 108, 0.35);
+    padding: 6px 9px; text-align: left;
+  }
+  #editor th { background: rgba(120, 113, 108, 0.12); font-weight: 600; }
+  #editor .selectedCell:after {
+    content: ""; position: absolute; inset: 0;
+    background: rgba(196, 87, 58, 0.12); pointer-events: none;
+  }
+  #editor th p, #editor td p { margin: 0; }
+
+  /* 占位符（空文档提示） */
+  #editor p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    color: rgba(120, 113, 108, 0.45);
+    float: left; height: 0; pointer-events: none;
+  }
+
+  /* ProseMirror 基础 */
+  .ProseMirror { outline: none; }
+  .ProseMirror-selectednode { outline: 2px solid rgba(196, 87, 58, 0.5); border-radius: 4px; }
+  ::selection { background: rgba(196, 87, 58, 0.22); }
+</style>
+</head>
+<body>
+<div id="editor"></div>
+<script src="__EDITOR_JS__"></script>
+</body>
+</html>
