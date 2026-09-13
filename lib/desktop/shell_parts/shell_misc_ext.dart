@@ -125,6 +125,13 @@ extension DesktopShellMiscExt on DesktopShellState {
         onExecute: () => _switchWorkMode(WorkMode.workspace),
       ),
       CommandItem(
+        label: '拼写检查',
+        category: '工具',
+        shortcut: '',
+        icon: Icons.spellcheck,
+        onExecute: () => _showSpellCheck(),
+      ),
+      CommandItem(
         label: '写作画布',
         category: '视图',
         shortcut: '',

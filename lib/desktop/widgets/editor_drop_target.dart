@@ -141,8 +141,6 @@ class _EditorDropTargetState extends State<EditorDropTarget> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = widget.isDark;
-
     return DropTarget(
       onDragDone: (detail) => _handleDroppedFiles(detail.files),
       onDragEntered: (detail) {

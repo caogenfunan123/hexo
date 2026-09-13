@@ -308,7 +308,6 @@ end
 
   List<SkeletonFile> _buildVuepress(String siteTitle,
       {String siteBasePath = '/'}) {
-    final base = siteBasePath == '/' ? '/' : siteBasePath;
     return [
       SkeletonFile(
         path: 'package.json',

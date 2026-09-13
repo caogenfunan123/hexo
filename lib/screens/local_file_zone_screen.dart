@@ -548,10 +548,10 @@ class _LocalFileZoneScreenState extends State<LocalFileZoneScreen> {
                                 ? const Icon(Icons.chevron_right, size: 18)
                                 : null,
                             onTap: () {
-                              if (isDir) {
-                                _enter(e as Directory);
-                              } else {
-                                _fileActions(e as File);
+                              if (e is Directory) {
+                                _enter(e);
+                              } else if (e is File) {
+                                _fileActions(e);
                               }
                             },
                           );

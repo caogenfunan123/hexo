@@ -379,7 +379,6 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
     final root = (await widget.storageService.root).path;
     // 上传到站点根目录（sites/$siteId/attachments），作为站点真实文件，
     // 不再是 tasks 内部影子副本；AI 工作区可通过站点数据目录读取。
-    final siteDir = Directory('$root/sites/$_siteId');
     final attachmentsDir = Directory('$root/sites/$_siteId/attachments');
     if (!await attachmentsDir.exists()) {
       await attachmentsDir.create(recursive: true);
@@ -822,7 +821,7 @@ class _AgentWorkbenchScreenState extends State<AgentWorkbenchScreen> {
       historyKey: 'task_${task.id}',
       initialMessage: '$starter\n\n$objectiveLine'
           '$attachmentNote'
-          '${repo != null ? '\n工作区：${repo.owner}/${repo.repo}（${repo.frameworkId ?? "未知框架"}）' : ''}\n'
+          '${repo != null ? '\n工作区：${repo.owner}/${repo.repo}（${repo.frameworkId.isEmpty ? "未知框架" : repo.frameworkId}）' : ''}\n'
           '请描述你的需求，我会调用工具读取仓库、分析内容并产出结果。',
       onToolsExecuted: _recordToolExecutions,
       onFileOpsParsed: _recordParsedFileOps,

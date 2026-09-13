@@ -51,8 +51,6 @@ import 'screens/remote_posts_screen.dart';
 import 'screens/all_static_blogs_screen.dart';
 import 'screens/all_features_screen.dart';
 import 'models/nav_custom_config.dart';
-import 'desktop/nav_entries_meta.dart';
-import 'desktop/shell_action_bus.dart';
 import 'desktop/widgets/sidebar_customize_dialog.dart';
 import 'screens/static_blog_posts_screen.dart';
 import 'screens/sync_screen.dart';

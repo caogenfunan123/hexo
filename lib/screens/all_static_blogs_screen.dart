@@ -225,9 +225,6 @@ class _AllStaticBlogsScreenState extends State<AllStaticBlogsScreen> {
     return merged;
   }
 
-  /// 兼容旧调用：直接全量加载（保留原语义）
-  Future<void> _loadPosts() => _forceRefresh();
-
   List<BlogPost> get _filteredPosts {
     if (_searchQuery.isEmpty) return _posts;
     final q = _searchQuery.toLowerCase();

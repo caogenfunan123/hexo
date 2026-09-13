@@ -106,7 +106,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// 手动检查更新：读取 release.json 清单并弹窗展示
   Future<void> _checkForUpdates() async {
-    final l10n = AppLocalizations.ofContext(context);
     final checker = UpdateCheckerService(currentVersion: _cachedVersion);
     showDialog<void>(
       context: context,

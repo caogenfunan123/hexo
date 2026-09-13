@@ -620,9 +620,7 @@ class _ThemeStoreScreenState extends State<ThemeStoreScreen> {
             IconButton(
               icon: const Icon(Icons.palette_outlined),
               tooltip: '需要深度定制？用 AI 主题开发',
-              onPressed: _toast != null
-                  ? () => _toast('深度定制请使用「AI 主题开发」对话')
-                  : null,
+              onPressed: () => _toast('深度定制请使用「AI 主题开发」对话'),
             ),
           ],
           bottom: const TabBar(
