@@ -98,3 +98,28 @@
    保留渲染器用途。桌面 super_editor 所见即所得不受影响。
 
 架构文档已同步（ARCHITECTURE.md 移动端章节 + 坑清单 #16/#17）。
+
+## 补充：路线一真·所见即所得 + 分屏消卡顿（2026-09-13 第三批）
+
+用户拍板：真·所见即所得走路线一（WebView + 成熟编辑引擎），同时解决分屏卡顿。
+
+1. **分屏预览消卡顿**：`SplitPreviewPane` 改为 StatefulWidget，预览侧
+   「停手 600ms 才渲染」空闲防抖（打字期间整篇重解析重建是卡顿主因），
+   下半屏加 RepaintBoundary。测试拆成两个用例：注入 50ms 短防抖验证
+   编辑→预览链路、显式 600ms 验证打字期间预览静止。
+2. **路线一落地（WebView/TipTap/ProseMirror）**：
+   - `tools/wysiwyg-builder/`：npm + esbuild 把 TipTap v2（StarterKit +
+     Link/Image/Table/TaskList/Placeholder）+ marked + turndown(GFM) 打包为
+     单文件 IIFE（416KB）提交入库；各 @tiptap 包版本统一 ^2.x 浮动
+     （core 与 extension 版本错位曾报 No matching export）。
+   - `assets/wysiwyg/web/editor.template.html`：透明背景纸感主题 + 暗色切换。
+   - `lib/widgets/wysiwyg_web_editor.dart`：markdown 拆 frontmatter → marked
+     转 HTML 灌 TipTap；编辑防抖 400ms → turndown 回 markdown → 写回
+     contentCtrl（回环由 _lastKnownBody/applyRemote 双侧挡住）；安卓走
+     WebViewAssetLoader 虚拟域（Binder 1MB 限制，沿用手势验证过的旧预览方案），
+     其余平台内联；加载失败 onFatalError 自动退回源码模式并 toast。
+   - 编辑面 v1 边界：数学/mermaid 为代码文本态（渲染由分屏预览负责），
+     无选中格式工具栏（markdown 输入 rules 内建，打 **加粗** 即变粗体）。
+3. **验证**：CI 全绿（analyze + test + 四端构建）。WebView 编辑器无法在
+   widget test 中运行（平台视图限制），真机编辑体验（中文输入/气泡菜单/
+   长文流畅度）待用户实测。

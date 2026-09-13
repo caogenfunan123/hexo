@@ -323,15 +323,18 @@ feature_entries → kNavEntries+navEntryAction → bus 字段 → shell 接线�
 - 路由：MobilePage 枚举（editor/drafts/remote/dashboard/rss/history/batchUpload/preview/settings/reader/themeMigrate/logs/sync/cloudSync/home），main.dart `_navigateTo` 切换（页面索引由 `_RootShellState` 自持，不经 LayoutController）。
 - 页面在 lib/screens/（38 个）：编辑/阅读分离（main.dart 内编辑页/article_reader_screen）、首页卷宗（home_screen）、移动专有（mobile_recycle_bin/quick_note_floater 悬浮速记）。
 - 移动抽屉/工具箱入口用 feature_entries 的 navVisible 过滤，动作直接调方法（不经 ShellActionBus）。
-- **实验性分屏实时预览（阶段6 改定，Markor/SoloMD 模式）**：编辑页顶栏
-  auto_stories 开关（会话级）→ `SplitPreviewPane`（lib/widgets/）：上半屏
-  原源码编辑（同一套 TextField/自动保存/打字机链路，零新风险），下半屏
-  MarkdownPreviewSmooth 实时渲染（200ms 防抖，表格/公式/mermaid 全支持），
-  中缝可拖拽调比例（ValueNotifier 局部刷新，不整页 setState）。
-  走这条路线的原因：super_editor 移动端 IME 风险未验证、flutter_smooth_markdown
-  的 formatted 编辑器实测空渲染不可用（CI widget test 复现）；安卓开源生态
-  （Markor/Mua/SoloMD）主流即源码+实时预览。定时发布 `_schedulePublish`
-  双端均有（移动端为原生日期/时间选择器 + Timer）。
+- **手机端实验编辑模式（阶段6，三态）**：编辑页顶栏两个会话级开关——
+  auto_stories = 分屏实时预览（Markor/SoloMD 模式，`SplitPreviewPane`：上半屏
+  原源码编辑链路不变，下半屏 MarkdownPreviewSmooth 渲染；预览侧「停手 600ms
+  才渲染」空闲防抖 + RepaintBoundary 消打字卡顿，中缝可拖拽只写 ValueNotifier）；
+  auto_fix_high = 真·所见即所得（路线一，`WysiwygWebViewEditor`：WebView 内
+  TipTap/ProseMirror，中文输入法走系统 WebView，增量 DOM 渲染不卡；bundle 经
+  tools/wysiwyg-builder（npm + esbuild）构建为 assets/wysiwyg/web/editor.min.js
+  提交入库，升级 TipTap 后重跑 `node build.mjs`；安卓走 WebViewAssetLoader
+  虚拟域避 Binder 1MB 限制，其余平台内联；WebView 失败自动退回源码模式）。
+  编辑面 v1 边界：数学/mermaid 在所见即所得编辑面内为代码文本态（渲染由
+  分屏预览与阅读页负责），无选中格式工具栏（markdown 快捷输入 rules 内建）。
+  定时发布 `_schedulePublish` 双端均有（移动端为原生日期/时间选择器 + Timer）。
 
 ### D. 状态管理层（lib/controllers/，双端共用）
 
@@ -431,6 +434,14 @@ setRepoCustomDomain 等已在门面收口）。
     （session_service / github_service / remote_cms_tools / theme_store /
     theme_migration 已修，新代码禁止在移动可达路径用 systemTemp）。
 17. **桌面与移动的所见即所得是两套已验证不同的方案**：桌面 super_editor
-    （WysiwygMainEditor），手机端 Markor 式分屏实时预览（SplitPreviewPane），
+    （WysiwygMainEditor）；手机端两个实验模式——Markor 式分屏实时预览
+    （SplitPreviewPane）与 WebView/TipTap 真·所见即所得（WysiwygWebViewEditor），
     勿互相套用；flutter_smooth_markdown 只用其渲染器，其 SmoothMarkdownEditor
     formatted 编辑器实测空渲染，禁用。
+18. **WebView 编辑器 bundle 是构建产物入库**：assets/wysiwyg/web/editor.min.js
+    由 tools/wysiwyg-builder（npm + esbuild）生成，改 editor.js 后必须重跑
+    `node build.mjs` 并提交产物；TipTap 各包版本必须同步浮动（^2.14.0 统一，
+    core 与 extension 版本错位会报 No matching export）。
+19. **本机 dart analyze 是旧版本，会漏报/误报**：CI 的 Flutter 3.44 分析器
+    （flutter_lints）才是准绳——本机过了不代表 CI 过，跨版本 null 安全
+    推断差异（如私有字段提升）要用「本地变量显式判空」等两版都接受的写法。
