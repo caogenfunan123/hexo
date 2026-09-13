@@ -75,6 +75,12 @@ void main() {
       // 需再 settle 一轮）
       await tester.pump(const Duration(milliseconds: 900));
       await tester.pumpAndSettle();
+      final previews = tester.widgetList(find.byType(MarkdownPreviewSmooth));
+      // ignore: avoid_print
+      print('[split-debug] MarkdownPreviewSmooth count=${previews.length}');
+      // ignore: avoid_print
+      print('[split-debug] texts='
+          '${tester.allWidgets.whereType<Text>().map((w) => w.toPlainText()).take(40).toList()}');
       expect(_previewText('追加的新句子丙'), findsWidgets,
           reason: '停手后预览应渲染新输入的内容');
       expect(tester.takeException(), isNull);
