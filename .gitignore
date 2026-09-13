@@ -31,3 +31,4 @@ ios/Runner/GeneratedPluginRegistrant.*
 pycache
 __pycache__/
 *.pyc
+hexo-windows-*.zip
