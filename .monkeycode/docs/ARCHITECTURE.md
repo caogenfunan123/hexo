@@ -380,4 +380,9 @@ blobs/trees/commits/refs，失败回退 git CLI）→ Hexo/Hugo/Jekyll 等 frame
 5. docs/ 与部分生成文件在 .gitignore：docs/force-add（-f）可入库（DESKTOP_FIXES.md 先例）；GeneratedPluginRegistrant 不提交（git checkout 还原）。
 6. 大 Dart 文件做结构化拆分时用 tools/split_helper.py + split_execute.py（文档级字符串屏蔽 + 括号感知配对 + 0基闭区间切片），三个历史 bug 见 docs/fixes/fix-01。
 7. shell_parts/ 与 mixins/ 的 part 文件里 setState 必须写 _applyState（宿主包装）。
-8. 命令面板「所见即所得编辑（实验）」= super_editor spike（uuid 依赖覆盖见 pubspec 注释）；正式替换主编辑器前先读 docs/fixes/ui-phase2-wysiwyg-spike.md 的边界清单。
+8. 主编辑区默认所见即所得（阶段2.5）：WysiwygMainEditor 与 contentCtrl 双向绑定，
+   frontmatter 拆出保管不进富文本；super_editor 0.3.0-dev 需 uuid 依赖覆盖（见 pubspec 注释）；
+   源码/分栏/预览保留为辅助模式。边界清单见 docs/fixes/ui-phase2/phase4 文档。
+9. **连续回调（拖拽/滚动/动画进度）内严禁 _applyState/整壳 setState**：
+   连续值只写字段供恢复用，渲染让组件自持局部状态（曾致拖拽每像素整壳重建）。
+10. 桌面三区域（左栏/编辑区/右抽屉）已包 RepaintBoundary，新增面板同理，防水波纹重绘串扰。

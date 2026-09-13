@@ -16,6 +16,9 @@
 3. 新增功能入口四处同步（feature_entries → kNavEntries+navEntryAction → ShellActionBus → shell 接线），详见 `lib/desktop/shell_action_bus.dart` 头注释。
 4. 新代码颜色一律走 `AppColor` 语义令牌（纸感色板），禁止硬编码 hex。
 5. 修复/改版文档按 `docs/fixes/` 既有格式追加（该目录 gitignore，需 `git add -f`）。
+6. 连续回调（拖拽/滚动）内严禁整壳 setState：连续值只写字段，渲染交组件局部刷新。
+7. 主编辑区默认所见即所得（WysiwygMainEditor 双向绑定 contentCtrl），
+   改动编辑器先读 `docs/fixes/ui-phase4-wysiwyg-main-editor.md` 的数据流约定。
 
 ## 项目概要
 

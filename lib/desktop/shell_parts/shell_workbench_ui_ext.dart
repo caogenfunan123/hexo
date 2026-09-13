@@ -45,44 +45,47 @@ extension DesktopShellWorkbenchUiExt on DesktopShellState {
                         horizontal: 12,
                         vertical: 4,
                       ),
-                    child: TextField(
-                      controller: _doc.titleCtrl,
-                      decoration: const InputDecoration(
-                        labelText: '文章标题',
-                        prefixIcon: Icon(Icons.title, size: 19),
-                        prefixIconConstraints: BoxConstraints(
-                          minWidth: 30,
-                          minHeight: 30,
+                      child: TextField(
+                        controller: _doc.titleCtrl,
+                        decoration: const InputDecoration(
+                          labelText: '文章标题',
+                          prefixIcon: Icon(Icons.title, size: 19),
+                          prefixIconConstraints: BoxConstraints(
+                            minWidth: 30,
+                            minHeight: 30,
+                          ),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          filled: false,
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 6),
                         ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        filled: false,
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(vertical: 6),
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        onChanged: (_) {
+                          _onContentChanged();
+                          _doc.refreshUi();
+                          // 更新打字机光标位置
+                          final text = _doc.contentCtrl.text;
+                          final cursorPos =
+                              _doc.contentCtrl.selection.baseOffset;
+                          final textBefore = text.substring(
+                            0,
+                            cursorPos.clamp(0, text.length),
+                          );
+                          final currentLine = '\n'
+                              .allMatches(textBefore)
+                              .length;
+                          final totalLines = '\n'.allMatches(text).length + 1;
+                          _typewriterCtrl.updateCursorPosition(
+                            currentLine,
+                            totalLines,
+                          );
+                        },
                       ),
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      onChanged: (_) {
-                        _onContentChanged();
-                        _doc.refreshUi();
-                        // 更新打字机光标位置
-                        final text = _doc.contentCtrl.text;
-                        final cursorPos = _doc.contentCtrl.selection.baseOffset;
-                        final textBefore = text.substring(
-                          0,
-                          cursorPos.clamp(0, text.length),
-                        );
-                        final currentLine = '\n'.allMatches(textBefore).length;
-                        final totalLines = '\n'.allMatches(text).length + 1;
-                        _typewriterCtrl.updateCursorPosition(
-                          currentLine,
-                          totalLines,
-                        );
-                      },
                     ),
-                  ),
                   const SizedBox(height: 12),
                   // 元数据折叠开关
                   Align(
@@ -92,8 +95,9 @@ extension DesktopShellWorkbenchUiExt on DesktopShellState {
                     child: Focus(
                       canRequestFocus: false,
                       child: TextButton.icon(
-                        onPressed: () =>
-                            _applyState(() => _showEditorMeta = !_showEditorMeta),
+                        onPressed: () => _applyState(
+                          () => _showEditorMeta = !_showEditorMeta,
+                        ),
                         icon: Icon(
                           _showEditorMeta
                               ? Icons.expand_less
@@ -114,8 +118,10 @@ extension DesktopShellWorkbenchUiExt on DesktopShellState {
                 ],
               ),
             ),
-            // ── 工具栏（预览态隐藏，只保留轻量阅读） ──
-            if (_splitEditorMode != SplitEditorMode.previewOnly)
+            // ── 工具栏（预览/所见即所得态隐藏：WYSIWYG 有自己的行内操作，
+            //    且源码选区操作对富文本光标无意义） ──
+            if (_splitEditorMode != SplitEditorMode.previewOnly &&
+                _splitEditorMode != SplitEditorMode.wysiwyg)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: ListenableBuilder(
@@ -136,62 +142,64 @@ extension DesktopShellWorkbenchUiExt on DesktopShellState {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: AnimatedSize(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeInOut,
-              alignment: Alignment.topCenter,
-              child: _showEditorMeta
-                  ? ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxHeight: _metaPanelMaxHeight(context),
-                      ),
-                      child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // ── 仓库选择器 ──
-                      if (repos.isNotEmpty)
-                        _editorCard(
-                          child: DropdownButtonFormField<String>(
-                            value: _editorRepo?.id,
-                            decoration: const InputDecoration(
-                              labelText: '目标仓库',
-                              prefixIcon: Icon(
-                                Icons.storage_outlined,
-                                size: 19,
-                              ),
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              isDense: true,
-                              filled: false,
-                            ),
-                            items: repos
-                                .map(
-                                  (r) => DropdownMenuItem(
-                                    value: r.id,
-                                    child: Text(
-                                      '${r.name} (${r.fullName})',
-                                      style: const TextStyle(fontSize: 13),
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeInOut,
+                alignment: Alignment.topCenter,
+                child: _showEditorMeta
+                    ? ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: _metaPanelMaxHeight(context),
+                        ),
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // ── 仓库选择器 ──
+                              if (repos.isNotEmpty)
+                                _editorCard(
+                                  child: DropdownButtonFormField<String>(
+                                    value: _editorRepo?.id,
+                                    decoration: const InputDecoration(
+                                      labelText: '目标仓库',
+                                      prefixIcon: Icon(
+                                        Icons.storage_outlined,
+                                        size: 19,
+                                      ),
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      isDense: true,
+                                      filled: false,
                                     ),
+                                    items: repos
+                                        .map(
+                                          (r) => DropdownMenuItem(
+                                            value: r.id,
+                                            child: Text(
+                                              '${r.name} (${r.fullName})',
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
+                                    onChanged: (v) => _applyState(() {
+                                      final match = repos
+                                          .where((e) => e.id == v)
+                                          .firstOrNull;
+                                      if (match != null) _editorRepo = match;
+                                    }),
                                   ),
-                                )
-                                .toList(),
-                            onChanged: (v) => _applyState(() {
-                              final match = repos
-                                  .where((e) => e.id == v)
-                                  .firstOrNull;
-                              if (match != null) _editorRepo = match;
-                            }),
+                                ),
+                              const SizedBox(height: 16),
+                              // ── 文章属性（front matter，可折叠） ──
+                              _buildFrontMatterPanel(templates),
+                              const SizedBox(height: 12),
+                            ],
                           ),
                         ),
-                      const SizedBox(height: 16),
-                      // ── 文章属性（front matter，可折叠） ──
-                      _buildFrontMatterPanel(templates),
-                      const SizedBox(height: 12),
-                    ],
-                  ),
-                ),
-              )
-                  : const SizedBox.shrink(),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ),
             // ── 正文编辑区（双栏 Markdown 编辑器，占满剩余高度） ──
@@ -227,10 +235,12 @@ extension DesktopShellWorkbenchUiExt on DesktopShellState {
                       ? _deskCardBg
                       : AppColor.surfaceRaised(context),
                   initialSplitRatio: _splitEditorRatio,
-                  onSplitRatioChanged: (r) =>
-                      _applyState(() => _splitEditorRatio = r),
+                  // 分栏拖拽是连续回调：只记值供下次恢复，绝不能整壳 setState
+                  // （曾导致拖拽期间每像素一次全壳重建 = 卡顿主因之一）
+                  onSplitRatioChanged: (r) => _splitEditorRatio = r,
                   styleSheet: previewStyle,
                   initialMode: _splitEditorMode,
+                  // 模式切换保留整壳刷新：工具栏显隐依赖该状态（单击一次，可接受）
                   onModeChanged: (mode) {
                     _applyState(() => _splitEditorMode = mode);
                   },
@@ -240,164 +250,168 @@ extension DesktopShellWorkbenchUiExt on DesktopShellState {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: ListenableBuilder(
-              listenable: _editor,
-              builder: (context, child) => Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_editor.editorStatus != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Row(
-                        children: [
-                          if (_editor.editorBusy)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: SizedBox(
-                                width: 12,
-                                height: 12,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: cs.primary,
+                listenable: _editor,
+                builder: (context, child) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_editor.editorStatus != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Row(
+                          children: [
+                            if (_editor.editorBusy)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: cs.primary,
+                                  ),
                                 ),
                               ),
+                            Text(
+                              _editor.editorStatus!,
+                              style: TextStyle(
+                                color: _editor.editorBusy
+                                    ? cs.primary
+                                    : cs.outline,
+                                fontSize: 12,
+                              ),
                             ),
-                          Text(
-                            _editor.editorStatus!,
-                            style: TextStyle(
-                              color: _editor.editorBusy
-                                  ? cs.primary
-                                  : cs.outline,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  const SizedBox(height: 16),
-                  // ── 底部操作栏 ──
-                  Row(
-                    children: [
-                      // 导出下拉菜单
-                      PopupMenuButton<String>(
-                        tooltip: '导出',
-                        offset: const Offset(0, -8),
-                        enabled: !_editor.editorBusy,
-                        icon: const Icon(
-                          Icons.file_download_outlined,
-                          size: 18,
+                          ],
                         ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 13,
-                            horizontal: 12,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        itemBuilder: (_) => [
-                          const PopupMenuItem(
-                            value: 'html',
-                            child: ListTile(
-                              leading: Icon(Icons.html),
-                              title: Text('导出 HTML'),
-                              dense: true,
-                            ),
-                          ),
-                          const PopupMenuItem(
-                            value: 'pdf',
-                            child: ListTile(
-                              leading: Icon(Icons.picture_as_pdf),
-                              title: Text('导出 PDF'),
-                              dense: true,
-                            ),
-                          ),
-                          const PopupMenuItem(
-                            value: 'md',
-                            child: ListTile(
-                              leading: Icon(Icons.description),
-                              title: Text('导出 Markdown'),
-                              dense: true,
-                            ),
-                          ),
-                        ],
-                        onSelected: (v) {
-                          switch (v) {
-                            case 'html':
-                              _exportHtml();
-                              break;
-                            case 'pdf':
-                              _exportPdf();
-                              break;
-                            case 'md':
-                              _saveMdBackup();
-                              break;
-                          }
-                        },
                       ),
-                      const SizedBox(width: 8),
-                      if (_editor.failedImageBytes != null) ...[
+                    const SizedBox(height: 16),
+                    // ── 底部操作栏 ──
+                    Row(
+                      children: [
+                        // 导出下拉菜单
+                        PopupMenuButton<String>(
+                          tooltip: '导出',
+                          offset: const Offset(0, -8),
+                          enabled: !_editor.editorBusy,
+                          icon: const Icon(
+                            Icons.file_download_outlined,
+                            size: 18,
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 13,
+                              horizontal: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          itemBuilder: (_) => [
+                            const PopupMenuItem(
+                              value: 'html',
+                              child: ListTile(
+                                leading: Icon(Icons.html),
+                                title: Text('导出 HTML'),
+                                dense: true,
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'pdf',
+                              child: ListTile(
+                                leading: Icon(Icons.picture_as_pdf),
+                                title: Text('导出 PDF'),
+                                dense: true,
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'md',
+                              child: ListTile(
+                                leading: Icon(Icons.description),
+                                title: Text('导出 Markdown'),
+                                dense: true,
+                              ),
+                            ),
+                          ],
+                          onSelected: (v) {
+                            switch (v) {
+                              case 'html':
+                                _exportHtml();
+                                break;
+                              case 'pdf':
+                                _exportPdf();
+                                break;
+                              case 'md':
+                                _saveMdBackup();
+                                break;
+                            }
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        if (_editor.failedImageBytes != null) ...[
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _editor.editorBusy
+                                  ? null
+                                  : _retryUploadImage,
+                              icon: const Icon(
+                                Icons.refresh,
+                                size: 18,
+                                color: Colors.orange,
+                              ),
+                              label: const Text(
+                                '重试上传',
+                                style: TextStyle(color: Colors.orange),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 13,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                side: const BorderSide(color: Colors.orange),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                         Expanded(
                           child: OutlinedButton.icon(
-                            onPressed: _editor.editorBusy
-                                ? null
-                                : _retryUploadImage,
-                            icon: const Icon(
-                              Icons.refresh,
-                              size: 18,
-                              color: Colors.orange,
-                            ),
-                            label: const Text(
-                              '重试上传',
-                              style: TextStyle(color: Colors.orange),
-                            ),
+                            onPressed: _editor.editorBusy ? null : _saveLocal,
+                            icon: const Icon(Icons.save_outlined, size: 18),
+                            label: const Text('存草稿'),
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 13),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              side: const BorderSide(color: Colors.orange),
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: ElevatedButton.icon(
+                            onPressed: _editor.editorBusy
+                                ? null
+                                : _handlePublish,
+                            icon: const Icon(
+                              Icons.cloud_upload_outlined,
+                              size: 18,
+                            ),
+                            label: const Text('发布'),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
                       ],
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _editor.editorBusy ? null : _saveLocal,
-                          icon: const Icon(Icons.save_outlined, size: 18),
-                          label: const Text('存草稿'),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 13),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        flex: 2,
-                        child: ElevatedButton.icon(
-                          onPressed: _editor.editorBusy ? null : _handlePublish,
-                          icon: const Icon(
-                            Icons.cloud_upload_outlined,
-                            size: 18,
-                          ),
-                          label: const Text('发布'),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 13),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
-            ),
             ),
           ],
         ),
@@ -425,9 +439,7 @@ extension DesktopShellWorkbenchUiExt on DesktopShellState {
       shadowColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
-        side: BorderSide(
-          color: AppColor.border(context),
-        ),
+        side: BorderSide(color: AppColor.border(context)),
       ),
       color: cardColor,
       margin: EdgeInsets.zero,
@@ -530,7 +542,8 @@ extension DesktopShellWorkbenchUiExt on DesktopShellState {
                     child: DropdownButtonFormField<String>(
                       // 值必须是当前类型过滤后的可选项，否则触发断言：
                       // 切换文章类型后 _autoSelectTemplate 提前返回会留下失效模板 id
-                      value: templates
+                      value:
+                          templates
                               .where(
                                 (t) =>
                                     t.isPost ==
@@ -555,10 +568,7 @@ extension DesktopShellWorkbenchUiExt on DesktopShellState {
                       items: [
                         const DropdownMenuItem<String>(
                           value: null,
-                          child: Text(
-                            '无模板',
-                            style: TextStyle(fontSize: 13),
-                          ),
+                          child: Text('无模板', style: TextStyle(fontSize: 13)),
                         ),
                         ...templates
                             .where(
@@ -611,11 +621,7 @@ extension DesktopShellWorkbenchUiExt on DesktopShellState {
               // 预览态标题改由右侧属性抽屉编辑，属性面板内不再重复
               if (_splitEditorMode != SplitEditorMode.previewOnly) ...[
                 const SizedBox(height: 16),
-                _fmField(
-                  label: '标题',
-                  icon: Icons.title,
-                  ctrl: _doc.titleCtrl,
-                ),
+                _fmField(label: '标题', icon: Icons.title, ctrl: _doc.titleCtrl),
               ],
               const SizedBox(height: 16),
               _fmField(
@@ -732,17 +738,9 @@ extension DesktopShellWorkbenchUiExt on DesktopShellState {
       _toolChip(Icons.code_off, '代码块', _insertCodeBlock),
       _toolChip(Icons.title, 'H1', () => _insertHeading(1)),
       _toolChip(Icons.title, 'H2', () => _insertHeading(2)),
-      _toolChip(
-        Icons.format_list_bulleted,
-        '列表',
-        () => _insertList('- '),
-      ),
+      _toolChip(Icons.format_list_bulleted, '列表', () => _insertList('- ')),
       _toolChip(Icons.format_quote, '引用', () => _insertList('> ')),
-      _toolChip(
-        Icons.link,
-        '链接',
-        () => _wrap('[', '](https://)', p: '链接文字'),
-      ),
+      _toolChip(Icons.link, '链接', () => _wrap('[', '](https://)', p: '链接文字')),
       _toolChip(
         Icons.grid_on,
         '表格',
@@ -793,95 +791,113 @@ extension DesktopShellWorkbenchUiExt on DesktopShellState {
       itemBuilder: (_) => [
         const PopupMenuItem(
           value: 'batch_images',
-          child: Row(children: [
-            Icon(Icons.collections_outlined, size: 16),
-            SizedBox(width: 8),
-            Text('批量图床'),
-          ]),
+          child: Row(
+            children: [
+              Icon(Icons.collections_outlined, size: 16),
+              SizedBox(width: 8),
+              Text('批量图床'),
+            ],
+          ),
         ),
         const PopupMenuDivider(),
         const PopupMenuItem(
           value: 'ai_polish',
-          child: Row(children: [
-            Icon(Icons.auto_awesome, size: 16, color: Colors.purple),
-            SizedBox(width: 8),
-            Text('AI 润色'),
-          ]),
+          child: Row(
+            children: [
+              Icon(Icons.auto_awesome, size: 16, color: Colors.purple),
+              SizedBox(width: 8),
+              Text('AI 润色'),
+            ],
+          ),
         ),
         const PopupMenuItem(
           value: 'ai_continue',
-          child: Row(children: [
-            Icon(Icons.edit_note, size: 16, color: Colors.purple),
-            SizedBox(width: 8),
-            Text('AI 续写'),
-          ]),
+          child: Row(
+            children: [
+              Icon(Icons.edit_note, size: 16, color: Colors.purple),
+              SizedBox(width: 8),
+              Text('AI 续写'),
+            ],
+          ),
         ),
         const PopupMenuItem(
           value: 'ai_summary',
-          child: Row(children: [
-            Icon(Icons.summarize_outlined, size: 16, color: Colors.purple),
-            SizedBox(width: 8),
-            Text('AI 摘要'),
-          ]),
+          child: Row(
+            children: [
+              Icon(Icons.summarize_outlined, size: 16, color: Colors.purple),
+              SizedBox(width: 8),
+              Text('AI 摘要'),
+            ],
+          ),
         ),
         const PopupMenuItem(
           value: 'ai_code',
-          child: Row(children: [
-            Icon(Icons.developer_mode, size: 16, color: Colors.purple),
-            SizedBox(width: 8),
-            Text('AI 代码'),
-          ]),
+          child: Row(
+            children: [
+              Icon(Icons.developer_mode, size: 16, color: Colors.purple),
+              SizedBox(width: 8),
+              Text('AI 代码'),
+            ],
+          ),
         ),
         const PopupMenuItem(
           value: 'ai_rewrite',
-          child: Row(children: [
-            Icon(Icons.sync_alt, size: 16, color: Colors.purple),
-            SizedBox(width: 8),
-            Text('AI 改写'),
-          ]),
+          child: Row(
+            children: [
+              Icon(Icons.sync_alt, size: 16, color: Colors.purple),
+              SizedBox(width: 8),
+              Text('AI 改写'),
+            ],
+          ),
         ),
         const PopupMenuItem(
           value: 'ai_format',
-          child: Row(children: [
-            Icon(Icons.auto_fix_high, size: 16, color: Colors.deepPurple),
-            SizedBox(width: 8),
-            Text('AI 排版'),
-          ]),
+          child: Row(
+            children: [
+              Icon(Icons.auto_fix_high, size: 16, color: Colors.deepPurple),
+              SizedBox(width: 8),
+              Text('AI 排版'),
+            ],
+          ),
         ),
         const PopupMenuItem(
           value: 'ai_chat',
-          child: Row(children: [
-            Icon(Icons.chat, size: 16, color: Colors.deepPurple),
-            SizedBox(width: 8),
-            Text('AI 对话'),
-          ]),
-        ),
-      ],
-      child: Builder(builder: (context) {
-        final cs = Theme.of(context).colorScheme;
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.add_circle_outline,
-                size: 16,
-                color: cs.onSurface.withOpacity(0.7),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '更多',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurface.withOpacity(0.7),
-                ),
-              ),
+              Icon(Icons.chat, size: 16, color: Colors.deepPurple),
+              SizedBox(width: 8),
+              Text('AI 对话'),
             ],
           ),
-        );
-      }),
+        ),
+      ],
+      child: Builder(
+        builder: (context) {
+          final cs = Theme.of(context).colorScheme;
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.add_circle_outline,
+                  size: 16,
+                  color: cs.onSurface.withOpacity(0.7),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '更多',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: cs.onSurface.withOpacity(0.7),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 

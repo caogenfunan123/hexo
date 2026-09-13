@@ -399,7 +399,8 @@ class DesktopShellState extends State<DesktopShell>
   late final TypewriterScrollController _typewriterCtrl;
 
   // ── 新功能：分栏编辑器 ──
-  SplitEditorMode _splitEditorMode = SplitEditorMode.sourceOnly;
+  // 阶段2.5：主编辑区默认所见即所得（源码/分栏/预览仍可随时切换）
+  SplitEditorMode _splitEditorMode = SplitEditorMode.wysiwyg;
   double _splitEditorRatio = 0.5;
 
   // ── 新功能：命令面板 ──

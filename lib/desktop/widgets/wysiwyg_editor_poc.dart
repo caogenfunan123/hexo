@@ -79,13 +79,18 @@ class _WysiwygEditorPocState extends State<WysiwygEditorPoc> {
         ...defaultComponentBuilders,
       ],
       stylesheet: defaultStylesheet.copyWith(
-        documentPadding: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
+        documentPadding: const EdgeInsets.symmetric(
+          vertical: 24,
+          horizontal: 8,
+        ),
         addRulesAfter: [
           StyleRule(
             BlockSelector.all,
             (doc, docNode) => {
               'backgroundColor': Colors.transparent,
-              'color': isDark ? const Color(0xFFE7E5E4) : const Color(0xFF292524),
+              'color': isDark
+                  ? const Color(0xFFE7E5E4)
+                  : const Color(0xFF292524),
             },
           ),
         ],
@@ -159,5 +164,176 @@ class _WysiwygPocDialogState extends State<WysiwygPocDialog> {
         ),
       ),
     );
+  }
+}
+
+/// 所见即所得主编辑器（阶段2.5：替换主编辑区）
+///
+/// 与外部 TextEditingController 双向绑定：
+/// - 用户在富文本里编辑 → 防抖 250ms 序列化 markdown 写回 controller
+///   （触发 shell 既有链路：自动保存/字数统计/状态栏）；
+/// - 外部程序化改动（AI 改写/查找替换/片段插入/切文章）→ 检测文本差异后
+///   整体重建文档（光标复位，属预期行为）；
+/// - frontmatter（--- 块）不参与富文本编辑：解析时拆出保管，写回时原样前置，
+///   属性编辑仍走工作区属性面板/源码模式。
+class WysiwygMainEditor extends StatefulWidget {
+  final TextEditingController controller;
+  final double? maxWidth;
+
+  const WysiwygMainEditor({super.key, required this.controller, this.maxWidth});
+
+  @override
+  State<WysiwygMainEditor> createState() => _WysiwygMainEditorState();
+}
+
+class _WysiwygMainEditorState extends State<WysiwygMainEditor> {
+  static final _frontmatterRegex = RegExp(
+    '^' + r'-{3}[\s\S]*?-{3}' + r'\r?\n?',
+  );
+
+  MutableDocument? _doc;
+  MutableDocumentComposer? _composer;
+  Editor? _editor;
+  int _generation = 0; // 文档代数：外部重建后迫使 SuperEditor 重挂载
+  String _frontmatter = '';
+  String _lastBody = '';
+  Timer? _debounce;
+  bool _writingBack = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onControllerChanged);
+    _rebuildDocument(widget.controller.text);
+  }
+
+  @override
+  void didUpdateWidget(covariant WysiwygMainEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onControllerChanged);
+      widget.controller.addListener(_onControllerChanged);
+      _rebuildDocument(widget.controller.text);
+      if (mounted) setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    // 切模式/关标签销毁本组件前，把防抖中未写回的编辑强制同步回 controller，
+    // 否则最后一次防抖窗口（≤250ms）内的输入会静默丢失
+    // 先摘掉自己的监听再落盘：controller.text= 会同步通知监听者，
+    // 若通知打到已 defunct 的本元素会触发框架断言
+    widget.controller.removeListener(_onControllerChanged);
+    final doc = _doc;
+    if (doc != null) {
+      try {
+        final body = serializeDocumentToMarkdown(doc);
+        final full = _frontmatter + body;
+        if (widget.controller.text != full) {
+          widget.controller.text = full;
+        }
+      } catch (_) {
+        // 序列化异常时放弃本次同步，避免阻塞销毁流程
+      }
+    }
+    _disposeDocument();
+    super.dispose();
+  }
+
+  void _disposeDocument() {
+    final doc = _doc;
+    if (doc != null) doc.removeListener(_onDocChanged);
+    _doc?.dispose();
+    _composer?.dispose();
+    _doc = null;
+    _composer = null;
+    _editor = null;
+  }
+
+  void _rebuildDocument(String fullText) {
+    _disposeDocument();
+    final m = _frontmatterRegex.firstMatch(fullText);
+    _frontmatter = m?.group(0) ?? '';
+    final body = fullText.substring(_frontmatter.length);
+    _lastBody = body;
+    final doc = deserializeMarkdownToDocument(body);
+    doc.addListener(_onDocChanged);
+    final composer = MutableDocumentComposer();
+    _doc = doc;
+    _composer = composer;
+    _editor = createDefaultDocumentEditor(document: doc, composer: composer);
+    _generation++;
+  }
+
+  /// 外部文本变化（AI/查找替换/片段插入/程序化写入）：整体重建文档
+  void _onControllerChanged() {
+    if (_writingBack) return;
+    final full = widget.controller.text;
+    if (full == _frontmatter + _lastBody) return; // 自己写回的回环
+    _rebuildDocument(full);
+    if (mounted) setState(() {});
+  }
+
+  void _onDocChanged(_) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 250), _writeBack);
+  }
+
+  void _writeBack() {
+    if (!mounted || _doc == null) return;
+    _writingBack = true;
+    try {
+      final body = serializeDocumentToMarkdown(_doc!);
+      _lastBody = body;
+      final full = _frontmatter + body;
+      if (widget.controller.text != full) {
+        widget.controller.text = full;
+      }
+    } finally {
+      _writingBack = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final editor = _editor;
+    if (editor == null) return const SizedBox.shrink();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final content = SuperEditor(
+      key: ValueKey('wysiwyg-$_generation'),
+      editor: editor,
+      componentBuilders: [
+        TaskComponentBuilder(editor),
+        ...defaultComponentBuilders,
+      ],
+      stylesheet: defaultStylesheet.copyWith(
+        documentPadding: const EdgeInsets.symmetric(
+          vertical: 24,
+          horizontal: 8,
+        ),
+        addRulesAfter: [
+          StyleRule(
+            BlockSelector.all,
+            (doc, docNode) => {
+              'backgroundColor': Colors.transparent,
+              'color': isDark
+                  ? const Color(0xFFE7E5E4)
+                  : const Color(0xFF292524),
+            },
+          ),
+        ],
+      ),
+    );
+    if (widget.maxWidth != null) {
+      return Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: widget.maxWidth!),
+          child: content,
+        ),
+      );
+    }
+    return content;
   }
 }

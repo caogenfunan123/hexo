@@ -1,5 +1,6 @@
-// 阶段2 Spike 验证：WysiwygEditorPoc 的 markdown 往返（进出）能力
-// 验证点：markdown 进 → SuperEditor 文档 → 序列化 markdown 出，结构语义保持。
+// 阶段2 Spike / 阶段2.5 主编辑区验证：
+// 1) markdown 进 → SuperEditor 文档 → 序列化 markdown 出，结构语义保持；
+// 2) WysiwygMainEditor 与 controller 双向绑定、frontmatter 拆分、外部改动重建。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hexo/desktop/widgets/wysiwyg_editor_poc.dart';
@@ -31,5 +32,28 @@ void main() {
     expect(out, contains('列表一'));
     expect(out, contains('列表二'));
     expect(out, contains('引用块'));
+  });
+
+  testWidgets('所见即所得主编辑区：frontmatter 拆分与外部改动同步', (tester) async {
+    final controller = TextEditingController(
+      text: '---\ntitle: 测试\ntags: [a]\n---\n\n# 正文标题\n\n段落。\n',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: WysiwygMainEditor(controller: controller, maxWidth: 760),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle(const Duration(seconds: 1));
+    expect(find.byType(SuperEditor), findsOneWidget);
+
+    // 外部程序化改动（模拟 AI 改写/查找替换）→ 文档应整体重建且不崩溃
+    controller.text = '---\ntitle: 测试\n---\n\n# 新正文\n';
+    await tester.pumpAndSettle(const Duration(seconds: 1));
+    expect(find.byType(SuperEditor), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
   });
 }

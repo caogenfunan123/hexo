@@ -8,13 +8,19 @@ import 'package:flutter/material.dart';
 import '../../../theme/app_color.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../widgets/debounced_markdown_preview.dart';
+import 'wysiwyg_editor_poc.dart';
 
 /// 双栏编辑器模式
 enum SplitEditorMode {
+  /// 所见即所得（阶段2.5：默认主编辑模式）
+  wysiwyg,
+
   /// 仅源码
   sourceOnly,
+
   /// 仅预览
   previewOnly,
+
   /// 左右分栏
   split,
 }
@@ -170,9 +176,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
                 // 模式切换工具栏
                 _buildModeBar(isDark, cs, narrow),
                 // 编辑器主体
-                Expanded(
-                  child: _buildEditorBodyContent(isDark, cs, effective),
-                ),
+                Expanded(child: _buildEditorBodyContent(isDark, cs, effective)),
               ],
             );
           },
@@ -187,14 +191,17 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
       padding: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
         color: AppColor.surfaceRaised(context),
-        border: Border(
-          bottom: BorderSide(
-            color: AppColor.border(context),
-          ),
-        ),
+        border: Border(bottom: BorderSide(color: AppColor.border(context))),
       ),
       child: Row(
         children: [
+          _modeButton(
+            icon: Icons.auto_fix_high,
+            label: '所见即所得',
+            mode: SplitEditorMode.wysiwyg,
+            isDark: isDark,
+            cs: cs,
+          ),
           _modeButton(
             icon: Icons.code,
             label: '源码',
@@ -224,17 +231,28 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
               children: [
                 GestureDetector(
                   onTap: () => _setSplitRatio(_splitRatio - 0.1),
-                  child: Icon(Icons.chevron_left, size: 14, color: cs.primary.withOpacity(0.6)),
+                  child: Icon(
+                    Icons.chevron_left,
+                    size: 14,
+                    color: cs.primary.withOpacity(0.6),
+                  ),
                 ),
                 const SizedBox(width: 4),
                 Text(
                   '${(_splitRatio * 100).round()}%',
-                  style: TextStyle(fontSize: 10, color: cs.primary.withOpacity(0.6)),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: cs.primary.withOpacity(0.6),
+                  ),
                 ),
                 const SizedBox(width: 4),
                 GestureDetector(
                   onTap: () => _setSplitRatio(_splitRatio + 0.1),
-                  child: Icon(Icons.chevron_right, size: 14, color: cs.primary.withOpacity(0.6)),
+                  child: Icon(
+                    Icons.chevron_right,
+                    size: 14,
+                    color: cs.primary.withOpacity(0.6),
+                  ),
                 ),
               ],
             ),
@@ -270,9 +288,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
             Icon(
               icon,
               size: 13,
-              color: active
-                  ? cs.primary
-                  : (AppColor.textMuted(context)),
+              color: active ? cs.primary : (AppColor.textMuted(context)),
             ),
             const SizedBox(width: 4),
             Text(
@@ -280,9 +296,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                color: active
-                    ? cs.primary
-                    : (AppColor.textMuted(context)),
+                color: active ? cs.primary : (AppColor.textMuted(context)),
               ),
             ),
           ],
@@ -299,6 +313,8 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
     SplitEditorMode mode,
   ) {
     switch (mode) {
+      case SplitEditorMode.wysiwyg:
+        return _buildWysiwygEditor(isDark, cs);
       case SplitEditorMode.sourceOnly:
         return _buildSourceEditor(isDark, cs);
       case SplitEditorMode.previewOnly:
@@ -308,6 +324,14 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
     }
   }
 
+  /// 所见即所得编辑器 — 与 contentCtrl 双向绑定，760px 居中纸面
+  Widget _buildWysiwygEditor(bool isDark, ColorScheme cs) {
+    return WysiwygMainEditor(
+      controller: widget.contentController,
+      maxWidth: 760,
+    );
+  }
+
   /// 纯源码编辑器 — 内容 760px 居中（纸感书写宽度）、隐藏滚动条
   Widget _buildSourceEditor(bool isDark, ColorScheme cs) {
     return LayoutBuilder(
@@ -315,7 +339,10 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
         final expands = constraints.maxHeight.isFinite;
         final minLines = expands
             ? null
-            : ((constraints.maxHeight - 80) / (widget.fontSize * widget.lineHeight)).floor().clamp(1, 50);
+            : ((constraints.maxHeight - 80) /
+                      (widget.fontSize * widget.lineHeight))
+                  .floor()
+                  .clamp(1, 50);
         final textField = TextField(
           controller: widget.contentController,
           focusNode: widget.focusNode,
@@ -333,7 +360,8 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
           decoration: InputDecoration(
             hintText: '支持 Markdown 语法写作...',
             hintStyle: TextStyle(
-              color: (widget.editorTextColor ?? AppColor.textPrimary(context)).withOpacity(0.35),
+              color: (widget.editorTextColor ?? AppColor.textPrimary(context))
+                  .withOpacity(0.35),
               fontSize: widget.fontSize,
             ),
             border: InputBorder.none,
@@ -392,107 +420,115 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
             : 800.0;
         return Row(
           children: [
-        // 左栏：源码编辑
-        Expanded(
-          flex: (_splitRatio * 100).round(),
-          child: LayoutBuilder(
-            builder: (ctx, constraints) {
-              final minLines = constraints.maxHeight.isFinite
-                  ? ((constraints.maxHeight - 80) / (widget.fontSize * widget.lineHeight)).floor().clamp(1, 50)
-                  : 15;
-              return ScrollbarTheme(
+            // 左栏：源码编辑
+            Expanded(
+              flex: (_splitRatio * 100).round(),
+              child: LayoutBuilder(
+                builder: (ctx, constraints) {
+                  final minLines = constraints.maxHeight.isFinite
+                      ? ((constraints.maxHeight - 80) /
+                                (widget.fontSize * widget.lineHeight))
+                            .floor()
+                            .clamp(1, 50)
+                      : 15;
+                  return ScrollbarTheme(
+                    data: ScrollbarThemeData(
+                      thickness: WidgetStateProperty.all(0), // 隐藏滚动条
+                    ),
+                    child: Scrollbar(
+                      controller: _sourceScrollCtrl,
+                      child: SingleChildScrollView(
+                        controller: _sourceScrollCtrl,
+                        child: TextField(
+                          controller: widget.contentController,
+                          focusNode: widget.focusNode,
+                          minLines: minLines,
+                          maxLines: null,
+                          keyboardType: TextInputType.multiline,
+                          cursorColor: cs.primary,
+                          style: TextStyle(
+                            fontFamily: widget.fontFamily,
+                            height: widget.lineHeight,
+                            fontSize: widget.fontSize,
+                            color:
+                                widget.editorTextColor ??
+                                AppColor.textPrimary(context),
+                          ),
+                          decoration: InputDecoration(
+                            hintText: '支持 Markdown 语法写作...',
+                            hintStyle: TextStyle(
+                              color:
+                                  (widget.editorTextColor ??
+                                          AppColor.textPrimary(context))
+                                      .withOpacity(0.35),
+                              fontSize: widget.fontSize,
+                            ),
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: const EdgeInsets.all(16),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            // 分隔线（可拖拽）：默认 1px #E5E7EB，悬停/拖拽加深
+            MouseRegion(
+              cursor: SystemMouseCursors.resizeColumn,
+              onEnter: (_) => setState(() => _sepDragActive = true),
+              onExit: (_) => setState(() => _sepDragActive = false),
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onHorizontalDragStart: (_) =>
+                    setState(() => _sepDragActive = true),
+                onHorizontalDragUpdate: (details) {
+                  setState(() {
+                    _splitRatio += details.delta.dx / totalWidth;
+                    _splitRatio = _splitRatio.clamp(0.3, 0.7);
+                  });
+                },
+                onHorizontalDragEnd: (_) {
+                  setState(() => _sepDragActive = false);
+                  widget.onSplitRatioChanged?.call(_splitRatio);
+                },
+                child: SizedBox(
+                  width: 7,
+                  child: Center(
+                    child: Container(
+                      width: 1,
+                      color: _sepDragActive
+                          ? AppColor.iconMuted(context)
+                          : AppColor.borderStrong(context),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // 右栏：实时预览
+            Expanded(
+              flex: ((1 - _splitRatio) * 100).round(),
+              child: ScrollbarTheme(
                 data: ScrollbarThemeData(
                   thickness: WidgetStateProperty.all(0), // 隐藏滚动条
                 ),
                 child: Scrollbar(
-                  controller: _sourceScrollCtrl,
+                  controller: _previewScrollCtrl,
                   child: SingleChildScrollView(
-                    controller: _sourceScrollCtrl,
-                    child: TextField(
-                      controller: widget.contentController,
-                      focusNode: widget.focusNode,
-                      minLines: minLines,
-                      maxLines: null,
-                      keyboardType: TextInputType.multiline,
-                      cursorColor: cs.primary,
-                      style: TextStyle(
-                        fontFamily: widget.fontFamily,
-                        height: widget.lineHeight,
-                        fontSize: widget.fontSize,
-                        color: widget.editorTextColor ?? AppColor.textPrimary(context),
-                      ),
-                      decoration: InputDecoration(
-                        hintText: '支持 Markdown 语法写作...',
-                        hintStyle: TextStyle(
-                          color: (widget.editorTextColor ?? AppColor.textPrimary(context)).withOpacity(0.35),
-                          fontSize: widget.fontSize,
-                        ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        contentPadding: const EdgeInsets.all(16),
-                      ),
+                    controller: _previewScrollCtrl,
+                    padding: const EdgeInsets.all(16),
+                    child: DebouncedMarkdownPreview(
+                      state: _previewState,
+                      isDark: isDark,
+                      styleSheet: widget.styleSheet,
                     ),
                   ),
                 ),
-              );
-            },
-          ),
-        ),
-        // 分隔线（可拖拽）：默认 1px #E5E7EB，悬停/拖拽加深
-        MouseRegion(
-          cursor: SystemMouseCursors.resizeColumn,
-          onEnter: (_) => setState(() => _sepDragActive = true),
-          onExit: (_) => setState(() => _sepDragActive = false),
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onHorizontalDragStart: (_) =>
-                setState(() => _sepDragActive = true),
-            onHorizontalDragUpdate: (details) {
-              setState(() {
-                _splitRatio += details.delta.dx / totalWidth;
-                _splitRatio = _splitRatio.clamp(0.3, 0.7);
-              });
-            },
-            onHorizontalDragEnd: (_) {
-              setState(() => _sepDragActive = false);
-              widget.onSplitRatioChanged?.call(_splitRatio);
-            },
-            child: SizedBox(
-              width: 7,
-              child: Center(
-                child: Container(
-                  width: 1,
-                  color: _sepDragActive
-                      ? AppColor.iconMuted(context)
-                      : AppColor.borderStrong(context),
-                ),
               ),
             ),
-          ),
-        ),
-        // 右栏：实时预览
-        Expanded(
-          flex: ((1 - _splitRatio) * 100).round(),
-          child: ScrollbarTheme(
-            data: ScrollbarThemeData(
-              thickness: WidgetStateProperty.all(0), // 隐藏滚动条
-            ),
-            child: Scrollbar(
-              controller: _previewScrollCtrl,
-              child: SingleChildScrollView(
-                controller: _previewScrollCtrl,
-                padding: const EdgeInsets.all(16),
-                child: DebouncedMarkdownPreview(
-                  state: _previewState,
-                  isDark: isDark,
-                  styleSheet: widget.styleSheet,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
+          ],
         );
       },
     );
