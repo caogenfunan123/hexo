@@ -51,9 +51,10 @@ void main() {
       expect(githubService.writtenPaths.length, 2);
       expect(githubService.writtenPaths.every((p) => p.endsWith('.md')), isTrue);
       // Hexo 仓库的文章内容包含 frontmatter 与正文
+      // （hexo 框架预设模板 title 不带引号；hugo 模板才带引号）
       final hexoContent = githubService.writtenContents.first;
       expect(hexoContent, contains('---'));
-      expect(hexoContent, contains('title: "Test Post"'));
+      expect(hexoContent, contains('title: Test Post'));
       expect(hexoContent, contains('tags:'));
       expect(hexoContent, contains('This is a test post content.'));
       // 默认仓库排在前面
