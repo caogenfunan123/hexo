@@ -20,9 +20,10 @@ import 'package:flutter/services.dart' show rootBundle;
 /// - 外部改动（AI/图床/切文章）：监听 contentCtrl，正文与编辑器当前内容
 ///   不一致时 setMarkdown 推回 WebView（回环由 _lastKnownMarkdown 比对挡住）。
 ///
-/// 加载策略：安卓走 WebViewAssetLoader 虚拟域（避开 Binder 1MB 限制），
-/// 其余平台内联脚本。WebView 加载失败时回调 onFatalError，宿主自动退回
-/// 源码编辑模式。
+/// 加载策略：editor.min.js（约 416KB）**全平台内联**进 initialData HTML——
+/// 远低于安卓 Binder 1MB 事务上限，不依赖任何虚拟域/子资源请求，
+/// 从根上排除「脚本 404 → 编辑器空白」的失败类（曾因此报加载失败）。
+/// WebView 失败时回调 onFatalError(reason)，宿主自动退回源码编辑模式。
 class WysiwygWebViewEditor extends StatefulWidget {
   const WysiwygWebViewEditor({
     super.key,
@@ -44,7 +45,6 @@ class WysiwygWebViewEditor extends StatefulWidget {
 }
 
 class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
-  static const String _assetDomain = 'appassets.androidplatform.net';
   static final RegExp _frontmatterRegex =
       RegExp('^' + r'-{3}[\s\S]*?-{3}' + r'\r?\n?');
 
@@ -54,10 +54,8 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
   bool _editorIsWriting = false;
   String _frontmatter = '';
   String _lastKnownBody = '';
+  String? _lastJsError;
   late Future<String> _htmlFuture;
-
-  bool get _useAssetLoader =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   @override
   void initState() {
@@ -114,8 +112,7 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
   void _pushIfReady() {
     if (!_ready) return;
     _webCtrl?.evaluateJavascript(
-      source:
-          'WysiwygBridge.setMarkdown(${jsonEncode(_lastKnownBody)}, true)',
+      source: 'WysiwygBridge.setMarkdown(${jsonEncode(_lastKnownBody)})',
     );
   }
 
@@ -134,29 +131,30 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
     widget.onContentChanged();
   }
 
+  /// 模板 + 编辑器 bundle 全部内联（安卓 Binder 上限 1MB，约 420KB 安全）
   Future<String> _buildHtml() async {
     final template =
         await rootBundle.loadString('assets/wysiwyg/web/editor.template.html');
-    if (_useAssetLoader) {
-      // 安卓：脚本经 WebViewAssetLoader 虚拟域提供（避开 Binder 1MB 限制）
-      return template.replaceAll('__EDITOR_JS__',
-          '/assets/wysiwyg/web/editor.min.js');
-    }
-    // 其余平台：直接内联脚本
     final js = await rootBundle.loadString('assets/wysiwyg/web/editor.min.js');
-    return template.replaceAll('__EDITOR_JS__',
-        js.replaceAll('</script>', '<\\/script>'));
+    return template.replaceAll(
+      '<script src="__EDITOR_JS__"></script>',
+      '<script>${js.replaceAll('</script>', '<\\/script>')}</script>',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     if (_fatal) {
       return Center(
-        child: Text(
-          '所见即所得加载失败，已可切回源码编辑',
-          style: TextStyle(
-            fontSize: 13,
-            color: Theme.of(context).colorScheme.outline,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            '所见即所得加载失败，已可切回源码编辑\n(${_lastJsError ?? '未知原因'})',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12.5,
+              color: Theme.of(context).colorScheme.outline,
+            ),
           ),
         ),
       );
@@ -165,10 +163,12 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
       future: _htmlFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+          return const Center(
+              child: CircularProgressIndicator(strokeWidth: 2));
         }
         if (snapshot.hasError) {
           debugPrint('WysiwygWebView: html build failed: ${snapshot.error}');
+          _lastJsError = 'HTML构建: ${snapshot.error}';
           WidgetsBinding.instance.addPostFrameCallback((_) => _reportFatal());
           return const SizedBox.shrink();
         }
@@ -179,7 +179,7 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
             data: html,
             mimeType: 'text/html',
             encoding: 'utf8',
-            baseUrl: WebUri(_useAssetLoader ? 'https://$_assetDomain/' : 'about:blank'),
+            baseUrl: WebUri('about:blank'),
           ),
           initialSettings: InAppWebViewSettings(
             javaScriptEnabled: true,
@@ -187,14 +187,6 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
             transparentBackground: true,
             supportZoom: false,
             disableContextMenu: false,
-            webViewAssetLoader: _useAssetLoader
-                ? WebViewAssetLoader(
-                    domain: _assetDomain,
-                    pathHandlers: [
-                      AssetsPathHandler(path: '/assets/'),
-                    ],
-                  )
-                : null,
           ),
           onWebViewCreated: (ctrl) {
             _webCtrl = ctrl;
@@ -202,6 +194,12 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
               handlerName: 'wysiwygMarkdown',
               callback: _onEditorMarkdown,
             );
+          },
+          onConsoleMessage: (ctrl, msg) {
+            if (msg.messageLevel == ConsoleMessageLevel.ERROR) {
+              debugPrint('WysiwygWebView console: ${msg.message}');
+              _lastJsError = msg.message;
+            }
           },
           onLoadStop: (ctrl, url) async {
             try {
@@ -212,12 +210,16 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
               if (mounted) setState(() => _ready = true);
             } catch (e) {
               debugPrint('WysiwygWebView: init failed: $e');
+              _lastJsError = 'init: $e${_lastJsError != null ? ' / $_lastJsError' : ''}';
               _reportFatal();
             }
           },
           onReceivedError: (ctrl, request, error) {
-            // 编辑器脚本加载失败 = 功能不可用
-            if (request.url.toString().contains('editor.min.js')) {
+            debugPrint(
+                'WysiwygWebView receivedError: ${error.description} ${request.url}');
+            // 只把主框架加载失败当致命（favicon 等子资源 404 不影响编辑器）
+            if (request.isForMainFrame == true) {
+              _lastJsError = '${error.description}';
               _reportFatal();
             }
           },
