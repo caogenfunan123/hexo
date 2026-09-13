@@ -111,7 +111,7 @@ import 'services/draft_encryption_service.dart';
 import 'services/version_snapshot_service.dart';
 import 'widgets/word_count_badge.dart';
 import 'widgets/markdown_preview_smooth.dart';
-import 'widgets/wysiwyg_smooth_editor.dart';
+import 'widgets/split_preview_pane.dart';
 import 'screens/home_screen.dart';
 import 'models/ui_settings.dart';
 import 'desktop/feature_entries.dart';
@@ -323,8 +323,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   // ── 新功能：专注模式 ──
   bool _focusModeEnabled = false;
 
-  // ── 实验性所见即所得（路线B，顶栏 auto_stories 开关，会话级不持久化） ──
+  // ── 实验性分屏实时预览（Markor/SoloMD 模式，顶栏 auto_stories 开关，会话级） ──
   bool _wysiwygExperimental = false;
+  final ValueNotifier<double> _previewSplitRatio = ValueNotifier(0.55);
 
   // ── 极简编辑界面：正文首次进入显示淡提示，输入后永久隐藏 ──
   bool _contentHintDismissed = false;
@@ -542,6 +543,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     cmsDraftService.close();
     _publishCancelToken.cancel();
     _scheduledPublishTimer?.cancel();
+    _previewSplitRatio.dispose();
     super.dispose();
   }
 
@@ -1471,8 +1473,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                     ? Icons.auto_stories
                     : Icons.auto_stories_outlined,
                 tooltip: _wysiwygExperimental
-                    ? '所见即所得（实验）已开启，点按切回源码'
-                    : '所见即所得（实验）',
+                    ? '分屏实时预览（实验）已开启，点按切回源码'
+                    : '分屏实时预览（实验）',
                 color: _wysiwygExperimental
                     ? Theme.of(context).colorScheme.primary
                     : globalTextColor,
@@ -1481,7 +1483,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                     _wysiwygExperimental = !_wysiwygExperimental;
                   });
                   _showToast(_wysiwygExperimental
-                      ? '所见即所得（实验）已开启'
+                      ? '分屏实时预览（实验）已开启'
                       : '已切回源码编辑');
                 },
               ),

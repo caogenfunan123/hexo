@@ -1767,47 +1767,30 @@ extension EditorUiExt on _RootShellState {
     );
   }
 
-  /// 实验性所见即所得面板（路线B）：标题 + SmoothMarkdownEditor(formatted)。
-  /// 自带滚动与 MD 工具栏，替代源码 ListView 的滚动；打字机滚动在该模式暂不可用。
+  /// 实验性分屏实时预览（Markor/SoloMD 模式）：
+  /// 上半屏原源码编辑（链路不变），下半屏 MarkdownPreviewSmooth 实时渲染。
   Widget _buildWysiwygExperimentalPane() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
-          child: TextField(
-            controller: _doc.titleCtrl,
-            decoration: InputDecoration(
-              hintText: '输入标题',
-              hintStyle: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: globalTextColor.withValues(alpha: 0.35),
-              ),
-              filled: false,
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
-            ),
-            cursorColor: globalTextColor,
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              height: 1.3,
-              color: globalTextColor,
-            ),
-          ),
-        ),
-        Expanded(
-          child: WysiwygSmoothEditor(
-            controller: _doc.contentCtrl,
-            // 所见即所得没有源码 TextField 的 onChanged，写回后手动
-            // 走 _onContentChanged：未保存标记 + 自动保存防抖不断链
-            onAfterWriteBack: _onContentChanged,
-          ),
-        ),
-      ],
+    return SplitPreviewPane(
+      titleCtrl: _doc.titleCtrl,
+      contentCtrl: _doc.contentCtrl,
+      splitRatio: _previewSplitRatio,
+      textColor: globalTextColor,
+      editorScrollCtrl: _editorScrollCtrl,
+      onContentChanged: () {
+        if (!_contentHintDismissed && _doc.contentCtrl.text.isNotEmpty) {
+          _applyState(() => _contentHintDismissed = true);
+        }
+        _onContentChanged();
+        // 打字机光标更新（与源码模式同逻辑）
+        final text = _doc.contentCtrl.text;
+        final cursorPos = _doc.contentCtrl.selection.baseOffset;
+        final textBefore =
+            text.substring(0, cursorPos.clamp(0, text.length));
+        _typewriterCtrl.updateCursorPosition(
+          '\n'.allMatches(textBefore).length,
+          '\n'.allMatches(text).length + 1,
+        );
+      },
     );
   }
 
