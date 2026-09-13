@@ -16,6 +16,9 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
+    # 历史归档死文件（约135个存量 error，不参与构建），见 AGENTS.md；
+    # 排除后 flutter analyze 门禁才能只管 lib/ + test/ 的真实代码
+    - _archive/**
 include: package:flutter_lints/flutter.yaml
 
 linter:
