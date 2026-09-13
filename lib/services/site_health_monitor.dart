@@ -121,7 +121,9 @@ class SiteHealthMonitor {
     );
   }
 
-  /// 触发 GitHub Actions 重新构建（创建空提交触发 push 事件 CI）
+  /// 触发 GitHub Actions 重新构建（创建空提交触发 push 事件 CI）。
+  /// 统一走 GitHubProvider.request（认证/请求头/超时集中管理），
+  /// 不再自建 HttpClient 硬编码 api.github.com。
   Future<void> triggerBuild(RepoConfig repo) async {
     if (repo.provider != GitProviderType.github) {
       throw Exception('仅支持 GitHub 站点触发构建');
@@ -133,64 +135,44 @@ class SiteHealthMonitor {
     final refPath = '/repos/$owner/$name/git/refs/heads/$branch';
 
     // 1. 取当前 tip commit sha
-    final refData = await _request('GET', '$base$refPath', repo.token);
+    final refData = await _mapRequest(
+        _github.request('GET', '$base$refPath', repo.token));
     final tip = refData?['object']?['sha']?.toString();
     if (tip == null || tip.isEmpty) {
       throw Exception('获取分支引用失败');
     }
 
     // 2. 取 tip tree sha（保持内容不变）
-    final treeData = await _request(
-        'GET', '$base/repos/$owner/$name/git/trees/$tip',
-        repo.token);
+    final treeData = await _mapRequest(_github.request(
+        'GET', '$base/repos/$owner/$name/git/trees/$tip', repo.token));
     final treeSha = treeData?['sha']?.toString();
     if (treeSha == null || treeSha.isEmpty) {
       throw Exception('获取 tree 失败');
     }
 
     // 3. 创建空提交
-    final commitData = await _request(
-        'POST', '$base/repos/$owner/$name/git/commits',
-        repo.token,
+    final commitData = await _mapRequest(_github.request(
+        'POST', '$base/repos/$owner/$name/git/commits', repo.token,
         body: {
-      'message': 'chore: trigger CI build (site operations)',
-      'tree': treeSha,
-      'parents': [tip],
-    });
+          'message': 'chore: trigger CI build (site operations)',
+          'tree': treeSha,
+          'parents': [tip],
+        }));
     final commitSha = commitData?['sha']?.toString();
     if (commitSha == null || commitSha.isEmpty) {
       throw Exception('创建 commit 失败');
     }
 
     // 4. fast-forward 更新分支引用
-    await _request('PATCH', '$base$refPath', repo.token,
+    await _github.request('PATCH', '$base$refPath', repo.token,
         body: {'sha': commitSha, 'force': false});
   }
 
-  Future<Map<String, dynamic>?> _request(String method, String url, String token,
-      {Map<String, dynamic>? body}) async {
-    final client = HttpClient()
-      ..connectionTimeout = _timeout;
-    try {
-      final req = await client.openUrl(method, Uri.parse(url));
-      req.headers.set('Authorization', 'token $token');
-      req.headers.set('Accept', 'application/vnd.github+json');
-      req.headers.set('User-Agent', 'HexoBlogManager/1.0');
-      if (body != null) {
-        req.headers.contentType = ContentType.json;
-        req.write(jsonEncode(body));
-      }
-      final resp = await req.close().timeout(_timeout);
-      final raw = await resp.transform(utf8.decoder).join();
-      if (resp.statusCode >= 400) {
-        throw Exception('GitHub API $method $url 失败 (${resp.statusCode}): $raw');
-      }
-      if (raw.isEmpty) return null;
-      final decoded = jsonDecode(raw);
-      return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
-    } finally {
-      client.close(force: true);
-    }
+  /// request 返回 dynamic：等待并收敛为 Map（失败原样抛出）
+  Future<Map<String, dynamic>?> _mapRequest(Future<dynamic> f) async {
+    final data = await f;
+    if (data == null) return null;
+    return data is Map ? Map<String, dynamic>.from(data) : null;
   }
 
   /// HTTP 健康检查：返回 (状态, 消息, 内容非空)

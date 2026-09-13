@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../models/article.dart';
+import '../widgets/markdown_preview_smooth.dart';
 
 /// 纯阅读预览页 — 打开远程/历史文章优先进入此页面
 class ArticleReaderScreen extends StatelessWidget {
@@ -66,44 +66,11 @@ class ArticleReaderScreen extends StatelessWidget {
           ? const Center(
               child: Text('暂无内容',
                   style: TextStyle(color: Color(0xFF94A3B8), fontSize: 15)))
-          : Markdown(
-              data: article.content,
-              selectable: true,
+          : MarkdownPreviewSmooth(
+              markdown: article.content,
+              baseFontSize: 15,
+              lineHeight: 1.8,
               padding: const EdgeInsets.all(20),
-              styleSheet: MarkdownStyleSheet(
-                h1: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1A2E),
-                    height: 1.4),
-                h2: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1A2E),
-                    height: 1.4),
-                h3: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1A1A2E),
-                    height: 1.4),
-                p: const TextStyle(
-                    fontSize: 15,
-                    height: 1.8,
-                    color: Color(0xFF334155)),
-                code: TextStyle(
-                    fontSize: 13.5,
-                    backgroundColor: Colors.grey.shade100,
-                    color: const Color(0xFF0EA5E9)),
-                codeblockDecoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    borderRadius: BorderRadius.circular(12)),
-                blockquoteDecoration: BoxDecoration(
-                    color: cs.primary.withOpacity(0.04),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border(
-                        left: BorderSide(
-                            color: cs.primary.withOpacity(0.3), width: 3))),
-              ),
             ),
     );
   }

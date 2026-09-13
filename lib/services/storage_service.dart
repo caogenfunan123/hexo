@@ -204,7 +204,12 @@ class StorageService {
         return _root!;
       }
     } catch (_) {}
-    // 最终降级：系统临时目录
+    // 最终降级：系统临时目录。此路径重启即清，数据会丢——
+    // 必须留下醒目日志（含排查方向），不能静默降级。
+    debugPrint(
+        'StorageService: ⚠️⚠️ 主存储目录不可用（移动端 getFilesDir 失败或为空），'
+        '降级到系统临时目录 ${Directory.systemTemp.path}/hexo_blog_manager，'
+        '重启后数据可能丢失！请检查 MainActivity 的 getFilesDir 通道实现。');
     _root = Directory('${Directory.systemTemp.path}/hexo_blog_manager');
     if (!await _root!.exists()) await _root!.create(recursive: true);
     await _ensureCategoryDirs();
@@ -402,7 +407,16 @@ class StorageService {
       if (data is Map<String, dynamic>) return data;
       if (data is Map) return Map<String, dynamic>.from(data);
     } catch (e) {
-      debugPrint('Storage: 读取 $name 失败（文件可能损坏），返回空配置: $e');
+      debugPrint('Storage: 读取 $name 失败（文件可能损坏）: $e');
+      // 先把损坏文件改名留存（供用户手工恢复），再返回空配置，
+      // 避免下次写入直接覆盖导致配置彻底丢失
+      try {
+        final f = await _file(name);
+        if (await f.exists()) {
+          await f.rename(
+              '${f.path}.corrupt-${DateTime.now().millisecondsSinceEpoch}');
+        }
+      } catch (_) {}
     }
     return {};
   }

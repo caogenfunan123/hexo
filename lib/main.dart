@@ -113,8 +113,8 @@ import 'services/update_checker_service.dart';
 import 'services/draft_encryption_service.dart';
 import 'services/version_snapshot_service.dart';
 import 'widgets/word_count_badge.dart';
-import 'widgets/markdown_preview_webview.dart';
 import 'widgets/markdown_preview_smooth.dart';
+import 'widgets/wysiwyg_smooth_editor.dart';
 import 'screens/home_screen.dart';
 import 'models/ui_settings.dart';
 import 'desktop/feature_entries.dart';
@@ -161,7 +161,6 @@ class _HexoAppState extends State<HexoApp> {
   final EditorController _editorCtrl = EditorController();
   final SyncController _syncCtrl = SyncController();
   final SiteController _siteCtrl = SiteController();
-  final FrontMatterController _frontMatterCtrl = FrontMatterController();
   final UiStateController _uiStateCtrl = UiStateController();
 
   @override
@@ -177,7 +176,6 @@ class _HexoAppState extends State<HexoApp> {
     _editorCtrl.dispose();
     _syncCtrl.dispose();
     _siteCtrl.dispose();
-    _frontMatterCtrl.dispose();
     _uiStateCtrl.dispose();
     super.dispose();
   }
@@ -200,7 +198,6 @@ class _HexoAppState extends State<HexoApp> {
         ChangeNotifierProvider.value(value: _editorCtrl),
         ChangeNotifierProvider.value(value: _syncCtrl),
         ChangeNotifierProvider.value(value: _siteCtrl),
-        ChangeNotifierProvider.value(value: _frontMatterCtrl),
         ChangeNotifierProvider.value(value: _uiStateCtrl),
       ],
       child: MaterialApp(
@@ -318,12 +315,19 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   final CancelToken _publishCancelToken = CancelToken();
   Uint8List? _failedImageBytes; // 缓存上传失败的图片字节
 
+  // ── 定时发布（与桌面端 _schedulePublish 同逻辑） ──
+  Timer? _scheduledPublishTimer;
+  DateTime? _scheduledPublishTime;
+
   // ── 新功能：打字机滚动 ──
   final _editorScrollCtrl = ScrollController();
   late final TypewriterScrollController _typewriterCtrl;
 
   // ── 新功能：专注模式 ──
   bool _focusModeEnabled = false;
+
+  // ── 实验性所见即所得（路线B，顶栏 auto_stories 开关，会话级不持久化） ──
+  bool _wysiwygExperimental = false;
 
   // ── 极简编辑界面：正文首次进入显示淡提示，输入后永久隐藏 ──
   bool _contentHintDismissed = false;
@@ -540,6 +544,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     cloudSyncService.dispose();
     cmsDraftService.close();
     _publishCancelToken.cancel();
+    _scheduledPublishTimer?.cancel();
     super.dispose();
   }
 
@@ -1463,6 +1468,25 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                 titleCtrl: _doc.titleCtrl,
                 contentCtrl: _doc.contentCtrl,
                 textColor: globalTextColor,
+              ),
+              _appBarAction(
+                icon: _wysiwygExperimental
+                    ? Icons.auto_stories
+                    : Icons.auto_stories_outlined,
+                tooltip: _wysiwygExperimental
+                    ? '所见即所得（实验）已开启，点按切回源码'
+                    : '所见即所得（实验）',
+                color: _wysiwygExperimental
+                    ? Theme.of(context).colorScheme.primary
+                    : globalTextColor,
+                onTap: () {
+                  setState(() {
+                    _wysiwygExperimental = !_wysiwygExperimental;
+                  });
+                  _showToast(_wysiwygExperimental
+                      ? '所见即所得（实验）已开启'
+                      : '已切回源码编辑');
+                },
               ),
               _appBarAction(
                 icon: Icons.visibility_outlined,

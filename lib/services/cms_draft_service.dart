@@ -75,6 +75,11 @@ class CmsDraftService {
           'CREATE INDEX idx_cms_drafts_status ON $_tableName(status)',
         );
       },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        // 迁移骨架：未来加列/加表必须在这里按 oldVersion 逐级迁移，
+        // 否则老用户升级会因 schema 不匹配丢 CMS 草稿（发布链路数据）。
+        // 示例：if (oldVersion < 2) { await db.execute('ALTER TABLE ...'); }
+      },
     );
   }
 

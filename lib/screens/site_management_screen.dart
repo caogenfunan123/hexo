@@ -55,11 +55,7 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
     String? backfilled;
     try {
       if (repo.provider == GitProviderType.github) {
-        final run = await GitHubProvider().getActionsRun(
-          repo.token,
-          repo.owner,
-          repo.repo,
-        );
+        final run = await _githubService.repoActionsRun(repo);
         final status = run?['status']?.toString();
         final conclusion = run?['conclusion']?.toString();
         if (status == 'completed' && conclusion == 'success') {
@@ -357,12 +353,7 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
     // 查询当前可见性
     bool? current;
     try {
-      final data = await GitHubProvider().request(
-        'GET',
-        'https://api.github.com/repos/${repo.owner}/${repo.repo}',
-        repo.token,
-      );
-      current = data is Map ? data['private'] == true : null;
+      current = await _githubService.repoIsPrivate(repo);
     } catch (e) {
       _showToast('查询可见性失败：$e');
       return;
@@ -392,12 +383,7 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
     );
     if (confirmed != true || !mounted) return;
     try {
-      await GitHubProvider().updateVisibility(
-        repo.token,
-        repo.owner,
-        repo.repo,
-        target,
-      );
+      await _githubService.setRepoVisibility(repo, target);
       _showToast('已切换为${target ? '私有' : '公开'}');
     } catch (e) {
       _showToast('切换失败：$e');
@@ -453,12 +439,7 @@ class _SiteManagementScreenState extends State<SiteManagementScreen> {
             _showToast('该站点未配置令牌，无法绑定域名');
             return;
           }
-          await GitHubProvider().setCustomDomain(
-            repo.token,
-            repo.owner,
-            repo.repo,
-            cname,
-          );
+          await _githubService.setRepoCustomDomain(repo, cname);
         }
         // GitLab / Cloudflare：DNS 引导已在对话框展示，由用户在平台侧配置
         final updated = repo.copyWith(siteUrl: cname);

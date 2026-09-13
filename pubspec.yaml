@@ -24,11 +24,8 @@ dependencies:
   system_tray: ^2.0.3
   desktop_drop: ^0.4.4
   # hotkey_manager: 0.1.7  # 暂时移除，与 Flutter 3.24 不兼容
-  # Markdown 增强
-  flutter_highlight: ^0.7.0
-  highlight: ^0.7.0
-  # flutter_math_fork: 0.7.4  # 移除，Windows 构建失败，改用文本渲染
-  # 原生 Widget 渲染 Markdown（Mermaid + KaTeX），开发中备选方案
+  # Markdown 增强（highlight 两包已无代码引用，随 code_highlight 死代码一并移除）
+  # 原生 Widget 渲染 Markdown：预览（MarkdownPreviewSmooth）+ 实验性所见即所得编辑器
   flutter_smooth_markdown: ^0.8.1
   # 导出
   printing: ^5.11.0
@@ -67,8 +64,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/preview/web/
   fonts:
     - family: Inter
       fonts:

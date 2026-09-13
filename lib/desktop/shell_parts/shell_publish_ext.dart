@@ -343,6 +343,7 @@ extension DesktopShellPublishExt on DesktopShellState {
       // 发布期间用户可能继续编辑，此时不得用发布快照覆盖编辑器内容
       final userEdited = _doc.contentCtrl.text != a.content ||
           _doc.titleCtrl.text != a.title;
+      if (!mounted) return;
       if (userEdited) {
         _doc.updateCurrentArticleMeta(pub);
         _editor.setEditorStatus('已发布');
@@ -421,6 +422,7 @@ extension DesktopShellPublishExt on DesktopShellState {
       // 发布期间用户可能继续编辑，此时不得用发布快照覆盖编辑器内容
       final userEdited = _doc.contentCtrl.text != a.content ||
           _doc.titleCtrl.text != a.title;
+      if (!mounted) return;
       if (userEdited) {
         _doc.updateCurrentArticleMeta(pub);
       } else {
@@ -1003,6 +1005,7 @@ extension DesktopShellPublishExt on DesktopShellState {
         // 发布期间用户可能继续编辑，此时不得用发布快照覆盖编辑器内容
         final userEdited = _doc.contentCtrl.text != a.content ||
             _doc.titleCtrl.text != a.title;
+        if (!mounted) return;
         if (userEdited) {
           _doc.updateCurrentArticleMeta(pub);
         } else {

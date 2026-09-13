@@ -125,37 +125,6 @@ class DocumentController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 更新 TextEditingController 引用（用于切换草稿等场景）
-  void updateContentControllers({
-    TextEditingController? title,
-    TextEditingController? content,
-    TextEditingController? tags,
-    TextEditingController? categories,
-    TextEditingController? cover,
-  }) {
-    if (title != null) {
-      _titleCtrl.dispose();
-      _titleCtrl = title;
-    }
-    if (content != null) {
-      _contentCtrl.dispose();
-      _contentCtrl = content;
-    }
-    if (tags != null) {
-      _tagsCtrl.dispose();
-      _tagsCtrl = tags;
-    }
-    if (categories != null) {
-      _categoriesCtrl.dispose();
-      _categoriesCtrl = categories;
-    }
-    if (cover != null) {
-      _coverCtrl.dispose();
-      _coverCtrl = cover;
-    }
-    notifyListeners();
-  }
-
   /// 从当前 TextEditingController 文本收集 Article 数据
   Article collectArticle({bool draft = true}) {
     return _currentArticle.copyWith(

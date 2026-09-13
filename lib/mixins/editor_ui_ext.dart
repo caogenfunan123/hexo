@@ -680,6 +680,17 @@ extension EditorUiExt on _RootShellState {
                   }
                 },
               ),
+              _menuRow(
+                icon: Icons.schedule_send,
+                label: _scheduledPublishTime != null
+                    ? '定时发布 (${_scheduledPublishTime.toString().substring(0, 16)})'
+                    : '定时发布',
+                color: const Color(0xFFF59E0B),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _schedulePublish();
+                },
+              ),
               const Divider(height: 18),
               // ── AI 全功能 ──
               _menuGroupTitle('AI 全功能'),
@@ -1601,7 +1612,9 @@ extension EditorUiExt on _RootShellState {
                   ),
                 ),
               Expanded(
-                child: ListView(
+                child: _wysiwygExperimental
+                    ? _buildWysiwygExperimentalPane(cs)
+                    : ListView(
                   controller: _editorScrollCtrl,
                   padding: const EdgeInsets.fromLTRB(14, 14, 14, 40),
                   children: [
@@ -1755,6 +1768,47 @@ extension EditorUiExt on _RootShellState {
   }
 
   /// 底部 MD 语法工具栏：紧贴输入法顶部的横向滚动工具条
+  /// 实验性所见即所得面板（路线B）：标题 + SmoothMarkdownEditor(formatted)。
+  /// 自带滚动与 MD 工具栏，替代源码 ListView 的滚动；打字机滚动在该模式暂不可用。
+  Widget _buildWysiwygExperimentalPane(ColorScheme cs) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+          child: TextField(
+            controller: _doc.titleCtrl,
+            decoration: InputDecoration(
+              hintText: '输入标题',
+              hintStyle: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: globalTextColor.withValues(alpha: 0.35),
+              ),
+              filled: false,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+            ),
+            cursorColor: globalTextColor,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              height: 1.3,
+              color: globalTextColor,
+            ),
+          ),
+        ),
+        Expanded(
+          child: WysiwygSmoothEditor(
+            controller: _doc.contentCtrl,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildMdToolbar(ColorScheme cs) {
     return Container(
       height: 46,

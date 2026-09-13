@@ -35,17 +35,16 @@ jobs:
 
       - run: flutter pub cache repair
       - run: flutter pub get
-      
-      - name: Dart format check
-        run: |
-          dart format --output=none lib/ || true
-          echo "Dart format check completed"
-      
+
+      # 真门禁：analyze 失败（error/warning）即红；info 不拦（--no-fatal-infos）。
+      # dart format 未全库统一（230/262 文件未格式化），不做门禁，避免假检查。
       - name: Flutter analyze
-        run: |
-          flutter analyze --no-fatal-infos || true
-          echo "Flutter analysis completed"
-          
+        run: flutter analyze --no-fatal-infos
+
+      # 测试门禁：所有 *_test.dart（含批量发布/l10n），失败即红
+      - name: Flutter test
+        run: flutter test
+
       - name: Check for critical issues
         run: |
           # 检查是否有明显的语法错误
@@ -53,7 +52,7 @@ jobs:
             echo "::error::Found nonexistent imports"
             exit 1
           fi
-          
+
           echo "Code analysis completed successfully"
 
   # ── Android APK 构建 ──
@@ -352,7 +351,6 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [analyze, build-android, build-web, build-linux, build-windows]
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
 
@@ -361,7 +359,6 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-        continue-on-error: true
 
       - name: List artifacts
         run: |
@@ -372,24 +369,20 @@ jobs:
 
       - name: Verify artifacts
         run: |
-          # 检查关键文件是否存在
-          for apk in app-release.apk app-arm64-v8a-release.apk app-armeabi-v7a-release.apk; do
-            if [ ! -f "artifacts/$apk" ]; then
-              echo "::warning::Android APK not found: $apk"
+          # 关键产物缺失即失败（此前仅 warning + continue-on-error，
+          # 曾可能发出空 Release）
+          set -euo pipefail
+          for f in app-release.apk hexo-linux.tar.gz hexo-windows.zip; do
+            if [ ! -f "artifacts/$f" ]; then
+              echo "::error::Required artifact not found: $f"
+              exit 1
             fi
           done
-          
           if [ ! -d "artifacts/assets" ]; then
-            echo "::warning::Web build not found"
+            echo "::error::Web build (assets) not found"
+            exit 1
           fi
-          
-          if [ ! -f "artifacts/hexo-linux.tar.gz" ]; then
-            echo "::warning::Linux build not found"
-          fi
-          
-          if [ ! -f "artifacts/hexo-windows.zip" ]; then
-            echo "::warning::Windows build not found"
-          fi
+          echo "All required artifacts present"
 
       - name: Compute SHA256 for assets
         run: |

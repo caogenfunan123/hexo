@@ -36,6 +36,48 @@ class GitHubService {
 
   GitProviderAdapter adapter(RepoConfig repo) => adapterFor(repo.provider);
 
+  /// 查询仓库可见性（仅 GitHub；返回 true=私有 / false=公开，非 GitHub 返回 null）。
+  /// 门面收口：UI 层不得直接实例化 GitHubProvider 发请求。
+  Future<bool?> repoIsPrivate(RepoConfig repo) async {
+    final p = adapter(repo);
+    if (p is! GitHubProvider) return null;
+    final data = await p.request(
+      'GET',
+      'https://api.github.com/repos/${repo.owner}/${repo.repo}',
+      repo.token,
+    );
+    return data is Map ? data['private'] == true : null;
+  }
+
+  /// 切换仓库可见性（仅 GitHub；非 GitHub 抛异常）。
+  Future<void> setRepoVisibility(RepoConfig repo, bool private) async {
+    final p = adapter(repo);
+    if (p is! GitHubProvider) {
+      throw Exception('仅支持 GitHub 仓库切换可见性');
+    }
+    await p.updateVisibility(repo.token, repo.owner, repo.repo, private);
+  }
+
+  /// 查询仓库最近一次 Actions 运行状态（仅 GitHub；无运行返回 null）。
+  Future<Map<String, dynamic>?> repoActionsRun(
+    RepoConfig repo, {
+    String? branch,
+  }) {
+    final p = adapter(repo);
+    if (p is! GitHubProvider) return Future.value(null);
+    return p.getActionsRun(repo.token, repo.owner, repo.repo,
+        branch: branch ?? repo.branch);
+  }
+
+  /// 设置 Pages 自定义域名（仅 GitHub；空串清除域名）。
+  Future<void> setRepoCustomDomain(RepoConfig repo, String cname) {
+    final p = adapter(repo);
+    if (p is! GitHubProvider) {
+      return Future.error(Exception('仅支持 GitHub 仓库设置自定义域名'));
+    }
+    return p.setCustomDomain(repo.token, repo.owner, repo.repo, cname);
+  }
+
   Future<bool> testToken(RepoConfig repo) async {
     try {
       final acc = await adapter(repo).getUser(repo.token);

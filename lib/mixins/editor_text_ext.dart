@@ -129,6 +129,10 @@ extension EditorTextExt on _RootShellState {
       }
     } catch (e) {
       debugPrint('Auto save snapshot error: $e');
+      // 失败必须用户可见（此前仅 debugPrint，静默丢保存）
+      if (mounted) {
+        _showToast('自动保存失败: $e');
+      }
     }
   }
 

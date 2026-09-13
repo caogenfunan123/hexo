@@ -38,6 +38,12 @@ if [[ -z "$CURRENT" ]]; then
 fi
 
 if [[ -n "$EXPLICIT_VERSION" ]]; then
+  # 显式版本不带 +build（如 --version 1.2.0）时，自动接上当前构建号+1，
+  # 否则 NEW_BUILD_NUM 会取整串 "1.2.0"，后续 int() 崩溃
+  if [[ "$EXPLICIT_VERSION" != *"+"* ]]; then
+    BUILD_NUM="${CURRENT##*+}"
+    EXPLICIT_VERSION="${EXPLICIT_VERSION}+$((10#$BUILD_NUM + 1))"
+  fi
   NEW_VERSION="$EXPLICIT_VERSION"
 else
   # 形如 1.0.4+5：patch 位 +1，构建号 +1 → 1.0.5+6
@@ -186,8 +192,8 @@ PY
 git add pubspec.yaml lib/main.dart lib/screens/settings_screen.dart release.json
 git commit -m "chore(release): v${NEW_BASE} (${NEW_VERSION})"
 git tag "$TAG"
-echo "推送 main 与 tag $TAG ..."
-git push origin main
+echo "推送 $(git rev-parse --abbrev-ref HEAD) 与 tag $TAG ..."
+git push origin "$(git rev-parse --abbrev-ref HEAD)"
 git push origin "$TAG"
 
 echo ""

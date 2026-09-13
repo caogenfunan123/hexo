@@ -8,18 +8,16 @@
 /// - 光标位置和选择状态（CursorPosition）
 /// - 编辑器统计（字数、字符数）
 /// - 编辑器外观配置（字体、行高、主题、CSS）
-/// - 保存队列（SaveTask 队列、防抖计时器）
 /// - 编辑器忙碌/状态标志
 /// - 图片路径模式
-/// - 图片上传回调（由外部注入）
 ///
+/// 保存不在本控制器：草稿落盘走 shell 自动保存链路（防抖 + 会话快照 + flushAllPendingSaves），
 /// 数据层（DocumentController 管理）：
 /// - 文章内容 TextEditingController → DocumentController
 /// - Article 数据模型 → DocumentController
 /// - 草稿/模板列表 → DocumentController
 library;
 
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -51,22 +49,6 @@ class EditorTab {
   int get hashCode => id.hashCode;
 }
 
-/// 保存任务
-class SaveTask {
-  final String tabId;
-  final String content;
-  final String title;
-  final DateTime createdAt;
-  int retryCount;
-
-  SaveTask({
-    required this.tabId,
-    required this.content,
-    required this.title,
-    this.retryCount = 0,
-  }) : createdAt = DateTime.now();
-}
-
 /// 光标位置
 class CursorPosition {
   final int line;
@@ -79,8 +61,6 @@ class CursorPosition {
 }
 
 class EditorController extends ChangeNotifier {
-  static const int _maxRetries = 3;
-
   // ── 标签页 ──
   final List<EditorTab> _openTabs = [];
   int _activeTabIndex = 0;
@@ -104,23 +84,9 @@ class EditorController extends ChangeNotifier {
   bool _editorBusy = false;
   String? _editorStatus;
 
-  // ── 保存队列 ──
-  final List<SaveTask> _saveQueue = [];
-  bool _isFlushing = false;
-  Timer? _debounceTimer;
-  Timer? _autoSaveTimer;
-
   // ── 图片 ──
   Uint8List? _failedImageBytes;
   bool _useRelativeImagePath = false;
-
-  // ── 保存回调（由外部注入，flush 时真正执行落盘） ──
-  Future<bool> Function(SaveTask task)? onSaveTask;
-
-  // ── 图片上传回调（由外部注入） ──
-  Future<void> Function()? onRetryUploadImage;
-  Future<void> Function()? onInsertImage;
-  Future<void> Function()? onBatchInsertImages;
 
   // ── Getters: 标签页 ──
   List<EditorTab> get openTabs => List.unmodifiable(_openTabs);
@@ -148,10 +114,6 @@ class EditorController extends ChangeNotifier {
   // ── Getters: 忙碌 ──
   bool get editorBusy => _editorBusy;
   String? get editorStatus => _editorStatus;
-
-  // ── Getters: 保存 ──
-  bool get isFlushing => _isFlushing;
-  int get saveQueueLength => _saveQueue.length;
 
   // ── Getters: 图片 ──
   Uint8List? get failedImageBytes => _failedImageBytes;
@@ -196,7 +158,6 @@ class EditorController extends ChangeNotifier {
 
   void closeTab(int index) {
     if (index >= 0 && index < _openTabs.length) {
-      _flushTabTasks(_openTabs[index].id);
       _openTabs.removeAt(index);
       if (_openTabs.isEmpty) {
         _activeTabIndex = 0;
@@ -302,67 +263,9 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleImagePathMode() {
-    _useRelativeImagePath = !_useRelativeImagePath;
-    notifyListeners();
-  }
-
-  // ── 保存队列 ──
-  void enqueue(String tabId, String content, String title) {
-    _saveQueue.add(SaveTask(tabId: tabId, content: content, title: title));
-    notifyListeners();
-  }
-
-  void _flushTabTasks(String tabId) {
-    _saveQueue.removeWhere((t) => t.tabId == tabId);
-  }
-
-  Future<void> flush() async {
-    if (_isFlushing || _saveQueue.isEmpty) return;
-    _isFlushing = true;
-    notifyListeners();
-
-    final tasks = List<SaveTask>.from(_saveQueue);
-    _saveQueue.clear();
-
-    for (final task in tasks) {
-      try {
-        final ok = await onSaveTask?.call(task) ?? false;
-        if (!ok) throw Exception('save rejected');
-      } catch (e) {
-        debugPrint(
-            'EditorController: flush save failed (retry ${task.retryCount}/$_maxRetries): $e');
-        if (task.retryCount < _maxRetries) {
-          task.retryCount++;
-          _saveQueue.add(task);
-        }
-      }
-    }
-
-    _isFlushing = false;
-    notifyListeners();
-  }
-
-  /// 窗口关闭前强制落盘
-  Future<bool> onBeforeClose() async {
-    if (_saveQueue.isNotEmpty) {
-      await flush();
-    }
-    return _saveQueue.isEmpty;
-  }
-
   // ── 清理 ──
   @override
   void dispose() {
-    _debounceTimer?.cancel();
-    _debounceTimer = null;
-    _autoSaveTimer?.cancel();
-    _autoSaveTimer = null;
-    _saveQueue.clear();
-    onRetryUploadImage = null;
-    onInsertImage = null;
-    onBatchInsertImages = null;
-    onSaveTask = null;
     super.dispose();
   }
 }

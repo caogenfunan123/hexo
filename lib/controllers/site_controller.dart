@@ -36,10 +36,6 @@ class SiteController extends ChangeNotifier {
   String? _activeSiteId;
   bool _loading = false;
 
-  // ── 站点切换回调（由外部注入） ──
-  Future<void> Function(String siteId)? onSiteSwitch;
-  VoidCallback? onSitesChanged;
-
   // ── Getters ──
   List<SiteConfig> get staticSites => List.unmodifiable(_staticSites);
   List<SiteConfig> get dynamicSites => List.unmodifiable(_dynamicSites);
@@ -67,88 +63,6 @@ class SiteController extends ChangeNotifier {
       ..clear()
       ..addAll(dynamicSites);
     notifyListeners();
-  }
-
-  void addStaticSite(SiteConfig site) {
-    _staticSites.add(site);
-    onSitesChanged?.call();
-    notifyListeners();
-  }
-
-  void addDynamicSite(SiteConfig site) {
-    _dynamicSites.add(site);
-    onSitesChanged?.call();
-    notifyListeners();
-  }
-
-  void updateSite(SiteConfig updated) {
-    final staticIndex = _staticSites.indexWhere((s) => s.id == updated.id);
-    if (staticIndex >= 0) {
-      _staticSites[staticIndex] = updated;
-    } else {
-      final dynamicIndex = _dynamicSites.indexWhere((s) => s.id == updated.id);
-      if (dynamicIndex >= 0) {
-        _dynamicSites[dynamicIndex] = updated;
-      }
-    }
-    onSitesChanged?.call();
-    notifyListeners();
-  }
-
-  void removeSite(String siteId) {
-    _staticSites.removeWhere((s) => s.id == siteId);
-    _dynamicSites.removeWhere((s) => s.id == siteId);
-    if (_activeSiteId == siteId) {
-      _activeSiteId = allSites.isNotEmpty ? allSites.first.id : null;
-    }
-    onSitesChanged?.call();
-    notifyListeners();
-  }
-
-  void setDefaultSite(String siteId) {
-    // 遍历静态站点列表
-    for (int i = 0; i < _staticSites.length; i++) {
-      final site = _staticSites[i];
-      _staticSites[i] = SiteConfig(
-        id: site.id,
-        name: site.name,
-        repoUrl: site.repoUrl,
-        branch: site.branch,
-        framework: site.framework,
-        isDefault: site.id == siteId,
-        isStatic: site.isStatic,
-        tokenId: site.tokenId,
-      );
-    }
-    // 若当前激活站点被取消默认（即之前激活的站点不是新默认站点），
-    // 保持激活状态不变即可；若默认站点是新设的且当前无激活站点，激活它
-    if (_activeSiteId == null &&
-        _staticSites.any((s) => s.isDefault)) {
-      _activeSiteId = _staticSites.firstWhere((s) => s.isDefault).id;
-    }
-    // 动态站点不支持设为默认
-    notifyListeners();
-  }
-
-  // ── 站点切换 ──
-  Future<void> switchSite(String siteId) async {
-    if (_activeSiteId == siteId) return;
-    final previous = _activeSiteId;
-    _loading = true;
-    notifyListeners();
-
-    _activeSiteId = siteId;
-    try {
-      await onSiteSwitch?.call(siteId);
-    } catch (_) {
-      // 切换失败回滚激活站点，避免 UI 与真实状态不一致
-      _activeSiteId = previous;
-      rethrow;
-    } finally {
-      // 无论成功与否都复位 loading，避免异常导致 UI 永久卡 loading
-      _loading = false;
-      notifyListeners();
-    }
   }
 
   void setLoading(bool value) {

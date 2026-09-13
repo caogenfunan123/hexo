@@ -80,7 +80,6 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
   final EditorController _editorCtrl = EditorController();
   final SyncController _syncCtrl = SyncController();
   final SiteController _siteCtrl = SiteController();
-  final FrontMatterController _frontMatterCtrl = FrontMatterController();
   final UiStateController _uiStateCtrl = UiStateController();
 
   @override
@@ -99,7 +98,6 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
     _editorCtrl.dispose();
     _syncCtrl.dispose();
     _siteCtrl.dispose();
-    _frontMatterCtrl.dispose();
     _uiStateCtrl.dispose();
     super.dispose();
   }
@@ -248,7 +246,6 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
     try {
       // 关闭前强制落盘所有未保存内容，真正等待完成后才销毁
       await _saveLayout();
-      await _editorCtrl.onBeforeClose();
       await DesktopApp.shellKey.currentState?.flushAllPendingSaves();
     } catch (e) {
       debugPrint('Close flush error: $e');
@@ -290,7 +287,6 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
         MenuSeparator(),
         MenuItemLabel(label: '退出', onClicked: (_) async {
           await DesktopApp.shellKey.currentState?.flushAllPendingSaves();
-          await _editorCtrl.onBeforeClose();
           await _systemTray.destroy();
           await windowManager.destroy();
         }),
@@ -564,7 +560,6 @@ class _DesktopAppState extends State<DesktopApp> with WindowListener {
             ChangeNotifierProvider.value(value: _editorCtrl),
             ChangeNotifierProvider.value(value: _syncCtrl),
             ChangeNotifierProvider.value(value: _siteCtrl),
-            ChangeNotifierProvider.value(value: _frontMatterCtrl),
             ChangeNotifierProvider.value(value: _uiStateCtrl),
           ],
           child: MaterialApp(

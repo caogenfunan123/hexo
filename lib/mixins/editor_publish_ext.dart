@@ -53,6 +53,41 @@ extension EditorPublishExt on _RootShellState {
     }
   }
 
+  /// 定时发布（与桌面端 _schedulePublish 同逻辑；原为桌面端专属能力，
+  /// 2026-09 复盘后补齐移动端入口）：原生日期/时间选择器 + Timer 到点执行 _publish。
+  Future<void> _schedulePublish() async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(now),
+    );
+    if (time == null || !mounted) return;
+    final scheduled =
+        DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    if (!scheduled.isAfter(DateTime.now())) {
+      _showToast('定时时间必须晚于当前时间');
+      return;
+    }
+    _scheduledPublishTimer?.cancel();
+    _scheduledPublishTimer = Timer(scheduled.difference(DateTime.now()), () {
+      _scheduledPublishTimer = null;
+      _scheduledPublishTime = null;
+      if (mounted) {
+        _showToast('到达定时时间，开始发布');
+        _publish();
+      }
+    });
+    _scheduledPublishTime = scheduled;
+    _showToast('将于 ${scheduled.toString().substring(0, 16)} 自动发布');
+  }
+
   Future<void> _publish() async {
     // ── 发布预检测（与桌面端一致）：空内容/外链图/空标题/内容过短 ──
     final article = _collect(draft: false);

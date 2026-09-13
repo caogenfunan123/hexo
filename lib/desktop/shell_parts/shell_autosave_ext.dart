@@ -235,6 +235,10 @@ extension DesktopShellAutosaveExt on DesktopShellState {
       if (mounted) _showToast('草稿已自动保存');
     } catch (e) {
       debugPrint('AutoSave snapshot error: $e');
+      // 失败必须用户可见：写入编辑器状态（状态栏/工作台状态行常驻显示）并弹提示，
+      // 未保存指示灯（状态栏黄点）会继续保持，直到下次保存成功
+      _editor.setEditorStatus('自动保存失败：$e（内容仍在，稍后自动重试或 Ctrl+S 手动保存）');
+      if (mounted) _showToast('自动保存失败，请检查磁盘后手动存草稿');
     }
   }
 }
