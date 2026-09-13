@@ -291,25 +291,30 @@ extension EditorPublishExt on _RootShellState {
       _editorStatus = '正在发布...';
     });
     try {
+      final publishArticleId = _doc.currentArticle.id;
       final a = _collect(draft: false);
       final pub = await github.publishArticleWithMirrors(repo, a, templates: templates);
+      // 发布期间可能切走文章（网络发布耗时 10s+）：发布结果只落回原文章
+      final switched = _doc.currentArticle.id != publishArticleId;
       // 发布期间用户可能继续编辑，此时不得用发布快照覆盖编辑器内容
       // （分屏/所见即所得模式无 editorBusy 输入锁，该窗口真实存在）
       final userEdited = _doc.contentCtrl.text != a.content ||
           _doc.titleCtrl.text != a.title;
       if (mounted) {
         _applyState(() {
-          if (userEdited) {
-            _doc.updateCurrentArticleMeta(pub);
-          } else {
-            _doc.setCurrentArticle(pub);
+          if (!switched) {
+            if (userEdited) {
+              _doc.updateCurrentArticleMeta(pub);
+            } else {
+              _doc.setCurrentArticle(pub);
+            }
           }
           _editorStatus = '已发布';
         });
       }
-      await _saveDraft(userEdited
-          ? _collect(draft: false)
-          : pub.copyWith(isDraft: false, published: true));
+      await _saveDraft(switched || !userEdited
+          ? pub.copyWith(isDraft: false, published: true)
+          : _collect(draft: false));
       await _refreshRemote();
       // 触发全部部署钩子（Cloudflare / Vercel / Netlify 等）
       if (settings.deployHooks.isNotEmpty) {
@@ -343,6 +348,7 @@ extension EditorPublishExt on _RootShellState {
     }
 
     final a = _collect(draft: false);
+    final publishArticleId = _doc.currentArticle.id;
 
     // ── 发布前置校验 ──
     if (settings.activeAiProfile != null) {
@@ -497,22 +503,26 @@ extension EditorPublishExt on _RootShellState {
         remotePath: finalResult.link,
         remoteSha: finalResult.id?.toString(),
       );
+      // 发布期间用户可能切走文章：发布结果只落回原文章
+      final switched = _doc.currentArticle.id != publishArticleId;
       // 发布期间用户可能继续编辑，不得用发布快照覆盖编辑器内容
       final userEdited = _doc.contentCtrl.text != a.content ||
           _doc.titleCtrl.text != a.title;
       if (mounted) {
         _applyState(() {
-          if (userEdited) {
-            _doc.updateCurrentArticleMeta(pub);
-          } else {
-            _doc.setCurrentArticle(pub);
+          if (!switched) {
+            if (userEdited) {
+              _doc.updateCurrentArticleMeta(pub);
+            } else {
+              _doc.setCurrentArticle(pub);
+            }
           }
           _editorStatus = isUpdate
               ? '已更新到 ${adapter.config.type.displayName}'
               : '已发布到 ${adapter.config.type.displayName}';
         });
       }
-      await _saveDraft(userEdited ? _collect(draft: false) : pub);
+      await _saveDraft(switched || !userEdited ? pub : _collect(draft: false));
       // 保存到 CMS SQLite 草稿表
       await cmsDraftService.saveDraft(finalResult);
       // 更新同步映射

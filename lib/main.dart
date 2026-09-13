@@ -329,6 +329,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   final ValueNotifier<double> _previewSplitRatio = ValueNotifier(0.55);
   // ── 实验性真·所见即所得（WebView/TipTap，顶栏 auto_fix_high 开关，会话级） ──
   bool _wysiwygWebViewMode = false;
+  final GlobalKey<WysiwygWebViewEditorState> _wysiwygWebViewKey = GlobalKey();
 
   // ── 极简编辑界面：正文首次进入显示淡提示，输入后永久隐藏 ──
   bool _contentHintDismissed = false;
@@ -1038,7 +1039,12 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       // 三重落盘：APP 转入后台/被销毁时强制冲刷所有等待中的保存任务。
       // 本地冲刷不依赖云同步开关（曾因 draftSyncEnabled 默认 false 把
       // 冲刷一并挡掉，后台 2s 防抖窗口内的输入直接丢失）
-      _flushAllPendingSaves();
+      // WebView 所见即所得模式还有 JS 侧 400ms 防抖窗口，先拉回再冲刷
+      if (_wysiwygWebViewMode) {
+        unawaited(_flushWebViewMarkdown().whenComplete(_flushAllPendingSaves));
+      } else {
+        _flushAllPendingSaves();
+      }
       // 异步触发云端同步，不阻塞生命周期回调
       if (settings.draftSyncEnabled) _autoSyncToCloud();
     } else if (state == AppLifecycleState.resumed) {
@@ -1058,7 +1064,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     return ensureGithubTokensFromLegacy(s, repos);
   }
 
-  void _navigateTo(int page) {
+  Future<void> _navigateTo(int page) async {
     // 简易普通用户模式：目标页面入口不可见时重定向首页
     if (settings.ui.appMode == AppMode.simple) {
       final targetId = _pageEntryId(page);
@@ -1072,8 +1078,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         page = MobilePage.home.index;
       }
     }
-    // 离开编辑器时停止自动保存
+    // 离开编辑器时停止自动保存（WebView 模式先拉回 JS 防抖窗口内的输入）
     if (_currentPage == 0 && page != 0) {
+      await _flushWebViewMarkdown();
       _stopAutoSave();
     }
     setState(() => _currentPage = page);
@@ -1123,7 +1130,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       final session = await sessionService.loadSession();
       if (!session.hasArticle || session.isHome) return;
 
-      // 恢复文章数据
+      // 恢复文章数据：身份状态（isDraft/published/时间戳）以草稿箱实体为准，
+      // 恢复已发布文章时不得被降级为草稿；内容/标题用会话里更长的未保存状态
+      final existing =
+          drafts.where((d) => d.id == session.articleId).firstOrNull;
       final article = Article(
         id: session.articleId,
         title: session.articleTitle,
@@ -1139,9 +1149,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
             .where((e) => e.isNotEmpty)
             .toList(),
         cover: session.articleCover.isEmpty ? null : session.articleCover,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-        isDraft: true,
+        createdAt: existing?.createdAt ?? DateTime.now(),
+        updatedAt: existing?.updatedAt ?? DateTime.now(),
+        isDraft: existing?.isDraft ?? true,
+        published: existing?.published ?? false,
         repoId: session.articleRepoId,
         remotePath: session.articleRemotePath,
         remoteSha: session.articleRemoteSha,
@@ -1482,7 +1493,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                 color: _wysiwygWebViewMode
                     ? Theme.of(context).colorScheme.primary
                     : globalTextColor,
-                onTap: () {
+                onTap: () async {
+                  // 切走前先拉回 WebView 内未回写的输入（400ms 防抖窗口）
+                  if (_wysiwygWebViewMode) await _flushWebViewMarkdown();
+                  if (!mounted) return;
                   setState(() {
                     _wysiwygWebViewMode = !_wysiwygWebViewMode;
                     if (_wysiwygWebViewMode) _wysiwygExperimental = false;
@@ -1502,7 +1516,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                 color: _wysiwygExperimental
                     ? Theme.of(context).colorScheme.primary
                     : globalTextColor,
-                onTap: () {
+                onTap: () async {
+                  // WebView 模式下切到分屏（或关回源码）前先拉回未回写输入
+                  if (_wysiwygWebViewMode) await _flushWebViewMarkdown();
+                  if (!mounted) return;
                   setState(() {
                     _wysiwygExperimental = !_wysiwygExperimental;
                     // 与 WebView 所见即所得互斥对称

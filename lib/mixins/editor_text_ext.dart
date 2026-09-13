@@ -80,9 +80,9 @@ extension EditorTextExt on _RootShellState {
       timer: Timer(const Duration(seconds: 2), () {
         final entry = _debounceTimers.remove(articleId);
         if (entry == null) return;
-        // 已切走文章：定时器到点不再回写当前草稿（防串草稿/防降级），
-        // 内容仍在防抖表里，由 _flushAllPendingSaves 兜底落快照
-        if (_doc.currentArticle.id != articleId) return;
+        // 已切走文章也必须保存：用调度时捕获的内容与元数据落快照，
+        // 串草稿/防降级由 _autoSaveSnapshot 的 isCurrent 守卫保证，
+        // 直接 return 会把该窗口编辑静默丢弃（flush 也救不回）
         _autoSaveSnapshot(
           articleId: articleId,
           content: entry.content,
@@ -124,7 +124,8 @@ extension EditorTextExt on _RootShellState {
       );
       _lastSavedContentMap[articleId] = content;
       _lastSavedTitleMap[articleId] = title;
-      if (isCurrent) _doc.markSaved();
+      // await 窗口内可能已切走文章，markSaved 只对仍停留的文章生效
+      if (_doc.currentArticle.id == articleId) _doc.markSaved();
       await sessionService.cleanupSnapshots(articleId);
       // 草稿落盘仅限当前文章（非当前文章绝不 _collect，防串草稿/防降级）
       if (isCurrent && _doc.contentCtrl.text == content) {
@@ -146,7 +147,9 @@ extension EditorTextExt on _RootShellState {
     }
   }
 
-  void _openReader(Article article) {
+  Future<void> _openReader(Article article) async {
+    // 切文章前先拉回 WebView 内未回写的输入，落进当前文章的防抖表
+    await _flushWebViewMarkdown();
     _doc.setCurrentArticle(article);
     _saveSession(SessionPageType.reader);
     _applyState(() => _currentPage = 9); // 阅读页

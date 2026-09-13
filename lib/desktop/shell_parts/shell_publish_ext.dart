@@ -334,34 +334,38 @@ extension DesktopShellPublishExt on DesktopShellState {
     _editor.setEditorBusy(true);
     _editor.setEditorStatus('正在发布...');
     try {
+      final publishArticleId = _doc.currentArticle.id;
       final a = _collect(draft: false);
       final pub = await github.publishArticleWithMirrors(
         repo,
         a,
         templates: templates,
       );
+      // 发布期间可能切走文章：发布结果只落回原文章，绝不套到新文章上
+      final switched = _doc.currentArticle.id != publishArticleId;
       // 发布期间用户可能继续编辑，此时不得用发布快照覆盖编辑器内容
       final userEdited = _doc.contentCtrl.text != a.content ||
           _doc.titleCtrl.text != a.title;
-      if (!mounted) return;
-      if (userEdited) {
-        _doc.updateCurrentArticleMeta(pub);
-        _editor.setEditorStatus('已发布');
-      } else {
-        _doc.setCurrentArticle(pub);
-        _editor.setEditorStatus('已发布');
-        _doc.markSaved();
-      }
-      _lastSavedContent = pub.content;
-      _lastSavedTitle = pub.title;
+      // 本地持久化不依赖 widget 存活：远端已发布成功，卸载早退会丢发布状态
       _lastSavedContentMap[pub.id] = pub.content;
       _lastSavedTitleMap[pub.id] = pub.title;
-      // 发布期间若继续编辑，落盘当前内容而非发布旧快照，避免覆盖用户新改动
-      await _saveDraft(
-        userEdited
-            ? _collect(draft: false)
-            : pub.copyWith(isDraft: false, published: true),
-      );
+      if (!switched) {
+        _lastSavedContent = pub.content;
+        _lastSavedTitle = pub.title;
+      }
+      await _saveDraft(switched || !userEdited
+          ? pub.copyWith(isDraft: false, published: true)
+          : _collect(draft: false));
+      if (!mounted) return;
+      if (!switched) {
+        if (userEdited) {
+          _doc.updateCurrentArticleMeta(pub);
+        } else {
+          _doc.setCurrentArticle(pub);
+          _doc.markSaved();
+        }
+      }
+      _editor.setEditorStatus('已发布');
       await _refreshRemote();
       // 触发全部部署钩子（Cloudflare / Vercel / Netlify 等）
       if (settings.deployHooks.isNotEmpty) {
@@ -392,6 +396,7 @@ extension DesktopShellPublishExt on DesktopShellState {
       return;
     }
     final a = _collect(draft: false);
+    final publishArticleId = _doc.currentArticle.id;
     _editor.setEditorBusy(true);
     _editor.setEditorStatus('正在发布到 ${adapter.config.type.displayName}...');
     try {
@@ -419,12 +424,14 @@ extension DesktopShellPublishExt on DesktopShellState {
         remotePath: result.link,
         remoteSha: result.id?.toString(),
       );
+      // 发布期间可能切走文章：发布结果只落回原文章，绝不套到新文章上
+      final switched = _doc.currentArticle.id != publishArticleId;
       // 发布期间用户可能继续编辑，此时不得用发布快照覆盖编辑器内容
       final userEdited = _doc.contentCtrl.text != a.content ||
           _doc.titleCtrl.text != a.title;
       // 本地持久化（草稿/CMS映射）不依赖 widget 存活：远端已发布成功，
       // 卸载早退会丢本地映射，后续同步可能重复建文
-      await _saveDraft(userEdited ? _collect(draft: false) : pub);
+      await _saveDraft(switched || !userEdited ? pub : _collect(draft: false));
       await cmsDraftService.saveDraft(result);
       if (result.id != null) {
         syncService.setMapping(
@@ -439,17 +446,19 @@ extension DesktopShellPublishExt on DesktopShellState {
         );
       }
       if (!mounted) return;
-      if (userEdited) {
-        _doc.updateCurrentArticleMeta(pub);
-      } else {
-        _doc.setCurrentArticle(pub);
-        _doc.markSaved();
+      if (!switched) {
+        if (userEdited) {
+          _doc.updateCurrentArticleMeta(pub);
+        } else {
+          _doc.setCurrentArticle(pub);
+          _doc.markSaved();
+        }
+        _lastSavedContent = a.content;
+        _lastSavedTitle = a.title;
       }
-      _editor.setEditorStatus('已发布到 ${adapter.config.type.displayName}');
-      _lastSavedContent = a.content;
-      _lastSavedTitle = a.title;
       _lastSavedContentMap[a.id] = a.content;
       _lastSavedTitleMap[a.id] = a.title;
+      _editor.setEditorStatus('已发布到 ${adapter.config.type.displayName}');
       logService.add(
         'CMS发布成功',
         '已发布到 ${adapter.config.type.displayName}: ${result.title}',

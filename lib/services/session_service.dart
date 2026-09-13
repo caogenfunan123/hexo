@@ -148,7 +148,8 @@ class SessionService {
     await for (final entity in dir.list()) {
       if (entity is File && entity.path.endsWith('.md')) {
         final name = entity.path
-            .split(RegExp(r'[\/]'))
+            // Windows 路径分隔符是 \，必须两类都匹配（\/ 只是转义的 /）
+            .split(RegExp(r'[\\/]'))
             .last
             .replaceAll('.md', '');
         if (name.startsWith('${safeId}_')) {

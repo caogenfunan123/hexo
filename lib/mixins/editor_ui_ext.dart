@@ -1774,6 +1774,7 @@ extension EditorUiExt on _RootShellState {
   /// WebView 加载失败时自动退回源码模式并提示。
   Widget _buildWebWysiwygPane() {
     return WysiwygWebViewEditor(
+      key: _wysiwygWebViewKey,
       contentCtrl: _doc.contentCtrl,
       dark: Theme.of(context).brightness == Brightness.dark,
       onContentChanged: () {
@@ -1788,6 +1789,17 @@ extension EditorUiExt on _RootShellState {
         _showToast('所见即所得加载失败，已切回源码编辑');
       },
     );
+  }
+
+  /// WebView 模式下把 JS 侧防抖窗口内未回写的输入拉回 contentCtrl。
+  /// 非 WebView 模式是空操作；冲刷后由常规 _onContentChanged 链路接管保存。
+  Future<void> _flushWebViewMarkdown() async {
+    if (!_wysiwygWebViewMode) return;
+    try {
+      await _wysiwygWebViewKey.currentState?.flushToController();
+    } catch (e) {
+      debugPrint('Wysiwyg flush error: $e');
+    }
   }
 
   /// 实验性分屏实时预览（Markor/SoloMD 模式）：

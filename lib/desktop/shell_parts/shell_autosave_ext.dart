@@ -25,26 +25,14 @@ extension DesktopShellAutosaveExt on DesktopShellState {
 
   List<Future<void>> _flushAllPendingSaves() {
     final futures = <Future<void>>[];
-    // 1) 仍在排队中的防抖任务：立即取消并保存
+    final saved = <String>{};
+    // 1) 仍在排队中的防抖任务：立即取消并按调度时捕获的数据保存
+    //    （数据在 _pendingSaveMap，裸 Timer 闭包里的内容 flush 拿不到）
     for (final entry in _debounceTimers.entries) {
       entry.value.cancel();
       final pending = _pendingSaveMap[entry.key];
       if (pending != null && pending.content.isNotEmpty) {
-        futures.add(_autoSaveSnapshot(
-          articleId: pending.articleId,
-          content: pending.content,
-          title: pending.title,
-          tags: pending.tags,
-          categories: pending.categories,
-          cover: pending.cover,
-          force: true,
-        ));
-      }
-    }
-    // 2) 已切走文章挂起在 pending 中的内容：之前被 clear 直接丢弃，这里真正落盘
-    final leftover = Map<String, _PendingSave>.from(_pendingSaveMap);
-    for (final pending in leftover.values) {
-      if (pending.content.isNotEmpty) {
+        saved.add(entry.key);
         futures.add(_autoSaveSnapshot(
           articleId: pending.articleId,
           content: pending.content,
@@ -57,6 +45,21 @@ extension DesktopShellAutosaveExt on DesktopShellState {
       }
     }
     _debounceTimers.clear();
+    // 2) 已切走文章挂起在 pending 中的内容：真正落盘（去重防二次保存）
+    for (final pending in _pendingSaveMap.values) {
+      if (saved.contains(pending.articleId)) continue;
+      if (pending.content.isNotEmpty) {
+        futures.add(_autoSaveSnapshot(
+          articleId: pending.articleId,
+          content: pending.content,
+          title: pending.title,
+          tags: pending.tags,
+          categories: pending.categories,
+          cover: pending.cover,
+          force: true,
+        ));
+      }
+    }
     _pendingSaveMap.clear();
     return futures;
   }
@@ -96,22 +99,34 @@ extension DesktopShellAutosaveExt on DesktopShellState {
     _typewriterCtrl.updateCursorPosition(currentLine, totalLines);
     // 每草稿独立防抖，杜绝多草稿相互阻塞
     _debounceTimers[articleId]?.cancel();
-    // 闭包捕获当时的 articleId/content/title，触发时校验仍是该文章才保存，
-    // 防止切文章后旧文章的防抖把新内容误存到旧文章、或旧改动静默丢失
+    // 内容与元数据在调度时一并捕获进 _pendingSaveMap（对齐手机端）：
+    // 触发时无论是否已切走文章，用的都是当时的值，不会把新文章的
+    // tags/categories/cover 写进旧文章，也不会丢捕获窗口内的编辑
+    _pendingSaveMap[articleId] = _PendingSave(
+      articleId: articleId,
+      content: current,
+      title: title,
+      tags: _doc.tagsCtrl.text,
+      categories: _doc.categoriesCtrl.text,
+      cover: _doc.coverCtrl.text,
+    );
     _debounceTimers[articleId] = Timer(const Duration(seconds: 2), () {
       _debounceTimers.remove(articleId);
+      final pending = _pendingSaveMap.remove(articleId);
+      if (pending == null) return;
       if (_doc.currentArticle.id != articleId) {
-        _pendingSaveMap[articleId] = _PendingSave(
-          articleId: articleId,
-          content: current,
-          title: title,
-          tags: _doc.tagsCtrl.text,
-          categories: _doc.categoriesCtrl.text,
-          cover: _doc.coverCtrl.text,
-        );
+        // 已切走：留在 pendingMap，由 _flushAllPendingSaves 兜底落盘
+        _pendingSaveMap[articleId] = pending;
         return;
       }
-      _autoSaveSnapshot(articleId: articleId, content: current, title: title);
+      _autoSaveSnapshot(
+        articleId: articleId,
+        content: pending.content,
+        title: pending.title,
+        tags: pending.tags,
+        categories: pending.categories,
+        cover: pending.cover,
+      );
       // 元数据（标签/分类/封面）变化也要落盘：content/title 未变时 force 保存
       final metaChangedNow =
           _doc.tagsCtrl.text != _doc.currentArticle.tags.join(', ') ||
@@ -218,7 +233,8 @@ extension DesktopShellAutosaveExt on DesktopShellState {
         _lastSavedContent = c;
         _lastSavedTitle = t;
       }
-      if (articleId == null) {
+      // await 窗口内可能已切走文章，markSaved 只对仍停留的文章生效
+      if (_doc.currentArticle.id == aid) {
         _doc.markSaved();
       }
       await sessionService.cleanupSnapshots(aid);

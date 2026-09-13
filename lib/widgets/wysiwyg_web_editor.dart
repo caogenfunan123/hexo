@@ -41,10 +41,10 @@ class WysiwygWebViewEditor extends StatefulWidget {
   final VoidCallback? onFatalError;
 
   @override
-  State<WysiwygWebViewEditor> createState() => _WysiwygWebViewEditorState();
+  State<WysiwygWebViewEditor> createState() => WysiwygWebViewEditorState();
 }
 
-class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
+class WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
   static const String _assetDomain = 'appassets.androidplatform.net';
   static final RegExp _frontmatterRegex =
       RegExp('^' + r'-{3}[\s\S]*?-{3}' + r'\r?\n?');
@@ -82,10 +82,8 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
       _syncFrontmatterAndBody();
       _pushIfReady();
     }
-    if (oldWidget.dark != widget.dark && _ready) {
-      _webCtrl?.evaluateJavascript(
-          source: 'WysiwygBridge.setDark(${widget.dark})');
-    }
+    // dark 变化走 build 的 ValueKey 整体重建（元素重建，不会进本方法），
+    // init 时已带 dark 参数，无需单独 setDark
   }
 
   @override
@@ -140,6 +138,26 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
     widget.onContentChanged();
   }
 
+  /// 主动把 WebView 内最新 markdown 拉回 contentCtrl（App 转后台/切模式/
+  /// 切文章前调用）：JS 侧还有 400ms 防抖窗口，那里的输入只能从这里救回。
+  /// 返回是否发生了回写。
+  Future<bool> flushToController() async {
+    if (!_ready || _webCtrl == null || _fatal) return false;
+    final dynamic res =
+        await _webCtrl!.evaluateJavascript(source: 'WysiwygBridge.getMarkdown()');
+    final md = res is String ? res : null;
+    if (md == null || md == _lastKnownBody) return false;
+    _lastKnownBody = md;
+    _editorIsWriting = true;
+    try {
+      widget.contentCtrl.text = _frontmatter + md;
+    } finally {
+      _editorIsWriting = false;
+    }
+    widget.onContentChanged();
+    return true;
+  }
+
   /// 模板 + 编辑器 bundle 内联；KaTeX 按平台决定虚拟域引用或内联。
   /// （安卓 initialData 走 Binder，上限 1MB：编辑器包 418KB 内联安全，
   /// KaTeX css+js 650KB 改走虚拟域；iOS 无此限制，全内联。）
@@ -164,9 +182,9 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
           await rootBundle.loadString('assets/wysiwyg/web/katex.min.js');
       html = html
           .replaceAll('__KATEX_CSS__',
-              '<style>${katexCss.replaceAll('</style>', '<\\\\/style>')}</style>')
+              '<style>${katexCss.replaceAll('</style>', '<\\/style>')}</style>')
           .replaceAll('__KATEX_JS__',
-              '<script>${katexJs.replaceAll('</script>', '<\\\\/script>')}</script>');
+              '<script>${katexJs.replaceAll('</script>', '<\\/script>')}</script>');
     }
     return html;
   }
@@ -241,11 +259,20 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
           },
           onLoadStop: (ctrl, url) async {
             try {
-              await ctrl.evaluateJavascript(
+              // 安卓上 JS 抛错（如 WysiwygBridge 未定义）时 evaluateJavascript
+              // 返回 null 而非抛 PlatformException，必须用返回值确认 init 成功
+              final ok = await ctrl.evaluateJavascript(
                 source:
                     'WysiwygBridge.init({content: ${jsonEncode(_lastKnownBody)}, dark: ${widget.dark}})',
               );
-              if (mounted) setState(() => _ready = true);
+              if (ok == true) {
+                if (mounted) setState(() => _ready = true);
+              } else {
+                debugPrint('WysiwygWebView: init not confirmed: $ok');
+                _lastJsError =
+                    'init 未确认（返回 $ok）${_lastJsError != null ? ' / $_lastJsError' : ''}';
+                _reportFatal();
+              }
             } catch (e) {
               debugPrint('WysiwygWebView: init failed: $e');
               _lastJsError = 'init: $e${_lastJsError != null ? ' / $_lastJsError' : ''}';

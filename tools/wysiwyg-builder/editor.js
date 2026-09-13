@@ -91,9 +91,10 @@ function extractMath(md) {
       return `${P}${index++}${E}`
     },
   )
-  // 无 lookbehind（Safari 14 不支持）：用捕获前缀字符的方式排除 "$$" 场景
+  // 无 lookbehind（Safari 14 不支持）：用捕获前缀字符的方式排除 "$$" 与转义 "\$" 场景；
+  // latex 首尾必须非空格（[^$\s]...[^$\s]），否则 "$5 和 $3" 这类价格文本会被误伤
   text = text.replace(
-    /(^|[^\\$])\$([^$\n]+?)\$(?!\$)/g,
+    /(^|[^\\$])\$([^\s$](?:[^$\n]*[^\s$])?)\$(?!\$)/g,
     (m, pre, latex) => {
       blocks.push({ latex, display: false })
       return `${pre}${P}${index++}${E}`
@@ -301,6 +302,7 @@ window.WysiwygBridge = {
   init({ content = '', dark = false } = {}) {
     dark = !!dark
     document.body.classList.toggle('dark', dark)
+    clearTimeout(emitTimer)
     if (editor) {
       editor.destroy()
       editor = null
@@ -335,6 +337,13 @@ window.WysiwygBridge = {
 
   setMarkdown(md) {
     if (!editor) return false
+    // 有挂起的用户输入防抖时先冲刷回 Dart：这些输入尚未 emit，若被本次
+    // 外部推送的旧内容覆盖（setContent）就永久丢失
+    if (emitTimer) {
+      clearTimeout(emitTimer)
+      emitTimer = null
+      emitMarkdown()
+    }
     applyingRemote = true
     try {
       editor.commands.setContent(mdToHtml(md), false)
