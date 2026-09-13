@@ -32,11 +32,59 @@ let applyingRemote = false
 // 先把 $$..$$ / $..$ 摘出来，避免 marked 把公式里的 _ * 当 Markdown 语法 ──
 const P = '\uE000'
 const E = '\uE001'
+const C = '\uE002'
+const D = '\uE003'
+
+// 把围栏代码块与行内代码段替换为占位符，避免其中的 $ 被当成公式。
+// 只在 extractMath 内部使用：抽完公式后立即原样还原，marked 仍解析原始代码。
+function protectCode(md, segs) {
+  const protectInline = (line) => {
+    let out = ''
+    let i = 0
+    while (i < line.length) {
+      if (line[i] === '`') {
+        const ticks = /^`+/.exec(line.slice(i))[0]
+        const end = line.indexOf(ticks, i + ticks.length)
+        if (end !== -1) {
+          segs.push(line.slice(i, end + ticks.length))
+          out += `${C}${segs.length - 1}${D}`
+          i = end + ticks.length
+          continue
+        }
+      }
+      out += line[i]
+      i++
+    }
+    return out
+  }
+  const lines = (md ?? '').split('\n')
+  let inFence = false
+  let fenceChar = ''
+  return lines
+    .map((line) => {
+      if (inFence) {
+        segs.push(line)
+        if (new RegExp(`^\\s{0,3}\\${fenceChar}{3,}\\s*$`).test(line)) inFence = false
+        return `${C}${segs.length - 1}${D}`
+      }
+      const open = line.match(/^\s{0,3}(`{3,}|~{3,})/)
+      if (open) {
+        inFence = true
+        fenceChar = open[1][0]
+        segs.push(line)
+        return `${C}${segs.length - 1}${D}`
+      }
+      return protectInline(line)
+    })
+    .join('\n')
+}
 
 function extractMath(md) {
   const blocks = []
+  const codeSegs = []
   let index = 0
-  let text = (md ?? '').replace(
+  let text = protectCode(md, codeSegs)
+  text = text.replace(
     /\$\$([\s\S]+?)\$\$/g,
     (m, latex) => {
       blocks.push({ latex, display: true })
@@ -51,6 +99,8 @@ function extractMath(md) {
       return `${pre}${P}${index++}${E}`
     },
   )
+  // 公式抽取完毕，还原代码段再交给 marked
+  text = text.replace(new RegExp(`${C}(\\d+)${D}`, 'g'), (m, i) => codeSegs[+i] ?? m)
   return { text, blocks }
 }
 
@@ -92,62 +142,69 @@ function renderMathNode(el, latex, display) {
   el.classList.add('math-raw')
 }
 
-// ── TipTap 公式节点（原子节点，nodeview 用 KaTeX 渲染；KaTeX 缺失回落原文） ──
-const MathBase = {
-  addAttributes() {
-    return {
-      latex: {
-        default: '',
-        parseHTML: (el) => decodeURIComponent(el.getAttribute('data-latex') ?? ''),
-        renderHTML: (attrs) => ({ 'data-latex': encodeURIComponent(attrs.latex ?? '') }),
-      },
-      display: {
-        default: false,
-        parseHTML: (el) => el.getAttribute('data-display') === 'true',
-        renderHTML: () => ({}),
-      },
-    }
-  },
-  atom: true,
-  selectable: true,
-  parseHTML() {
-    return [this.selector]
-  },
-  renderHTML({ node }) {
-    return [this.tag, {
-      'data-math': 'true',
-      'data-latex': encodeURIComponent(node.attrs.latex ?? ''),
-      'data-display': String(!!node.attrs.display),
-    }]
-  },
-  addNodeView() {
-    return ({ node }) => {
-      const dom = document.createElement(this.tag)
-      dom.setAttribute('data-math', 'true')
-      dom.setAttribute('data-display', String(!!node.attrs.display))
-      dom.classList.add(node.attrs.display ? 'math-display' : 'math-inline')
-      renderMathNode(dom, node.attrs.latex ?? '', !!node.attrs.display)
-      return { dom }
-    }
-  },
+// ── TipTap 公式节点工厂（原子节点，nodeview 用 KaTeX 渲染；KaTeX 缺失回落原文） ──
+// 注意：TipTap 把扩展字段函数 bind 到 {name,options,storage,editor,parent}，
+// 自定义 config 键（tag/selector）在 this 上取不到（this.selector 为 undefined，
+// parseHTML 返回 [undefined] → schema 构建抛 "style" in undefined → 编辑器整体起不来）。
+// 因此 tag/selector 必须用闭包捕获，不能走 this。
+function createMathNode({ name, tag, selector, inline, group }) {
+  return Node.create({
+    name,
+    inline,
+    group,
+    atom: true,
+    selectable: true,
+    addAttributes() {
+      return {
+        latex: {
+          default: '',
+          parseHTML: (el) => decodeURIComponent(el.getAttribute('data-latex') ?? ''),
+          renderHTML: (attrs) => ({ 'data-latex': encodeURIComponent(attrs.latex ?? '') }),
+        },
+        display: {
+          default: false,
+          parseHTML: (el) => el.getAttribute('data-display') === 'true',
+          renderHTML: () => ({}),
+        },
+      }
+    },
+    parseHTML() {
+      return [{ tag: selector }]
+    },
+    renderHTML({ node }) {
+      return [tag, {
+        'data-math': 'true',
+        'data-latex': encodeURIComponent(node.attrs.latex ?? ''),
+        'data-display': String(!!node.attrs.display),
+      }]
+    },
+    addNodeView() {
+      return ({ node }) => {
+        const dom = document.createElement(tag)
+        dom.setAttribute('data-math', 'true')
+        dom.setAttribute('data-display', String(!!node.attrs.display))
+        dom.classList.add(node.attrs.display ? 'math-display' : 'math-inline')
+        renderMathNode(dom, node.attrs.latex ?? '', !!node.attrs.display)
+        return { dom }
+      }
+    },
+  })
 }
 
-const MathInline = Node.create({
-  ...MathBase,
+const MathInline = createMathNode({
   name: 'mathInline',
-  inline: true,
-  group: 'inline',
   tag: 'span',
   selector: 'span[data-math="true"][data-display="false"]',
+  inline: true,
+  group: 'inline',
 })
 
-const MathDisplay = Node.create({
-  ...MathBase,
+const MathDisplay = createMathNode({
   name: 'mathDisplay',
-  inline: false,
-  group: 'block',
   tag: 'div',
   selector: 'div[data-math="true"][data-display="true"]',
+  inline: false,
+  group: 'block',
 })
 
 const turndown = new TurndownService({
@@ -162,17 +219,6 @@ turndown.addRule('hardBreak', {
   filter: (node) => node.nodeName === 'BR',
   replacement: () => '  \n',
 })
-// 公式节点回转 markdown
-turndown.addRule('mathNode', {
-  filter: (node) =>
-    node.nodeType === 1 && node.hasAttribute && node.hasAttribute('data-math'),
-  replacement: (content, node) => {
-    const latex = decodeURIComponent(node.getAttribute('data-latex') ?? '')
-    if (!latex) return ''
-    const display = node.getAttribute('data-display') === 'true'
-    return display ? `\n$$${latex}$$\n` : `$${latex}$`
-  },
-})
 
 marked.setOptions({ gfm: true, breaks: false })
 
@@ -180,6 +226,56 @@ function mdToHtml(md) {
   const { text, blocks } = extractMath(md)
   const html = marked.parse(text)
   return restoreMath(html, blocks)
+}
+
+// ── HTML → markdown（占位符方案） ──
+// turndown 的 forNode 对 isBlank 节点直接走内置 blankRule 返回空串，
+// 自定义规则根本不会被调用——公式节点（无文本内容）与用户敲出的空段落
+// 都会在每次编辑回写时被吞掉。因此先把它们替换成占位文本（非空白字符，
+// isBlank 为 false），转完再还原为 markdown。
+function htmlToMarkdown(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const slots = []
+  // 1) 公式节点 → 占位文本（display 独占段落，保持块级语义）
+  doc.querySelectorAll('[data-math]').forEach((el) => {
+    const idx = slots.length
+    slots.push({
+      latex: decodeURIComponent(el.getAttribute('data-latex') ?? ''),
+      display: el.getAttribute('data-display') === 'true',
+    })
+    if (slots[idx].display) {
+      const p = doc.createElement('p')
+      p.textContent = P + idx + E
+      el.replaceWith(p)
+    } else {
+      el.replaceWith(doc.createTextNode(P + idx + E))
+    }
+  })
+  // 2) 空段落（含 &nbsp;，多为块级图片提升后遗留）直接删除：
+  //    turndown 已在段落后输出段落分隔符，占位还原 '' 反而多出一组换行
+  doc.querySelectorAll('p').forEach((el) => {
+    if (el.textContent.trim() === '' && !el.querySelector('[data-math]')) {
+      el.remove()
+    }
+  })
+  // 3) 剥掉 colgroup：turndown-plugin-gfm 的表格规则遇到它直接放弃，整表退化为裸 HTML
+  doc.querySelectorAll('colgroup').forEach((el) => el.remove())
+  // 4) 单元格与列表项内是块级 <p>，gfm 规则只认内联内容：
+  //    表格退化为裸 HTML，列表被判成松散格式（"-   " + 项内空行），先拆掉
+  doc.querySelectorAll('td, th, li').forEach((el) => {
+    while (el.firstElementChild && el.firstElementChild.tagName === 'P') {
+      const p = el.firstElementChild
+      while (p.firstChild) el.insertBefore(p.firstChild, p)
+      p.remove()
+    }
+  })
+  let md = turndown.turndown(doc.body.innerHTML)
+  md = md.replace(new RegExp(`${P}(\\d+)${E}`, 'g'), (m, i) => {
+    const s = slots[+i]
+    if (!s) return m
+    return s.display ? `$$${s.latex}$$` : `$${s.latex}$`
+  })
+  return md
 }
 
 function emitMarkdown() {
@@ -198,7 +294,7 @@ function scheduleEmit() {
 
 function getMarkdown() {
   if (!editor) return ''
-  return turndown.turndown(editor.getHTML())
+  return htmlToMarkdown(editor.getHTML())
 }
 
 window.WysiwygBridge = {
