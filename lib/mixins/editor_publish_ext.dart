@@ -75,11 +75,17 @@ extension EditorPublishExt on _RootShellState {
       _showToast('定时时间必须晚于当前时间');
       return;
     }
+    // 绑定当前文章：期间切文章则定时任务作废（防止发错文）
+    final scheduledArticleId = _doc.currentArticle.id;
     _scheduledPublishTimer?.cancel();
     _scheduledPublishTimer = Timer(scheduled.difference(DateTime.now()), () {
       _scheduledPublishTimer = null;
       _scheduledPublishTime = null;
       if (mounted) {
+        if (_doc.currentArticle.id != scheduledArticleId) {
+          _showToast('定时发布已取消（文章已切换）');
+          return;
+        }
         _showToast('到达定时时间，开始发布');
         _publish();
       }
@@ -287,12 +293,23 @@ extension EditorPublishExt on _RootShellState {
     try {
       final a = _collect(draft: false);
       final pub = await github.publishArticleWithMirrors(repo, a, templates: templates);
-      if (mounted)
+      // 发布期间用户可能继续编辑，此时不得用发布快照覆盖编辑器内容
+      // （分屏/所见即所得模式无 editorBusy 输入锁，该窗口真实存在）
+      final userEdited = _doc.contentCtrl.text != a.content ||
+          _doc.titleCtrl.text != a.title;
+      if (mounted) {
         _applyState(() {
-          _doc.setCurrentArticle(pub);
+          if (userEdited) {
+            _doc.updateCurrentArticleMeta(pub);
+          } else {
+            _doc.setCurrentArticle(pub);
+          }
           _editorStatus = '已发布';
         });
-      await _saveDraft(pub.copyWith(isDraft: false, published: true));
+      }
+      await _saveDraft(userEdited
+          ? _collect(draft: false)
+          : pub.copyWith(isDraft: false, published: true));
       await _refreshRemote();
       // 触发全部部署钩子（Cloudflare / Vercel / Netlify 等）
       if (settings.deployHooks.isNotEmpty) {
@@ -480,14 +497,22 @@ extension EditorPublishExt on _RootShellState {
         remotePath: finalResult.link,
         remoteSha: finalResult.id?.toString(),
       );
-      if (mounted)
+      // 发布期间用户可能继续编辑，不得用发布快照覆盖编辑器内容
+      final userEdited = _doc.contentCtrl.text != a.content ||
+          _doc.titleCtrl.text != a.title;
+      if (mounted) {
         _applyState(() {
-          _doc.setCurrentArticle(pub);
+          if (userEdited) {
+            _doc.updateCurrentArticleMeta(pub);
+          } else {
+            _doc.setCurrentArticle(pub);
+          }
           _editorStatus = isUpdate
               ? '已更新到 ${adapter.config.type.displayName}'
               : '已发布到 ${adapter.config.type.displayName}';
         });
-      await _saveDraft(pub);
+      }
+      await _saveDraft(userEdited ? _collect(draft: false) : pub);
       // 保存到 CMS SQLite 草稿表
       await cmsDraftService.saveDraft(finalResult);
       // 更新同步映射
@@ -680,7 +705,12 @@ extension EditorPublishExt on _RootShellState {
       if (!mounted) return;
       final confirmed = await _showStaticPublishPreviewDialog(preview);
       if (confirmed != true) {
-        if (mounted) _applyState(() => _editorStatus = '已取消');
+        if (mounted) {
+          _applyState(() {
+            _editorBusy = false;
+            _editorStatus = '已取消';
+          });
+        }
         return;
       }
 

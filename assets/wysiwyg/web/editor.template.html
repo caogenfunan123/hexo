@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+__KATEX_CSS__
 <style>
   /* 透明背景：让 Flutter 侧的壁纸/纸面底色透出来 */
   html, body {
@@ -85,10 +86,26 @@
   .ProseMirror { outline: none; }
   .ProseMirror-selectednode { outline: 2px solid rgba(196, 87, 58, 0.5); border-radius: 4px; }
   ::selection { background: rgba(196, 87, 58, 0.22); }
+
+  /* 数学公式节点：KaTeX 渲染态与原文回落态 */
+  #editor .math-inline { display: inline-block; padding: 0 2px; }
+  #editor .math-display {
+    display: block; margin: 0.6em auto;
+    text-align: center; overflow-x: auto;
+  }
+  #editor .math-raw {
+    font-family: 'JetBrains Mono', Consolas, monospace;
+    font-size: 0.88em;
+    background: rgba(120, 113, 108, 0.14);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+  }
+  body.dark #editor .math-raw { color: #D6D3D1; }
 </style>
 </head>
 <body>
 <div id="editor"></div>
+__KATEX_JS__
 <script src="__EDITOR_JS__"></script>
 </body>
 </html>

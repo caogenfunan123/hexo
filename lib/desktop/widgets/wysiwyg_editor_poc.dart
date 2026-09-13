@@ -210,6 +210,7 @@ class _WysiwygMainEditorState extends State<WysiwygMainEditor> {
   String _lastBody = '';
   Timer? _debounce;
   bool _writingBack = false;
+  bool _dirty = false;
 
   @override
   void initState() {
@@ -238,7 +239,7 @@ class _WysiwygMainEditorState extends State<WysiwygMainEditor> {
     // 若通知打到已 defunct 的本元素会触发框架断言
     widget.controller.removeListener(_onControllerChanged);
     final doc = _doc;
-    if (doc != null) {
+    if (doc != null && _dirty) {
       try {
         final body = serializeDocumentToMarkdown(doc);
         final full = _frontmatter + body;
@@ -270,6 +271,7 @@ class _WysiwygMainEditorState extends State<WysiwygMainEditor> {
     final body = fullText.substring(_frontmatter.length);
     _lastBody = body;
     final doc = deserializeMarkdownToDocument(body);
+    _dirty = false;
     doc.addListener(_onDocChanged);
     final composer = MutableDocumentComposer();
     _doc = doc;
@@ -288,6 +290,7 @@ class _WysiwygMainEditorState extends State<WysiwygMainEditor> {
   }
 
   void _onDocChanged(_) {
+    _dirty = true;
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 250), _writeBack);
   }

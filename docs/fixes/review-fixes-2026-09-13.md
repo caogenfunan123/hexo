@@ -123,3 +123,47 @@
 3. **验证**：CI 全绿（analyze + test + 四端构建）。WebView 编辑器无法在
    widget test 中运行（平台视图限制），真机编辑体验（中文输入/气泡菜单/
    长文流畅度）待用户实测。
+
+## 补充：第四批（自动保存静默 + 所见即所得公式/表格）
+
+1. **自动保存成功改静默**：双端移除「草稿已自动保存」成功 toast
+   （保存状态由状态栏/保存指示灯反馈），失败提示保留。
+2. **WebView 编辑失败排查强化**：编辑器 bundle 全平台内联进 initialData
+   （418KB，远低于安卓 Binder 1MB），不再依赖虚拟域加载主脚本；失败时
+   原因（JS console 错误/init 异常/主框架加载错误）直接显示在失败 UI 与
+   toast 中；favicon 等子资源错误不再误判为致命。
+3. **真所见即所得公式渲染**：editor.js 移植 MarkdownPreviewBuilder 的
+   数学占位保护（先摘 $$..$$/$..$ 再过 marked，避免公式内 _ * 被当语法，
+   无 lookbehind 以兼容 Safari 14），新增 MathInline/MathDisplay TipTap
+   原子节点（KaTeX nodeview，KaTeX 缺失/渲染失败优雅回落原文），turndown
+   增加公式回转规则（data-latex → $..$/$$..$$）；KaTeX css/js/字体重新
+   入库（安卓经虚拟域、iOS 内联）。占位提取/还原逻辑经 node 脚本验证。
+4. **表格**：markdown 表格经 marked(GFM) → TipTap Table 渲染为可编辑表格
+   （链路本就通）；注意在所见即所得面内直接敲 | 语法不会自动建表
+   （建表走源码/分屏模式插入后切换）。
+
+## 补充：第五批（双端全面复盘修复，2026-09-13）
+
+审计代理对双端全面复盘，以下问题全部修复：
+
+- **高1** 移动端生命周期冲刷被 `draftSyncEnabled`（默认 false）挡掉，后台
+  2s 防抖窗口内输入直接丢失——本地冲刷改为不依赖云同步开关（对齐桌面）。
+- **高2** 移动端防抖保存跨文章污染：元数据改为触发时捕获进 _DebounceEntry
+  （对齐桌面），定时器到点非当前文章直接跳过；`_autoSaveSnapshot` 非当前
+  文章绝不 `_saveDraft(_collect())`（曾把已发布文章降级为本地草稿）。
+- **中3** WebView 编辑器装载期（0.5~2s）外部改动只跳过推送不更新基线，
+  曾致 init 用陈旧内容装载、一打字覆盖外部新内容——基线始终更新。
+- **中4** 移动端发布完成无条件 `setCurrentArticle(pub)` 回滚用户编辑
+  （分屏/所见即所得模式发布期间可输入）——移植桌面 userEdited 检测
+  （静态 Git 发布与 CMS 发布两处）。
+- **中5** 多站点发布预览选「取消」后 `_editorBusy` 永不复位卡死——补复位。
+- **中6** `session_service.listSnapshots` 用 `/` 分割路径，Windows 反斜杠
+  路径永不命中 → 快照清理失效无限累积——改双分隔符正则。
+- **中7** 分屏预览未传 darkTheme，深色壁纸下预览不可读——按文字亮度自适应。
+- **低8** 模式开关互斥不对称（分屏不清 WebView 标志）——补对称。
+- **低9** 桌面所见即所得 dispose 无条件写回，零编辑进出也产生 round-trip
+  diff 噪音——加 _dirty 标记，未编辑不写回。
+- **低10** 定时发布 Timer 到点执行「当时的当前文章」，期间切文发错文——
+  双端绑定 articleId，切换即作废并提示。
+- 接受边界（不修）：frontmatter 正则对 4 连字符开头文档的错切（无数据
+  损失）；分屏↔源码切换瞬态 ScrollController 双 attach（理论风险）。

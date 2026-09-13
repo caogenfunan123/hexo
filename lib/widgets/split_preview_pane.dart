@@ -206,6 +206,9 @@ class _SplitPreviewPaneState extends State<SplitPreviewPane> {
                       color: Colors.white.withValues(alpha: 0.06),
                       child: MarkdownPreviewSmooth(
                         markdown: _previewMarkdown,
+                        // 跟随编辑文字亮度：亮字=深背景=用暗色预览样式
+                        darkTheme:
+                            widget.textColor.computeLuminance() < 0.5,
                         baseFontSize: 15,
                         lineHeight: 1.7,
                         padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),

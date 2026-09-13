@@ -963,11 +963,17 @@ extension DesktopShellPublishExt on DesktopShellState {
                     return;
                   }
                   final delay = scheduledTime.difference(DateTime.now());
+                  // 绑定当前文章：期间切文章则定时任务作废（防止发错文）
+                  final scheduledArticleId = _doc.currentArticle.id;
                   _scheduledPublishTimer?.cancel();
                   _scheduledPublishTimer = Timer(delay, () {
                     _scheduledPublishTime = null;
                     _scheduledPublishTimer = null;
                     if (mounted) {
+                      if (_doc.currentArticle.id != scheduledArticleId) {
+                        _showToast('定时发布已取消（文章已切换）');
+                        return;
+                      }
                       _showToast('定时发布开始执行...');
                       _executePublish();
                     }

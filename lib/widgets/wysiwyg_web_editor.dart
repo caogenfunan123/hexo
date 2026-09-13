@@ -45,6 +45,7 @@ class WysiwygWebViewEditor extends StatefulWidget {
 }
 
 class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
+  static const String _assetDomain = 'appassets.androidplatform.net';
   static final RegExp _frontmatterRegex =
       RegExp('^' + r'-{3}[\s\S]*?-{3}' + r'\r?\n?');
 
@@ -56,6 +57,11 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
   String _lastKnownBody = '';
   String? _lastJsError;
   late Future<String> _htmlFuture;
+
+  /// 安卓走 WebViewAssetLoader 虚拟域加载 KaTeX 资源（编辑器主包仍内联）；
+  /// 其余平台全部内联
+  bool get _useAssetLoader =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   @override
   void initState() {
@@ -95,15 +101,18 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
     _lastKnownBody = widget.contentCtrl.text.substring(_frontmatter.length);
   }
 
-  /// 外部改动（AI 改写/图床插入/切文章）：推给 WebView
+  /// 外部改动（AI 改写/图床插入/切文章）：推给 WebView。
+  /// 装载完成前也要更新基线（否则 init 会用陈旧内容装载，
+  /// 编辑器一打字就把装载期间的外部新内容覆盖回去）
   void _onExternalChanged() {
-    if (_editorIsWriting || !_ready) return;
+    if (_editorIsWriting) return;
     final m = _frontmatterRegex.firstMatch(widget.contentCtrl.text);
     final front = m?.group(0) ?? '';
     final body = widget.contentCtrl.text.substring(front.length);
-    if (body == _lastKnownBody) return;
+    if (body == _lastKnownBody && front == _frontmatter) return;
     _frontmatter = front;
     _lastKnownBody = body;
+    if (!_ready) return;
     _webCtrl?.evaluateJavascript(
       source: 'WysiwygBridge.setMarkdown(${jsonEncode(body)})',
     );
@@ -131,15 +140,35 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
     widget.onContentChanged();
   }
 
-  /// 模板 + 编辑器 bundle 全部内联（安卓 Binder 上限 1MB，约 420KB 安全）
+  /// 模板 + 编辑器 bundle 内联；KaTeX 按平台决定虚拟域引用或内联。
+  /// （安卓 initialData 走 Binder，上限 1MB：编辑器包 418KB 内联安全，
+  /// KaTeX css+js 650KB 改走虚拟域；iOS 无此限制，全内联。）
   Future<String> _buildHtml() async {
     final template =
         await rootBundle.loadString('assets/wysiwyg/web/editor.template.html');
     final js = await rootBundle.loadString('assets/wysiwyg/web/editor.min.js');
-    return template.replaceAll(
+    String html = template.replaceAll(
       '<script src="__EDITOR_JS__"></script>',
       '<script>${js.replaceAll('</script>', '<\\/script>')}</script>',
     );
+    if (_useAssetLoader) {
+      html = html
+          .replaceAll('__KATEX_CSS__',
+              '<link rel="stylesheet" href="/assets/wysiwyg/web/katex.min.css">')
+          .replaceAll('__KATEX_JS__',
+              '<script src="/assets/wysiwyg/web/katex.min.js"></script>');
+    } else {
+      final katexCss =
+          await rootBundle.loadString('assets/wysiwyg/web/katex.min.css');
+      final katexJs =
+          await rootBundle.loadString('assets/wysiwyg/web/katex.min.js');
+      html = html
+          .replaceAll('__KATEX_CSS__',
+              '<style>${katexCss.replaceAll('</style>', '<\\\\/style>')}</style>')
+          .replaceAll('__KATEX_JS__',
+              '<script>${katexJs.replaceAll('</script>', '<\\\\/script>')}</script>');
+    }
+    return html;
   }
 
   @override
@@ -179,7 +208,8 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
             data: html,
             mimeType: 'text/html',
             encoding: 'utf8',
-            baseUrl: WebUri('about:blank'),
+            baseUrl: WebUri(
+                _useAssetLoader ? 'https://$_assetDomain/' : 'about:blank'),
           ),
           initialSettings: InAppWebViewSettings(
             javaScriptEnabled: true,
@@ -187,6 +217,14 @@ class _WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
             transparentBackground: true,
             supportZoom: false,
             disableContextMenu: false,
+            webViewAssetLoader: _useAssetLoader
+                ? WebViewAssetLoader(
+                    domain: _assetDomain,
+                    pathHandlers: [
+                      AssetsPathHandler(path: '/assets/'),
+                    ],
+                  )
+                : null,
           ),
           onWebViewCreated: (ctrl) {
             _webCtrl = ctrl;

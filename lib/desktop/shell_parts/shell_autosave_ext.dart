@@ -232,7 +232,7 @@ extension DesktopShellAutosaveExt on DesktopShellState {
           ),
         );
       }
-      if (mounted) _showToast('草稿已自动保存');
+      // 静默保存：状态栏「已保存」指示灯即反馈，成功不再弹 toast
     } catch (e) {
       debugPrint('AutoSave snapshot error: $e');
       // 失败必须用户可见：写入编辑器状态（状态栏/工作台状态行常驻显示）并弹提示，

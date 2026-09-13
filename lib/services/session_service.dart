@@ -147,7 +147,10 @@ class SessionService {
     final result = <AutoSaveSnapshot>[];
     await for (final entity in dir.list()) {
       if (entity is File && entity.path.endsWith('.md')) {
-        final name = entity.path.split('/').last.replaceAll('.md', '');
+        final name = entity.path
+            .split(RegExp(r'[\/]'))
+            .last
+            .replaceAll('.md', '');
         if (name.startsWith('${safeId}_')) {
           final ts = int.tryParse(name.substring(safeId.length + 1)) ?? 0;
           result.add(AutoSaveSnapshot(

@@ -1032,14 +1032,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (!settings.draftSyncEnabled) return;
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
-      // 三重落盘：APP 转入后台/被销毁时强制冲刷所有等待中的保存任务
+      // 三重落盘：APP 转入后台/被销毁时强制冲刷所有等待中的保存任务。
+      // 本地冲刷不依赖云同步开关（曾因 draftSyncEnabled 默认 false 把
+      // 冲刷一并挡掉，后台 2s 防抖窗口内的输入直接丢失）
       _flushAllPendingSaves();
       // 异步触发云端同步，不阻塞生命周期回调
-      _autoSyncToCloud();
+      if (settings.draftSyncEnabled) _autoSyncToCloud();
     } else if (state == AppLifecycleState.resumed) {
       _autoPullFromCloud();
       // 兜底补拉：热启动时 Java 侧 onNewIntent 的推送可能在 Flutter 监听器就绪前
@@ -1504,6 +1505,8 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                 onTap: () {
                   setState(() {
                     _wysiwygExperimental = !_wysiwygExperimental;
+                    // 与 WebView 所见即所得互斥对称
+                    if (_wysiwygExperimental) _wysiwygWebViewMode = false;
                   });
                   _showToast(_wysiwygExperimental
                       ? '分屏实时预览（实验）已开启'
@@ -1731,11 +1734,17 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 class _DebounceEntry {
   final String content;
   final String title;
+  final String tags;
+  final String categories;
+  final String cover;
   final Timer timer;
 
   _DebounceEntry({
     required this.content,
     required this.title,
+    this.tags = '',
+    this.categories = '',
+    this.cover = '',
     required this.timer,
   });
 

@@ -67,20 +67,30 @@ extension EditorTextExt on _RootShellState {
       return;
     }
     _doc.markUnsaved();
-    // 每草稿独立防抖，杜绝多草稿相互阻塞
+    // 每草稿独立防抖，杜绝多草稿相互阻塞。
+    // 元数据在触发时捕获（对齐桌面端）：切文章后定时器到点不会把
+    // 新文章的 tags/categories/cover 写进旧文章快照
     _debounceTimers[articleId]?.cancel();
     _debounceTimers[articleId] = _DebounceEntry(
       content: current,
       title: title,
+      tags: _doc.tagsCtrl.text,
+      categories: _doc.categoriesCtrl.text,
+      cover: _doc.coverCtrl.text,
       timer: Timer(const Duration(seconds: 2), () {
         final entry = _debounceTimers.remove(articleId);
-        if (entry != null) {
-          _autoSaveSnapshot(
-            articleId: articleId,
-            content: entry.content,
-            title: entry.title,
-          );
-        }
+        if (entry == null) return;
+        // 已切走文章：定时器到点不再回写当前草稿（防串草稿/防降级），
+        // 内容仍在防抖表里，由 _flushAllPendingSaves 兜底落快照
+        if (_doc.currentArticle.id != articleId) return;
+        _autoSaveSnapshot(
+          articleId: articleId,
+          content: entry.content,
+          title: entry.title,
+          tags: entry.tags,
+          categories: entry.categories,
+          cover: entry.cover,
+        );
       }),
     );
   }
@@ -89,6 +99,9 @@ extension EditorTextExt on _RootShellState {
     required String articleId,
     required String content,
     String title = '',
+    String? tags,
+    String? categories,
+    String? cover,
   }) async {
     // 正文与标题都未变化（或均为空）时无需保存，标题-only 改动必须落盘
     if ((content.isEmpty && title.isEmpty) ||
@@ -104,16 +117,17 @@ extension EditorTextExt on _RootShellState {
         articleId: articleId,
         content: content,
         title: title.isEmpty ? '未命名' : title,
-        tags: _doc.tagsCtrl.text,
-        categories: _doc.categoriesCtrl.text,
-        cover: _doc.coverCtrl.text,
+        // 传入捕获的元数据；为空时回退当前控制器（仅当前文章场景）
+        tags: tags ?? _doc.tagsCtrl.text,
+        categories: categories ?? _doc.categoriesCtrl.text,
+        cover: cover ?? _doc.coverCtrl.text,
       );
       _lastSavedContentMap[articleId] = content;
       _lastSavedTitleMap[articleId] = title;
       if (isCurrent) _doc.markSaved();
       await sessionService.cleanupSnapshots(articleId);
-      // 同时保存草稿到 storage；已发布文章不得被自动保存降级为草稿
-      if (isCurrent) {
+      // 草稿落盘仅限当前文章（非当前文章绝不 _collect，防串草稿/防降级）
+      if (isCurrent && _doc.contentCtrl.text == content) {
         final currentArticle = _doc.currentArticle;
         await _saveDraft(
           _collect(draft: true).copyWith(
@@ -121,12 +135,8 @@ extension EditorTextExt on _RootShellState {
             published: currentArticle.published,
           ),
         );
-      } else {
-        await _saveDraft(_collect(draft: true));
       }
-      if (mounted) {
-        _showToast('草稿已自动保存');
-      }
+      // 静默保存：保存状态由 AppBar/状态栏指示反馈，成功不再弹 toast
     } catch (e) {
       debugPrint('Auto save snapshot error: $e');
       // 失败必须用户可见（此前仅 debugPrint，静默丢保存）

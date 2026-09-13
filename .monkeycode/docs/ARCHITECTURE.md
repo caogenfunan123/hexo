@@ -332,8 +332,11 @@ feature_entries → kNavEntries+navEntryAction → bus 字段 → shell 接线�
   tools/wysiwyg-builder（npm + esbuild）构建为 assets/wysiwyg/web/editor.min.js
   提交入库，升级 TipTap 后重跑 `node build.mjs`；安卓走 WebViewAssetLoader
   虚拟域避 Binder 1MB 限制，其余平台内联；WebView 失败自动退回源码模式）。
-  编辑面 v1 边界：数学/mermaid 在所见即所得编辑面内为代码文本态（渲染由
-  分屏预览与阅读页负责），无选中格式工具栏（markdown 快捷输入 rules 内建）。
+  编辑面能力：markdown 表格（marked GFM → TipTap Table）与数学公式
+  （KaTeX nodeview，占位保护移植自 MarkdownPreviewBuilder，KaTeX 缺失时
+  优雅回落原文；安卓 KaTeX 经虚拟域加载）均渲染；mermaid 编辑面内为代码
+  文本态（渲染由分屏预览与阅读页负责）；无选中格式工具栏（markdown 快捷
+  输入 rules 内建）。自动保存成功双端静默（状态栏指示灯反馈），失败仍提示。
   定时发布 `_schedulePublish` 双端均有（移动端为原生日期/时间选择器 + Timer）。
 
 ### D. 状态管理层（lib/controllers/，双端共用）

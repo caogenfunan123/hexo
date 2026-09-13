@@ -123,20 +123,29 @@ extension EditorSyncExt on _RootShellState {
 
 
   /// 冲刷所有等待中的保存任务（三重落盘：文本变更 / 页面切换 / APP 转入后台）
-  void _flushAllPendingSaves() {
+  List<Future<void>> _flushAllPendingSaves() {
+    final futures = <Future<void>>[];
     for (final entry in _debounceTimers.entries) {
       entry.value.cancel();
       final articleId = entry.key;
       final content = entry.value.content;
-      if (content.isNotEmpty && content != _lastSavedContentMap[articleId]) {
-        _autoSaveSnapshot(
+      // title-only 的挂起改动同样要冲刷（曾只比 content 丢标题改动）
+      final titleOnly = entry.value.title != _lastSavedTitleMap[articleId];
+      if ((content.isNotEmpty &&
+              content != _lastSavedContentMap[articleId]) ||
+          titleOnly) {
+        futures.add(_autoSaveSnapshot(
           articleId: articleId,
           content: content,
           title: entry.value.title,
-        );
+          tags: entry.value.tags,
+          categories: entry.value.categories,
+          cover: entry.value.cover,
+        ));
       }
     }
     _debounceTimers.clear();
+    return futures;
   }
 
 
