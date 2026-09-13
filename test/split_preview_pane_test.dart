@@ -71,8 +71,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       expect(_previewText('追加的新句子丙'), findsNothing,
           reason: '打字期间预览应静止（空闲防抖）');
-      // 停手超过空闲窗口 + 预览自身 200ms 防抖
+      // 停手超过空闲窗口 + 预览自身 200ms 防抖（该计时器在空闲帧里才创建，
+      // 需再 settle 一轮）
       await tester.pump(const Duration(milliseconds: 900));
+      await tester.pumpAndSettle();
       expect(_previewText('追加的新句子丙'), findsWidgets,
           reason: '停手后预览应渲染新输入的内容');
       expect(tester.takeException(), isNull);
