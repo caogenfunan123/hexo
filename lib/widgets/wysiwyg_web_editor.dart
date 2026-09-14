@@ -259,6 +259,26 @@ class WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
           },
           onLoadStop: (ctrl, url) async {
             try {
+              // 虚拟域 KaTeX 加载失败兜底（Android 历史上出现过虚拟域 404）：
+              // window.katex 缺失时经 IPC 注入 css+js（css 367KB / js 275KB，
+              // 单次调用均低于 1MB Binder 限制），赶在 init 前完成，
+              // 公式节点首次渲染即有 KaTeX；注入失败则回落 latex 原文显示
+              if (_useAssetLoader) {
+                Object? hasKatex;
+                try {
+                  hasKatex = await ctrl.evaluateJavascript(
+                      source: '!!window.katex');
+                } catch (_) {}
+                if (hasKatex != true) {
+                  final katexCss = await rootBundle
+                      .loadString('assets/wysiwyg/web/katex.min.css');
+                  final katexJs = await rootBundle
+                      .loadString('assets/wysiwyg/web/katex.min.js');
+                  await ctrl.evaluateJavascript(source:
+                      "var s=document.createElement('style');s.textContent=${jsonEncode(katexCss)};document.head.appendChild(s);");
+                  await ctrl.evaluateJavascript(source: katexJs);
+                }
+              }
               // 安卓上 JS 抛错（如 WysiwygBridge 未定义）时 evaluateJavascript
               // 返回 null 而非抛 PlatformException，必须用返回值确认 init 成功
               final ok = await ctrl.evaluateJavascript(
