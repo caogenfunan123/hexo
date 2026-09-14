@@ -151,7 +151,9 @@ await Navigator.of(context).push<void>(
                     plugins: ParserPluginRegistry()
                       ..register(const MermaidPlugin()),
                     builderRegistry: BuilderRegistry()
-                      ..register('mermaid', const MermaidBuilder()),
+                      ..register('mermaid', const MermaidBuilder())
+                      ..register('inline_math', const SafeInlineMathBuilder())
+                      ..register('block_math', const SafeBlockMathBuilder()),
                   ),
                 ],
               ),

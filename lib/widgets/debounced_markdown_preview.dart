@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_smooth_markdown/flutter_smooth_markdown.dart';
 
 import '../theme/app_color.dart';
+import 'safe_math_builders.dart';
 
 /// 防抖版 Markdown 预览状态。
 ///
@@ -78,7 +79,9 @@ class DebouncedMarkdownPreview extends StatelessWidget {
   static final ParserPluginRegistry _plugins = ParserPluginRegistry()
     ..register(const MermaidPlugin());
   static final BuilderRegistry _builders = BuilderRegistry()
-    ..register('mermaid', const MermaidBuilder());
+    ..register('mermaid', const MermaidBuilder())
+    ..register('inline_math', const SafeInlineMathBuilder())
+    ..register('block_math', const SafeBlockMathBuilder());
 
   @override
   Widget build(BuildContext context) {

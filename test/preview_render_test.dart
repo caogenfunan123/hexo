@@ -65,6 +65,23 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       expect(find.textContaining('前面文字'), findsWidgets);
     });
+
+    testWidgets('公式内 \\\\ 换行应回落显示 LaTeX 原文而非报错', (tester) async {
+      // flutter_math_fork 对数组类环境外的 `\\` 会抛 CrNode BuildException，
+      // 兜底 builder 应回落原文，预览整体不得报错
+      await tester.pumpWidget(_wrap(
+        MarkdownPreviewSmooth(
+          markdown: '公式前\n\n\$\$a \\\\ b\$\$\n\n公式后',
+        ),
+      ));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.textContaining('Build Exception'), findsNothing,
+          reason: 'flutter_math_fork 构建异常应被兜底拦截，不得显示报错文本');
+      expect(find.textContaining('a \\\\'), findsWidgets,
+          reason: '渲染失败时应回落显示 LaTeX 原文');
+      expect(find.textContaining('公式后'), findsWidgets,
+          reason: '单个公式失败不得影响后续内容渲染');
+    });
   });
 
   group('DebouncedMarkdownPreview（分屏预览）', () {

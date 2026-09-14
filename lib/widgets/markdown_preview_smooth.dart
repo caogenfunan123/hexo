@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_smooth_markdown/flutter_smooth_markdown.dart';
 
+import 'safe_math_builders.dart';
+
 /// 基于 [flutter_smooth_markdown] 的纯原生 Widget Markdown 预览组件。
 ///
 /// 不依赖 WebView，无 Binder / 端口 / cleartext 等平台问题，全平台一致。
@@ -25,7 +27,10 @@ class MarkdownPreviewSmooth extends StatefulWidget {
     this.padding = const EdgeInsets.all(16),
     this.onOpenLink,
   }) : _plugins = ParserPluginRegistry()..register(const MermaidPlugin()),
-       _builderRegistry = BuilderRegistry()..register('mermaid', const MermaidBuilder());
+       _builderRegistry = BuilderRegistry()
+       ..register('mermaid', const MermaidBuilder())
+       ..register('inline_math', const SafeInlineMathBuilder())
+       ..register('block_math', const SafeBlockMathBuilder());
 
   final String markdown;
   final bool darkTheme;
