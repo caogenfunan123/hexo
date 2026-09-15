@@ -27,9 +27,10 @@ class SafeInlineMathBuilder extends MarkdownWidgetBuilder {
     return Builder(
       builder: (ctx) => Math.tex(
         mathNode.latex,
-        textStyle: styleSheet.textStyle,
-        mathStyle: MathStyle.text,
+        // MathOptions 默认 style 为 display 且会覆盖 mathStyle 参数，
+        // 行内公式必须显式声明 text 样式（否则 \sum 上下限、分数尺寸全错）
         options: MathOptions(
+          style: MathStyle.text,
           fontSize: styleSheet.textStyle?.fontSize ?? 16,
           color: styleSheet.textStyle?.color ?? AppColor.textPrimary(ctx),
         ),
@@ -59,9 +60,8 @@ class SafeBlockMathBuilder extends MarkdownWidgetBuilder {
         child: Builder(
           builder: (ctx) => Math.tex(
             mathNode.latex,
-            textStyle: styleSheet.textStyle,
-            mathStyle: MathStyle.display,
             options: MathOptions(
+              style: MathStyle.display,
               fontSize: (styleSheet.textStyle?.fontSize ?? 16) * 1.25,
               color: styleSheet.textStyle?.color ?? AppColor.textPrimary(ctx),
             ),

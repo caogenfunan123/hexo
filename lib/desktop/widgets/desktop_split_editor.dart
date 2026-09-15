@@ -67,8 +67,12 @@ class DesktopSplitEditor extends StatefulWidget {
 
 class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
   late SplitEditorMode _mode;
-  late double _splitRatio; // 源码区占比
-  bool _sepDragActive = false; // 分隔线拖拽/悬停高亮
+  // 源码区占比。用 ValueNotifier：拖拽中缝每帧只重建 flex 布局，
+  // 整个编辑器/预览子树不随 setState 重建（否则每帧全文重解析）
+  final ValueNotifier<double> _splitRatio =
+      ValueNotifier<double>(0.5);
+  // 分隔线拖拽/悬停高亮，同理走局部刷新
+  final ValueNotifier<bool> _sepDragActive = ValueNotifier<bool>(false);
 
   // 源码区滚动控制器
   final ScrollController _sourceScrollCtrl = ScrollController();
@@ -83,7 +87,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
   void initState() {
     super.initState();
     _mode = widget.initialMode;
-    _splitRatio = widget.initialSplitRatio.clamp(0.3, 0.7);
+    _splitRatio.value = widget.initialSplitRatio.clamp(0.3, 0.7);
     _sourceScrollCtrl.addListener(_onSourceScroll);
     _previewState = DebouncedMarkdownPreviewState(
       debounce: const Duration(milliseconds: 200),
@@ -105,7 +109,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
       _mode = widget.initialMode;
     }
     if (oldWidget.initialSplitRatio != widget.initialSplitRatio) {
-      _splitRatio = widget.initialSplitRatio.clamp(0.3, 0.7);
+      _splitRatio.value = widget.initialSplitRatio.clamp(0.3, 0.7);
     }
   }
 
@@ -116,6 +120,8 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
     _previewScrollCtrl.dispose();
     widget.contentController.removeListener(_onContentChanged);
     _previewState.dispose();
+    _splitRatio.dispose();
+    _sepDragActive.dispose();
     super.dispose();
   }
 
@@ -146,7 +152,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
   /// 调整分栏比例：更新本地状态并回写父级，保证切标签后可恢复
   void _setSplitRatio(double value) {
     final next = value.clamp(0.3, 0.7);
-    setState(() => _splitRatio = next);
+    _splitRatio.value = next;
     widget.onSplitRatioChanged?.call(next);
   }
 
@@ -227,7 +233,7 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 GestureDetector(
-                  onTap: () => _setSplitRatio(_splitRatio - 0.1),
+                  onTap: () => _setSplitRatio(_splitRatio.value - 0.1),
                   child: Icon(
                     Icons.chevron_left,
                     size: 14,
@@ -235,16 +241,19 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
                   ),
                 ),
                 const SizedBox(width: 4),
-                Text(
-                  '${(_splitRatio * 100).round()}%',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: cs.primary.withOpacity(0.6),
+                ValueListenableBuilder<double>(
+                  valueListenable: _splitRatio,
+                  builder: (ctx, ratio, _) => Text(
+                    '${(ratio * 100).round()}%',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: cs.primary.withOpacity(0.6),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 4),
                 GestureDetector(
-                  onTap: () => _setSplitRatio(_splitRatio + 0.1),
+                  onTap: () => _setSplitRatio(_splitRatio.value + 0.1),
                   child: Icon(
                     Icons.chevron_right,
                     size: 14,
@@ -407,16 +416,39 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
 
   /// 左右分栏 — PureWriter 风格：隐藏滚动条
   Widget _buildSplitView(bool isDark, ColorScheme cs) {
+    // 预览子树经 child 透传：拖拽中缝/悬停高亮不触发 State 重建，
+    // 每帧仅重建 flex 布局与左栏输入框，预览实例保持同一
+    //（widget identical 时 Element 跳过重建），避免全文重解析
+    final previewChild = ScrollbarTheme(
+      data: ScrollbarThemeData(
+        thickness: WidgetStateProperty.all(0), // 隐藏滚动条
+      ),
+      child: Scrollbar(
+        controller: _previewScrollCtrl,
+        child: SingleChildScrollView(
+          controller: _previewScrollCtrl,
+          padding: const EdgeInsets.all(16),
+          child: DebouncedMarkdownPreview(
+            state: _previewState,
+            isDark: isDark,
+          ),
+        ),
+      ),
+    );
     return LayoutBuilder(
       builder: (ctx, constraints) {
         final totalWidth = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : 800.0;
-        return Row(
+        return ValueListenableBuilder<double>(
+          valueListenable: _splitRatio,
+          child: previewChild,
+          builder: (ctx, ratio, preview) {
+            return Row(
           children: [
             // 左栏：源码编辑
             Expanded(
-              flex: (_splitRatio * 100).round(),
+              flex: (ratio * 100).round(),
               child: LayoutBuilder(
                 builder: (ctx, constraints) {
                   final minLines = constraints.maxHeight.isFinite
@@ -472,30 +504,33 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
             // 分隔线（可拖拽）：默认 1px #E5E7EB，悬停/拖拽加深
             MouseRegion(
               cursor: SystemMouseCursors.resizeColumn,
-              onEnter: (_) => setState(() => _sepDragActive = true),
-              onExit: (_) => setState(() => _sepDragActive = false),
+              onEnter: (_) => _sepDragActive.value = true,
+              onExit: (_) => _sepDragActive.value = false,
               child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
-                onHorizontalDragStart: (_) =>
-                    setState(() => _sepDragActive = true),
+                onHorizontalDragStart: (_) => _sepDragActive.value = true,
                 onHorizontalDragUpdate: (details) {
-                  setState(() {
-                    _splitRatio += details.delta.dx / totalWidth;
-                    _splitRatio = _splitRatio.clamp(0.3, 0.7);
-                  });
+                  final w = ctx.size?.width ?? totalWidth;
+                  if (w <= 0) return;
+                  _splitRatio.value =
+                      (_splitRatio.value + details.delta.dx / w)
+                          .clamp(0.3, 0.7);
                 },
                 onHorizontalDragEnd: (_) {
-                  setState(() => _sepDragActive = false);
-                  widget.onSplitRatioChanged?.call(_splitRatio);
+                  _sepDragActive.value = false;
+                  widget.onSplitRatioChanged?.call(_splitRatio.value);
                 },
                 child: SizedBox(
                   width: 7,
                   child: Center(
-                    child: Container(
-                      width: 1,
-                      color: _sepDragActive
-                          ? AppColor.iconMuted(context)
-                          : AppColor.borderStrong(context),
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: _sepDragActive,
+                      builder: (ctx, active, _) => Container(
+                        width: 1,
+                        color: active
+                            ? AppColor.iconMuted(context)
+                            : AppColor.borderStrong(context),
+                      ),
                     ),
                   ),
                 ),
@@ -503,25 +538,12 @@ class _DesktopSplitEditorState extends State<DesktopSplitEditor> {
             ),
             // 右栏：实时预览
             Expanded(
-              flex: ((1 - _splitRatio) * 100).round(),
-              child: ScrollbarTheme(
-                data: ScrollbarThemeData(
-                  thickness: WidgetStateProperty.all(0), // 隐藏滚动条
-                ),
-                child: Scrollbar(
-                  controller: _previewScrollCtrl,
-                  child: SingleChildScrollView(
-                    controller: _previewScrollCtrl,
-                    padding: const EdgeInsets.all(16),
-                    child: DebouncedMarkdownPreview(
-                      state: _previewState,
-                      isDark: isDark,
-                    ),
-                  ),
-                ),
-              ),
+              flex: ((1 - ratio) * 100).round(),
+              child: preview!,
             ),
           ],
+            );
+          },
         );
       },
     );

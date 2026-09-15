@@ -307,31 +307,36 @@ window.WysiwygBridge = {
       editor.destroy()
       editor = null
     }
-    editor = new Editor({
-      element: document.getElementById('editor'),
-      extensions: [
-        StarterKit.configure({
-          heading: { levels: [1, 2, 3, 4, 5, 6] },
-        }),
-        Underline,
-        Link.configure({ openOnClick: false, autolink: true }),
-        Image.configure({ inline: false }),
-        Table.configure({ resizable: false }),
-        TableRow,
-        TableHeader,
-        TableCell,
-        TaskList,
-        TaskItem.configure({ nested: true }),
-        MathInline,
-        MathDisplay,
-        Placeholder.configure({ placeholder: '开始写作，支持 Markdown 语法...' }),
-      ],
-      content: mdToHtml(content),
-      onUpdate: () => scheduleEmit(),
-    })
-    // 首帧内容即认为已同步，避免 Dart 端误判外部改动
+    // 首帧内容即认为已同步。守卫只覆盖同步构造块：构造器内若触发 onUpdate
+    // 需要吞掉；不能用定时窗（窗口期内用户击键的 scheduleEmit 会被整体
+    // 吞掉，后续 setMarkdown 冲刷时无 timer 可冲，造成永久丢字）
     applyingRemote = true
-    setTimeout(() => { applyingRemote = false }, 300)
+    try {
+      editor = new Editor({
+        element: document.getElementById('editor'),
+        extensions: [
+          StarterKit.configure({
+            heading: { levels: [1, 2, 3, 4, 5, 6] },
+          }),
+          Underline,
+          Link.configure({ openOnClick: false, autolink: true }),
+          Image.configure({ inline: false }),
+          Table.configure({ resizable: false }),
+          TableRow,
+          TableHeader,
+          TableCell,
+          TaskList,
+          TaskItem.configure({ nested: true }),
+          MathInline,
+          MathDisplay,
+          Placeholder.configure({ placeholder: '开始写作，支持 Markdown 语法...' }),
+        ],
+        content: mdToHtml(content),
+        onUpdate: () => scheduleEmit(),
+      })
+    } finally {
+      applyingRemote = false
+    }
     return true
   },
 
@@ -346,10 +351,11 @@ window.WysiwygBridge = {
     }
     applyingRemote = true
     try {
+      // emitUpdate=false：setContent 不触发 onUpdate，守卫仅覆盖同步块
+      //（定时窗会吞掉窗口期内用户击键的 emit 调度造成丢字）
       editor.commands.setContent(mdToHtml(md), false)
     } finally {
-      // 下一帧再解除保护：确保 setContent 引发的 onUpdate 已被吞掉
-      setTimeout(() => { applyingRemote = false }, 60)
+      applyingRemote = false
     }
     return true
   },

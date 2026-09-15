@@ -258,12 +258,14 @@ class WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
             }
           },
           onLoadStop: (ctrl, url) async {
-            try {
-              // 虚拟域 KaTeX 加载失败兜底（Android 历史上出现过虚拟域 404）：
-              // window.katex 缺失时经 IPC 注入 css+js（css 367KB / js 275KB，
-              // 单次调用均低于 1MB Binder 限制），赶在 init 前完成，
-              // 公式节点首次渲染即有 KaTeX；注入失败则回落 latex 原文显示
-              if (_useAssetLoader) {
+            // 虚拟域 KaTeX 加载失败兜底（Android 历史上出现过虚拟域 404）：
+            // window.katex 缺失时经 IPC 注入 css+js（css 367KB / js 275KB，
+            // 单次调用均低于 1MB Binder 限制），赶在 init 前完成，
+            // 公式节点首次渲染即有 KaTeX。
+            // 独立 try：注入失败只降级为 latex 原文显示（JS 侧 math-raw），
+            // 绝不能冒泡到 init 的 fatal 路径把整个编辑器判死
+            if (_useAssetLoader) {
+              try {
                 Object? hasKatex;
                 try {
                   hasKatex = await ctrl.evaluateJavascript(
@@ -278,13 +280,21 @@ class WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
                       "var s=document.createElement('style');s.textContent=${jsonEncode(katexCss)};document.head.appendChild(s);");
                   await ctrl.evaluateJavascript(source: katexJs);
                 }
+              } catch (e) {
+                debugPrint('WysiwygWebView: katex inject fallback failed: $e');
               }
+            }
+            // dark 切换会因 ValueKey 重建 WebView：异步窗口期后旧续体
+            // 继续操作已销毁的 controller 会误报 fatal，直接作废
+            if (!mounted || _webCtrl != ctrl) return;
+            try {
               // 安卓上 JS 抛错（如 WysiwygBridge 未定义）时 evaluateJavascript
               // 返回 null 而非抛 PlatformException，必须用返回值确认 init 成功
               final ok = await ctrl.evaluateJavascript(
                 source:
                     'WysiwygBridge.init({content: ${jsonEncode(_lastKnownBody)}, dark: ${widget.dark}})',
               );
+              if (!mounted || _webCtrl != ctrl) return;
               if (ok == true) {
                 if (mounted) setState(() => _ready = true);
               } else {
@@ -294,6 +304,7 @@ class WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
                 _reportFatal();
               }
             } catch (e) {
+              if (!mounted || _webCtrl != ctrl) return;
               debugPrint('WysiwygWebView: init failed: $e');
               _lastJsError = 'init: $e${_lastJsError != null ? ' / $_lastJsError' : ''}';
               _reportFatal();
@@ -315,8 +326,11 @@ class WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
 
   void _reportFatal() {
     if (_fatal) return;
+    // 组件已被移除（切文章/切模式）时宿主无需再感知致命错误，
+    // 继续回调会让宿主对已不存在的编辑器切回源码模式并弹误导性 toast
+    if (!mounted) return;
     _fatal = true;
-    if (mounted) setState(() {});
+    setState(() {});
     widget.onFatalError?.call();
   }
 }

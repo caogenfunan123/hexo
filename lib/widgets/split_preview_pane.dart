@@ -109,9 +109,26 @@ class _SplitPreviewPaneState extends State<SplitPreviewPane> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        // 预览子树经 child 透传：拖拽中缝每帧只改 flex 重建布局，
+        // 预览实例保持同一（widget identical 时 Element 跳过重建），
+        // 避免每帧全文 markdown 重解析 + 公式重排版
+        final previewChild = RepaintBoundary(
+          child: Container(
+            color: Colors.white.withValues(alpha: 0.06),
+            child: MarkdownPreviewSmooth(
+              markdown: _previewMarkdown,
+              // 跟随编辑文字亮度：亮字=深背景=用暗色预览样式
+              darkTheme: widget.textColor.computeLuminance() > 0.5,
+              baseFontSize: 15,
+              lineHeight: 1.7,
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+            ),
+          ),
+        );
         return ValueListenableBuilder<double>(
           valueListenable: widget.splitRatio,
-          builder: (context, ratio, _) {
+          child: previewChild,
+          builder: (context, ratio, preview) {
             final editorFlex = (ratio * 100).round();
             final previewFlex = 100 - editorFlex;
             return Column(
@@ -201,20 +218,7 @@ class _SplitPreviewPaneState extends State<SplitPreviewPane> {
                 ),
                 Expanded(
                   flex: previewFlex,
-                  child: RepaintBoundary(
-                    child: Container(
-                      color: Colors.white.withValues(alpha: 0.06),
-                      child: MarkdownPreviewSmooth(
-                        markdown: _previewMarkdown,
-                        // 跟随编辑文字亮度：亮字=深背景=用暗色预览样式
-                        darkTheme:
-                            widget.textColor.computeLuminance() > 0.5,
-                        baseFontSize: 15,
-                        lineHeight: 1.7,
-                        padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-                      ),
-                    ),
-                  ),
+                  child: preview!,
                 ),
               ],
             );

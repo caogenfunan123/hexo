@@ -148,6 +148,9 @@ await Navigator.of(context).push<void>(
                   SmoothMarkdown(
                     data: a.content.isEmpty ? '*（无内容）*' : a.content,
                     selectable: false,
+                    // 导出长图固定白底，必须用浅色样式表：
+                    // fromTheme 在暗色主题下返回白色文字，白底上不可见
+                    styleSheet: MarkdownStyleSheet.light(),
                     plugins: ParserPluginRegistry()
                       ..register(const MermaidPlugin()),
                     builderRegistry: BuilderRegistry()
@@ -162,33 +165,37 @@ await Navigator.of(context).push<void>(
         ),
       );
       overlay.insert(entry);
-      await Future.delayed(const Duration(seconds: 2));
-      final boundary =
-          boundaryKey.currentContext?.findRenderObject()
-              as RenderRepaintBoundary?;
-      if (boundary != null) {
-        final image = await boundary.toImage(pixelRatio: 3);
-        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-        if (byteData != null) {
-          final bytes = byteData.buffer.asUint8List();
-          // 写入私有目录作为兜底
-          final file = File(filePath);
-          await file.writeAsBytes(bytes);
-          // 尝试写入 SAF 导出文件夹
-          final savedToSaf = await storage.savePngToExternalSaf(
-            '${timestamp}_$safeTitle.png',
-            bytes,
-          );
-          if (mounted) {
-            if (savedToSaf) {
-              _showToast('PNG 长图已保存到导出文件夹');
-            } else {
-              _showToast('PNG 长图已保存到内部目录\n$filePath');
+      try {
+        await Future.delayed(const Duration(seconds: 2));
+        final boundary =
+            boundaryKey.currentContext?.findRenderObject()
+                as RenderRepaintBoundary?;
+        if (boundary != null) {
+          final image = await boundary.toImage(pixelRatio: 3);
+          final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+          if (byteData != null) {
+            final bytes = byteData.buffer.asUint8List();
+            // 写入私有目录作为兜底
+            final file = File(filePath);
+            await file.writeAsBytes(bytes);
+            // 尝试写入 SAF 导出文件夹
+            final savedToSaf = await storage.savePngToExternalSaf(
+              '${timestamp}_$safeTitle.png',
+              bytes,
+            );
+            if (mounted) {
+              if (savedToSaf) {
+                _showToast('PNG 长图已保存到导出文件夹');
+              } else {
+                _showToast('PNG 长图已保存到内部目录\n$filePath');
+              }
             }
           }
         }
+      } finally {
+        // 截图/写盘任一步抛异常也必须移除离屏 entry，否则永久泄漏 overlay
+        if (entry.mounted) entry.remove();
       }
-      entry.remove();
     } catch (e) {
       if (mounted) _showToast('导出失败: $e');
     }
