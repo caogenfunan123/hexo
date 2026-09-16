@@ -1,41 +1,41 @@
 {
-  "version": "1.0.15",
-  "build": 16,
+  "version": "1.0.16",
+  "build": 17,
   "name": "Hexo 写作系统",
-  "notes": "移动端真所见即所得编辑修复与公式渲染链路加固：\n- 编辑器可正常输入回写，公式/表格渲染稳定\n- 安卓 KaTeX 虚拟域失败自动注入兜底，公式必渲染\n- 预览端公式渲染异常自动回落 LaTeX 原文，行内公式排版修正\n- 全仓两轮复盘：修复切文章丢稿、发布跨文章污染、预览配色反转等 19 项缺陷\n- 分屏拖拽性能优化，长文档不再每帧重解析",
-  "publishedAt": "2026-09-15T23:11:04+00:00",
+  "notes": "安卓真机所见即所得空白修复：\n- 修复开启所见即所得后整页静默空白的问题\n- KaTeX 改为页面加载后注入，加载不再依赖虚拟域网络请求\n- 求值全程 8 秒超时保护，异常时明确报错并自动回退源码模式",
+  "publishedAt": "2026-09-16T01:05:38+00:00",
   "platforms": {
     "android": {
-      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.15/app-release.apk",
-      "sha256": "a7066759c9a41a05b72823b84630a60cdc43ccac90597cc73ff3775c6f4bb1c0",
-      "size": 82165489,
+      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.16/app-release.apk",
+      "sha256": "",
+      "size": 0,
       "abi": {
         "arm64": {
-          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.15/app-arm64-v8a-release.apk",
-          "sha256": "f9f32d53c2b12c3622f6d2f49a5074b6ea06b09f7f14ab75c572e728ead2112a",
-          "size": 29906389
+          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.16/app-arm64-v8a-release.apk",
+          "sha256": "",
+          "size": 0
         },
         "armv7": {
-          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.15/app-armeabi-v7a-release.apk",
-          "sha256": "0b450088c8b094623d81e72eb7cdc015ed813b7c8d52363164a7b3a385daae93",
-          "size": 28134685
+          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.16/app-armeabi-v7a-release.apk",
+          "sha256": "",
+          "size": 0
         },
         "universal": {
-          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.15/app-release.apk",
-          "sha256": "a7066759c9a41a05b72823b84630a60cdc43ccac90597cc73ff3775c6f4bb1c0",
-          "size": 82165489
+          "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.16/app-release.apk",
+          "sha256": "",
+          "size": 0
         }
       }
     },
     "windows": {
-      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.15/hexo-windows.zip",
-      "sha256": "ee103b1a5db1b57a73d6fbc708cfd83de4d5414176deaca5b53033d948b0f3db",
-      "size": 23746132
+      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.16/hexo-windows.zip",
+      "sha256": "",
+      "size": 0
     },
     "linux": {
-      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.15/hexo-linux.tar.gz",
-      "sha256": "d4e6624b9bafd19d1873290ed041409cfb5fe2765cf3666168221cd41de24cab",
-      "size": 20539600
+      "url": "https://ghfast.top/https://github.com/caogenfunan123/hexo/releases/download/v1.0.16/hexo-linux.tar.gz",
+      "sha256": "",
+      "size": 0
     }
   }
 }
