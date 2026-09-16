@@ -23,6 +23,9 @@ import 'package:flutter/services.dart' show rootBundle;
 /// 加载策略：editor.min.js（约 416KB）**全平台内联**进 initialData HTML——
 /// 远低于安卓 Binder 1MB 事务上限，不依赖任何虚拟域/子资源请求，
 /// 从根上排除「脚本 404 → 编辑器空白」的失败类（曾因此报加载失败）。
+/// KaTeX（css+js 共 642KB，超限）在 onLoadStop 后经 IPC 注入，
+/// 每步带 8s 超时：渲染进程卡死时要么降级 math-raw，要么显式 fatal，
+/// 绝不会出现无 init、无 fatal 的静默空白。
 /// WebView 失败时回调 onFatalError(reason)，宿主自动退回源码编辑模式。
 class WysiwygWebViewEditor extends StatefulWidget {
   const WysiwygWebViewEditor({
@@ -58,8 +61,8 @@ class WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
   String? _lastJsError;
   late Future<String> _htmlFuture;
 
-  /// 安卓走 WebViewAssetLoader 虚拟域加载 KaTeX 资源（编辑器主包仍内联）；
-  /// 其余平台全部内联
+  /// 仅安卓给 WebView 配虚拟域 baseUrl + AssetLoader（https 安全上下文 +
+  /// 兜住零星绝对路径请求 404，不落到真实网络）；KaTeX 已不依赖它加载
   bool get _useAssetLoader =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
@@ -158,35 +161,24 @@ class WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
     return true;
   }
 
-  /// 模板 + 编辑器 bundle 内联；KaTeX 按平台决定虚拟域引用或内联。
-  /// （安卓 initialData 走 Binder，上限 1MB：编辑器包 418KB 内联安全，
-  /// KaTeX css+js 650KB 改走虚拟域；iOS 无此限制，全内联。）
+  /// 模板 + 编辑器 bundle 内联；KaTeX 不进 HTML，统一 onLoadStop IPC 注入。
+  /// （安卓 initialData 走 Binder，上限 1MB：编辑器包 410KB 内联安全，
+  /// KaTeX css+js 642KB 超限只能后注入；iOS/桌面无此限制，但同样走注入，
+  /// 全平台单一路径。安卓曾用 WebViewAssetLoader 虚拟域外链，但 androidx
+  /// AssetsPathHandler 以安卓资产根为基准、Flutter 资产带 flutter_assets/
+  /// 前缀，必然 404（848786f 历史），且外链请求一旦落到真实网络会卡死
+  /// load 事件→onLoadStop 永不触发→无 fatal 的纯空白，彻底弃用。）
   Future<String> _buildHtml() async {
     final template =
         await rootBundle.loadString('assets/wysiwyg/web/editor.template.html');
     final js = await rootBundle.loadString('assets/wysiwyg/web/editor.min.js');
-    String html = template.replaceAll(
+    final html = template.replaceAll(
       '<script src="__EDITOR_JS__"></script>',
       '<script>${js.replaceAll('</script>', '<\\/script>')}</script>',
     );
-    if (_useAssetLoader) {
-      html = html
-          .replaceAll('__KATEX_CSS__',
-              '<link rel="stylesheet" href="/assets/wysiwyg/web/katex.min.css">')
-          .replaceAll('__KATEX_JS__',
-              '<script src="/assets/wysiwyg/web/katex.min.js"></script>');
-    } else {
-      final katexCss =
-          await rootBundle.loadString('assets/wysiwyg/web/katex.min.css');
-      final katexJs =
-          await rootBundle.loadString('assets/wysiwyg/web/katex.min.js');
-      html = html
-          .replaceAll('__KATEX_CSS__',
-              '<style>${katexCss.replaceAll('</style>', '<\\/style>')}</style>')
-          .replaceAll('__KATEX_JS__',
-              '<script>${katexJs.replaceAll('</script>', '<\\/script>')}</script>');
-    }
-    return html;
+    return html
+        .replaceAll('__KATEX_CSS__', '')
+        .replaceAll('__KATEX_JS__', '');
   }
 
   @override
@@ -258,31 +250,42 @@ class WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
             }
           },
           onLoadStop: (ctrl, url) async {
-            // 虚拟域 KaTeX 加载失败兜底（Android 历史上出现过虚拟域 404）：
-            // window.katex 缺失时经 IPC 注入 css+js（css 367KB / js 275KB，
-            // 单次调用均低于 1MB Binder 限制），赶在 init 前完成，
-            // 公式节点首次渲染即有 KaTeX。
+            // KaTeX 统一经 IPC 注入（HTML 内无任何外链，load 不依赖网络）：
+            // css 367KB / js 275KB，单次调用均低于 1MB Binder 限制，赶在
+            // init 前完成，公式节点首次渲染即有 KaTeX。
+            // 每步都带超时：WebView 渲染进程卡死时 evaluateJavascript 永不
+            // 返回，若无超时整个 onLoadStop 悬挂→无 init、无 fatal 的纯空白。
+            // window.katex 探测天然兼容 load 重复触发与 dark 重建的新 WebView。
             // 独立 try：注入失败只降级为 latex 原文显示（JS 侧 math-raw），
             // 绝不能冒泡到 init 的 fatal 路径把整个编辑器判死
-            if (_useAssetLoader) {
-              try {
-                Object? hasKatex;
-                try {
-                  hasKatex = await ctrl.evaluateJavascript(
-                      source: '!!window.katex');
-                } catch (_) {}
-                if (hasKatex != true) {
-                  final katexCss = await rootBundle
-                      .loadString('assets/wysiwyg/web/katex.min.css');
-                  final katexJs = await rootBundle
-                      .loadString('assets/wysiwyg/web/katex.min.js');
-                  await ctrl.evaluateJavascript(source:
-                      "var s=document.createElement('style');s.textContent=${jsonEncode(katexCss)};document.head.appendChild(s);");
-                  await ctrl.evaluateJavascript(source: katexJs);
-                }
-              } catch (e) {
-                debugPrint('WysiwygWebView: katex inject fallback failed: $e');
+            try {
+              final hasKatex = await _evalTimed(
+                ctrl,
+                '!!window.katex',
+                stage: 'katex-probe',
+              );
+              if (hasKatex == null) {
+                // 探测无响应（渲染进程卡死/IPC 异常）：继续注入只会连环
+                // 超时白等 20 多秒，直接判死给用户可见的失败态
+                debugPrint('WysiwygWebView: katex probe no response');
+                _lastJsError = 'KaTeX 探测无响应，WebView 可能已卡死';
+                _reportFatal();
+                return;
               }
+              if (hasKatex != true) {
+                final katexCss = await rootBundle
+                    .loadString('assets/wysiwyg/web/katex.min.css');
+                final katexJs = await rootBundle
+                    .loadString('assets/wysiwyg/web/katex.min.js');
+                await _evalTimed(
+                  ctrl,
+                  "var s=document.createElement('style');s.textContent=${jsonEncode(katexCss)};document.head.appendChild(s);",
+                  stage: 'katex-css',
+                );
+                await _evalTimed(ctrl, katexJs, stage: 'katex-js');
+              }
+            } catch (e) {
+              debugPrint('WysiwygWebView: katex inject fallback failed: $e');
             }
             // dark 切换会因 ValueKey 重建 WebView：异步窗口期后旧续体
             // 继续操作已销毁的 controller 会误报 fatal，直接作废
@@ -290,9 +293,10 @@ class WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
             try {
               // 安卓上 JS 抛错（如 WysiwygBridge 未定义）时 evaluateJavascript
               // 返回 null 而非抛 PlatformException，必须用返回值确认 init 成功
-              final ok = await ctrl.evaluateJavascript(
-                source:
-                    'WysiwygBridge.init({content: ${jsonEncode(_lastKnownBody)}, dark: ${widget.dark}})',
+              final ok = await _evalTimed(
+                ctrl,
+                'WysiwygBridge.init({content: ${jsonEncode(_lastKnownBody)}, dark: ${widget.dark}})',
+                stage: 'init',
               );
               if (!mounted || _webCtrl != ctrl) return;
               if (ok == true) {
@@ -322,6 +326,25 @@ class WysiwygWebViewEditorState extends State<WysiwygWebViewEditor> {
         );
       },
     );
+  }
+
+  /// 带超时的 evaluateJavascript：渲染进程卡死/IPC 挂起时不会悬挂调用方。
+  /// 超时返回 null（katex 步骤降级、init 步骤走 fatal），stage 用于日志定位。
+  Future<Object?> _evalTimed(
+    InAppWebViewController ctrl,
+    String source, {
+    required String stage,
+  }) {
+    return ctrl
+        .evaluateJavascript(source: source)
+        .timeout(
+          const Duration(seconds: 8),
+          onTimeout: () {
+            debugPrint('WysiwygWebView: eval timeout at $stage');
+            _lastJsError = '$stage 求值超时';
+            return null;
+          },
+        );
   }
 
   void _reportFatal() {
